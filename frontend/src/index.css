@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Optional: Custom styles jaise tumhare pehle the */
+@layer base {
+  h1 {
+    @apply text-5xl font-bold;
+  }
+  h2 {
+    @apply text-4xl font-bold;
+  }
+  h3 {
+    @apply text-3xl font-bold;
+  }
+}
+
+/* Smooth scrolling and better focus */
+html {
+  scroll-behavior: smooth;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  @apply ring-4 ring-lime-300;
+}
