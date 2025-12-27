@@ -14,8 +14,15 @@ from rest_framework import status
 from django.contrib.auth.models import User
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import CandidateApplication, Country, State, City
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny , IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
+from .models import Employee
+from .serializers import EmployeeSerializer
+
+class EmployeeViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Employee.objects.all().prefetch_related('contracts', 'payslips')
+    serializer_class = EmployeeSerializer
+    permission_classes = [AllowAny]
 
 from .serializers import CountrySerializer, StateSerializer, CitySerializer
 

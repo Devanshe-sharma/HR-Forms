@@ -1,67 +1,20 @@
 from django.contrib import admin
-from .models import Profile, CandidateApplication, Country, State, City, JobDesignation
+from .models import Profile, CandidateApplication, Country, State, City, JobDesignation, Employee, Contract, Payslip
 from django.utils.html import format_html
-
-
 
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):
     list_display = ('user', 'role')
 
-
 @admin.register(CandidateApplication)
 class CandidateApplicationAdmin(admin.ModelAdmin):
     list_display = (
-        'id',
-        'full_name',
-        'email',
-        'phone',
-        'whatsapp_same',
-        'dob',
-        'state',
-        'city',
-        'pin_code',
-        'relocation',
-        'designation',
-        'highest_qualification',
-        'experience',
-        'total_experience',
-        'current_ctc',
-        'notice_period',
-        'expected_monthly_ctc',
-        'hindi_read',
-        'hindi_write',
-        'hindi_speak',
-        'english_read',
-        'english_write',
-        'english_speak',
-        'facebookLink',
-        'linkedin',
-        'short_video_url',
-        'resume',
-        'created_at',
+        'id', 'full_name', 'email', 'phone', 'designation', 'city', 'state',
+        'relocation', 'experience', 'expected_monthly_ctc', 'created_at'
     )
-
-    search_fields = (
-        'full_name',
-        'email',
-        'phone',
-        'designation',
-        'city',
-        'state',
-    )
-
-    list_filter = (
-        'designation',
-        'experience',
-        'relocation',
-        'city',
-        'state',
-        'created_at',
-    )
-
+    search_fields = ('full_name', 'email', 'phone', 'designation')
+    list_filter = ('designation', 'experience', 'relocation', 'state', 'city', 'created_at')
     ordering = ('-created_at',)
-
     readonly_fields = ('created_at',)
 
 @admin.register(State)
@@ -92,3 +45,23 @@ class JobDesignationAdmin(admin.ModelAdmin):
             return format_html('<a href="{}" target="_blank">View JD</a>', obj.jd_link)
         return "No JD"
     jd_link_display.short_description = "Job Description"
+
+# ✅ NEW — Employee, Contract, Payslip Admin Registration
+@admin.register(Employee)
+class EmployeeAdmin(admin.ModelAdmin):
+    list_display = ('employee_id', 'full_name', 'email', 'department', 'designation', 'current_salary', 'joining_date')
+    list_filter = ('department', 'designation', 'joining_date')
+    search_fields = ('full_name', 'employee_id', 'email', 'department')
+    ordering = ('-joining_date',)
+
+@admin.register(Contract)
+class ContractAdmin(admin.ModelAdmin):
+    list_display = ('employee', 'contract_type', 'salary', 'start_date', 'end_date', 'is_active')
+    list_filter = ('contract_type', 'is_active', 'start_date')
+    search_fields = ('employee__full_name',)
+
+@admin.register(Payslip)
+class PayslipAdmin(admin.ModelAdmin):
+    list_display = ('employee', 'month', 'file')
+    list_filter = ('month',)
+    search_fields = ('employee__full_name',)

@@ -1,42 +1,27 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import Home from "./pages/Home";
 import HRDashboard from "./pages/HRDashboard";
-import PrivateRoute from "./components/PrivateRoute";
 import OutsiderDashboard from "./pages/OutsiderDashboard";
-
-
+import CandidateApplicationPage from "./Candidate/page";
+import SalaryRevision from "./pages/SalaryRevision";
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Login />} />
-        <Route
-          path="/home"
-          element={
-            <PrivateRoute>
-              <Home />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/hr-dashboard"
-          element={
-            <PrivateRoute>
-              <HRDashboard />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/outsider-dashboard"
-          element={
-            <PrivateRoute>
-              <OutsiderDashboard />
-              
-            </PrivateRoute>
-          }
-        />
-      </Routes>
-    </BrowserRouter>
+    <Routes>
+      <Route path="/" element={<Login />} />
+      <Route path="/home" element={<Home />} />
+
+      {/* Employee dashboards (same UI) */}
+      <Route path="/hr-dashboard" element={<HRDashboard />} />
+
+      {/* Outsider */}
+      <Route path="/outsider-dashboard" element={<OutsiderDashboard />} />
+      <Route path="/candidate-application" element={<CandidateApplicationPage />} />
+      <Route path="/salary-revision" element={<SalaryRevision />} />
+
+
+      {/* Safety */}
+      <Route path="*" element={<Navigate to="/" />} />
+    </Routes>
   );
 }

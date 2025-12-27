@@ -9,7 +9,7 @@ const formSchema = z.object({
   full_name: z.string().min(1, 'Full name is required'),
   email: z.string().email('Invalid email'),
   countries_code: z.string().min(1, 'Country code is required'),
-  mobile: z.string().min(10, 'Mobile number must be 10 digits'),
+  mobile: z.string().regex(/^\d{10}$/, 'Mobile number must be exactly 10 digits'),
   whatsapp_same: z.boolean().optional(),
   dob: z.string().min(1, 'Date of birth is required'),
   state: z.string().min(1, 'State is required'),
@@ -58,7 +58,7 @@ const designations = [
   // Add all your designations here
 ];
 
-export default function CandidateApplicationForm() {
+export default function CandidateApplicationPage() {
   const [countries, setCountries] = useState<Country[]>([]);
   const [states, setStates] = useState<State[]>([]);
   const [cities, setCities] = useState<City[]>([]);
@@ -67,6 +67,8 @@ export default function CandidateApplicationForm() {
   const [showExperience, setShowExperience] = useState(false);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+
 
   const {
     register,
@@ -80,8 +82,10 @@ export default function CandidateApplicationForm() {
       experience: 'No',
       relocation: 'Yes',
       whatsapp_same: false,
+      countries_code: '+91', // ✅ ADD THIS
     },
   });
+
 
   const watchedState = watch('state');
   const experience = watch('experience');
@@ -133,68 +137,68 @@ export default function CandidateApplicationForm() {
     setShowExperience(experience === 'Yes');
   }, [experience]);
 
-  
+
   const onSubmit = async (data: FormData) => {
-  console.log("Form data:", data);
+    console.log("Form data:", data);
 
-  setIsSubmitting(true);
+    setIsSubmitting(true);
 
-  try {
-    const payload = {
-      full_name: data.full_name,
-      email: data.email,
-      phone: data.countries_code + data.mobile,
-      whatsapp_same: data.whatsapp_same || false,
-      dob: data.dob,
-      state: data.state,  // This is ID from dropdown
-      city: data.city,    // This is ID from dropdown
-      pin_code: data.pin_code,
-      relocation: data.relocation,
-      designation: data.designation,
-      highest_qualification: data.highest_qualification,
-      experience: data.experience,
-      total_experience: data.total_experience || "",
-      current_ctc: data.current_ctc || "",
-      notice_period: data.notice_period || "",
-      expected_monthly_ctc: data.expected_monthly_ctc,
-      hindi_read: data.hindi_read,
-      hindi_write: data.hindi_write,
-      hindi_speak: data.hindi_speak,
-      english_read: data.english_read,
-      english_write: data.english_write,
-      english_speak: data.english_speak,
-      facebookLink: data.facebookLink || "",
-      linkedin: data.linkedin || "",
-      short_video_url: data.short_video_url || "",
-    };
+    try {
+      const payload = {
+        full_name: data.full_name,
+        email: data.email,
+        phone: data.countries_code + data.mobile,
+        whatsapp_same: data.whatsapp_same || false,
+        dob: data.dob,
+        state: data.state,  // This is ID from dropdown
+        city: data.city,    // This is ID from dropdown
+        pin_code: data.pin_code,
+        relocation: data.relocation,
+        designation: data.designation,
+        highest_qualification: data.highest_qualification,
+        experience: data.experience,
+        total_experience: data.total_experience || "",
+        current_ctc: data.current_ctc || "",
+        notice_period: data.notice_period || "",
+        expected_monthly_ctc: data.expected_monthly_ctc,
+        hindi_read: data.hindi_read,
+        hindi_write: data.hindi_write,
+        hindi_speak: data.hindi_speak,
+        english_read: data.english_read,
+        english_write: data.english_write,
+        english_speak: data.english_speak,
+        facebookLink: data.facebookLink || "",
+        linkedin: data.linkedin || "",
+        short_video_url: data.short_video_url || "",
+      };
 
-    console.log("Sending payload:", payload);
+      console.log("Sending payload:", payload);
 
-    const response = await fetch('http://127.0.0.1:8000/api/candidate-applications/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
+      const response = await fetch('http://127.0.0.1:8000/api/candidate-applications/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
 
-    if (response.ok) {
-      const result = await response.json();
-      console.log("SUCCESS! Data saved:", result);
-      alert("Application submitted successfully! 🎉 Thank you!");
-      // Optional: reset form or redirect
-    } else {
-      const error = await response.text();
-      console.error("Error from backend:", error);
-      alert("Submission failed: " + error);
+      if (response.ok) {
+        const result = await response.json();
+        console.log("SUCCESS! Data saved:", result);
+        alert("Application submitted successfully! 🎉 Thank you!");
+        // Optional: reset form or redirect
+      } else {
+        const error = await response.text();
+        console.error("Error from backend:", error);
+        alert("Submission failed: " + error);
+      }
+    } catch (err) {
+      console.error("Network error:", err);
+      alert("Network error. Is the Django server running?");
+    } finally {
+      setIsSubmitting(false);
     }
-  } catch (err) {
-    console.error("Network error:", err);
-    alert("Network error. Is the Django server running?");
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+  };
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     setResumeFile(e.target.files?.[0] || null);
@@ -204,7 +208,7 @@ export default function CandidateApplicationForm() {
     <div className="max-w-4xl mx-auto p-6 bg-white rounded-2xl shadow-2xl">
       <h2 className="text-4xl font-bold text-center text-lime-600 mb-10">Candidate Application Form</h2>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+      <form onSubmit={handleSubmit(onSubmit, (errors) => { console.log(' FORM ERRORS:', errors); alert('Form has errors. Check console 👀'); })} className="space-y-8" >
         {/* Full Name */}
         <div>
           <label className="block text-lg font-medium text-gray-800 mb-2">Full Name</label>
@@ -237,7 +241,7 @@ export default function CandidateApplicationForm() {
               {...register('countries_code')}
               className="px-5 py-3 border border-gray-300 rounded-lg focus:ring-4 focus:ring-lime-200 focus:border-lime-500"
             >
-              <option value="" disabled>Select Code</option>
+              <option value="">Select Code</option>
               {countries.map((c) => (
                 <option key={c.id} value={c.code}>
                   {c.name} ({c.code})
@@ -344,6 +348,28 @@ export default function CandidateApplicationForm() {
             ))}
           </select>
         </div>
+
+        {/* Highest Qualification */}
+        <div>
+          <label className="block text-lg font-medium text-gray-800 mb-2">
+            Highest Qualification <span className="text-red-500">*</span>
+          </label>
+
+          <input
+            type="text"
+            {...register('highest_qualification')}
+            className="w-full px-5 py-3 border border-gray-300 rounded-lg focus:ring-4 focus:ring-lime-200 focus:border-lime-500"
+            placeholder="e.g. B.Tech, MBA, Diploma, 12th"
+          />
+
+          {errors.highest_qualification && (
+            <p className="text-red-500 text-sm mt-1">
+              {errors.highest_qualification.message}
+            </p>
+          )}
+        </div>
+
+
 
         {/* Experience */}
         <div>
@@ -503,7 +529,7 @@ export default function CandidateApplicationForm() {
         </div>
 
         {/* Submit */}
-       {/* Submit Button with Spinner Loader */}
+        {/* Submit Button with Spinner Loader */}
         <div className="text-center pt-8">
           <button
             type="submit"

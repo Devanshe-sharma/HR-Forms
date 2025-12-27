@@ -1,7 +1,24 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from .models import CandidateApplication, Country, State, City, Employee, Contract, Payslip
 
-from .models import CandidateApplication, Country, State, City
+class ContractSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Contract
+        fields = '__all__'
+
+class PayslipSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Payslip
+        fields = '__all__'
+
+class EmployeeSerializer(serializers.ModelSerializer):
+    contracts = ContractSerializer(many=True, read_only=True)
+    payslips = PayslipSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Employee
+        fields = '__all__'
 
 
 # Fixed class name: lowercase → PascalCase (standard Python/DRF convention)

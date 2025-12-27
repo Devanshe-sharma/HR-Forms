@@ -8,6 +8,7 @@ from .views import (
     CountryViewSet,
     StateViewSet,
     CityViewSet,
+    EmployeeViewSet,
 )
 
 # Router only for ViewSets
@@ -15,6 +16,7 @@ router = DefaultRouter()
 router.register(r'countries', CountryViewSet, basename='country')
 router.register(r'states', StateViewSet, basename='state')
 router.register(r'cities', CityViewSet, basename='city')
+router.register(r'employees', EmployeeViewSet, basename='employee')
 # ← Do NOT register CandidateApplicationListCreate here
 
 urlpatterns = [
