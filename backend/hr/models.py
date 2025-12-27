@@ -107,3 +107,31 @@ class JobDesignation(models.Model):
     class Meta:
         verbose_name_plural = "Job Designations"
         ordering = ['name']
+
+class Employee(models.Model):
+    employee_id = models.CharField(max_length=20, unique=True)
+    full_name = models.CharField(max_length=100)
+    email = models.EmailField()
+    department = models.CharField(max_length=50)
+    designation = models.CharField(max_length=50)
+    current_salary = models.IntegerField()
+    joining_date = models.DateField()
+
+    def __str__(self):
+        return self.full_name
+    
+class Contract(models.Model):
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="contracts")
+    contract_type = models.CharField(max_length=50)  # Full-time, Intern, etc.
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+    salary = models.IntegerField()
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"{self.employee.full_name} - {self.contract_type}"
+
+class Payslip(models.Model):
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='payslips')  # ← related_name="payslips" hona chahiye
+    month = models.CharField(max_length=20)
+    file = models.FileField(upload_to="payslips/", blank=True, null=True)
