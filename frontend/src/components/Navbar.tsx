@@ -7,7 +7,7 @@ export default function Navbar() {
             position="fixed"
             sx={{
                 zIndex: 1400,
-                backgroundColor: "#76834fff",
+                backgroundColor: "#84c340",
                 boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
             }}
         >
