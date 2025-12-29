@@ -116,6 +116,7 @@ class Employee(models.Model):
     designation = models.CharField(max_length=50)
     current_salary = models.IntegerField()
     joining_date = models.DateField()
+    photo = models.URLField(blank=True, null=True)
 
     def __str__(self):
         return self.full_name

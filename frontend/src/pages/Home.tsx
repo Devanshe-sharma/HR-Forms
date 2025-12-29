@@ -51,7 +51,7 @@ export default function Home() {
               to="/outsider-dashboard"
               className="block px-16 py-8 bg-blue-600 text-white text-3xl font-bold rounded-2xl hover:bg-blue-700 transition shadow-2xl transform hover:scale-105"
             >
-              Open Candidate Application Form →
+              Dashboard
             </Link>
           )}
         </div>
