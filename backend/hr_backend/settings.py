@@ -31,7 +31,12 @@ SECRET_KEY = 'django-insecure-=a5autlf%qr9fn=55@xvl8z@5&8@g%__z76p908rz&ey2u9-x3
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    "hr-forms.onrender.com",
+    ".onrender.com",  # allows all Render subdomains (recommended)
+    "localhost",
+    "127.0.0.1",
+]
 
 
 # Application definition
