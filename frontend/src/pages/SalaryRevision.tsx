@@ -60,7 +60,7 @@ export default function SalaryRevisionPage() {
   });
 
   useEffect(() => {
-    fetch('http://127.0.0.1:8000/api/employees/')
+    fetch('https://hr-forms.onrender.com/api/employees/')
       .then(res => res.json())
       .then(data => setEmployees(data))
       .catch(err => console.error(err))
