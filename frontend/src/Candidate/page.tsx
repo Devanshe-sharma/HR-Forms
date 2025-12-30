@@ -174,7 +174,7 @@ export default function CandidateApplicationPage() {
 
       console.log("Sending payload:", payload);
 
-      const response = await fetch('https://hr-forms.onrender.com/candidate-applications/', {
+      const response = await fetch('https://hr-forms.onrender.com/api/candidate-applications/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
