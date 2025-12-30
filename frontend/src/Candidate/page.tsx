@@ -92,7 +92,7 @@ export default function CandidateApplicationPage() {
 
   // Fetch countries for phone code
   useEffect(() => {
-    fetch('http://127.0.0.1:8000/api/countries/')
+    fetch('https://hr-forms.onrender.com/api/countries/')
       .then((res) => res.json())
       .then((data: Country[]) => setCountries(data.sort((a, b) => a.name.localeCompare(b.name))))
       .catch((err) => console.error(err));
@@ -101,7 +101,7 @@ export default function CandidateApplicationPage() {
   // Fetch states
   useEffect(() => {
     setLoadingStates(true);
-    fetch('http://127.0.0.1:8000/api/states/')
+    fetch('https://hr-forms.onrender.com/api/states/')
       .then((res) => res.json())
       .then((data: State[]) => {
         setStates(data.sort((a, b) => a.name.localeCompare(b.name)));
@@ -121,7 +121,7 @@ export default function CandidateApplicationPage() {
       return;
     }
     setLoadingCities(true);
-    fetch(`http://127.0.0.1:8000/api/cities/?state=${watchedState}`)
+    fetch(`https://hr-forms.onrender.com/api/cities/?state=${watchedState}`)
       .then((res) => res.json())
       .then((data: City[]) => {
         setCities(data.sort((a, b) => a.name.localeCompare(b.name)));
@@ -174,7 +174,7 @@ export default function CandidateApplicationPage() {
 
       console.log("Sending payload:", payload);
 
-      const response = await fetch('http://127.0.0.1:8000/api/candidate-applications/', {
+      const response = await fetch('https://hr-forms.onrender.com/candidate-applications/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
