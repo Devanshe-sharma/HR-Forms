@@ -20,7 +20,7 @@ router.register(r'employees', EmployeeViewSet, basename='employee')
 # ← Do NOT register CandidateApplicationListCreate here
 
 urlpatterns = [
-    path('', home),
+    # path('', home),
     path('admin/', admin.site.urls),
     path('api/', include('hr.urls')),  # ← Yeh already include kar raha hai router aur manual paths
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
