@@ -1,23 +1,30 @@
 from rest_framework import generics, viewsets
-from .models import CandidateApplication
-from .serializers import CandidateApplicationSerializer, CountrySerializer
-from .permissions import IsInGroup
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import AllowAny
+from rest_framework.filters import SearchFilter
+from django_filters.rest_framework import DjangoFilterBackend
+
 from rest_framework_simplejwt.views import TokenObtainPairView
-from .serializers import CustomTokenObtainPairSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
+
+from django.contrib.auth.models import User
+
 from google.oauth2 import id_token
 from google.auth.transport import requests
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from django.contrib.auth.models import User
-from rest_framework_simplejwt.tokens import RefreshToken
-from .models import CandidateApplication, Country, State, City
-from rest_framework.permissions import AllowAny
-from django_filters.rest_framework import DjangoFilterBackend
-from .models import Employee
-from .serializers import EmployeeSerializer
+
+from .models import CandidateApplication, Country, State, City, Employee
+from .serializers import (
+    CandidateApplicationSerializer,
+    CountrySerializer,
+    StateSerializer,
+    CitySerializer,
+    EmployeeSerializer,
+    CustomTokenObtainPairSerializer,
+)
+from .permissions import IsInGroup
 
 
 class EmployeeViewSet(viewsets.ReadOnlyModelViewSet):
@@ -25,17 +32,18 @@ class EmployeeViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = EmployeeSerializer
     permission_classes = [AllowAny]
 
-from .serializers import CountrySerializer, StateSerializer, CitySerializer
 
 class CountryViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Country.objects.all()
     serializer_class = CountrySerializer
-    permission_classes = [AllowAny]  # ← Allow public access
+    permission_classes = [AllowAny]
+
 
 class StateViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = State.objects.all()
     serializer_class = StateSerializer
-    permission_classes = [AllowAny]  # ← Public
+    permission_classes = [AllowAny]
+
 
 class CityViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = City.objects.all()
@@ -44,6 +52,7 @@ class CityViewSet(viewsets.ReadOnlyModelViewSet):
     filterset_fields = ['state']
     permission_classes = [AllowAny]
 
+
 class CustomLoginView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
@@ -51,11 +60,13 @@ class CustomLoginView(TokenObtainPairView):
 class CandidateApplicationListCreate(generics.ListCreateAPIView):
     queryset = CandidateApplication.objects.order_by('-created_at')
     serializer_class = CandidateApplicationSerializer
-    permission_classes = [AllowAny]  
+    permission_classes = [AllowAny]
+
 
 class CandidateApplicationRetrieveUpdate(generics.RetrieveUpdateAPIView):
     queryset = CandidateApplication.objects.all()
     serializer_class = CandidateApplicationSerializer
+    permission_classes = [AllowAny]  # or restrict if needed
 
 
 class CandidateApplicationView(APIView):
@@ -63,15 +74,14 @@ class CandidateApplicationView(APIView):
 
     def get(self, request):
         return Response({"message": "Candidate application form accessible"})
-    
+
+
 class HiringRequisitionView(APIView):
     permission_classes = [IsInGroup(["HR", "Admin"])]
 
     def get(self, request):
         return Response({"message": "Hiring requisition accessible"})
 
-def permission_classes(*args, **kwargs):
-    raise NotImplementedError
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
@@ -110,4 +120,3 @@ def google_login(request):
             {"error": "Google token verification failed"},
             status=status.HTTP_400_BAD_REQUEST
         )
-
