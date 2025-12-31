@@ -14,10 +14,11 @@ from rest_framework import status
 from django.contrib.auth.models import User
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import CandidateApplication, Country, State, City
-from rest_framework.permissions import AllowAny , IsAuthenticated
+from rest_framework.permissions import AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
 from .models import Employee
 from .serializers import EmployeeSerializer
+
 
 class EmployeeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Employee.objects.all().prefetch_related('contracts', 'payslips')
@@ -50,7 +51,7 @@ class CustomLoginView(TokenObtainPairView):
 class CandidateApplicationListCreate(generics.ListCreateAPIView):
     queryset = CandidateApplication.objects.order_by('-created_at')
     serializer_class = CandidateApplicationSerializer
-    permission_classes = [AllowAny]  # ← Yeh line add kar do
+    permission_classes = [AllowAny]  
 
 class CandidateApplicationRetrieveUpdate(generics.RetrieveUpdateAPIView):
     queryset = CandidateApplication.objects.all()
@@ -69,7 +70,11 @@ class HiringRequisitionView(APIView):
     def get(self, request):
         return Response({"message": "Hiring requisition accessible"})
 
+def permission_classes(*args, **kwargs):
+    raise NotImplementedError
+
 @api_view(["POST"])
+@permission_classes([AllowAny])
 def google_login(request):
     token = request.data.get("token")
     if not token:
