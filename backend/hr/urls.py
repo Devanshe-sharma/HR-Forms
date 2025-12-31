@@ -20,9 +20,13 @@ router.register(r'employees', EmployeeViewSet, basename='employee')
 # ← Do NOT register CandidateApplicationListCreate here
 
 urlpatterns = [
-    # path('', home),
-    path('admin/', admin.site.urls),
-    path('api/', include('hr.urls')),  # ← Yeh already include kar raha hai router aur manual paths
-    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    # Include router URLs (for countries, states, cities)
+    path('', include(router.urls)),
+
+    # Manual paths for non-ViewSet views
+    path('candidate-applications/', CandidateApplicationListCreate.as_view(), name='candidate-application-list'),
+    path('candidate-applications/<int:pk>/', CandidateApplicationRetrieveUpdate.as_view(), name='candidate-application-detail'),
+
+    path('login/', CustomLoginView.as_view(), name='custom_login'),
+    path('google-login/', google_login, name='google_login'),
 ]
