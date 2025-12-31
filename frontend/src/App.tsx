@@ -5,6 +5,8 @@ import HRDashboard from "./pages/HRDashboard";
 import OutsiderDashboard from "./pages/OutsiderDashboard";
 import CandidateApplicationPage from "./Candidate/page";
 import SalaryRevision from "./pages/SalaryRevision";
+import ProtectedRoute from './components/ProtectedRoute';
+
 export default function App() {
   return (
     <Routes>
@@ -17,9 +19,8 @@ export default function App() {
       {/* Outsider */}
       <Route path="/outsider-dashboard" element={<OutsiderDashboard />} />
       <Route path="/candidate-application" element={<CandidateApplicationPage />} />
-      <Route path="/salary-revision" element={<SalaryRevision />} />
-
-
+      <Route path="/salary-revision" element={<ProtectedRoute><SalaryRevision /></ProtectedRoute>} />
+      
       {/* Safety */}
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
