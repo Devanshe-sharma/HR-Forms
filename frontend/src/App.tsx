@@ -6,6 +6,7 @@ import OutsiderDashboard from "./pages/OutsiderDashboard";
 import CandidateApplicationPage from "./Candidate/page";
 import SalaryRevision from "./pages/SalaryRevision";
 import ProtectedRoute from './components/ProtectedRoute';
+import Recruitment from "./pages/Recruitment";
 
 export default function App() {
   return (
@@ -20,6 +21,8 @@ export default function App() {
       <Route path="/outsider-dashboard" element={<OutsiderDashboard />} />
       <Route path="/candidate-application" element={<CandidateApplicationPage />} />
       <Route path="/salary-revision" element={<ProtectedRoute><SalaryRevision /></ProtectedRoute>} />
+      
+      <Route path="/recruitment" element={ <ProtectedRoute> <Recruitment /> </ProtectedRoute> } />
       
       {/* Safety */}
       <Route path="*" element={<Navigate to="/" />} />
