@@ -1,10 +1,20 @@
 # hr/admin.py
 
+from tkinter import SEL_FIRST
+from typing import Self
 from django.contrib import admin
 from django.utils.html import format_html
+from django import forms
+from django.shortcuts import redirect, render
+from django.urls import path
+import csv
+from io import TextIOWrapper
+from decimal import Decimal, InvalidOperation
+from datetime import datetime
 
 from import_export import resources
 from import_export.admin import ImportExportModelAdmin
+from requests import request 
 
 from .models import (
     CandidateApplication,
@@ -17,61 +27,28 @@ from .models import (
 )
 
 
-# ======================================================
-# Import-Export for Employee (Your 42-column sheet)
-# ======================================================
-
+# ========== ImportExport Resource for Employee ==========
 class EmployeeResource(resources.ModelResource):
     class Meta:
         model = Employee
-        fields = (
-            'employee_id',
-            'full_name',
-            'gender',
-            'personal_email',
-            'mobile',
-            'official_email',
-            'department',
-            'designation',
-            'employee_category',
-            'name_of_buddy',
-            'offer_accepted_date',
-            'planned_joining_date',
-            'joining_status',
-            'exit_status',
-            'joining_date',
-            'sal_applicable_from',
-            'basic',
-            'hra',
-            'travel_allowance',
-            'childrens_education_allowance',
-            'supplementary_allowance',
-            'employer_pf',
-            'employer_esi',
-            'annual_bonus',
-            'annual_performance_incentive',
-            'medical_premium',
-            'medical_reimbursement_annual',
-            'vehicle_reimbursement_annual',
-            'driver_reimbursement_annual',
-            'telephone_reimbursement_annual',
-            'meals_reimbursement_annual',
-            'uniform_reimbursement_annual',
-            'leave_travel_allowance_annual',
-            'contract_amount',
-            'contract_period_months',
-            'next_sal_review_status',
-            'next_sal_review_type',
-            'reason_for_sal_review_not_applicable',
-            'revision_due_date',
-        )
-        export_order = fields
+        exclude = ('id',)  # exclude Django PK to avoid conflicts
+
+    def get_instance(self, instance_loader, row):
+        employee_id = row.get('employee_id')
+        if employee_id:
+            try:
+                return Employee.objects.get(employee_id=employee_id)
+            except Employee.DoesNotExist:
+                return None
+        return None
 
 
-# ======================================================
-# Admin Menu (Only what you want)
-# ======================================================
+# ========== CSV Import Form ==========
+class CsvImportForm(forms.Form):
+    csv_file = forms.FileField(label="CSV file")
 
+
+# ========== Admins for other models ==========
 @admin.register(CandidateApplication)
 class CandidateApplicationAdmin(admin.ModelAdmin):
     list_display = ('full_name', 'email', 'phone', 'designation', 'created_at')
@@ -119,13 +96,10 @@ class PayslipAdmin(admin.ModelAdmin):
     search_fields = ('employee__full_name',)
 
 
-# ======================================================
-# Employee Admin — Your Main Onboarding + Salary Master
-# ======================================================
-
+# ========== Main Employee Admin with ImportExport + CSV Import ==========
 @admin.register(Employee)
 class EmployeeAdmin(ImportExportModelAdmin):
-    resource_class = EmployeeResource  # This gives you the Import button
+    resource_class = EmployeeResource
 
     list_display = (
         'employee_id',
@@ -155,80 +129,6 @@ class EmployeeAdmin(ImportExportModelAdmin):
 
     ordering = ('-joining_date',)
 
-    fieldsets = (
-        ("Basic Info", {
-            'fields': (
-                'employee_id',
-                'full_name',
-                'official_email',
-                'department',
-                'designation',
-                'joining_date',
-            )
-        }),
-        ("Personal & HR", {
-            'fields': (
-                'gender',
-                'personal_email',
-                'mobile',
-                'employee_category',
-                'name_of_buddy',
-                ('offer_accepted_date', 'planned_joining_date'),
-                ('joining_status', 'exit_status'),
-                'sal_applicable_from',
-            )
-        }),
-        ("Salary Components", {
-            'fields': (
-                'basic',
-                'hra',
-                'travel_allowance',
-                'childrens_education_allowance',
-                'supplementary_allowance',
-                'employer_pf',
-                'employer_esi',
-                'annual_bonus',
-                'annual_performance_incentive',
-                'medical_premium',
-            )
-        }),
-        ("Reimbursements", {
-            'fields': (
-                'medical_reimbursement_annual',
-                'vehicle_reimbursement_annual',
-                'driver_reimbursement_annual',
-                'telephone_reimbursement_annual',
-                'meals_reimbursement_annual',
-                'uniform_reimbursement_annual',
-                'leave_travel_allowance_annual',
-            ),
-            'classes': ('collapse',),
-        }),
-        ("Contract", {
-            'fields': ('contract_amount', 'contract_period_months'),
-            'classes': ('collapse',),
-        }),
-        ("Review", {
-            'fields': (
-                'next_sal_review_status',
-                'next_sal_review_type',
-                'revision_due_date',
-                'reason_for_sal_review_not_applicable',
-            ),
-            'classes': ('collapse',),
-        }),
-        ("Auto-Calculated", {
-            'fields': (
-                'gross_monthly',
-                'monthly_ctc',
-                'gratuity',
-                'annual_ctc',
-                'equivalent_monthly_ctc',
-            ),
-            'classes': ('collapse',),
-        }),
-    )
-
     readonly_fields = (
         'gross_monthly',
         'monthly_ctc',
@@ -238,3 +138,115 @@ class EmployeeAdmin(ImportExportModelAdmin):
         'created_at',
         'updated_at',
     )
+
+    # Your fieldsets go here if needed
+
+    # Add URL for CSV import page
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('import-csv/', self.admin_site.admin_view(self.import_csv), name='hr_employee_import_csv'),
+        ]
+        return custom_urls + urls
+   
+
+
+    def import_csv(self, request):
+        if request.method == "POST":
+            form = CsvImportForm(request.POST, request.FILES)
+            if form.is_valid():
+                csv_file = form.cleaned_data['csv_file']
+                decoded_file = TextIOWrapper(csv_file.file, encoding='utf-8')
+                reader = csv.DictReader(decoded_file)
+
+                def parse_date(val):
+                    try:
+                        if val:
+                            return datetime.strptime(val.strip(), '%Y-%m-%d').date()
+                    except Exception:
+                        return None
+                    return None
+
+                def parse_decimal(val):
+                    try:
+                        if val:
+                            return Decimal(val.strip())
+                    except (InvalidOperation, TypeError):
+                        return Decimal('0')
+                    return Decimal('0')
+
+                count = 0
+                for row in reader:
+                    emp_id = row.get('employee_id')
+                    official_email = row.get('Official Email')
+
+                    # Check for duplicate official_email linked to different employee_id
+                    existing_emp = None
+                    if official_email:
+                        try:
+                            existing_emp = Employee.objects.get(official_email=official_email)
+                        except Employee.DoesNotExist:
+                            existing_emp = None
+
+                    # If email belongs to another employee, nullify it to avoid error
+                    if existing_emp and existing_emp.employee_id != emp_id:
+                        official_email = None
+
+                    Employee.objects.update_or_create(
+                        employee_id=emp_id,
+                        defaults={
+                            'full_name': row.get('Name'),
+                            'gender': row.get('Gender'),
+                            'personal_email': row.get('Personal Email'),
+                            'mobile': row.get('Mobile'),
+                            'official_email': official_email,
+                            'department': row.get('Dept'),
+                            'designation': row.get('Designation'),
+                            'employee_category': row.get('Employee Category'),
+                            'name_of_buddy': row.get('Name of Buddy'),
+                            'offer_accepted_date': parse_date(row.get('Offer Accepted Date')),
+                            'planned_joining_date': parse_date(row.get('Planned Joining Date')),
+                            'joining_status': row.get('Joining Status'),
+                            'exit_status': row.get('Exit Status'),
+                            'joining_date': parse_date(row.get('Joined Date')),
+                            'sal_applicable_from': parse_date(row.get('Sal Applicable From')),
+                            'basic': parse_decimal(row.get('Basic')),
+                            'hra': parse_decimal(row.get('HRA')),
+                            'travel_allowance': parse_decimal(row.get('Travel Allowance')),
+                            'childrens_education_allowance': parse_decimal(row.get("Children's Education Allowance")),
+                            'supplementary_allowance': parse_decimal(row.get('Supplementary Allowance')),
+                            'employer_pf': parse_decimal(row.get('Employer PF')),
+                            'employer_esi': parse_decimal(row.get('Employer ESI')),
+                            'annual_bonus': parse_decimal(row.get('Annual Bonus')),
+                            'annual_performance_incentive': parse_decimal(row.get('Annual Performance Incentive')),
+                            'medical_premium': parse_decimal(row.get('Medical Premium')),
+                            'medical_reimbursement_annual': parse_decimal(row.get('Medical Reimbursement Annual')),
+                            'vehicle_reimbursement_annual': parse_decimal(row.get('Vehicle Reimbursement Annual')),
+                            'driver_reimbursement_annual': parse_decimal(row.get('Driver Reimbursement Annual')),
+                            'telephone_reimbursement_annual': parse_decimal(row.get('Telephone Reimbursement Annual')),
+                            'meals_reimbursement_annual': parse_decimal(row.get('Meals Reimbursement Annual')),
+                            'uniform_reimbursement_annual': parse_decimal(row.get('Uniform Reimbursement Annual')),
+                            'leave_travel_allowance_annual': parse_decimal(row.get('Leave Travel Allowance Annual')),
+                            'contract_amount': parse_decimal(row.get('Contract Amount')),
+                            'contract_period_months': int(row.get('Contract Period (months)') or 0),
+                            'next_sal_review_status': row.get('Next Sal Review Status'),
+                            'next_sal_review_type': row.get('Next Sal Review Type'),
+                            'reason_for_sal_review_not_applicable': row.get('Reason for Sal Review Not Applicable'),
+                            'revision_due_date': parse_date(row.get('Revision Due Date')),
+                        }
+                    )
+                    count += 1
+
+                Self.message_user(request, f"Successfully imported {count} employees.")
+                return redirect("..")
+
+        else:
+            form = CsvImportForm()
+
+        context = {
+            "form": form,
+            "title": "Import Employees from CSV",
+            "opts": Self.model._meta,
+            "app_label": Self.model._meta.app_label,
+        }
+        return render(request, "admin/hr/csv_form.html", context)
