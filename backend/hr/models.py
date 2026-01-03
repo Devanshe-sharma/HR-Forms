@@ -1,5 +1,7 @@
 # hr/models.py
 
+from decimal import Decimal
+from decimal import Decimal
 from django.db import models
 from django.contrib.auth.models import User
 
@@ -148,21 +150,38 @@ class Employee(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+
+
     def save(self, *args, **kwargs):
-        # Calculations
+        from decimal import Decimal
+
+
+        fields_to_decimal = [
+        'basic', 'hra', 'travel_allowance', 'childrens_education_allowance', 'supplementary_allowance',
+        'employer_pf', 'employer_esi', 'annual_bonus', 'annual_performance_incentive',
+        'medical_premium', 'medical_reimbursement_annual', 'vehicle_reimbursement_annual',
+        'driver_reimbursement_annual', 'telephone_reimbursement_annual', 'meals_reimbursement_annual',
+        'uniform_reimbursement_annual', 'leave_travel_allowance_annual', 'contract_amount',
+        ]
+        for field in fields_to_decimal:
+            val = getattr(self, field)
+            if val is not None and not isinstance(val, Decimal):
+                setattr(self, field, Decimal(str(val)))
+
         self.gross_monthly = (
             self.basic + self.hra + self.travel_allowance +
             self.childrens_education_allowance + self.supplementary_allowance
         )
 
-        monthly_bonus = self.annual_bonus / 12 if self.annual_bonus else 0
+        monthly_bonus = self.annual_bonus / Decimal('12') if self.annual_bonus else Decimal('0')
 
         self.monthly_ctc = self.gross_monthly + self.employer_pf + self.employer_esi + monthly_bonus
 
-        self.gratuity = (15 / 26) * self.basic
+        self.gratuity = Decimal(self.basic) * Decimal('15') / Decimal('26')
+
 
         self.annual_ctc = (
-            (self.monthly_ctc * 12) +
+            self.monthly_ctc * Decimal('12') +
             self.gratuity +
             self.medical_premium +
             self.medical_reimbursement_annual +
@@ -177,13 +196,12 @@ class Employee(models.Model):
         )
 
         if self.contract_amount and self.contract_period_months:
-            self.equivalent_monthly_ctc = self.contract_amount / self.contract_period_months
+            self.equivalent_monthly_ctc = self.contract_amount / Decimal(self.contract_period_months)
             self.annual_ctc = self.contract_amount
+        else:
+            self.equivalent_monthly_ctc = Decimal('0')
 
         super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"{self.employee_id} - {self.full_name}"
     
 class Contract(models.Model):
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="contracts")
