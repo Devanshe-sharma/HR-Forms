@@ -4,12 +4,13 @@ from .views import (
     CandidateApplicationListCreate,
     CandidateApplicationRetrieveUpdate,
     CustomLoginView,
-    google_login,
     CountryViewSet,
     StateViewSet,
     CityViewSet,
     EmployeeViewSet,
 )
+from .views import forgot_password, reset_password
+from .views import users_exist, setup_user
 
 # Router only for ViewSets
 router = DefaultRouter()
@@ -28,5 +29,8 @@ urlpatterns = [
     path('candidate-applications/<int:pk>/', CandidateApplicationRetrieveUpdate.as_view(), name='candidate-application-detail'),
 
     path('login/', CustomLoginView.as_view(), name='custom_login'),
-    path('google-login/', google_login, name='google_login'),
+    path("forgot-password/", forgot_password),
+    path("reset-password/", reset_password),
+    
+    
 ]

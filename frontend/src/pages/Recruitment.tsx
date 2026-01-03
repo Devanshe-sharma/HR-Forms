@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Box,
   Paper,
@@ -32,7 +32,7 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import CloseIcon from "@mui/icons-material/Close";
 import CheckIcon from "@mui/icons-material/Check";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
@@ -40,8 +40,6 @@ import dayjs from "dayjs";
 
 import Grid from "@mui/material/GridLegacy";
 
-import Sidebar from '../components/Sidebar';
-import Navbar from "../components/Navbar";
 
 const FMS_API_URL =
   "https://script.google.com/macros/s/AKfycbxDJcRbg1JXQqryWwQkH4N-oUCGed9DQph20Bxg4bwdwCnGes4ei2VVbXzBdE_GHfJ5pg/exec";
@@ -100,7 +98,7 @@ export default function Recruitment() {
   const [filteredCandidates, setFilteredCandidates] = useState<Candidate[]>([]);
 
   // Sidebar open state (for mobile)
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [] = useState(false);
 
   useEffect(() => {
     fetchRequisitions();
