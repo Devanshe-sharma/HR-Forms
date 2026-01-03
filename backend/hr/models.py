@@ -88,12 +88,12 @@ class Payslip(models.Model):
 # ======================================================
 
 class Employee(models.Model):
-    employee_id = models.CharField(max_length=20, unique=True)
+    employee_id = models.CharField(max_length=20, unique=True, null=True, blank=True)
     full_name = models.CharField(max_length=100)
-    official_email = models.EmailField(unique=True)
+    official_email = models.EmailField(blank=True)
     department = models.CharField(max_length=50)
     designation = models.CharField(max_length=50)
-    joining_date = models.DateField()
+    joining_date = models.DateField(null=True, blank=True)
 
     # Personal & Joining
     gender = models.CharField(max_length=10, blank=True)
