@@ -1,23 +1,26 @@
 from django.db import migrations
 
-def fix_state_country(apps, schema_editor):
-    State = apps.get_model('hr', 'State')
+def fix_country_fk(apps, schema_editor):
     Country = apps.get_model('hr', 'Country')
 
-    for state in State.objects.all():
-        # If country_id is a string (like 'India'), fix it
-        if isinstance(state.country_id, str):
-            country = Country.objects.filter(name=state.country_id).first()
-            if country:
-                state.country_id = country.id
-                state.save()
+    india = Country.objects.get(name='India')
+
+    # RAW SQL because ORM cannot touch invalid FK data
+    schema_editor.execute(
+        """
+        UPDATE hr_state
+        SET country_id = %s
+        WHERE country_id = 'India'
+        """,
+        [india.id],
+    )
 
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('hr', '0010_remove_contractbreakdown_contract_and_more'),  # Adjust to your latest migration
+        ('hr', '0011_auto_20260102_1724'),
     ]
 
     operations = [
-        migrations.RunPython(fix_state_country),
+        migrations.RunPython(fix_country_fk),
     ]
