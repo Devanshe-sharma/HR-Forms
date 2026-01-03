@@ -503,10 +503,7 @@ export default function SalaryRevisionPage() {
                           const label = key
                             .replace(/([A-Z])/g, ' $1')
                             .replace(/^./, str => str.toUpperCase())
-                            .replace('Hra', 'HRA')
-                            .replace('Pf', 'PF')
-                            .replace('Esi', 'ESI')
-                            .replace('Telephone Allowance', 'Telephone Allowance');
+                            .replace('Hra', 'HRA').replace('Pf', 'PF').replace('Esi', 'ESI');
 
                           return (
                             <div key={key}>
