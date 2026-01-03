@@ -18,7 +18,7 @@ from .models import (
 
 
 # ======================================================
-# Import-Export Resource for Employee (Your 42-column sheet)
+# Import-Export for Employee (Your 42-column sheet)
 # ======================================================
 
 class EmployeeResource(resources.ModelResource):
@@ -69,16 +69,15 @@ class EmployeeResource(resources.ModelResource):
 
 
 # ======================================================
-# Admin Registrations
+# Admin Menu (Only what you want)
 # ======================================================
 
 @admin.register(CandidateApplication)
 class CandidateApplicationAdmin(admin.ModelAdmin):
     list_display = ('full_name', 'email', 'phone', 'designation', 'created_at')
-    search_fields = ('full_name', 'email', 'phone')
+    search_fields = ('full_name', 'email')
     list_filter = ('designation', 'created_at')
     ordering = ('-created_at',)
-    readonly_fields = ('created_at',)
 
 
 @admin.register(Country)
@@ -121,12 +120,12 @@ class PayslipAdmin(admin.ModelAdmin):
 
 
 # ======================================================
-# Employee Admin — All 42 Fields + Full Import
+# Employee Admin — Your Main Onboarding + Salary Master
 # ======================================================
 
 @admin.register(Employee)
 class EmployeeAdmin(ImportExportModelAdmin):
-    resource_class = EmployeeResource
+    resource_class = EmployeeResource  # This gives you the Import button
 
     list_display = (
         'employee_id',
@@ -137,7 +136,6 @@ class EmployeeAdmin(ImportExportModelAdmin):
         'annual_ctc',
         'employee_category',
         'exit_status',
-        'next_sal_review_status',
     )
 
     list_filter = (
@@ -145,7 +143,6 @@ class EmployeeAdmin(ImportExportModelAdmin):
         'designation',
         'employee_category',
         'exit_status',
-        'next_sal_review_status',
     )
 
     search_fields = (
@@ -159,7 +156,7 @@ class EmployeeAdmin(ImportExportModelAdmin):
     ordering = ('-joining_date',)
 
     fieldsets = (
-        ("Basic Information", {
+        ("Basic Info", {
             'fields': (
                 'employee_id',
                 'full_name',
@@ -169,23 +166,19 @@ class EmployeeAdmin(ImportExportModelAdmin):
                 'joining_date',
             )
         }),
-        ("Personal Details", {
+        ("Personal & HR", {
             'fields': (
                 'gender',
                 'personal_email',
                 'mobile',
                 'employee_category',
                 'name_of_buddy',
-            )
-        }),
-        ("Joining & Status", {
-            'fields': (
                 ('offer_accepted_date', 'planned_joining_date'),
                 ('joining_status', 'exit_status'),
                 'sal_applicable_from',
             )
         }),
-        ("Core Salary Components", {
+        ("Salary Components", {
             'fields': (
                 'basic',
                 'hra',
@@ -199,7 +192,7 @@ class EmployeeAdmin(ImportExportModelAdmin):
                 'medical_premium',
             )
         }),
-        ("Annual Reimbursements", {
+        ("Reimbursements", {
             'fields': (
                 'medical_reimbursement_annual',
                 'vehicle_reimbursement_annual',
@@ -211,11 +204,11 @@ class EmployeeAdmin(ImportExportModelAdmin):
             ),
             'classes': ('collapse',),
         }),
-        ("Contract Details", {
+        ("Contract", {
             'fields': ('contract_amount', 'contract_period_months'),
             'classes': ('collapse',),
         }),
-        ("Salary Review", {
+        ("Review", {
             'fields': (
                 'next_sal_review_status',
                 'next_sal_review_type',
@@ -224,7 +217,7 @@ class EmployeeAdmin(ImportExportModelAdmin):
             ),
             'classes': ('collapse',),
         }),
-        ("Auto-Calculated Values", {
+        ("Auto-Calculated", {
             'fields': (
                 'gross_monthly',
                 'monthly_ctc',
