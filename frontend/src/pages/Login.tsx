@@ -75,12 +75,9 @@ export default function Login() {
 
   return (
     <div style={{ position: "relative", height: "100vh", overflow: "hidden" }}>
-      {/* Background loader */}
       <CutoutTextLoader height="100vh" background="white" imgUrl="/imgs/random/11.jpg" />
 
-      {/* Foreground login content */}
       <div className="login-wrapper" style={{ ...styles.wrapper, position: "relative", zIndex: 10 }}>
-        {/* Left: Form */}
         <div style={styles.left}>
           {isFirstTime ? (
             <form onSubmit={handleCreateUser} style={styles.form}>
