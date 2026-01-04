@@ -273,14 +273,14 @@ export default function SalaryRevisionPage() {
                       <p className="text-sm text-gray-600">Monthly CTC</p>
                       <p className="text-2xl font-bold text-blue-700">{formatNumber(selectedEmployee.monthly_ctc)}</p>
                     </div>
-                    <div><p className="text-sm text-gray-600">Annual Bonus</p><p className="text-xl font-semibold">{formatNumber(selectedEmployee.annual_bonus)}</p></div>
-                    <div><p className="text-sm text-gray-600">Performance Incentive</p><p className="text-xl font-semibold">{formatNumber(selectedEmployee.annual_performance_incentive)}</p></div>
-                    <div><p className="text-sm text-gray-600">Medical Premium</p><p className="text-xl font-semibold">{formatNumber(selectedEmployee.medical_premium)}</p></div>
-                    <div><p className="text-sm text-gray-600">Gratuity</p><p className="text-xl font-semibold">{formatNumber(selectedEmployee.gratuity)}</p></div>
                   </div>
 
                   <h3 className="text-3xl font-bold mb-6 text-indigo-800">Annual Reimbursements</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 bg-gray-50 rounded-3xl p-8 mb-10">
+                    <div><p className="text-sm text-gray-600">Annual Bonus</p><p className="text-xl font-semibold">{formatNumber(selectedEmployee.annual_bonus)}</p></div>
+                    <div><p className="text-sm text-gray-600">Performance Incentive</p><p className="text-xl font-semibold">{formatNumber(selectedEmployee.annual_performance_incentive)}</p></div>
+                    <div><p className="text-sm text-gray-600">Medical Premium</p><p className="text-xl font-semibold">{formatNumber(selectedEmployee.medical_premium)}</p></div>
+                    <div><p className="text-sm text-gray-600">Gratuity</p><p className="text-xl font-semibold">{formatNumber(selectedEmployee.gratuity)}</p></div>
                     <div><p className="text-sm text-gray-600">Medical</p><p className="text-xl font-semibold">{formatNumber(selectedEmployee.medical_reimbursement_annual)}</p></div>
                     <div><p className="text-sm text-gray-600">Vehicle</p><p className="text-xl font-semibold">{formatNumber(selectedEmployee.vehicle_reimbursement_annual)}</p></div>
                     <div><p className="text-sm text-gray-600">Driver</p><p className="text-xl font-semibold">{formatNumber(selectedEmployee.driver_reimbursement_annual)}</p></div>
@@ -291,6 +291,12 @@ export default function SalaryRevisionPage() {
                   </div>
                 </>
               )}
+
+
+              <div className="p-10 bg-gradient-to-br from-amber-500 to-orange-600 rounded-3xl text-white text-center shadow-2xl">
+                <p className="text-3xl font-bold mb-4">Total Annual CTC</p>
+                <p className="text-6xl font-black">{formatSalary(selectedEmployee.annual_ctc)}</p>
+              </div>
 
               {/* Add Contract Button */}
               <button
@@ -354,10 +360,7 @@ export default function SalaryRevisionPage() {
                 </div>
               )}
 
-              <div className="p-10 bg-gradient-to-br from-amber-500 to-orange-600 rounded-3xl text-white text-center shadow-2xl">
-                <p className="text-3xl font-bold mb-4">Total Annual CTC</p>
-                <p className="text-6xl font-black">{formatSalary(selectedEmployee.annual_ctc)}</p>
-              </div>
+
             </div>
           </div>
         </div>

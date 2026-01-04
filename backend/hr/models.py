@@ -1,13 +1,10 @@
 # hr/models.py
 
 from decimal import Decimal
-from decimal import Decimal
 from django.db import models
 from django.contrib.auth.models import User
-
-
-
-
+from django.utils import timezone
+from datetime import timedelta
 
 
 class Profile(models.Model):
@@ -150,24 +147,23 @@ class Employee(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-
-
     def save(self, *args, **kwargs):
         from decimal import Decimal
 
-
+        # Convert any non-Decimal values to Decimal
         fields_to_decimal = [
-        'basic', 'hra', 'travel_allowance', 'childrens_education_allowance', 'supplementary_allowance',
-        'employer_pf', 'employer_esi', 'annual_bonus', 'annual_performance_incentive',
-        'medical_premium', 'medical_reimbursement_annual', 'vehicle_reimbursement_annual',
-        'driver_reimbursement_annual', 'telephone_reimbursement_annual', 'meals_reimbursement_annual',
-        'uniform_reimbursement_annual', 'leave_travel_allowance_annual', 'contract_amount',
+            'basic', 'hra', 'travel_allowance', 'childrens_education_allowance', 'supplementary_allowance',
+            'employer_pf', 'employer_esi', 'annual_bonus', 'annual_performance_incentive',
+            'medical_premium', 'medical_reimbursement_annual', 'vehicle_reimbursement_annual',
+            'driver_reimbursement_annual', 'telephone_reimbursement_annual', 'meals_reimbursement_annual',
+            'uniform_reimbursement_annual', 'leave_travel_allowance_annual', 'contract_amount',
         ]
         for field in fields_to_decimal:
             val = getattr(self, field)
             if val is not None and not isinstance(val, Decimal):
                 setattr(self, field, Decimal(str(val)))
 
+        # Calculations
         self.gross_monthly = (
             self.basic + self.hra + self.travel_allowance +
             self.childrens_education_allowance + self.supplementary_allowance
@@ -177,8 +173,7 @@ class Employee(models.Model):
 
         self.monthly_ctc = self.gross_monthly + self.employer_pf + self.employer_esi + monthly_bonus
 
-        self.gratuity = Decimal(self.basic) * Decimal('15') / Decimal('26')
-
+        self.gratuity = self.basic * Decimal('15') / Decimal('26')
 
         self.annual_ctc = (
             self.monthly_ctc * Decimal('12') +
@@ -202,7 +197,11 @@ class Employee(models.Model):
             self.equivalent_monthly_ctc = Decimal('0')
 
         super().save(*args, **kwargs)
-    
+
+    def __str__(self):
+        return f"{self.employee_id or 'No ID'} - {self.full_name}"
+
+
 class Contract(models.Model):
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="contracts")
     contract_type = models.CharField(max_length=30, choices=[
@@ -221,3 +220,32 @@ class Contract(models.Model):
 
     def __str__(self):
         return f"{self.employee.full_name} - {self.contract_type}"
+
+
+# User Profile for mobile number (used in forgot password)
+class UserProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    mobile = models.CharField(max_length=15, blank=True, null=True)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.mobile}"
+
+
+# OTP for password reset
+class OTP(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    otp = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used = models.BooleanField(default=False)
+
+    def save(self, *args, **kwargs):
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(minutes=10)
+        super().save(*args, **kwargs)
+
+    def is_valid(self):
+        return not self.used and timezone.now() < self.expires_at
+
+    def __str__(self):
+        return f"OTP {self.otp} for {self.user.username}"

@@ -16,6 +16,19 @@ from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.core.mail import send_mail
 from django.contrib.auth.hashers import make_password
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.contrib.auth.models import User
+from django.contrib.auth import authenticate, login
+from django.core.mail import send_mail
+from django.utils.crypto import get_random_string
+from django.conf import settings
+from .models import UserProfile, OTP
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes, force_str
+import random
 
 import os
 
@@ -179,3 +192,94 @@ def setup_user(request):
     user.save()
 
     return Response({"message": "User created successfully"}, status=status.HTTP_201_CREATED)
+
+
+class UsersExistView(APIView):
+    def get(self, request):
+        exists = User.objects.exists()
+        return Response({'exists': exists})
+
+class SetupUserView(APIView):
+    def post(self, request):
+        username = request.data.get('username')
+        password = request.data.get('password')
+        if not username or not password:
+            return Response({'error': 'Username and password required'}, status=status.HTTP_400_BAD_REQUEST)
+        if User.objects.filter(username=username).exists():
+            return Response({'error': 'Username already exists'}, status=status.HTTP_400_BAD_REQUEST)
+        user = User.objects.create_user(username=username, password=password)
+        UserProfile.objects.get_or_create(user=user, defaults={'mobile': ''})  # Add empty profile
+        user.is_superuser = True  # Make first user superuser
+        user.is_staff = True
+        user.save()
+        return Response({'message': 'Superuser created successfully. You can now log in.'})
+
+class ForgotPasswordView(APIView):
+    def post(self, request):
+        username = request.data.get('username')
+        if not username:
+            return Response({'error': 'Username required'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            user = User.objects.get(username=username)
+            # Generate and send OTP
+            otp = str(random.randint(100000, 999999))
+            OTP.objects.filter(user=user).delete()  # Clear old OTPs
+            otp_obj = OTP.objects.create(user=user, otp=otp)
+            otp_obj.save()
+
+            # Send OTP to email
+            send_mail(
+                'Password Reset OTP',
+                f'Your OTP for password reset is: {otp}. It expires in 10 minutes.',
+                settings.DEFAULT_FROM_EMAIL,
+                [user.email],
+                fail_silently=False,
+            )
+
+            # Get last 4 digits of mobile (from profile)
+            profile = UserProfile.objects.get(user=user)
+            last_4_mobile = profile.mobile[-4:] if profile.mobile else '****'
+
+            return Response({
+                'message': 'OTP sent to your email.',
+                'last_4_mobile': last_4_mobile,
+                'otp_hint': f'Your registered mobile ends with {last_4_mobile}.'
+            })
+        except User.DoesNotExist:
+            return Response({'message': 'If user exists, OTP sent to email.'}, status=status.HTTP_200_OK)  # Security: don't reveal user existence
+
+class OTPVerifyView(APIView):
+    def post(self, request):
+        username = request.data.get('username')
+        otp = request.data.get('otp')
+        if not username or not otp:
+            return Response({'error': 'Username and OTP required'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            user = User.objects.get(username=username)
+            otp_obj = OTP.objects.filter(user=user, otp=otp, used=False).first()
+            if otp_obj and otp_obj.is_valid():
+                otp_obj.used = True
+                otp_obj.save()
+                return Response({'message': 'OTP verified. You can now reset password.'})
+            return Response({'error': 'Invalid or expired OTP'}, status=status.HTTP_400_BAD_REQUEST)
+        except User.DoesNotExist:
+            return Response({'error': 'Invalid username or OTP'}, status=status.HTTP_400_BAD_REQUEST)
+
+class ResetPasswordView(APIView):
+    def post(self, request):
+        username = request.data.get('username')
+        new_password = request.data.get('password')
+        if not username or not new_password:
+            return Response({'error': 'Username and password required'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            user = User.objects.get(username=username)
+            # Check if OTP was verified for this user
+            if OTP.objects.filter(user=user, used=True).exists():
+                user.set_password(new_password)
+                user.save()
+                OTP.objects.filter(user=user).delete()  # Clear OTP
+                return Response({'message': 'Password reset successful. You can now log in.'})
+            return Response({'error': 'OTP not verified. Please verify OTP first.'}, status=status.HTTP_400_BAD_REQUEST)
+        except User.DoesNotExist:
+            return Response({'error': 'Invalid username'}, status=status.HTTP_400_BAD_REQUEST)
+
