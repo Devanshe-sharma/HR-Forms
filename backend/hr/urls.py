@@ -8,29 +8,34 @@ from .views import (
     StateViewSet,
     CityViewSet,
     EmployeeViewSet,
+    forgot_password,
+    OTPVerifyView,
+    reset_password,
+    users_exist,
+    setup_user,
 )
-from .views import forgot_password, reset_password
-from .views import users_exist, setup_user
 
-# Router only for ViewSets
 router = DefaultRouter()
 router.register(r'countries', CountryViewSet, basename='country')
 router.register(r'states', StateViewSet, basename='state')
 router.register(r'cities', CityViewSet, basename='city')
 router.register(r'employees', EmployeeViewSet, basename='employee')
-# ← Do NOT register CandidateApplicationListCreate here
 
 urlpatterns = [
-    # Include router URLs (for countries, states, cities)
+    # Router URLs (countries, states, cities, employees)
     path('', include(router.urls)),
 
-    # Manual paths for non-ViewSet views
-    path('candidate-applications/', CandidateApplicationListCreate.as_view(), name='candidate-application-list'),
-    path('candidate-applications/<int:pk>/', CandidateApplicationRetrieveUpdate.as_view(), name='candidate-application-detail'),
+    # Manual API endpoints
+    path('candidate-applications/', CandidateApplicationListCreate.as_view()),
+    path('candidate-applications/<int:pk>/', CandidateApplicationRetrieveUpdate.as_view()),
 
-    path('login/', CustomLoginView.as_view(), name='custom_login'),
-    path("forgot-password/", forgot_password),
-    path("reset-password/", reset_password),
-    
-    
+    path('login/', CustomLoginView.as_view()),
+   
+
+    # Auth endpoints
+    path('auth/forgot-password/', forgot_password),
+    path('auth/otp-verify/', OTPVerifyView.as_view()),
+    path('auth/reset-password/', reset_password),
+    path('auth/users-exist/', users_exist),
+    path('auth/setup-user/', setup_user),
 ]
