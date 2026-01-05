@@ -156,7 +156,7 @@ export default function Login() {
         height="100vh"
         background="white"
         imgUrl="/imgs/random/11.jpg"
-        text="Welcome back! Loading your dashboard..."
+
       />
     );
   }
