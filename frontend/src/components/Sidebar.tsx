@@ -55,7 +55,7 @@ export default function Sidebar() {
         // 💰 Salary Revision - Properly added
         {
             to: "/salary-revision",
-            text: "Salary Revision",
+            text: "Employee Letters",
             icon: <MonetizationOn />,
         },
 

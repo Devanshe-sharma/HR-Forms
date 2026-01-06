@@ -3,27 +3,9 @@
 import { useEffect, useState, type ChangeEvent } from 'react';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
-import { Search, Plus, Trash2, ChevronDown, Upload } from 'lucide-react';
+import { Search, Plus, Trash2, ChevronDown, Upload, Edit2, Download } from 'lucide-react';
 
-type Contract = {
-  id: number;
-  contract_amount: number;
-  contract_period_months: number;
-  start_date: string;
-  end_date?: string | null;
-  is_active: boolean;
-};
-
-type Employee = {
-  id: number;
-  employee_id: string;
-  full_name: string;
-  department: string;
-  designation: string;
-  joining_date: string;
-  employee_category: string;
-  mobile: string;
-  annual_ctc: number;
+type CTCBreakdown = {
   basic: number;
   hra: number;
   travel_allowance: number;
@@ -44,17 +26,40 @@ type Employee = {
   gross_monthly: number;
   monthly_ctc: number;
   gratuity: number;
-  contract_amount: number | null;
-  contract_period_months: number | null;
-  equivalent_monthly_ctc: number | null;
+};
+
+type Contract = {
+  id: number;
+  contract_amount: number;
+  contract_period_months: number;
+  start_date: string;
+  end_date?: string | null;
+  is_active: boolean;
+  breakdown: CTCBreakdown;
+};
+
+type Employee = {
+  id: number;
+  employee_id: string;
+  full_name: string;
+  department: string;
+  designation: string;
+  joining_date: string;
+  employee_category: string;
+  mobile: string;
   photo?: string;
   contracts: Contract[];
   archived?: boolean;
+  emergency_contact_name?: string;
+  emergency_contact_number?: string;
+  bank_name?: string;
+  account_number?: string;
+  ifsc_code?: string;
 };
 
 const categories = ['All', 'Employee', 'Consultant', 'Intern', 'Temporary Staff', 'Contract Based'];
 
-export default function SalaryRevisionPage() {
+export default function EmployeeContractsPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -62,20 +67,52 @@ export default function SalaryRevisionPage() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
 
-  // Contract Modal
+  const [editingPersonal, setEditingPersonal] = useState(false);
+  const [personalForm, setPersonalForm] = useState({
+    emergency_contact_name: '',
+    emergency_contact_number: '',
+    bank_name: '',
+    account_number: '',
+    ifsc_code: '',
+  });
+
   const [showContractModal, setShowContractModal] = useState(false);
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [editingContract, setEditingContract] = useState<Contract | null>(null);
-  const [contractForm, setContractForm] = useState({
+  const [contractForm, setContractForm] = useState<{
+    contract_amount: number;
+    contract_period_months: number;
+    start_date: string;
+    end_date: string | null;
+    breakdown: CTCBreakdown;
+  }>({
     contract_amount: 0,
     contract_period_months: 12,
     start_date: new Date().toISOString().split('T')[0],
-    end_date: '',
+    end_date: null,
+    breakdown: {
+      basic: 0,
+      hra: 0,
+      travel_allowance: 0,
+      childrens_education_allowance: 0,
+      supplementary_allowance: 0,
+      employer_pf: 0,
+      employer_esi: 0,
+      annual_bonus: 0,
+      annual_performance_incentive: 0,
+      medical_premium: 0,
+      medical_reimbursement_annual: 0,
+      vehicle_reimbursement_annual: 0,
+      driver_reimbursement_annual: 0,
+      telephone_reimbursement_annual: 0,
+      meals_reimbursement_annual: 0,
+      uniform_reimbursement_annual: 0,
+      leave_travel_allowance_annual: 0,
+      gross_monthly: 0,
+      monthly_ctc: 0,
+      gratuity: 0,
+    },
   });
-
-  // Salary Revision Modal
-  const [showSalaryModal, setShowSalaryModal] = useState(false);
-  const [salaryForm, setSalaryForm] = useState<any>({});
 
   useEffect(() => {
     fetch('https://hr-forms.onrender.com/api/employees/')
@@ -83,33 +120,14 @@ export default function SalaryRevisionPage() {
       .then((data: any[]) => {
         const enriched = data.map((emp) => ({
           ...emp,
-          basic: parseFloat(emp.basic || '0'),
-          hra: parseFloat(emp.hra || '0'),
-          travel_allowance: parseFloat(emp.travel_allowance || '0'),
-          childrens_education_allowance: parseFloat(emp.childrens_education_allowance || '0'),
-          supplementary_allowance: parseFloat(emp.supplementary_allowance || '0'),
-          employer_pf: parseFloat(emp.employer_pf || '0'),
-          employer_esi: parseFloat(emp.employer_esi || '0'),
-          annual_bonus: parseFloat(emp.annual_bonus || '0'),
-          annual_performance_incentive: parseFloat(emp.annual_performance_incentive || '0'),
-          medical_premium: parseFloat(emp.medical_premium || '0'),
-          medical_reimbursement_annual: parseFloat(emp.medical_reimbursement_annual || '0'),
-          vehicle_reimbursement_annual: parseFloat(emp.vehicle_reimbursement_annual || '0'),
-          driver_reimbursement_annual: parseFloat(emp.driver_reimbursement_annual || '0'),
-          telephone_reimbursement_annual: parseFloat(emp.telephone_reimbursement_annual || '0'),
-          meals_reimbursement_annual: parseFloat(emp.meals_reimbursement_annual || '0'),
-          uniform_reimbursement_annual: parseFloat(emp.uniform_reimbursement_annual || '0'),
-          leave_travel_allowance_annual: parseFloat(emp.leave_travel_allowance_annual || '0'),
-          gross_monthly: parseFloat(emp.gross_monthly || '0'),
-          monthly_ctc: parseFloat(emp.monthly_ctc || '0'),
-          gratuity: parseFloat(emp.gratuity || '0'),
-          annual_ctc: parseFloat(emp.annual_ctc || '0'),
-          contract_amount: emp.contract_amount ? parseFloat(emp.contract_amount) : null,
-          contract_period_months: emp.contract_period_months ? parseInt(emp.contract_period_months) : null,
-          equivalent_monthly_ctc: emp.equivalent_monthly_ctc ? parseFloat(emp.equivalent_monthly_ctc) : null,
           contracts: emp.contracts || [],
           photo: emp.photo || null,
           archived: false,
+          emergency_contact_name: emp.emergency_contact_name || '',
+          emergency_contact_number: emp.emergency_contact_number || '',
+          bank_name: emp.bank_name || '',
+          account_number: emp.account_number || '',
+          ifsc_code: emp.ifsc_code || '',
         }));
         setEmployees(enriched);
         setLoading(false);
@@ -150,19 +168,11 @@ export default function SalaryRevisionPage() {
   const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
   const getActiveContract = (emp: Employee) => {
-    const active = emp.contracts.find((c) => c.is_active);
-    if (active) {
-      return {
-        contract_amount: active.contract_amount,
-        contract_period_months: active.contract_period_months,
-        equivalent_monthly_ctc: Math.round(active.contract_amount / active.contract_period_months),
-      };
-    }
-    return {
-      contract_amount: emp.contract_amount || 0,
-      contract_period_months: emp.contract_period_months || 0,
-      equivalent_monthly_ctc: emp.equivalent_monthly_ctc || 0,
-    };
+    return emp.contracts.find((c) => c.is_active) || null;
+  };
+
+  const calculateAnnualCTC = (breakdown: CTCBreakdown) => {
+    return Object.values(breakdown).reduce((sum, val) => sum + val, 0);
   };
 
   const archiveEmployee = (emp: Employee) => {
@@ -171,7 +181,6 @@ export default function SalaryRevisionPage() {
     setSelectedEmployee(null);
   };
 
-  // Photo Upload - Fully Implemented
   const handlePhotoUpload = (e: ChangeEvent<HTMLInputElement>) => {
     if (!selectedEmployee || !e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
@@ -187,7 +196,28 @@ export default function SalaryRevisionPage() {
     reader.readAsDataURL(file);
   };
 
-  // Contract Functions
+  const startEditingPersonal = () => {
+    if (!selectedEmployee) return;
+    setPersonalForm({
+      emergency_contact_name: selectedEmployee.emergency_contact_name || '',
+      emergency_contact_number: selectedEmployee.emergency_contact_number || '',
+      bank_name: selectedEmployee.bank_name || '',
+      account_number: selectedEmployee.account_number || '',
+      ifsc_code: selectedEmployee.ifsc_code || '',
+    });
+    setEditingPersonal(true);
+  };
+
+  const savePersonalDetails = () => {
+    if (!selectedEmployee) return;
+    const updated = employees.map(emp =>
+      emp.id === selectedEmployee.id ? { ...emp, ...personalForm } : emp
+    );
+    setEmployees(updated);
+    setSelectedEmployee({ ...selectedEmployee, ...personalForm });
+    setEditingPersonal(false);
+  };
+
   const openContractModal = (emp: Employee, contract: Contract | null = null) => {
     setCurrentEmployee(emp);
     if (contract) {
@@ -196,100 +226,159 @@ export default function SalaryRevisionPage() {
         contract_amount: contract.contract_amount,
         contract_period_months: contract.contract_period_months,
         start_date: contract.start_date,
-        end_date: contract.end_date || '',
+        end_date: contract.end_date || null,
+        breakdown: { ...contract.breakdown },
       });
     } else {
       setEditingContract(null);
+      const active = getActiveContract(emp);
       setContractForm({
-        contract_amount: 0,
+        contract_amount: active ? calculateAnnualCTC(active.breakdown) : 0,
         contract_period_months: 12,
         start_date: new Date().toISOString().split('T')[0],
-        end_date: '',
+        end_date: null,
+        breakdown: active ? { ...active.breakdown } : {
+          basic: 0, hra: 0, travel_allowance: 0, childrens_education_allowance: 0,
+          supplementary_allowance: 0, employer_pf: 0, employer_esi: 0,
+          annual_bonus: 0, annual_performance_incentive: 0, medical_premium: 0,
+          medical_reimbursement_annual: 0, vehicle_reimbursement_annual: 0,
+          driver_reimbursement_annual: 0, telephone_reimbursement_annual: 0,
+          meals_reimbursement_annual: 0, uniform_reimbursement_annual: 0,
+          leave_travel_allowance_annual: 0, gross_monthly: 0, monthly_ctc: 0, gratuity: 0,
+        },
       });
     }
     setShowContractModal(true);
   };
 
   const saveContract = () => {
-    if (!currentEmployee || contractForm.contract_amount <= 0 || contractForm.contract_period_months <= 0) return;
-    const newContract: Contract = {
-      id: editingContract?.id || Date.now(),
-      contract_amount: contractForm.contract_amount,
+  if (!currentEmployee) return;
+
+  const annualCTC = calculateAnnualCTC(contractForm.breakdown);
+
+  let updatedContracts: Contract[];
+
+  if (editingContract) {
+    // Editing existing contract
+    updatedContracts = currentEmployee.contracts.map(c =>
+      c.id === editingContract.id
+        ? { ...c, contract_amount: annualCTC, breakdown: { ...contractForm.breakdown } }
+        : c
+    );
+  } else {
+    // Adding new contract
+    const newStart = new Date(contractForm.start_date);
+
+    updatedContracts = currentEmployee.contracts.map(c => {
+      if (c.is_active) {
+        return {
+          ...c,
+          is_active: false,
+          end_date: new Date(newStart.getTime() - 86400000).toISOString().split('T')[0],
+        };
+      }
+      return c;
+    });
+
+    updatedContracts.push({
+      id: Date.now(),
+      contract_amount: annualCTC,
       contract_period_months: contractForm.contract_period_months,
       start_date: contractForm.start_date,
-      end_date: contractForm.end_date || null,
+      end_date: contractForm.end_date,
       is_active: true,
-    };
-
-    const updated = employees.map((emp) =>
-      emp.id === currentEmployee.id
-        ? {
-            ...emp,
-            contracts: editingContract
-              ? emp.contracts.map((c) => (c.id === editingContract.id ? newContract : { ...c, is_active: false }))
-              : [...emp.contracts.map((c) => ({ ...c, is_active: false })), newContract],
-            contract_amount: newContract.contract_amount,
-            contract_period_months: newContract.contract_period_months,
-            equivalent_monthly_ctc: Math.round(newContract.contract_amount / newContract.contract_period_months),
-          }
-        : emp
-    );
-
-    setEmployees(updated);
-    setShowContractModal(false);
-  };
-
-  // Salary Revision
-  const openSalaryRevision = () => {
-    if (!selectedEmployee) return;
-    setSalaryForm({ ...selectedEmployee });
-    setShowSalaryModal(true);
-  };
-
-  const calculateNewCTC = () => {
-    const monthly = salaryForm.basic + salaryForm.hra + salaryForm.travel_allowance +
-                    salaryForm.childrens_education_allowance + salaryForm.supplementary_allowance +
-                    salaryForm.employer_pf + salaryForm.employer_esi;
-    const annual = salaryForm.annual_bonus + salaryForm.annual_performance_incentive +
-                   salaryForm.medical_premium + salaryForm.medical_reimbursement_annual +
-                   salaryForm.vehicle_reimbursement_annual + salaryForm.driver_reimbursement_annual +
-                   salaryForm.telephone_reimbursement_annual + salaryForm.meals_reimbursement_annual +
-                   salaryForm.uniform_reimbursement_annual + salaryForm.leave_travel_allowance_annual +
-                   salaryForm.gratuity;
-    return monthly * 12 + annual;
-  };
-
-  const saveSalaryRevision = () => {
-    if (!selectedEmployee) return;
-    const newCTC = calculateNewCTC();
-    const updated = employees.map((emp) =>
-      emp.id === selectedEmployee.id ? { ...emp, ...salaryForm, annual_ctc: newCTC } : emp
-    );
-    setEmployees(updated);
-    setSelectedEmployee({ ...selectedEmployee, ...salaryForm, annual_ctc: newCTC });
-    setShowSalaryModal(false);
-  };
-
-  // Download Letters
-  const downloadLetter = (type: 'revision' | 'offer' | 'consultant') => {
-    if (!selectedEmployee) return;
-    const active = getActiveContract(selectedEmployee);
-    const params = new URLSearchParams({
-      type,
-      name: selectedEmployee.full_name,
-      empId: selectedEmployee.employee_id,
-      dept: selectedEmployee.department,
-      desig: selectedEmployee.designation,
-      ctc: selectedEmployee.annual_ctc.toLocaleString('en-IN'),
-      joining: formatDate(selectedEmployee.joining_date),
-      ...(type === 'consultant' && {
-        contractAmount: active.contract_amount.toLocaleString('en-IN'),
-        period: active.contract_period_months.toString(),
-        monthlyCtc: active.equivalent_monthly_ctc.toLocaleString('en-IN'),
-      })
+      breakdown: { ...contractForm.breakdown },
     });
-    window.open(`/letter.html?${params.toString()}`, '_blank');
-  };
+  }
+
+  // 🔑 YEH LINE SABSE IMPORTANT — Deep copy to trigger re-render
+  const updatedEmployees = employees.map(emp =>
+    emp.id === currentEmployee.id
+      ? { ...emp, contracts: [...updatedContracts] }  // New array reference
+      : emp
+  );
+
+  setEmployees(updatedEmployees);
+  setShowContractModal(false);
+  setEditingContract(null);
+  setContractForm({
+    contract_amount: 0,
+    contract_period_months: 12,
+    start_date: new Date().toISOString().split('T')[0],
+    end_date: null,
+    breakdown: {
+      basic: 0, hra: 0, travel_allowance: 0, childrens_education_allowance: 0,
+      supplementary_allowance: 0, employer_pf: 0, employer_esi: 0,
+      annual_bonus: 0, annual_performance_incentive: 0, medical_premium: 0,
+      medical_reimbursement_annual: 0, vehicle_reimbursement_annual: 0,
+      driver_reimbursement_annual: 0, telephone_reimbursement_annual: 0,
+      meals_reimbursement_annual: 0, uniform_reimbursement_annual: 0,
+      leave_travel_allowance_annual: 0, gross_monthly: 0, monthly_ctc: 0, gratuity: 0,
+    },
+  });
+};
+
+  const downloadContractLetter = (contract: Contract, letterType: 'contract' | 'offer' | 'appointment' | 'increment' = 'contract') => {
+  if (!selectedEmployee) return;
+
+  const monthlyCTC = Math.round(contract.contract_amount / contract.contract_period_months);
+
+  const params = new URLSearchParams({
+    type: letterType,
+    name: selectedEmployee.full_name,
+    empId: selectedEmployee.employee_id,
+    dept: selectedEmployee.department,
+    desig: selectedEmployee.designation,
+    joining: formatDate(selectedEmployee.joining_date),
+    contractAmount: contract.contract_amount.toLocaleString('en-IN'),
+    periodMonths: contract.contract_period_months.toString(),
+    monthlyCTC: monthlyCTC.toLocaleString('en-IN'),
+    startDate: formatDate(contract.start_date),
+    endDate: contract.end_date ? formatDate(contract.end_date) : 'Ongoing',
+    status: contract.is_active ? 'Current' : 'Previous',
+
+    // Full CTC Breakdown
+    basic: contract.breakdown.basic.toString(),
+    hra: contract.breakdown.hra.toString(),
+    travel_allowance: contract.breakdown.travel_allowance.toString(),
+    childrens_education_allowance: contract.breakdown.childrens_education_allowance.toString(),
+    supplementary_allowance: contract.breakdown.supplementary_allowance.toString(),
+    employer_pf: contract.breakdown.employer_pf.toString(),
+    employer_esi: contract.breakdown.employer_esi.toString(),
+    annual_bonus: contract.breakdown.annual_bonus.toString(),
+    annual_performance_incentive: contract.breakdown.annual_performance_incentive.toString(),
+    medical_premium: contract.breakdown.medical_premium.toString(),
+    medical_reimbursement_annual: contract.breakdown.medical_reimbursement_annual.toString(),
+    vehicle_reimbursement_annual: contract.breakdown.vehicle_reimbursement_annual.toString(),
+    driver_reimbursement_annual: contract.breakdown.driver_reimbursement_annual.toString(),
+    telephone_reimbursement_annual: contract.breakdown.telephone_reimbursement_annual.toString(),
+    meals_reimbursement_annual: contract.breakdown.meals_reimbursement_annual.toString(),
+    uniform_reimbursement_annual: contract.breakdown.uniform_reimbursement_annual.toString(),
+    leave_travel_allowance_annual: contract.breakdown.leave_travel_allowance_annual.toString(),
+    gross_monthly: contract.breakdown.gross_monthly.toString(),
+    monthly_ctc: contract.breakdown.monthly_ctc.toString(),
+    gratuity: contract.breakdown.gratuity.toString(),
+  });
+
+  window.open(`/letter.html?${params.toString()}`, '_blank');
+};
+
+  
+
+  const downloadOfferLetter = () => {
+  if (!selectedEmployee) return;
+  const active = getActiveContract(selectedEmployee);
+  const params = new URLSearchParams({
+    type: 'offer',
+    name: selectedEmployee.full_name,
+    empId: selectedEmployee.employee_id,
+    dept: selectedEmployee.department,
+    desig: selectedEmployee.designation,
+    joining: formatDate(selectedEmployee.joining_date),
+    ctc: active ? active.contract_amount.toLocaleString('en-IN') : '0',
+  });
+  window.open(`/letter.html?${params.toString()}`, '_blank');
+};
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -298,8 +387,9 @@ export default function SalaryRevisionPage() {
         <Navbar />
         <main className="flex-1 overflow-y-auto p-4">
           <div className="max-w-7xl mx-auto">
-            <h1 className="text-2xl font-medium text-gray-800 mb-6">Salary Revision</h1>
+            <h1 className="text-2xl font-medium text-gray-800 mb-6">Employee Contracts</h1>
 
+            {/* Filters & Search */}
             <div className="flex flex-wrap gap-4 mb-6 items-center">
               <div className="flex gap-2">
                 <button onClick={() => setTab('active')} className={`px-4 py-2 rounded text-sm font-medium ${tab === 'active' ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
@@ -327,6 +417,7 @@ export default function SalaryRevisionPage() {
               </div>
             </div>
 
+            {/* Employee Cards */}
             {loading ? (
               <p className="text-center text-gray-500 py-8">Loading...</p>
             ) : filtered.length === 0 ? (
@@ -357,8 +448,8 @@ export default function SalaryRevisionPage() {
                       <p className="text-xs text-gray-600 mb-1">{emp.designation}</p>
                       <p className="text-xs text-gray-500 mb-3">{emp.department}</p>
                       <div className="text-xs space-y-1">
-                        <div className="flex justify-between"><span className="text-gray-600">Contract</span><span>{formatSalary(active.contract_amount)}</span></div>
-                        <div className="flex justify-between"><span className="text-gray-600">Monthly</span><span>{formatSalary(active.equivalent_monthly_ctc)}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Contract</span><span>{formatSalary(active?.contract_amount || 0)}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Monthly</span><span>{formatSalary(active ? Math.round(active.contract_amount / active.contract_period_months) : 0)}</span></div>
                       </div>
                     </div>
                   );
@@ -369,10 +460,10 @@ export default function SalaryRevisionPage() {
         </main>
       </div>
 
-      {/* Employee Details Modal with Photo Upload */}
+      {/* Employee Details Modal */}
       {selectedEmployee && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setSelectedEmployee(null)}>
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-8" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto p-8" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-start mb-6">
               <div className="flex items-start gap-5">
                 <div>
@@ -384,26 +475,20 @@ export default function SalaryRevisionPage() {
                     </div>
                   )}
                   <label className="block mt-3 cursor-pointer">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handlePhotoUpload}
-                      className="hidden"
-                    />
+                    <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
                     <span className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 text-sm font-medium">
                       <Upload size={16} /> Upload Photo
                     </span>
                   </label>
                 </div>
-                <div>
+                <div className="flex-1">
                   <h2 className="text-2xl font-semibold text-gray-800">{selectedEmployee.full_name}</h2>
                   <p className="text-lg text-gray-700">{selectedEmployee.designation} • {selectedEmployee.department}</p>
-                  <div className="mt-3 space-y-1 text-sm text-gray-600">
+                  <div className="mt-4 space-y-2 text-sm text-gray-600">
                     <p><strong>Employee ID:</strong> {selectedEmployee.employee_id}</p>
                     <p><strong>Mobile:</strong> {selectedEmployee.mobile}</p>
                     <p><strong>Category:</strong> {selectedEmployee.employee_category}</p>
                     <p><strong>Joining Date:</strong> {formatDate(selectedEmployee.joining_date)}</p>
-                    <p><strong>Annual CTC:</strong> {formatSalary(selectedEmployee.annual_ctc)}</p>
                   </div>
                 </div>
               </div>
@@ -413,111 +498,262 @@ export default function SalaryRevisionPage() {
                     <Trash2 size={16} /> Archive
                   </button>
                 )}
-                <button onClick={openSalaryRevision} className="px-5 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 text-sm font-medium">
-                  Revise Salary
-                </button>
               </div>
             </div>
 
-            {/* Current Contract */}
+            {/* Current Contract with Full Breakdown */}
             <div className="border-t pt-6 mb-8">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-medium">Current Contract</h3>
-                <button onClick={() => openContractModal(selectedEmployee)} className="bg-teal-600 text-white p-2 rounded-lg hover:bg-teal-700">
-                  <Plus size={20} />
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-medium">Current Active Contract</h3>
+                <button onClick={() => openContractModal(selectedEmployee)} className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 flex items-center gap-2 text-sm">
+                  <Plus size={18} /> Add New Contract
                 </button>
               </div>
+
               {(() => {
                 const active = getActiveContract(selectedEmployee);
+                if (!active) {
+                  return <p className="text-center text-gray-500 py-8">No active contract</p>;
+                }
+
                 return (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
-                    <div className="bg-gray-50 p-5 rounded-lg">
-                      <p className="text-gray-600 text-sm">Contract Amount</p>
-                      <p className="text-2xl font-bold">{formatSalary(active.contract_amount)}</p>
+                  <div className="bg-teal-50 border border-teal-500 rounded-lg p-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                      <div className="text-center">
+                        <p className="text-gray-600 text-sm">Contract Amount</p>
+                        <p className="text-3xl font-bold">{formatSalary(active.contract_amount)}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-gray-600 text-sm">Period</p>
+                        <p className="text-3xl font-bold">{active.contract_period_months} months</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-gray-600 text-sm">Monthly CTC</p>
+                        <p className="text-3xl font-bold text-teal-700">{formatSalary(Math.round(active.contract_amount / active.contract_period_months))}</p>
+                      </div>
                     </div>
-                    <div className="bg-gray-50 p-5 rounded-lg">
-                      <p className="text-gray-600 text-sm">Period</p>
-                      <p className="text-2xl font-bold">{active.contract_period_months || '—'} months</p>
-                    </div>
-                    <div className="bg-gray-50 p-5 rounded-lg">
-                      <p className="text-gray-600 text-sm">Monthly Equivalent</p>
-                      <p className="text-2xl font-bold text-teal-700">{formatSalary(active.equivalent_monthly_ctc)}</p>
+
+                    <div className="border-t pt-6">
+                      <h4 className="font-medium text-lg mb-4">CTC Breakdown</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        {Object.entries(active.breakdown).map(([key, value]) => (
+                          <div key={key}>
+                            <p className="text-gray-600 capitalize">{key.replace(/_/g, ' ')}</p>
+                            <p className="font-medium">{formatSalary(value)}</p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 );
               })()}
             </div>
 
-            {/* Download Letters */}
+            {/* Contract History - Active on Top */}
+<div className="border-t pt-6 mb-8">
+  <div className="flex justify-between items-center mb-6">
+    <h3 className="text-xl font-medium">Contract History</h3>
+    <button onClick={() => openContractModal(selectedEmployee)} className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 flex items-center gap-2 text-sm">
+      <Plus size={18} /> Add New Contract
+    </button>
+  </div>
+
+  <div className="space-y-6">
+    {selectedEmployee.contracts.length === 0 ? (
+      <p className="text-center text-gray-500 py-8">No contracts added yet</p>
+    ) : (
+      <>
+        {/* Active Contract - Always on Top */}
+        {selectedEmployee.contracts
+          .filter(c => c.is_active)
+          .map((contract) => (
+            <div key={contract.id} className="p-6 rounded-lg border-2 border-teal-500 bg-teal-50 shadow-md">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="bg-teal-600 text-white px-3 py-1 rounded-full text-xs font-bold">CURRENT ACTIVE</span>
+                    <p className="text-xl font-bold">₹{formatSalary(contract.contract_amount)} / year</p>
+                  </div>
+                  <p className="text-sm text-gray-600">Period: {contract.contract_period_months} months</p>
+                  <p className="text-sm text-gray-600">Start: {formatDate(contract.start_date)}</p>
+                </div>
+
+                {/* Dropdown for Multiple Letters */}
+                <div className="relative">
+                  <button className="flex items-center gap-2 px-5 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium shadow">
+                    <Download size={18} />
+                    Download Letter
+                    <ChevronDown size={16} />
+                  </button>
+                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-10 hidden group-hover:block">
+                    <button onClick={() => downloadContractLetter(contract, 'contract')} className="block w-full text-left px-4 py-3 hover:bg-gray-100 text-sm">
+                      Contract Letter
+                    </button>
+                    <button onClick={() => downloadContractLetter(contract, 'appointment')} className="block w-full text-left px-4 py-3 hover:bg-gray-100 text-sm">
+                      Appointment Letter
+                    </button>
+                    <button onClick={() => downloadContractLetter(contract, 'offer')} className="block w-full text-left px-4 py-3 hover:bg-gray-100 text-sm">
+                      Offer Letter
+                    </button>
+                    <button onClick={() => downloadContractLetter(contract, 'increment')} className="block w-full text-left px-4 py-3 hover:bg-gray-100 text-sm border-t">
+                      Increment Letter
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* CTC Breakdown */}
+              <div className="mt-5">
+                <p className="font-medium text-gray-700 mb-3">CTC Breakdown</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  {Object.entries(contract.breakdown).map(([key, value]) => (
+                    <div key={key} className="bg-white p-3 rounded border">
+                      <p className="text-gray-600 capitalize text-xs">{key.replace(/_/g, ' ')}</p>
+                      <p className="font-semibold">{formatSalary(value)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+
+        {/* Previous Contracts */}
+        {selectedEmployee.contracts.filter(c => !c.is_active).length > 0 && (
+          <div>
+            <h4 className="text-lg font-medium text-gray-700 mb-4">Previous Contracts</h4>
+            <div className="space-y-4">
+              {selectedEmployee.contracts
+                .filter(c => !c.is_active)
+                .sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime())
+                .map((contract) => (
+                  <div key={contract.id} className="p-5 rounded-lg border border-gray-300 bg-gray-50">
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <p className="font-semibold">₹{formatSalary(contract.contract_amount)} / year</p>
+                        <p className="text-sm text-gray-600">Period: {contract.contract_period_months} months</p>
+                        <p className="text-sm text-gray-600">
+                          {formatDate(contract.start_date)} → {formatDate(contract.end_date || '')}
+                        </p>
+                        <span className="inline-block mt-2 px-3 py-1 rounded-full text-xs bg-gray-500 text-white">
+                          Previous
+                        </span>
+                      </div>
+
+                      {/* Dropdown for Previous Contract */}
+                      <div className="relative group">
+                        <button className="flex items-center gap-2 px-5 py-3 bg-gray-700 text-white rounded-lg hover:bg-gray-800 text-sm font-medium">
+                          <Download size={18} />
+                          Download Letter
+                          <ChevronDown size={16} />
+                        </button>
+                        <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-10 hidden group-hover:block">
+                          <button onClick={() => downloadContractLetter(contract, 'contract')} className="block w-full text-left px-4 py-3 hover:bg-gray-100 text-sm">
+                            Previous Contract Letter
+                          </button>
+                          <button onClick={() => downloadContractLetter(contract, 'increment')} className="block w-full text-left px-4 py-3 hover:bg-gray-100 text-sm">
+                            Increment Letter (Old)
+                          </button>
+                          <button onClick={() => downloadContractLetter(contract, 'appointment')} className="block w-full text-left px-4 py-3 hover:bg-gray-100 text-sm border-t">
+                            Old Appointment Letter
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Previous Breakdown */}
+                    <div className="mt-4 text-sm text-gray-600">
+                      <p className="font-medium mb-2">Previous CTC Breakdown</p>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {Object.entries(contract.breakdown).map(([key, value]) => (
+                          <div key={key} className="bg-white p-2 rounded text-xs">
+                            <p className="text-gray-500 capitalize">{key.replace(/_/g, ' ')}</p>
+                            <p>{formatSalary(value)}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+      </>
+    )}
+  </div>
+</div>
+
+            {/* Letters */}
             <div className="border-t pt-6">
-              <h3 className="text-xl font-medium mb-4">Generate & Download Letters</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <button onClick={() => downloadLetter('offer')} className="py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm">
+              <h3 className="text-xl font-medium mb-4">Generate Letters</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button onClick={downloadOfferLetter} className="py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm">
                   Download Offer Letter
                 </button>
-                <button onClick={() => downloadLetter('revision')} className="py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm">
-                  Salary Revision Letter
-                </button>
-                {(selectedEmployee.employee_category === 'Consultant' || selectedEmployee.employee_category === 'Contract Based') && (
-                  <button onClick={() => downloadLetter('consultant')} className="py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium text-sm">
-                    Consultant Contract
-                  </button>
-                )}
               </div>
             </div>
 
-            <button onClick={() => setSelectedEmployee(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-3xl">
-              ×
-            </button>
+            <button onClick={() => setSelectedEmployee(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-3xl">×</button>
           </div>
         </div>
       )}
 
-      {/* Contract Modal */}
+      {/* Contract Modal - Full Breakdown */}
       {showContractModal && currentEmployee && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowContractModal(false)}>
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-xl font-medium mb-4">{editingContract ? 'Edit' : 'Add New'} Contract</h2>
-            <p className="text-sm text-gray-600 mb-5">{currentEmployee.full_name}</p>
-            <div className="space-y-4">
-              <input type="number" placeholder="Contract Amount (₹)" value={contractForm.contract_amount} onChange={(e) => setContractForm({...contractForm, contract_amount: Number(e.target.value)})} className="w-full px-4 py-2 border rounded-lg" />
-              <input type="number" placeholder="Period (months)" value={contractForm.contract_period_months} onChange={(e) => setContractForm({...contractForm, contract_period_months: Number(e.target.value)})} className="w-full px-4 py-2 border rounded-lg" />
-              <input type="date" value={contractForm.start_date} onChange={(e) => setContractForm({...contractForm, start_date: e.target.value})} className="w-full px-4 py-2 border rounded-lg" />
-              <input type="date" placeholder="End Date (optional)" value={contractForm.end_date} onChange={(e) => setContractForm({...contractForm, end_date: e.target.value})} className="w-full px-4 py-2 border rounded-lg" />
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button onClick={saveContract} className="flex-1 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900">Save</button>
-              <button onClick={() => setShowContractModal(false)} className="flex-1 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Salary Revision Modal */}
-      {showSalaryModal && selectedEmployee && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowSalaryModal(false)}>
           <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-2xl font-medium mb-6">Revise Salary — {selectedEmployee.full_name}</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-              {Object.keys(salaryForm).filter(key => !['id', 'employee_id', 'full_name', 'department', 'designation', 'joining_date', 'employee_category', 'mobile', 'contracts', 'archived', 'photo', 'contract_amount', 'contract_period_months', 'equivalent_monthly_ctc'].includes(key)).map((key) => (
+            <h2 className="text-2xl font-medium mb-6">{editingContract ? 'Edit' : 'Add New'} Contract — {currentEmployee.full_name}</h2>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-6">
+              {Object.entries(contractForm.breakdown).map(([key, value]) => (
                 <div key={key}>
                   <label className="block text-gray-700 capitalize mb-1">{key.replace(/_/g, ' ')}</label>
                   <input
                     type="number"
-                    value={salaryForm[key]}
-                    onChange={(e) => setSalaryForm({ ...salaryForm, [key]: Number(e.target.value) })}
+                    value={value}
+                    onChange={(e) => setContractForm({
+                      ...contractForm,
+                      breakdown: {
+                        ...contractForm.breakdown,
+                        [key]: Number(e.target.value) || 0,
+                      },
+                    })}
                     className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-gray-500"
                   />
                 </div>
               ))}
             </div>
-            <div className="mt-8 p-5 bg-gradient-to-r from-teal-50 to-green-50 rounded-lg text-center">
-              <p className="text-gray-700 font-medium">New Annual CTC</p>
-              <p className="text-3xl font-bold text-teal-700 mt-2">{formatSalary(calculateNewCTC())}</p>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-gray-700 mb-1">Contract Period (months)</label>
+                <input
+                  type="number"
+                  value={contractForm.contract_period_months}
+                  onChange={(e) => setContractForm({ ...contractForm, contract_period_months: Number(e.target.value) || 12 })}
+                  className="w-full px-4 py-2 border rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-gray-700 mb-1">Start Date</label>
+                <input
+                  type="date"
+                  value={contractForm.start_date}
+                  onChange={(e) => setContractForm({ ...contractForm, start_date: e.target.value })}
+                  className="w-full px-4 py-2 border rounded-lg"
+                />
+              </div>
             </div>
+
+            <div className="mt-8 p-6 bg-gradient-to-r from-teal-50 to-green-50 rounded-lg text-center">
+              <p className="text-gray-700 font-medium text-lg">Total Annual CTC</p>
+              <p className="text-4xl font-bold text-teal-700 mt-2">
+                {formatSalary(calculateAnnualCTC(contractForm.breakdown))}
+              </p>
+            </div>
+
             <div className="flex gap-4 mt-8">
-              <button onClick={saveSalaryRevision} className="flex-1 py-3 bg-gray-800 text-white rounded-lg hover:bg-gray-900 font-medium">Save Revision</button>
-              <button onClick={() => setShowSalaryModal(false)} className="flex-1 py-3 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+              <button onClick={saveContract} className="flex-1 py-3 bg-gray-800 text-white rounded-lg hover:bg-gray-900 font-medium">Save Contract</button>
+              <button onClick={() => setShowContractModal(false)} className="flex-1 py-3 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
             </div>
           </div>
         </div>
