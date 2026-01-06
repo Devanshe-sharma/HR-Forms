@@ -3,7 +3,7 @@
 import { useEffect, useState, type ChangeEvent } from 'react';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
-import { Search, Plus, Trash2, ChevronDown, Upload, Edit2, Download } from 'lucide-react';
+import { Search, Plus, Trash2, ChevronDown, Upload, Download } from 'lucide-react';
 
 type CTCBreakdown = {
   basic: number;
@@ -67,14 +67,14 @@ export default function EmployeeContractsPage() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
 
-  const [editingPersonal, setEditingPersonal] = useState(false);
-  const [personalForm, setPersonalForm] = useState({
-    emergency_contact_name: '',
-    emergency_contact_number: '',
-    bank_name: '',
-    account_number: '',
-    ifsc_code: '',
-  });
+  // const [setEditingPersonal] = useState(false);
+  // const [personalForm, setPersonalForm] = useState({
+  //   emergency_contact_name: '',
+  //   emergency_contact_number: '',
+  //   bank_name: '',
+  //   account_number: '',
+  //   ifsc_code: '',
+  // });
 
   const [showContractModal, setShowContractModal] = useState(false);
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
@@ -196,27 +196,27 @@ export default function EmployeeContractsPage() {
     reader.readAsDataURL(file);
   };
 
-  const startEditingPersonal = () => {
-    if (!selectedEmployee) return;
-    setPersonalForm({
-      emergency_contact_name: selectedEmployee.emergency_contact_name || '',
-      emergency_contact_number: selectedEmployee.emergency_contact_number || '',
-      bank_name: selectedEmployee.bank_name || '',
-      account_number: selectedEmployee.account_number || '',
-      ifsc_code: selectedEmployee.ifsc_code || '',
-    });
-    setEditingPersonal(true);
-  };
+  // const startEditingPersonal = () => {
+  //   if (!selectedEmployee) return;
+  //   setPersonalForm({
+  //     emergency_contact_name: selectedEmployee.emergency_contact_name || '',
+  //     emergency_contact_number: selectedEmployee.emergency_contact_number || '',
+  //     bank_name: selectedEmployee.bank_name || '',
+  //     account_number: selectedEmployee.account_number || '',
+  //     ifsc_code: selectedEmployee.ifsc_code || '',
+  //   });
+  //   setEditingPersonal(true);
+  // };
 
-  const savePersonalDetails = () => {
-    if (!selectedEmployee) return;
-    const updated = employees.map(emp =>
-      emp.id === selectedEmployee.id ? { ...emp, ...personalForm } : emp
-    );
-    setEmployees(updated);
-    setSelectedEmployee({ ...selectedEmployee, ...personalForm });
-    setEditingPersonal(false);
-  };
+  // const savePersonalDetails = () => {
+  //   if (!selectedEmployee) return;
+  //   const updated = employees.map(emp =>
+  //     emp.id === selectedEmployee.id ? { ...emp, ...personalForm } : emp
+  //   );
+  //   setEmployees(updated);
+  //   setSelectedEmployee({ ...selectedEmployee, ...personalForm });
+  //   setEditingPersonal(false);
+  // };
 
   const openContractModal = (emp: Employee, contract: Contract | null = null) => {
     setCurrentEmployee(emp);

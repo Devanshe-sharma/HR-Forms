@@ -10,7 +10,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const [isFirstTime, setIsFirstTime] = useState(false);
+  // const [isFirstTime, setIsFirstTime] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loggingIn, setLoggingIn] = useState(false); // ← NEW: Loader after login
   const [step, setStep] = useState<'login' | 'setup' | 'forgot' | 'otp' | 'reset'>('login');
@@ -28,7 +28,7 @@ export default function Login() {
       .get(`${API}/auth/users-exist/`)
       .then((res) => {
         const firstTime = !res.data.exists;
-        setIsFirstTime(firstTime);
+        // setIsFirstTime(firstTime);
         setStep(firstTime ? 'setup' : 'login');
         setLoading(false);
       })
