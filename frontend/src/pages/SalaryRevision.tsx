@@ -3,19 +3,21 @@
 import { useEffect, useState, type ChangeEvent } from 'react';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
-import { Search, Plus, Trash2, ChevronDown, Upload, Download } from 'lucide-react';
+import { Search, Plus, Trash2, ChevronDown, Upload, Download, Edit2 } from 'lucide-react';
 
 type CTCBreakdown = {
   basic: number;
   hra: number;
-  travel_allowance: number;
+  telephonic_allowance: number;           // Monthly
+  conveyance_allowance: number;            // Monthly
   childrens_education_allowance: number;
   supplementary_allowance: number;
   employer_pf: number;
   employer_esi: number;
-  annual_bonus: number;
-  annual_performance_incentive: number;
-  medical_premium: number;
+  gross_monthly: number;                   // Auto
+  monthly_ctc: number;                     // Auto
+  gratuity: number;                        // Auto
+  medical_premium: number;                 // Default 7734
   medical_reimbursement_annual: number;
   vehicle_reimbursement_annual: number;
   driver_reimbursement_annual: number;
@@ -23,9 +25,9 @@ type CTCBreakdown = {
   meals_reimbursement_annual: number;
   uniform_reimbursement_annual: number;
   leave_travel_allowance_annual: number;
-  gross_monthly: number;
-  monthly_ctc: number;
-  gratuity: number;
+  annual_bonus: number;
+  annual_performance_incentive: number;
+  travel_allowance: number;                // ← ADDED (was missing!)
 };
 
 type Contract = {
@@ -50,11 +52,6 @@ type Employee = {
   photo?: string;
   contracts: Contract[];
   archived?: boolean;
-  emergency_contact_name?: string;
-  emergency_contact_number?: string;
-  bank_name?: string;
-  account_number?: string;
-  ifsc_code?: string;
 };
 
 const categories = ['All', 'Employee', 'Consultant', 'Intern', 'Temporary Staff', 'Contract Based'];
@@ -67,18 +64,10 @@ export default function EmployeeContractsPage() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
 
-  // const [setEditingPersonal] = useState(false);
-  // const [personalForm, setPersonalForm] = useState({
-  //   emergency_contact_name: '',
-  //   emergency_contact_number: '',
-  //   bank_name: '',
-  //   account_number: '',
-  //   ifsc_code: '',
-  // });
-
   const [showContractModal, setShowContractModal] = useState(false);
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [editingContract, setEditingContract] = useState<Contract | null>(null);
+
   const [contractForm, setContractForm] = useState<{
     contract_amount: number;
     contract_period_months: number;
@@ -93,14 +82,16 @@ export default function EmployeeContractsPage() {
     breakdown: {
       basic: 0,
       hra: 0,
-      travel_allowance: 0,
+      telephonic_allowance: 0,
+      conveyance_allowance: 0,
       childrens_education_allowance: 0,
       supplementary_allowance: 0,
-      employer_pf: 0,
+      employer_pf: 1800,
       employer_esi: 0,
-      annual_bonus: 0,
-      annual_performance_incentive: 0,
-      medical_premium: 0,
+      gross_monthly: 0,
+      monthly_ctc: 0,
+      gratuity: 0,
+      medical_premium: 7734,
       medical_reimbursement_annual: 0,
       vehicle_reimbursement_annual: 0,
       driver_reimbursement_annual: 0,
@@ -108,9 +99,9 @@ export default function EmployeeContractsPage() {
       meals_reimbursement_annual: 0,
       uniform_reimbursement_annual: 0,
       leave_travel_allowance_annual: 0,
-      gross_monthly: 0,
-      monthly_ctc: 0,
-      gratuity: 0,
+      annual_bonus: 0,
+      annual_performance_incentive: 0,
+      travel_allowance: 0,
     },
   });
 
@@ -123,11 +114,6 @@ export default function EmployeeContractsPage() {
           contracts: emp.contracts || [],
           photo: emp.photo || null,
           archived: false,
-          emergency_contact_name: emp.emergency_contact_name || '',
-          emergency_contact_number: emp.emergency_contact_number || '',
-          bank_name: emp.bank_name || '',
-          account_number: emp.account_number || '',
-          ifsc_code: emp.ifsc_code || '',
         }));
         setEmployees(enriched);
         setLoading(false);
@@ -140,6 +126,18 @@ export default function EmployeeContractsPage() {
 
   const activeEmployees = employees.filter(e => !e.archived);
   const archivedEmployees = employees.filter(e => e.archived);
+  const archiveEmployee = (employee: Employee) => {
+  setEmployees(prev =>
+    prev.map(e =>
+      e.id === employee.id
+        ? { ...e, archived: true }
+        : e
+    )
+  );
+
+  setSelectedEmployee(null); // close modal
+};
+
   const currentList = tab === 'active' ? activeEmployees : archivedEmployees;
 
   const filtered = currentList.filter((emp) => {
@@ -171,152 +169,180 @@ export default function EmployeeContractsPage() {
     return emp.contracts.find((c) => c.is_active) || null;
   };
 
-  const calculateAnnualCTC = (breakdown: CTCBreakdown) => {
-    return Object.values(breakdown).reduce((sum, val) => sum + val, 0);
+  const calculateBreakdown = (form: typeof contractForm) => {
+  const basic = form.breakdown.basic || 0;
+
+  const hra = form.breakdown.hra > 0 ? form.breakdown.hra : Math.round(basic * 0.4);
+
+  const statutoryBonus = basic < 21000 ? Math.round(13580 * 0.0833) : 0;
+
+  const grossMonthly =
+    basic +
+    hra +
+    (form.breakdown.telephonic_allowance || 0) +
+    (form.breakdown.conveyance_allowance || 0) +
+    (form.breakdown.childrens_education_allowance || 0) +
+    (form.breakdown.supplementary_allowance || 0) +
+    (form.breakdown.travel_allowance || 0) +
+    statutoryBonus;
+
+  const employerESIC = grossMonthly < 21000 ? Math.round(grossMonthly * 0.0325) : 0;
+
+  const employerPF = form.breakdown.employer_pf > 0 ? form.breakdown.employer_pf : 1800;
+
+  const monthlyCTC = grossMonthly + employerESIC + employerPF;
+
+  const gratuity = Math.round((15 / 26) * basic);
+
+  const mediclaim = form.breakdown.medical_premium > 0 ? form.breakdown.medical_premium : 7734;
+
+  const annualAllowances =
+    (form.breakdown.medical_reimbursement_annual || 0) +
+    (form.breakdown.vehicle_reimbursement_annual || 0) +
+    (form.breakdown.driver_reimbursement_annual || 0) +
+    (form.breakdown.telephone_reimbursement_annual || 0) +
+    (form.breakdown.meals_reimbursement_annual || 0) +
+    (form.breakdown.uniform_reimbursement_annual || 0) +
+    (form.breakdown.leave_travel_allowance_annual || 0) +
+    (form.breakdown.annual_bonus || 0) +
+    (form.breakdown.annual_performance_incentive || 0);
+
+  const annualCTC = monthlyCTC * 12 + gratuity + mediclaim + annualAllowances;
+
+  return {
+    ...form.breakdown,
+    hra,
+    gross_monthly: grossMonthly,
+    employer_esi: employerESIC,
+    employer_pf: employerPF,
+    monthly_ctc: monthlyCTC,
+    gratuity,
+    medical_premium: mediclaim,
+    // ← Yeh add karna zaroori tha!
+    contract_amount: annualCTC,
   };
+};
 
-  const archiveEmployee = (emp: Employee) => {
-    if (!confirm(`Move ${emp.full_name} to Archive?`)) return;
-    setEmployees(employees.map(e => e.id === emp.id ? { ...e, archived: true } : e));
-    setSelectedEmployee(null);
-  };
-
-  const handlePhotoUpload = (e: ChangeEvent<HTMLInputElement>) => {
-    if (!selectedEmployee || !e.target.files || e.target.files.length === 0) return;
-    const file = e.target.files[0];
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = reader.result as string;
-      const updatedEmployees = employees.map(emp =>
-        emp.id === selectedEmployee.id ? { ...emp, photo: base64String } : emp
-      );
-      setEmployees(updatedEmployees);
-      setSelectedEmployee({ ...selectedEmployee, photo: base64String });
-    };
-    reader.readAsDataURL(file);
-  };
-
-  // const startEditingPersonal = () => {
-  //   if (!selectedEmployee) return;
-  //   setPersonalForm({
-  //     emergency_contact_name: selectedEmployee.emergency_contact_name || '',
-  //     emergency_contact_number: selectedEmployee.emergency_contact_number || '',
-  //     bank_name: selectedEmployee.bank_name || '',
-  //     account_number: selectedEmployee.account_number || '',
-  //     ifsc_code: selectedEmployee.ifsc_code || '',
-  //   });
-  //   setEditingPersonal(true);
-  // };
-
-  // const savePersonalDetails = () => {
-  //   if (!selectedEmployee) return;
-  //   const updated = employees.map(emp =>
-  //     emp.id === selectedEmployee.id ? { ...emp, ...personalForm } : emp
-  //   );
-  //   setEmployees(updated);
-  //   setSelectedEmployee({ ...selectedEmployee, ...personalForm });
-  //   setEditingPersonal(false);
-  // };
 
   const openContractModal = (emp: Employee, contract: Contract | null = null) => {
-    setCurrentEmployee(emp);
-    if (contract) {
-      setEditingContract(contract);
-      setContractForm({
-        contract_amount: contract.contract_amount,
-        contract_period_months: contract.contract_period_months,
-        start_date: contract.start_date,
-        end_date: contract.end_date || null,
-        breakdown: { ...contract.breakdown },
-      });
-    } else {
-      setEditingContract(null);
-      const active = getActiveContract(emp);
-      setContractForm({
-        contract_amount: active ? calculateAnnualCTC(active.breakdown) : 0,
-        contract_period_months: 12,
-        start_date: new Date().toISOString().split('T')[0],
-        end_date: null,
-        breakdown: active ? { ...active.breakdown } : {
-          basic: 0, hra: 0, travel_allowance: 0, childrens_education_allowance: 0,
-          supplementary_allowance: 0, employer_pf: 0, employer_esi: 0,
-          annual_bonus: 0, annual_performance_incentive: 0, medical_premium: 0,
-          medical_reimbursement_annual: 0, vehicle_reimbursement_annual: 0,
-          driver_reimbursement_annual: 0, telephone_reimbursement_annual: 0,
-          meals_reimbursement_annual: 0, uniform_reimbursement_annual: 0,
-          leave_travel_allowance_annual: 0, gross_monthly: 0, monthly_ctc: 0, gratuity: 0,
-        },
-      });
-    }
-    setShowContractModal(true);
-  };
-
-  const saveContract = () => {
-  if (!currentEmployee) return;
-
-  const annualCTC = calculateAnnualCTC(contractForm.breakdown);
-
-  let updatedContracts: Contract[];
-
-  if (editingContract) {
-    // Editing existing contract
-    updatedContracts = currentEmployee.contracts.map(c =>
-      c.id === editingContract.id
-        ? { ...c, contract_amount: annualCTC, breakdown: { ...contractForm.breakdown } }
-        : c
-    );
-  } else {
-    // Adding new contract
-    const newStart = new Date(contractForm.start_date);
-
-    updatedContracts = currentEmployee.contracts.map(c => {
-      if (c.is_active) {
-        return {
-          ...c,
-          is_active: false,
-          end_date: new Date(newStart.getTime() - 86400000).toISOString().split('T')[0],
-        };
-      }
-      return c;
+  setCurrentEmployee(emp);
+  if (contract) {
+    setEditingContract(contract);
+    setContractForm({
+      contract_amount: contract.contract_amount,
+      contract_period_months: contract.contract_period_months,
+      start_date: contract.start_date,
+      end_date: contract.end_date || null,
+      breakdown: { ...contract.breakdown },
     });
-
-    updatedContracts.push({
-      id: Date.now(),
-      contract_amount: annualCTC,
-      contract_period_months: contractForm.contract_period_months,
-      start_date: contractForm.start_date,
-      end_date: contractForm.end_date,
-      is_active: true,
-      breakdown: { ...contractForm.breakdown },
+  } else {
+    setEditingContract(null);
+    const active = getActiveContract(emp);
+    setContractForm({
+      contract_amount: active ? active.contract_amount : 0,
+      contract_period_months: 12,
+      start_date: new Date().toISOString().split('T')[0],
+      end_date: null,
+      breakdown: active ? { ...active.breakdown } : {
+        basic: 0,
+        hra: 0,
+        telephonic_allowance: 0,
+        conveyance_allowance: 0,
+        travel_allowance: 0,
+        childrens_education_allowance: 0,
+        supplementary_allowance: 0,
+        employer_pf: 1800,
+        employer_esi: 0,
+        annual_bonus: 0,
+        annual_performance_incentive: 0,
+        medical_premium: 7734,
+        medical_reimbursement_annual: 0,
+        vehicle_reimbursement_annual: 0,
+        driver_reimbursement_annual: 0,
+        telephone_reimbursement_annual: 0,
+        meals_reimbursement_annual: 0,
+        uniform_reimbursement_annual: 0,
+        leave_travel_allowance_annual: 0,
+        gross_monthly: 0,
+        monthly_ctc: 0,
+        gratuity: 0,
+      },
     });
   }
-
-  // 🔑 YEH LINE SABSE IMPORTANT — Deep copy to trigger re-render
-  const updatedEmployees = employees.map(emp =>
-    emp.id === currentEmployee.id
-      ? { ...emp, contracts: [...updatedContracts] }  // New array reference
-      : emp
-  );
-
-  setEmployees(updatedEmployees);
-  setShowContractModal(false);
-  setEditingContract(null);
-  setContractForm({
-    contract_amount: 0,
-    contract_period_months: 12,
-    start_date: new Date().toISOString().split('T')[0],
-    end_date: null,
-    breakdown: {
-      basic: 0, hra: 0, travel_allowance: 0, childrens_education_allowance: 0,
-      supplementary_allowance: 0, employer_pf: 0, employer_esi: 0,
-      annual_bonus: 0, annual_performance_incentive: 0, medical_premium: 0,
-      medical_reimbursement_annual: 0, vehicle_reimbursement_annual: 0,
-      driver_reimbursement_annual: 0, telephone_reimbursement_annual: 0,
-      meals_reimbursement_annual: 0, uniform_reimbursement_annual: 0,
-      leave_travel_allowance_annual: 0, gross_monthly: 0, monthly_ctc: 0, gratuity: 0,
-    },
-  });
+  setShowContractModal(true);
 };
+
+  const saveContract = () => {
+    if (!currentEmployee) return;
+
+    const recalculated = calculateBreakdown(contractForm);
+    const annualCTC = recalculated.gross_monthly + recalculated.employer_esi + recalculated.employer_pf;
+    const finalAnnualCTC = annualCTC * 12 + recalculated.gratuity + recalculated.medical_premium + 
+      (recalculated.medical_reimbursement_annual + recalculated.vehicle_reimbursement_annual + 
+       recalculated.driver_reimbursement_annual + recalculated.telephone_reimbursement_annual + 
+       recalculated.meals_reimbursement_annual + recalculated.uniform_reimbursement_annual + 
+       recalculated.leave_travel_allowance_annual + recalculated.annual_bonus + recalculated.annual_performance_incentive);
+
+    let updatedContracts: Contract[];
+
+    if (editingContract) {
+      updatedContracts = currentEmployee.contracts.map(c =>
+        c.id === editingContract.id
+          ? { ...c, contract_amount: finalAnnualCTC, breakdown: { ...recalculated } }
+          : c
+      );
+    } else {
+      const newStart = new Date(contractForm.start_date);
+
+      updatedContracts = currentEmployee.contracts.map(c => {
+        if (c.is_active) {
+          return {
+            ...c,
+            is_active: false,
+            end_date: new Date(newStart.getTime() - 86400000).toISOString().split('T')[0],
+          };
+        }
+        return c;
+      });
+
+      updatedContracts.push({
+        id: Date.now(),
+        contract_amount: finalAnnualCTC,
+        contract_period_months: contractForm.contract_period_months,
+        start_date: contractForm.start_date,
+        end_date: contractForm.end_date,
+        is_active: true,
+        breakdown: recalculated,
+      });
+    }
+
+    const updatedEmployees = employees.map(emp =>
+      emp.id === currentEmployee.id
+        ? { ...emp, contracts: [...updatedContracts] }
+        : emp
+    );
+
+    setEmployees(updatedEmployees);
+    setShowContractModal(false);
+    setEditingContract(null);
+    // Reset form
+    setContractForm({
+      contract_amount: 0,
+      contract_period_months: 12,
+      start_date: new Date().toISOString().split('T')[0],
+      end_date: null,
+      breakdown: {
+        basic: 0, hra: 0, telephonic_allowance: 0, conveyance_allowance: 0,
+        childrens_education_allowance: 0, supplementary_allowance: 0,
+        employer_pf: 1800, employer_esi: 0, gross_monthly: 0, monthly_ctc: 0,
+        gratuity: 0, medical_premium: 7734, medical_reimbursement_annual: 0,
+        vehicle_reimbursement_annual: 0, driver_reimbursement_annual: 0,
+        telephone_reimbursement_annual: 0, meals_reimbursement_annual: 0,
+        uniform_reimbursement_annual: 0, leave_travel_allowance_annual: 0,
+        annual_bonus: 0, annual_performance_incentive: 0, travel_allowance: 0,
+      },
+    });
+  };
 
   const downloadContractLetter = (contract: Contract, letterType: 'contract' | 'offer' | 'appointment' | 'increment' = 'contract') => {
   if (!selectedEmployee) return;
@@ -380,6 +406,10 @@ export default function EmployeeContractsPage() {
   window.open(`/letter.html?${params.toString()}`, '_blank');
 };
 
+  function handlePhotoUpload(_event: ChangeEvent<HTMLInputElement>): void {
+    throw new Error('Function not implemented.');
+  }
+
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar />
@@ -425,8 +455,8 @@ export default function EmployeeContractsPage() {
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
                 {filtered.map((emp) => {
-                  const active = getActiveContract(emp);
-                  return (
+                      const active = getActiveContract(emp); 
+                      return (
                     <div
                       key={emp.id}
                       className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md cursor-pointer transition"
@@ -453,7 +483,7 @@ export default function EmployeeContractsPage() {
                       </div>
                     </div>
                   );
-                })}
+               })}
               </div>
             )}
           </div>
@@ -494,9 +524,13 @@ export default function EmployeeContractsPage() {
               </div>
               <div className="flex gap-3">
                 {tab === 'active' && (
-                  <button onClick={() => archiveEmployee(selectedEmployee)} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium flex items-center gap-2">
+                  <button
+                    onClick={() => archiveEmployee(selectedEmployee)}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium flex items-center gap-2"
+                  >
                     <Trash2 size={16} /> Archive
                   </button>
+
                 )}
               </div>
             </div>
@@ -550,137 +584,172 @@ export default function EmployeeContractsPage() {
             </div>
 
             {/* Contract History - Active on Top */}
-<div className="border-t pt-6 mb-8">
-  <div className="flex justify-between items-center mb-6">
-    <h3 className="text-xl font-medium">Contract History</h3>
-    <button onClick={() => openContractModal(selectedEmployee)} className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 flex items-center gap-2 text-sm">
-      <Plus size={18} /> Add New Contract
-    </button>
-  </div>
-
-  <div className="space-y-6">
-    {selectedEmployee.contracts.length === 0 ? (
-      <p className="text-center text-gray-500 py-8">No contracts added yet</p>
-    ) : (
-      <>
-        {/* Active Contract - Always on Top */}
-        {selectedEmployee.contracts
-          .filter(c => c.is_active)
-          .map((contract) => (
-            <div key={contract.id} className="p-6 rounded-lg border-2 border-teal-500 bg-teal-50 shadow-md">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <div className="flex items-center gap-3 mb-2">
-                    <span className="bg-teal-600 text-white px-3 py-1 rounded-full text-xs font-bold">CURRENT ACTIVE</span>
-                    <p className="text-xl font-bold">₹{formatSalary(contract.contract_amount)} / year</p>
-                  </div>
-                  <p className="text-sm text-gray-600">Period: {contract.contract_period_months} months</p>
-                  <p className="text-sm text-gray-600">Start: {formatDate(contract.start_date)}</p>
-                </div>
-
-                {/* Dropdown for Multiple Letters */}
-                <div className="relative">
-                  <button className="flex items-center gap-2 px-5 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium shadow">
-                    <Download size={18} />
-                    Download Letter
-                    <ChevronDown size={16} />
-                  </button>
-                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-10 hidden group-hover:block">
-                    <button onClick={() => downloadContractLetter(contract, 'contract')} className="block w-full text-left px-4 py-3 hover:bg-gray-100 text-sm">
-                      Contract Letter
-                    </button>
-                    <button onClick={() => downloadContractLetter(contract, 'appointment')} className="block w-full text-left px-4 py-3 hover:bg-gray-100 text-sm">
-                      Appointment Letter
-                    </button>
-                    <button onClick={() => downloadContractLetter(contract, 'offer')} className="block w-full text-left px-4 py-3 hover:bg-gray-100 text-sm">
-                      Offer Letter
-                    </button>
-                    <button onClick={() => downloadContractLetter(contract, 'increment')} className="block w-full text-left px-4 py-3 hover:bg-gray-100 text-sm border-t">
-                      Increment Letter
-                    </button>
-                  </div>
-                </div>
+            <div className="border-t pt-6 mb-8">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-medium">Contract History</h3>
+                <button onClick={() => openContractModal(selectedEmployee)} className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 flex items-center gap-2 text-sm">
+                  <Plus size={18} /> Add New Contract
+                </button>
               </div>
 
-              {/* CTC Breakdown */}
-              <div className="mt-5">
-                <p className="font-medium text-gray-700 mb-3">CTC Breakdown</p>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                  {Object.entries(contract.breakdown).map(([key, value]) => (
-                    <div key={key} className="bg-white p-3 rounded border">
-                      <p className="text-gray-600 capitalize text-xs">{key.replace(/_/g, ' ')}</p>
-                      <p className="font-semibold">{formatSalary(value)}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ))}
+              <div className="space-y-6">
+                {selectedEmployee.contracts.length === 0 ? (
+                  <p className="text-center text-gray-500 py-8">No contracts added yet</p>
+                ) : (
+                  <>
+                    {/* Active Contract - Always on Top */}
+                    {selectedEmployee.contracts
+                      .filter(c => c.is_active)
+                      .map((contract) => (
+                        <div key={contract.id} className="p-6 rounded-lg border-2 border-teal-500 bg-teal-50 shadow-md">
+                          <div className="flex justify-between items-start mb-4">
+                            {/* Left: Contract Info */}
+                            <div>
+                              <div className="flex items-center gap-3 mb-2">
+                                <span className="bg-teal-600 text-white px-3 py-1 rounded-full text-xs font-bold">
+                                  CURRENT ACTIVE
+                                </span>
+                                <p className="text-xl font-bold">₹{formatSalary(contract.contract_amount)} / year</p>
+                              </div>
+                              <p className="text-sm text-gray-600">Period: {contract.contract_period_months} months</p>
+                              <p className="text-sm text-gray-600">Start: {formatDate(contract.start_date)}</p>
+                            </div>
 
-        {/* Previous Contracts */}
-        {selectedEmployee.contracts.filter(c => !c.is_active).length > 0 && (
-          <div>
-            <h4 className="text-lg font-medium text-gray-700 mb-4">Previous Contracts</h4>
-            <div className="space-y-4">
-              {selectedEmployee.contracts
-                .filter(c => !c.is_active)
-                .sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime())
-                .map((contract) => (
-                  <div key={contract.id} className="p-5 rounded-lg border border-gray-300 bg-gray-50">
-                    <div className="flex justify-between items-start mb-4">
+                            {/* Right: Edit Button + Download Dropdown */}
+                            <div className="flex items-center gap-3">
+                              {/* Edit Button */}
+                              <button
+                                onClick={() => openContractModal(selectedEmployee, contract)}
+                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition"
+                              >
+                                <Edit2 size={16} /> Edit Contract
+                              </button>
+
+                              {/* Download Dropdown */}
+                              <div className="relative group">
+                                <button className="flex items-center gap-2 px-5 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium shadow transition">
+                                  <Download size={18} /> Download Letter
+                                  <ChevronDown size={16} />
+                                </button>
+
+                                {/* Dropdown Menu */}
+                                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-10 hidden group-hover:block">
+                                  <button
+                                    onClick={() => downloadContractLetter(contract, 'contract')}
+                                    className="block w-full text-left px-4 py-3 hover:bg-gray-100 text-sm"
+                                  >
+                                    Contract Letter
+                                  </button>
+                                  <button
+                                    onClick={() => downloadContractLetter(contract, 'appointment')}
+                                    className="block w-full text-left px-4 py-3 hover:bg-gray-100 text-sm"
+                                  >
+                                    Appointment Letter
+                                  </button>
+                                  <button
+                                    onClick={() => downloadContractLetter(contract, 'offer')}
+                                    className="block w-full text-left px-4 py-3 hover:bg-gray-100 text-sm"
+                                  >
+                                    Offer Letter
+                                  </button>
+                                  <button
+                                    onClick={() => downloadContractLetter(contract, 'increment')}
+                                    className="block w-full text-left px-4 py-3 hover:bg-gray-100 text-sm border-t"
+                                  >
+                                    Increment Letter
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* CTC Breakdown */}
+                          <div className="mt-5">
+                            <p className="font-medium text-gray-700 mb-3">CTC Breakdown</p>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                              {Object.entries(contract.breakdown).map(([key, value]) => (
+                                <div key={key} className="bg-white p-3 rounded border">
+                                  <p className="text-gray-600 capitalize text-xs">{key.replace(/_/g, ' ')}</p>
+                                  <p className="font-semibold">{formatSalary(value)}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                    {/* Previous Contracts */}
+                    {selectedEmployee.contracts.filter(c => !c.is_active).length > 0 && (
                       <div>
-                        <p className="font-semibold">₹{formatSalary(contract.contract_amount)} / year</p>
-                        <p className="text-sm text-gray-600">Period: {contract.contract_period_months} months</p>
-                        <p className="text-sm text-gray-600">
-                          {formatDate(contract.start_date)} → {formatDate(contract.end_date || '')}
-                        </p>
-                        <span className="inline-block mt-2 px-3 py-1 rounded-full text-xs bg-gray-500 text-white">
-                          Previous
-                        </span>
-                      </div>
+                        <h4 className="text-lg font-medium text-gray-700 mb-4">Previous Contracts</h4>
+                        <div className="space-y-4">
+                          {selectedEmployee.contracts
+                            .filter(c => !c.is_active)
+                            .sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime())
+                            .map((contract) => (
+                              <div key={contract.id} className="p-5 rounded-lg border border-gray-300 bg-gray-50">
+                                <div className="flex justify-between items-start mb-4">
+                                  <div>
+                                    <p className="font-semibold">₹{formatSalary(contract.contract_amount)} / year</p>
+                                    <p className="text-sm text-gray-600">Period: {contract.contract_period_months} months</p>
+                                    <p className="text-sm text-gray-600">
+                                      {formatDate(contract.start_date)} → {formatDate(contract.end_date || '')}
+                                    </p>
+                                    <span className="inline-block mt-2 px-3 py-1 rounded-full text-xs bg-gray-500 text-white">
+                                      Previous
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex gap-3">
+                                  {/* Edit Button for Previous */}
+                                  <button
+                                    onClick={() => openContractModal(selectedEmployee, contract)}
+                                    className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 text-sm font-medium"
+                                  >
+                                    <Edit2 size={16} /> Edit
+                                  </button>
+                                  {/* Dropdown for Previous Contract */}
+                                  <div className="relative group">
+                                    <button className="flex items-center gap-2 px-5 py-3 bg-gray-700 text-white rounded-lg hover:bg-gray-800 text-sm font-medium">
+                                      <Download size={18} />
+                                      Download Letter
+                                      <ChevronDown size={16} />
+                                    </button>
+                                    <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-10 hidden group-hover:block">
+                                      <button onClick={() => downloadContractLetter(contract, 'contract')} className="block w-full text-left px-4 py-3 hover:bg-gray-100 text-sm">
+                                        Previous Contract Letter
+                                      </button>
+                                      <button onClick={() => downloadContractLetter(contract, 'increment')} className="block w-full text-left px-4 py-3 hover:bg-gray-100 text-sm">
+                                        Increment Letter (Old)
+                                      </button>
+                                      <button onClick={() => downloadContractLetter(contract, 'appointment')} className="block w-full text-left px-4 py-3 hover:bg-gray-100 text-sm border-t">
+                                        Old Appointment Letter
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
 
-                      {/* Dropdown for Previous Contract */}
-                      <div className="relative group">
-                        <button className="flex items-center gap-2 px-5 py-3 bg-gray-700 text-white rounded-lg hover:bg-gray-800 text-sm font-medium">
-                          <Download size={18} />
-                          Download Letter
-                          <ChevronDown size={16} />
-                        </button>
-                        <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-10 hidden group-hover:block">
-                          <button onClick={() => downloadContractLetter(contract, 'contract')} className="block w-full text-left px-4 py-3 hover:bg-gray-100 text-sm">
-                            Previous Contract Letter
-                          </button>
-                          <button onClick={() => downloadContractLetter(contract, 'increment')} className="block w-full text-left px-4 py-3 hover:bg-gray-100 text-sm">
-                            Increment Letter (Old)
-                          </button>
-                          <button onClick={() => downloadContractLetter(contract, 'appointment')} className="block w-full text-left px-4 py-3 hover:bg-gray-100 text-sm border-t">
-                            Old Appointment Letter
-                          </button>
+                                {/* Previous Breakdown */}
+                                <div className="mt-4 text-sm text-gray-600">
+                                  <p className="font-medium mb-2">Previous CTC Breakdown</p>
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                    {Object.entries(contract.breakdown).map(([key, value]) => (
+                                      <div key={key} className="bg-white p-2 rounded text-xs">
+                                        <p className="text-gray-500 capitalize">{key.replace(/_/g, ' ')}</p>
+                                        <p>{formatSalary(value)}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
                         </div>
                       </div>
-                    </div>
-
-                    {/* Previous Breakdown */}
-                    <div className="mt-4 text-sm text-gray-600">
-                      <p className="font-medium mb-2">Previous CTC Breakdown</p>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        {Object.entries(contract.breakdown).map(([key, value]) => (
-                          <div key={key} className="bg-white p-2 rounded text-xs">
-                            <p className="text-gray-500 capitalize">{key.replace(/_/g, ' ')}</p>
-                            <p>{formatSalary(value)}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                    )}
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        )}
-      </>
-    )}
-  </div>
-</div>
 
             {/* Letters */}
             <div className="border-t pt-6">
@@ -701,28 +770,51 @@ export default function EmployeeContractsPage() {
       {showContractModal && currentEmployee && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowContractModal(false)}>
           <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-2xl font-medium mb-6">{editingContract ? 'Edit' : 'Add New'} Contract — {currentEmployee.full_name}</h2>
+            <h2 className="text-2xl font-medium mb-6">
+              {editingContract ? 'Edit' : 'Add New'} Contract — {currentEmployee.full_name}
+            </h2>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-6">
-              {Object.entries(contractForm.breakdown).map(([key, value]) => (
-                <div key={key}>
-                  <label className="block text-gray-700 capitalize mb-1">{key.replace(/_/g, ' ')}</label>
-                  <input
-                    type="number"
-                    value={value}
-                    onChange={(e) => setContractForm({
-                      ...contractForm,
-                      breakdown: {
-                        ...contractForm.breakdown,
-                        [key]: Number(e.target.value) || 0,
-                      },
-                    })}
-                    className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-gray-500"
-                  />
-                </div>
-              ))}
+            {/* Editable CTC Breakdown Fields */}
+            <div className="mb-8">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">CTC Breakdown (All Editable)</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                {Object.entries(contractForm.breakdown).map(([key, value]) => (
+                  <div key={key}>
+                    <label className="block text-gray-700 capitalize mb-1 font-medium">
+                      {key.replace(/_/g, ' ')}
+                      {key === 'hra' && <span className="text-xs text-blue-600 ml-1">(Auto: 40% of Basic)</span>}
+                      {key === 'gross_monthly' && <span className="text-xs text-green-600 ml-1">(Auto Calculated)</span>}
+                    </label>
+                    <input
+                      type="number"
+                      value={value}
+                      onChange={(e) => {
+                        const inputValue = Number(e.target.value) || 0;
+                        const newBreakdown = {
+                          ...contractForm.breakdown,
+                          [key]: inputValue,
+                        };
+
+                        const recalculated = calculateBreakdown({
+                          ...contractForm,
+                          breakdown: newBreakdown,
+                        });
+
+                        setContractForm({
+                          ...contractForm,
+                          breakdown: recalculated,
+                          contract_amount: recalculated.contract_amount,
+                        });
+                      }}
+                      className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+                      placeholder="Enter amount"
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
 
+            {/* Contract Details */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-gray-700 mb-1">Contract Period (months)</label>
@@ -744,10 +836,11 @@ export default function EmployeeContractsPage() {
               </div>
             </div>
 
+            {/* Auto-Calculated Summary */}
             <div className="mt-8 p-6 bg-gradient-to-r from-teal-50 to-green-50 rounded-lg text-center">
               <p className="text-gray-700 font-medium text-lg">Total Annual CTC</p>
               <p className="text-4xl font-bold text-teal-700 mt-2">
-                {formatSalary(calculateAnnualCTC(contractForm.breakdown))}
+                {formatSalary(contractForm.contract_amount)}
               </p>
             </div>
 
