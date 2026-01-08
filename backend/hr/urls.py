@@ -9,6 +9,7 @@ from .views import (
     CityViewSet,
     EmployeeViewSet,
     forgot_password,
+    CTCComponentViewSet,
     OTPVerifyView,
     reset_password,
     users_exist,
