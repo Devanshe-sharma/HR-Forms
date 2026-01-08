@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import CandidateApplication, Country, State, City, Employee, Contract, Payslip
+from .models import CandidateApplication, Country, State, City, Employee, CTCComponent, Contract, Payslip
 
 class ContractSerializer(serializers.ModelSerializer):
     class Meta:
@@ -57,6 +57,10 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             data["role"] = groups[0] if groups else "Outsider"
         return data
 
+class CTCComponentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CTCComponent
+        fields = "__all__"
 
 class CandidateApplicationSerializer(serializers.ModelSerializer):
     class Meta:
