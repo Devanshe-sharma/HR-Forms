@@ -9,6 +9,10 @@ from django_filters.rest_framework import DjangoFilterBackend
 
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.filters import SearchFilter
+
+from .models import CTCComponent
+from .serializers import CTCComponentSerializer
 
 from django.contrib.auth.models import User
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
@@ -121,6 +125,13 @@ class ContractViewSet(viewsets.ModelViewSet):
         manual_overrides = serializer.validated_data.get('manual_overrides', {})
         breakdown = calculate_breakdown(total_annual_ctc, manual_overrides)
         serializer.save(breakdown=breakdown)
+
+class CTCComponentViewSet(viewsets.ModelViewSet):
+    queryset = CTCComponent.objects.filter(is_active=True)
+    serializer_class = CTCComponentSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [SearchFilter]
+    search_fields = ["name", "code"]
 
 
 @api_view(["POST"])
