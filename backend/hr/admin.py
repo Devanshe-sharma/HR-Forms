@@ -1,5 +1,4 @@
 # hr/admin.py
-from typing import Self
 from django.contrib import admin
 from django.utils.html import format_html
 from django import forms
@@ -12,7 +11,6 @@ from datetime import datetime
 
 from import_export import resources
 from import_export.admin import ImportExportModelAdmin
-from requests import request 
 
 from .models import (
     CandidateApplication,
@@ -137,17 +135,12 @@ class EmployeeAdmin(ImportExportModelAdmin):
         'updated_at',
     )
 
-    # Your fieldsets go here if needed
-
-    # Add URL for CSV import page
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
             path('import-csv/', self.admin_site.admin_view(self.import_csv), name='hr_employee_import_csv'),
         ]
         return custom_urls + urls
-   
-
 
     def import_csv(self, request):
         if request.method == "POST":
@@ -158,54 +151,59 @@ class EmployeeAdmin(ImportExportModelAdmin):
                 reader = csv.DictReader(decoded_file)
 
                 def parse_date(val):
-                    try:
-                        if val:
-                            return datetime.strptime(val.strip(), '%Y-%m-%d').date()
-                    except Exception:
+                    if not val:
                         return None
-                    return None
+                    try:
+                        return datetime.strptime(val.strip(), '%Y-%m-%d').date()
+                    except ValueError:
+                        return None
 
                 def parse_decimal(val):
-                    try:
-                        if val:
-                            return Decimal(val.strip())
-                    except (InvalidOperation, TypeError):
+                    if not val:
                         return Decimal('0')
-                    return Decimal('0')
+                    try:
+                        return Decimal(str(val).strip())
+                    except (InvalidOperation, ValueError):
+                        return Decimal('0')
+
+                def parse_int(val):
+                    if not val:
+                        return None
+                    try:
+                        return int(val)
+                    except ValueError:
+                        return None
 
                 count = 0
                 for row in reader:
                     emp_id = row.get('employee_id')
                     official_email = row.get('Official Email')
 
-                    # Check for duplicate official_email linked to different employee_id
-                    existing_emp = None
+                    # Prevent duplicate official_email conflict
                     if official_email:
                         try:
                             existing_emp = Employee.objects.get(official_email=official_email)
+                            if existing_emp.employee_id != emp_id:
+                                official_email = None  # avoid unique constraint violation
                         except Employee.DoesNotExist:
-                            existing_emp = None
-
-                    # If email belongs to another employee, nullify it to avoid error
-                    if existing_emp and existing_emp.employee_id != emp_id:
-                        official_email = None
+                            pass
 
                     Employee.objects.update_or_create(
                         employee_id=emp_id,
                         defaults={
-                            'full_name': row.get('Name'),
-                            'gender': row.get('Gender'),
-                            'personal_email': row.get('Personal Email'),
-                            'mobile': row.get('Mobile'),
-                            'official_email': official_email,
-                            'department': row.get('Dept'),
-                            'designation': row.get('Designation'),
-                            'employee_category': row.get('Employee Category'),
-                            'name_of_buddy': row.get('Name of Buddy'),
+                            'full_name': row.get('Name', ''),
+                            'gender': row.get('Gender', ''),
+                            'personal_email': row.get('Personal Email', ''),
+                            'mobile': row.get('Mobile', ''),
+                            'official_email': official_email or '',
+                            'department': row.get('Dept', ''),
+                            'designation': row.get('Designation', ''),
+                            'employee_category': row.get('Employee Category', ''),
+                            'name_of_buddy': row.get('Name of Buddy', ''),
                             'offer_accepted_date': parse_date(row.get('Offer Accepted Date')),
                             'planned_joining_date': parse_date(row.get('Planned Joining Date')),
-                            'joining_status': row.get('Joining Status'),
-                            'exit_status': row.get('Exit Status'),
+                            'joining_status': row.get('Joining Status', ''),
+                            'exit_status': row.get('Exit Status', 'Active'),
                             'joining_date': parse_date(row.get('Joined Date')),
                             'sal_applicable_from': parse_date(row.get('Sal Applicable From')),
                             'basic': parse_decimal(row.get('Basic')),
@@ -226,16 +224,16 @@ class EmployeeAdmin(ImportExportModelAdmin):
                             'uniform_reimbursement_annual': parse_decimal(row.get('Uniform Reimbursement Annual')),
                             'leave_travel_allowance_annual': parse_decimal(row.get('Leave Travel Allowance Annual')),
                             'contract_amount': parse_decimal(row.get('Contract Amount')),
-                            'contract_period_months': int(row.get('Contract Period (months)') or 0),
-                            'next_sal_review_status': row.get('Next Sal Review Status'),
-                            'next_sal_review_type': row.get('Next Sal Review Type'),
-                            'reason_for_sal_review_not_applicable': row.get('Reason for Sal Review Not Applicable'),
+                            'contract_period_months': parse_int(row.get('Contract Period (months)')),
+                            'next_sal_review_status': row.get('Next Sal Review Status', ''),
+                            'next_sal_review_type': row.get('Next Sal Review Type', ''),
+                            'reason_for_sal_review_not_applicable': row.get('Reason for Sal Review Not Applicable', ''),
                             'revision_due_date': parse_date(row.get('Revision Due Date')),
                         }
                     )
                     count += 1
 
-                Self.message_user(request, f"Successfully imported {count} employees.")
+                self.message_user(request, f"Successfully imported/updated {count} employees from CSV.")
                 return redirect("..")
 
         else:
@@ -244,7 +242,7 @@ class EmployeeAdmin(ImportExportModelAdmin):
         context = {
             "form": form,
             "title": "Import Employees from CSV",
-            "opts": Self.model._meta,
-            "app_label": Self.model._meta.app_label,
+            "opts": self.model._meta,
+            "app_label": self.model._meta.app_label,
         }
         return render(request, "admin/hr/csv_form.html", context)

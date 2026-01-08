@@ -106,5 +106,5 @@ with open('employees.csv', newline='', encoding='utf-8') as csvfile:
         action = "Created" if created else "Updated"
         print(f"   → {action} successfully")
 
-print("🎉 All employees processed successfully!")
+print(" All employees processed successfully!")
 print("Refresh your dashboard — all real data is now live!")

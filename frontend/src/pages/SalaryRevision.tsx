@@ -50,9 +50,37 @@ type Employee = {
   employee_category: string;
   mobile: string;
   photo?: string;
+
+  annual_ctc: number;
+  contract_amount: number;
+  contract_period_months: number;
+  sal_applicable_from: string;
+
+  basic: number;
+  hra: number;
+  travel_allowance: number;
+  childrens_education_allowance: number;
+  supplementary_allowance: number;
+  employer_pf: number;
+  employer_esi: number;
+  gross_monthly: number;
+  monthly_ctc: number;
+  gratuity: number;
+  medical_premium: number;
+  medical_reimbursement_annual: number;
+  vehicle_reimbursement_annual: number;
+  driver_reimbursement_annual: number;
+  telephone_reimbursement_annual: number;
+  meals_reimbursement_annual: number;
+  uniform_reimbursement_annual: number;
+  leave_travel_allowance_annual: number;
+  annual_bonus: number;
+  annual_performance_incentive: number;
+
   contracts: Contract[];
   archived?: boolean;
 };
+
 
 const categories = ['All', 'Employee', 'Consultant', 'Intern', 'Temporary Staff', 'Contract Based'];
 
@@ -227,6 +255,7 @@ export default function EmployeeContractsPage() {
   const openContractModal = (emp: Employee, contract: Contract | null = null) => {
   setCurrentEmployee(emp);
   if (contract) {
+    // Editing existing contract (from frontend history)
     setEditingContract(contract);
     setContractForm({
       contract_amount: contract.contract_amount,
@@ -237,112 +266,107 @@ export default function EmployeeContractsPage() {
     });
   } else {
     setEditingContract(null);
-    const active = getActiveContract(emp);
+    
+    // Load saved values from database (Employee model fields)
     setContractForm({
-      contract_amount: active ? active.contract_amount : 0,
-      contract_period_months: 12,
-      start_date: new Date().toISOString().split('T')[0],
+      contract_amount: emp.contract_amount || 0,
+      contract_period_months: emp.contract_period_months || 12,
+      start_date: emp.sal_applicable_from || new Date().toISOString().split('T')[0],
       end_date: null,
-      breakdown: active ? { ...active.breakdown } : {
-        basic: 0,
-        hra: 0,
-        telephonic_allowance: 0,
-        conveyance_allowance: 0,
-        travel_allowance: 0,
-        childrens_education_allowance: 0,
-        supplementary_allowance: 0,
-        employer_pf: 1800,
-        employer_esi: 0,
-        annual_bonus: 0,
-        annual_performance_incentive: 0,
-        medical_premium: 7734,
-        medical_reimbursement_annual: 0,
-        vehicle_reimbursement_annual: 0,
-        driver_reimbursement_annual: 0,
-        telephone_reimbursement_annual: 0,
-        meals_reimbursement_annual: 0,
-        uniform_reimbursement_annual: 0,
-        leave_travel_allowance_annual: 0,
-        gross_monthly: 0,
-        monthly_ctc: 0,
-        gratuity: 0,
+      breakdown: {
+        basic: Number(emp.basic) || 0,
+        hra: Number(emp.hra) || 0,
+        telephonic_allowance: 0, // not in model yet
+        conveyance_allowance: 0, // not in model yet
+        travel_allowance: Number(emp.travel_allowance) || 0,
+        childrens_education_allowance: Number(emp.childrens_education_allowance) || 0,
+        supplementary_allowance: Number(emp.supplementary_allowance) || 0,
+        employer_pf: Number(emp.employer_pf) || 1800,
+        employer_esi: Number(emp.employer_esi) || 0,
+        gross_monthly: Number(emp.gross_monthly) || 0,
+        monthly_ctc: Number(emp.monthly_ctc) || 0,
+        gratuity: Number(emp.gratuity) || 0,
+        medical_premium: Number(emp.medical_premium) || 7734,
+        medical_reimbursement_annual: Number(emp.medical_reimbursement_annual) || 0,
+        vehicle_reimbursement_annual: Number(emp.vehicle_reimbursement_annual) || 0,
+        driver_reimbursement_annual: Number(emp.driver_reimbursement_annual) || 0,
+        telephone_reimbursement_annual: Number(emp.telephone_reimbursement_annual) || 0,
+        meals_reimbursement_annual: Number(emp.meals_reimbursement_annual) || 0,
+        uniform_reimbursement_annual: Number(emp.uniform_reimbursement_annual) || 0,
+        leave_travel_allowance_annual: Number(emp.leave_travel_allowance_annual) || 0,
+        annual_bonus: Number(emp.annual_bonus) || 0,
+        annual_performance_incentive: Number(emp.annual_performance_incentive) || 0,
       },
     });
   }
   setShowContractModal(true);
 };
 
-  const saveContract = () => {
-    if (!currentEmployee) return;
+  const saveContract = async () => {
+  if (!currentEmployee || !currentEmployee.id) return;
 
-    const recalculated = calculateBreakdown(contractForm);
-    const annualCTC = recalculated.gross_monthly + recalculated.employer_esi + recalculated.employer_pf;
-    const finalAnnualCTC = annualCTC * 12 + recalculated.gratuity + recalculated.medical_premium + 
-      (recalculated.medical_reimbursement_annual + recalculated.vehicle_reimbursement_annual + 
-       recalculated.driver_reimbursement_annual + recalculated.telephone_reimbursement_annual + 
-       recalculated.meals_reimbursement_annual + recalculated.uniform_reimbursement_annual + 
-       recalculated.leave_travel_allowance_annual + recalculated.annual_bonus + recalculated.annual_performance_incentive);
+  const recalculated = calculateBreakdown(contractForm);
+  const finalAnnualCTC = recalculated.contract_amount;
 
-    let updatedContracts: Contract[];
+  // ← ID add kar diya!
+  const latestContract: Contract = {
+    id: editingContract?.id || Date.now(),  // Edit mode mein old ID, new mein timestamp
+    contract_amount: finalAnnualCTC,
+    contract_period_months: contractForm.contract_period_months,
+    start_date: contractForm.start_date,
+    end_date: contractForm.end_date,
+    is_active: true,
+    breakdown: recalculated,
+  };
 
-    if (editingContract) {
-      updatedContracts = currentEmployee.contracts.map(c =>
-        c.id === editingContract.id
-          ? { ...c, contract_amount: finalAnnualCTC, breakdown: { ...recalculated } }
-          : c
-      );
-    } else {
-      const newStart = new Date(contractForm.start_date);
+  // Update local contracts array
+  let updatedContracts = currentEmployee.contracts.filter(c => !c.is_active); // Previous only
+  updatedContracts.unshift(latestContract); // New active on top
 
-      updatedContracts = currentEmployee.contracts.map(c => {
-        if (c.is_active) {
-          return {
-            ...c,
-            is_active: false,
-            end_date: new Date(newStart.getTime() - 86400000).toISOString().split('T')[0],
-          };
-        }
-        return c;
-      });
+  // Payload for backend (map to Employee model fields)
+  const payload = {
+    basic: recalculated.basic || 0,
+    hra: recalculated.hra || 0,
+    travel_allowance: recalculated.travel_allowance || 0,
+    childrens_education_allowance: recalculated.childrens_education_allowance || 0,
+    supplementary_allowance: recalculated.supplementary_allowance || 0,
+    employer_pf: recalculated.employer_pf || 1800,
+    employer_esi: recalculated.employer_esi || 0,
+    annual_bonus: recalculated.annual_bonus || 0,
+    annual_performance_incentive: recalculated.annual_performance_incentive || 0,
+    medical_premium: recalculated.medical_premium || 7734,
+    medical_reimbursement_annual: recalculated.medical_reimbursement_annual || 0,
+    vehicle_reimbursement_annual: recalculated.vehicle_reimbursement_annual || 0,
+    driver_reimbursement_annual: recalculated.driver_reimbursement_annual || 0,
+    telephone_reimbursement_annual: recalculated.telephone_reimbursement_annual || 0,
+    meals_reimbursement_annual: recalculated.meals_reimbursement_annual || 0,
+    uniform_reimbursement_annual: recalculated.uniform_reimbursement_annual || 0,
+    leave_travel_allowance_annual: recalculated.leave_travel_allowance_annual || 0,
+    contract_amount: finalAnnualCTC,
+    contract_period_months: contractForm.contract_period_months,
+  };
 
-      updatedContracts.push({
-        id: Date.now(),
-        contract_amount: finalAnnualCTC,
-        contract_period_months: contractForm.contract_period_months,
-        start_date: contractForm.start_date,
-        end_date: contractForm.end_date,
-        is_active: true,
-        breakdown: recalculated,
-      });
-    }
+  try {
+    const response = await fetch(`https://hr-forms.onrender.com/api/employees/${currentEmployee.id}/`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
 
-    const updatedEmployees = employees.map(emp =>
-      emp.id === currentEmployee.id
-        ? { ...emp, contracts: [...updatedContracts] }
-        : emp
-    );
+    if (!response.ok) throw new Error('Save failed');
 
-    setEmployees(updatedEmployees);
+    const updatedEmployee = await response.json();
+
+    setEmployees(prev => prev.map(e => e.id === currentEmployee.id ? updatedEmployee : e));
+
     setShowContractModal(false);
     setEditingContract(null);
-    // Reset form
-    setContractForm({
-      contract_amount: 0,
-      contract_period_months: 12,
-      start_date: new Date().toISOString().split('T')[0],
-      end_date: null,
-      breakdown: {
-        basic: 0, hra: 0, telephonic_allowance: 0, conveyance_allowance: 0,
-        childrens_education_allowance: 0, supplementary_allowance: 0,
-        employer_pf: 1800, employer_esi: 0, gross_monthly: 0, monthly_ctc: 0,
-        gratuity: 0, medical_premium: 7734, medical_reimbursement_annual: 0,
-        vehicle_reimbursement_annual: 0, driver_reimbursement_annual: 0,
-        telephone_reimbursement_annual: 0, meals_reimbursement_annual: 0,
-        uniform_reimbursement_annual: 0, leave_travel_allowance_annual: 0,
-        annual_bonus: 0, annual_performance_incentive: 0, travel_allowance: 0,
-      },
-    });
-  };
+    alert('Contract saved successfully! 🎉');
+  } catch (error) {
+    console.error(error);
+    alert('Failed to save contract');
+  }
+};
 
   const downloadContractLetter = (contract: Contract, letterType: 'contract' | 'offer' | 'appointment' | 'increment' = 'contract') => {
   if (!selectedEmployee) return;
@@ -766,91 +790,155 @@ export default function EmployeeContractsPage() {
         </div>
       )}
 
-      {/* Contract Modal - Full Breakdown */}
-      {showContractModal && currentEmployee && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowContractModal(false)}>
-          <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-2xl font-medium mb-6">
-              {editingContract ? 'Edit' : 'Add New'} Contract — {currentEmployee.full_name}
-            </h2>
+{/* Contract Modal - Full Breakdown */}
+{showContractModal && currentEmployee && (
+  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowContractModal(false)}>
+    <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full max-h-[92vh] overflow-y-auto p-8" onClick={(e) => e.stopPropagation()}>
+      {/* Header */}
+      <div className="flex justify-between items-center mb-8 border-b pb-4">
+        <h2 className="text-3xl font-bold text-gray-800">
+          {editingContract ? 'Edit' : 'Add New'} Contract
+        </h2>
+        <button
+          onClick={() => setShowContractModal(false)}
+          className="text-gray-400 hover:text-gray-600 text-3xl font-light"
+        >
+          ×
+        </button>
+      </div>
 
-            {/* Editable CTC Breakdown Fields */}
-            <div className="mb-8">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">CTC Breakdown (All Editable)</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                {Object.entries(contractForm.breakdown).map(([key, value]) => (
-                  <div key={key}>
-                    <label className="block text-gray-700 capitalize mb-1 font-medium">
-                      {key.replace(/_/g, ' ')}
-                      {key === 'hra' && <span className="text-xs text-blue-600 ml-1">(Auto: 40% of Basic)</span>}
-                      {key === 'gross_monthly' && <span className="text-xs text-green-600 ml-1">(Auto Calculated)</span>}
-                    </label>
-                    <input
-                      type="number"
-                      value={value}
-                      onChange={(e) => {
-                        const inputValue = Number(e.target.value) || 0;
-                        const newBreakdown = {
-                          ...contractForm.breakdown,
-                          [key]: inputValue,
-                        };
+      <p className="text-xl text-gray-700 mb-8">
+        <span className="font-semibold">{currentEmployee.full_name}</span> • {currentEmployee.designation}
+      </p>
 
-                        const recalculated = calculateBreakdown({
-                          ...contractForm,
-                          breakdown: newBreakdown,
-                        });
+      {/* Editable CTC Breakdown Fields */}
+      <div className="mb-10">
+        <h3 className="text-xl font-semibold text-gray-800 mb-6">CTC Breakdown (All Fields Editable)</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+          {Object.entries(contractForm.breakdown).map(([key, value]) => (
+            <div key={key} className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700 capitalize">
+                {key.replace(/_/g, ' ')}
+                {key === 'hra' && <span className="text-xs text-blue-600 ml-2">(Auto: 40% of Basic)</span>}
+                {key === 'gross_monthly' && <span className="text-xs text-green-600 ml-2">(Auto)</span>}
+                {key === 'monthly_ctc' && <span className="text-xs text-green-600 ml-2">(Auto)</span>}
+                {key === 'gratuity' && <span className="text-xs text-green-600 ml-2">(Auto)</span>}
+              </label>
+              <input
+                type="number"
+                value={value || ''}
+                onChange={(e) => {
+                  const inputValue = e.target.value === '' ? 0 : Number(e.target.value);
+                  const newBreakdown = {
+                    ...contractForm.breakdown,
+                    [key]: inputValue,
+                  };
 
-                        setContractForm({
-                          ...contractForm,
-                          breakdown: recalculated,
-                          contract_amount: recalculated.contract_amount,
-                        });
-                      }}
-                      className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
-                      placeholder="Enter amount"
-                    />
-                  </div>
-                ))}
-              </div>
+                  const recalculated = calculateBreakdown({
+                    ...contractForm,
+                    breakdown: newBreakdown,
+                  });
+
+                  setContractForm({
+                    ...contractForm,
+                    breakdown: recalculated,
+                    contract_amount: recalculated.contract_amount,
+                  });
+                }}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent text-base"
+                placeholder="0"
+              />
             </div>
+          ))}
+        </div>
+      </div>
 
-            {/* Contract Details */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-gray-700 mb-1">Contract Period (months)</label>
-                <input
-                  type="number"
-                  value={contractForm.contract_period_months}
-                  onChange={(e) => setContractForm({ ...contractForm, contract_period_months: Number(e.target.value) || 12 })}
-                  className="w-full px-4 py-2 border rounded-lg"
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 mb-1">Start Date</label>
-                <input
-                  type="date"
-                  value={contractForm.start_date}
-                  onChange={(e) => setContractForm({ ...contractForm, start_date: e.target.value })}
-                  className="w-full px-4 py-2 border rounded-lg"
-                />
-              </div>
-            </div>
+      {/* Contract Details */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Contract Period (months)</label>
+          <input
+            type="number"
+            min="1"
+            value={contractForm.contract_period_months}
+            onChange={(e) => setContractForm({ ...contractForm, contract_period_months: Number(e.target.value) || 12 })}
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+          <input
+            type="date"
+            value={contractForm.start_date}
+            onChange={(e) => setContractForm({ ...contractForm, start_date: e.target.value })}
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+          />
+        </div>
+      </div>
 
-            {/* Auto-Calculated Summary */}
-            <div className="mt-8 p-6 bg-gradient-to-r from-teal-50 to-green-50 rounded-lg text-center">
-              <p className="text-gray-700 font-medium text-lg">Total Annual CTC</p>
-              <p className="text-4xl font-bold text-teal-700 mt-2">
-                {formatSalary(contractForm.contract_amount)}
-              </p>
-            </div>
+      {/* Final Summary - Live Calculation */}
+      <div className="bg-gradient-to-r from-teal-50 to-cyan-50 rounded-xl p-8 border-2 border-teal-200 mb-10">
+        <h3 className="text-2xl font-bold text-center text-teal-800 mb-8">Final Summary</h3>
+        
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="bg-white rounded-lg shadow-md p-6 text-center">
+            <p className="text-gray-600 text-sm mb-2">Gross Monthly</p>
+            <p className="text-3xl font-bold text-teal-700">
+              {formatSalary(contractForm.breakdown.gross_monthly || 0)}
+            </p>
+          </div>
 
-            <div className="flex gap-4 mt-8">
-              <button onClick={saveContract} className="flex-1 py-3 bg-gray-800 text-white rounded-lg hover:bg-gray-900 font-medium">Save Contract</button>
-              <button onClick={() => setShowContractModal(false)} className="flex-1 py-3 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
-            </div>
+          <div className="bg-white rounded-lg shadow-md p-6 text-center">
+            <p className="text-gray-600 text-sm mb-2">Monthly CTC</p>
+            <p className="text-3xl font-bold text-teal-700">
+              {formatSalary(contractForm.breakdown.monthly_ctc || 0)}
+            </p>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-md p-6 text-center">
+            <p className="text-gray-600 text-sm mb-2">Gratuity (Annual)</p>
+            <p className="text-3xl font-bold text-teal-700">
+              {formatSalary(contractForm.breakdown.gratuity || 0)}
+            </p>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-md p-6 text-center col-span-2 md:col-span-1">
+            <p className="text-gray-700 text-lg mb-2 font-semibold">Total Annual CTC</p>
+            <p className="text-4xl font-extrabold text-teal-800">
+              {formatSalary(contractForm.contract_amount || 0)}
+            </p>
           </div>
         </div>
-      )}
+
+        {/* Saved Database Values for Reference */}
+        <div className="mt-8 pt-6 border-t border-teal-200 text-center">
+          <p className="text-sm text-gray-600 mb-2">Currently Saved in Database</p>
+          <p className="text-base font-medium text-gray-800">
+            Annual CTC: <span className="text-teal-700 font-bold">{formatSalary(currentEmployee.annual_ctc || 0)}</span> 
+            {' • '} 
+            Monthly CTC: <span className="text-teal-700 font-bold">{formatSalary(currentEmployee?.monthly_ctc || 0)}</span>
+          </p>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex gap-4 justify-end">
+        <button
+          onClick={() => setShowContractModal(false)}
+          className="px-8 py-4 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold text-lg transition"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={saveContract}
+          className="px-8 py-4 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-semibold text-lg shadow-lg transition"
+        >
+          Save Contract
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }

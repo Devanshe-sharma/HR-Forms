@@ -44,7 +44,7 @@ from .serializers import (
 from .permissions import IsInGroup
 
 
-class EmployeeViewSet(viewsets.ReadOnlyModelViewSet):
+class EmployeeViewSet(viewsets.ModelViewSet):
     queryset = Employee.objects.all().prefetch_related('contracts', 'payslips')
     serializer_class = EmployeeSerializer
     permission_classes = [AllowAny]
