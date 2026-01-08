@@ -8,6 +8,7 @@ import csv
 from io import TextIOWrapper
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
+from .models import CTCComponent
 
 from import_export import resources
 from import_export.admin import ImportExportModelAdmin
@@ -208,6 +209,7 @@ class EmployeeAdmin(ImportExportModelAdmin):
                             'sal_applicable_from': parse_date(row.get('Sal Applicable From')),
                             'basic': parse_decimal(row.get('Basic')),
                             'hra': parse_decimal(row.get('HRA')),
+                            'telephone_allowance': parse_decimal(row.get('Telephone Allowance')),
                             'travel_allowance': parse_decimal(row.get('Travel Allowance')),
                             'childrens_education_allowance': parse_decimal(row.get("Children's Education Allowance")),
                             'supplementary_allowance': parse_decimal(row.get('Supplementary Allowance')),
@@ -246,3 +248,16 @@ class EmployeeAdmin(ImportExportModelAdmin):
             "app_label": self.model._meta.app_label,
         }
         return render(request, "admin/hr/csv_form.html", context)
+    
+@admin.register(CTCComponent)
+class CTCComponentAdmin(admin.ModelAdmin):
+    list_display = ('name', 'code', 'formula', 'order', 'is_active', 'show_in_documents')
+    list_editable = ('order', 'is_active', 'show_in_documents')
+    list_filter = ('is_active', 'show_in_documents')
+    search_fields = ('name', 'code')
+    ordering = ('order',)
+
+    # Enable drag-and-drop reordering (optional but nice)
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.order_by('order')

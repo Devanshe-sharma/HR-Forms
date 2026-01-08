@@ -20,6 +20,7 @@ router.register(r'countries', CountryViewSet, basename='country')
 router.register(r'states', StateViewSet, basename='state')
 router.register(r'cities', CityViewSet, basename='city')
 router.register(r'employees', EmployeeViewSet, basename='employee')
+router.register(r'ctc-components', CTCComponentViewSet)
 
 urlpatterns = [
     # Router URLs (countries, states, cities, employees)

@@ -5,6 +5,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 from datetime import timedelta
+import datetime
 
 
 class Profile(models.Model):
@@ -109,6 +110,7 @@ class Employee(models.Model):
     # CTC Core
     basic = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     hra = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    telephone_allowance = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     travel_allowance = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     childrens_education_allowance = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     supplementary_allowance = models.DecimalField(max_digits=15, decimal_places=2, default=0)
@@ -152,7 +154,7 @@ class Employee(models.Model):
 
         # Convert any non-Decimal values to Decimal
         fields_to_decimal = [
-            'basic', 'hra', 'travel_allowance', 'childrens_education_allowance', 'supplementary_allowance',
+            'basic', 'hra','telephone_allowance' 'travel_allowance', 'childrens_education_allowance', 'supplementary_allowance',
             'employer_pf', 'employer_esi', 'annual_bonus', 'annual_performance_incentive',
             'medical_premium', 'medical_reimbursement_annual', 'vehicle_reimbursement_annual',
             'driver_reimbursement_annual', 'telephone_reimbursement_annual', 'meals_reimbursement_annual',
@@ -165,7 +167,7 @@ class Employee(models.Model):
 
         # Calculations
         self.gross_monthly = (
-            self.basic + self.hra + self.travel_allowance +
+            self.basic + self.hra + self.telephone_allowance + self.travel_allowance +
             self.childrens_education_allowance + self.supplementary_allowance
         )
 
@@ -202,25 +204,61 @@ class Employee(models.Model):
         return f"{self.employee_id or 'No ID'} - {self.full_name}"
 
 
-class Contract(models.Model):
-    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="contracts")
-    contract_type = models.CharField(max_length=30, choices=[
-        ('Full-time', 'Full-time'),
-        ('Part-time', 'Part-time'),
-        ('Intern', 'Intern'),
-        ('Temporary Staff', 'Temporary Staff'),
-        ('Contract Based', 'Contract Based'),
-    ])
-    start_date = models.DateField()
-    end_date = models.DateField(null=True, blank=True)
-    salary = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    is_active = models.BooleanField(default=True)
-    contract_amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-    contract_period_months = models.PositiveIntegerField(null=True, blank=True)
+class CTCComponent(models.Model):
+    """
+    Master list of all CTC components — fully managed by HR
+    """
+    name = models.CharField(max_length=150, unique=True)          # e.g., "House Rent Allowance"
+    code = models.CharField(max_length=50, unique=True)           # e.g., "HRA" — used in formulas (uppercase, no spaces)
+    formula = models.TextField(blank=True, null=True)              # e.g., "BASIC * 0.4" or "500" or "IF(GROSS_MONTHLY < 21000, GROSS_MONTHLY * 0.0325, 0)"
+    order = models.PositiveIntegerField(default=0)                # Display order
+    is_active = models.BooleanField(default=True)                 # Soft delete
+    show_in_documents = models.BooleanField(default=True)         # Appear in offer letter, payslip, etc.
+    notes = models.TextField(blank=True)                          # Optional description for HR
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='ctc_components')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['order', 'name']
+        verbose_name = "CTC Component"
+        verbose_name_plural = "CTC Components"
 
     def __str__(self):
-        return f"{self.employee.full_name} - {self.contract_type}"
+        return f"{self.name} ({self.code})"
 
+
+class Contract(models.Model):
+    """
+    One salary revision / contract per employee
+    """
+    employee = models.ForeignKey('Employee', on_delete=models.CASCADE, related_name='contracts')
+    effective_from = models.DateField(help_text="Salary applicable from this date")
+    total_annual_ctc = models.DecimalField(max_digits=16, decimal_places=2, help_text="Annual CTC entered by HR")
+    
+    # All calculated values stored here — fully dynamic
+    breakdown = models.JSONField(default=dict, help_text="Key = component code, Value = amount (annual unless specified)")
+    
+    # Optional manual overrides (for special cases)
+    manual_overrides = models.JSONField(default=dict, blank=True, help_text="e.g., {'TELEPHONE': 2000}")
+    
+    contract_period_months = models.PositiveIntegerField(null=True, blank=True)
+    contract_amount = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True)
+    
+    next_review_status = models.CharField(max_length=50, default="Due")
+    next_review_type = models.CharField(max_length=50, default="Annual")
+    reason_not_applicable = models.TextField(blank=True)
+    revision_due_date = models.DateField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-effective_from']
+        unique_together = ['employee', 'effective_from']
+
+    def __str__(self):
+        return f"{self.employee.full_name} - CTC ₹{self.total_annual_ctc} from {self.effective_from}"
 
 # User Profile for mobile number (used in forgot password)
 class UserProfile(models.Model):

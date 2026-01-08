@@ -24,7 +24,9 @@ from django.contrib.auth import authenticate, login
 from django.core.mail import send_mail
 from django.utils.crypto import get_random_string
 from django.conf import settings
-from .models import UserProfile, OTP
+
+from .utils import calculate_breakdown
+from .models import Contract, UserProfile, OTP
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
@@ -35,6 +37,7 @@ import os
 from .models import CandidateApplication, Country, State, City, Employee
 from .serializers import (
     CandidateApplicationSerializer,
+    ContractSerializer,
     CountrySerializer,
     StateSerializer,
     CitySerializer,
@@ -98,6 +101,26 @@ class HiringRequisitionView(APIView):
 
     def get(self, request):
         return Response({"message": "Hiring requisition accessible"})
+    
+class ContractViewSet(viewsets.ModelViewSet):
+    queryset = Contract.objects.all()
+    serializer_class = ContractSerializer
+
+    def perform_create(self, serializer):
+        total_annual_ctc = serializer.validated_data['total_annual_ctc']
+        manual_overrides = serializer.validated_data.get('manual_overrides', {})
+
+        breakdown = calculate_breakdown(total_annual_ctc, manual_overrides)
+        serializer.save(breakdown=breakdown)
+
+    def perform_update(self, serializer):
+        total_annual_ctc = serializer.validated_data.get(
+            'total_annual_ctc',
+            serializer.instance.total_annual_ctc
+        )
+        manual_overrides = serializer.validated_data.get('manual_overrides', {})
+        breakdown = calculate_breakdown(total_annual_ctc, manual_overrides)
+        serializer.save(breakdown=breakdown)
 
 
 @api_view(["POST"])
