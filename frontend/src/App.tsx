@@ -7,6 +7,7 @@ import CandidateApplicationPage from "./Candidate/page";
 import SalaryRevision from "./pages/SalaryRevision";
 import ProtectedRoute from './components/ProtectedRoute';
 import Recruitment from "./pages/Recruitment";
+import CTCComponentsDashboard from "./components/CTCComponentsDashboard";
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
       <Route path="/salary-revision" element={<ProtectedRoute><SalaryRevision /></ProtectedRoute>} />
       
       <Route path="/recruitment" element={ <ProtectedRoute> <Recruitment /> </ProtectedRoute> } />
+      <Route path="/ctc-components" element={<CTCComponentsDashboard />} />
       
       {/* Safety */}
       <Route path="*" element={<Navigate to="/" />} />
