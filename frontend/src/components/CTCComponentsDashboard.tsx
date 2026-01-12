@@ -27,6 +27,8 @@ const CTCComponentsDashboard: React.FC = () => {
   });
 
   const API_URL = 'https://hr-forms.onrender.com/api/ctc-components/';
+  const BASE_URL = 'https://hr-forms.onrender.com';
+
 
   // Fetch all components
   const fetchComponents = async () => {
@@ -45,6 +47,15 @@ const CTCComponentsDashboard: React.FC = () => {
   useEffect(() => {
     fetchComponents();
   }, []);
+  useEffect(() => {
+  const keepAlive = setInterval(() => {
+    fetch(`${BASE_URL}/health`)
+      .catch(() => {}); // silent fail, no drama
+  }, 4 * 60 * 1000); // every 4 minutes
+
+  return () => clearInterval(keepAlive);
+}, []);
+
 
   // Start editing
   const startEdit = (comp: CTCComponentType) => {
@@ -119,7 +130,7 @@ const CTCComponentsDashboard: React.FC = () => {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
         <div className="max-w-6xl mx-auto">
-          <h1 className="text-3xl font-bold mb-8">CTC Components Dashboard</h1>
+          <h1 className="text-3xl font-bold mb-8">CTC Components</h1>
           <p className="text-gray-600">Loading components...</p>
         </div>
       </div>

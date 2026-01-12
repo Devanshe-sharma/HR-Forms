@@ -55,7 +55,6 @@ const designations = [
   "Manager HR",
   "Digital Marketing Manager",
   "Production Head",
-  // Add all your designations here
 ];
 
 export default function CandidateApplicationPage() {

@@ -4,6 +4,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.http import JsonResponse
 from rest_framework_simplejwt.views import TokenRefreshView
+from django.http import HttpResponse
 from hr.views import (
     CustomLoginView,
     forgot_password,
@@ -12,10 +13,15 @@ from hr.views import (
     users_exist,
     setup_user,
 )
+def health(request):
+    return HttpResponse("ok")
+
+
 
 urlpatterns = [
     # Root API status check
-    path('', lambda request: JsonResponse({"status": "API running 🚀"})),
+    path('', lambda request: JsonResponse({"status": "API running "})),
+    path("health", health),
 
     # Django Admin
     path('admin/', admin.site.urls),

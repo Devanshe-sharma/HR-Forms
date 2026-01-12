@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
-import { Search, Trash2, ChevronDown, Upload, Download, Edit2, Settings } from 'lucide-react';
+import { Search, Trash2, Edit2, Settings } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { ChevronDownIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 
 interface CTCComponent {
   id: number;
@@ -31,7 +32,6 @@ interface Employee {
   contract_amount: number | null;
   contract_period_months: number | null;
   sal_applicable_from: string | null;
-  // CTC fields (as strings from API)
   basic: string;
   hra: string;
   telephone_allowance: string;
@@ -68,24 +68,44 @@ export default function EmployeeContractsPage() {
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [showContractModal, setShowContractModal] = useState(false);
 
-  const [contractForm, setContractForm] = useState({
-    annual_ctc: 0,
+  // Form state for editable fields (key = field name in Employee model)
+  const [contractForm, setContractForm] = useState<Record<string, number>>({
+    basic: 0,
+    hra: 0,
+    telephone_allowance: 0,
+    travel_allowance: 0,
+    childrens_education_allowance: 0,
+    supplementary_allowance: 0,
+    employer_pf: 0,
+    employer_esi: 0,
+    annual_bonus: 0,
+    annual_performance_incentive: 0,
+    medical_premium: 0,
+    medical_reimbursement_annual: 0,
+    vehicle_reimbursement_annual: 0,
+    driver_reimbursement_annual: 0,
+    telephone_reimbursement_annual: 0,
+    meals_reimbursement_annual: 0,
+    uniform_reimbursement_annual: 0,
+    leave_travel_allowance_annual: 0,
+    contract_amount: 0,
     contract_period_months: 12,
-    start_date: new Date().toISOString().split('T')[0],
   });
 
   // Fetch employees
   useEffect(() => {
     fetch(`${API_BASE}/employees/`)
-      .then(res => res.json())
-      .then(data => {
-        setEmployees(data.map((emp: any) => ({
-          ...emp,
-          archived: false,
-        })));
+      .then((res) => res.json())
+      .then((data) => {
+        setEmployees(
+          data.map((emp: any) => ({
+            ...emp,
+            archived: false,
+          }))
+        );
         setLoading(false);
       })
-      .catch(err => {
+      .catch((err) => {
         console.error(err);
         setLoading(false);
       });
@@ -94,25 +114,26 @@ export default function EmployeeContractsPage() {
   // Fetch CTC Components
   useEffect(() => {
     fetch(`${API_BASE}/ctc-components/`)
-      .then(res => res.json())
-      .then(data => {
+      .then((res) => res.json())
+      .then((data) => {
         setCtcComponents(
           data
             .filter((c: CTCComponent) => c.is_active)
             .sort((a: CTCComponent, b: CTCComponent) => a.order - b.order)
         );
       })
-      .catch(err => console.error('Failed to load CTC components', err));
+      .catch((err) => console.error('Failed to load CTC components', err));
   }, []);
 
-  const activeEmployees = employees.filter(e => !e.archived);
-  const archivedEmployees = employees.filter(e => e.archived);
+  const activeEmployees = employees.filter((e) => !e.archived);
+  const archivedEmployees = employees.filter((e) => e.archived);
   const currentList = tab === 'active' ? activeEmployees : archivedEmployees;
 
-  const filtered = currentList.filter(emp => {
-    const matchesSearch = emp.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          emp.employee_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          emp.department.toLowerCase().includes(searchTerm.toLowerCase());
+  const filtered = currentList.filter((emp) => {
+    const matchesSearch =
+      emp.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      emp.employee_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      emp.department.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'All' || emp.employee_category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
@@ -128,36 +149,58 @@ export default function EmployeeContractsPage() {
     return new Date(dateString).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
-  const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-
-  // Fixed: getActiveContract implemented (currently using direct fields)
-  const getActiveContract = (emp: Employee) => {
-    return {
-      contract_amount: emp.contract_amount || emp.annual_ctc || 0,
-      contract_period_months: emp.contract_period_months || 12,
-      start_date: emp.sal_applicable_from || '',
-      breakdown: {} as Record<string, number>, // not used now
-    };
-  };
+  const getInitials = (name: string) =>
+    name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
 
   const openContractModal = (emp: Employee) => {
     setSelectedEmployee(emp);
-    setContractForm({
-      annual_ctc: Number(emp.contract_amount) || Number(emp.annual_ctc) || 0,
-      contract_period_months: emp.contract_period_months || 12,
-      start_date: emp.sal_applicable_from || new Date().toISOString().split('T')[0],
-    });
+
+    // Pre-fill form with current values from employee
+    const initialForm: Record<string, number> = {
+      basic: Number(emp.basic) || 0,
+      hra: Number(emp.hra) || 0,
+      telephone_allowance: Number(emp.telephone_allowance) || 0,
+      travel_allowance: Number(emp.travel_allowance) || 0,
+      childrens_education_allowance: Number(emp.childrens_education_allowance) || 0,
+      supplementary_allowance: Number(emp.supplementary_allowance) || 0,
+      employer_pf: Number(emp.employer_pf) || 0,
+      employer_esi: Number(emp.employer_esi) || 0,
+      annual_bonus: Number(emp.annual_bonus) || 0,
+      annual_performance_incentive: Number(emp.annual_performance_incentive) || 0,
+      medical_premium: Number(emp.medical_premium) || 0,
+      medical_reimbursement_annual: Number(emp.medical_reimbursement_annual) || 0,
+      vehicle_reimbursement_annual: Number(emp.vehicle_reimbursement_annual) || 0,
+      driver_reimbursement_annual: Number(emp.driver_reimbursement_annual) || 0,
+      telephone_reimbursement_annual: Number(emp.telephone_reimbursement_annual) || 0,
+      meals_reimbursement_annual: Number(emp.meals_reimbursement_annual) || 0,
+      uniform_reimbursement_annual: Number(emp.uniform_reimbursement_annual) || 0,
+      leave_travel_allowance_annual: Number(emp.leave_travel_allowance_annual) || 0,
+      contract_amount: Number(emp.contract_amount) || 0,
+      contract_period_months: Number(emp.contract_period_months) || 12,
+    };
+
+    setContractForm(initialForm);
     setShowContractModal(true);
   };
 
   const saveContract = async () => {
     if (!selectedEmployee) return;
 
-    const payload = {
-      contract_amount: contractForm.annual_ctc,
-      contract_period_months: contractForm.contract_period_months,
-      sal_applicable_from: contractForm.start_date,
+    // Prepare payload - only include fields that exist in Employee model
+    const payload: Record<string, any> = {
+      contract_amount: contractForm.contract_amount ? Number(contractForm.contract_amount) : null,
+      contract_period_months: contractForm.contract_period_months ? Number(contractForm.contract_period_months) : null,
+      sal_applicable_from: contractForm.start_date || null,
     };
+
+    // Add all editable CTC fields
+    Object.entries(contractForm).forEach(([key, value]) => {
+      if (key !== 'contract_amount' && key !== 'contract_period_months' && key !== 'start_date') {
+        payload[key] = Number(value) || 0;
+      }
+    });
+
+    console.log('PATCH Payload to Employee:', payload);
 
     try {
       const res = await fetch(`${API_BASE}/employees/${selectedEmployee.id}/`, {
@@ -167,82 +210,108 @@ export default function EmployeeContractsPage() {
       });
 
       if (!res.ok) {
-        const error = await res.json();
-        throw new Error('Save failed: ' + JSON.stringify(error));
+        let errorMessage = await res.text();
+        try {
+          const jsonError = await res.json();
+          errorMessage = jsonError.detail || JSON.stringify(jsonError);
+        } catch {}
+        console.error('Server Error:', res.status, errorMessage);
+        throw new Error(`Failed: ${res.status} - ${errorMessage.slice(0, 200)}...`);
       }
 
       const updated = await res.json();
-      setEmployees(prev => prev.map(e => e.id === selectedEmployee.id ? updated : e));
+      console.log('Updated Employee:', updated);
+
+      // Update local state with fresh data
+      setEmployees((prev) => prev.map((e) => (e.id === selectedEmployee.id ? updated : e)));
       setShowContractModal(false);
-      alert('CTC updated successfully! Breakdown has been recalculated.');
+      alert('CTC updated successfully! All fields saved.');
     } catch (err: any) {
-      console.error(err);
+      console.error('Save failed:', err);
       alert('Failed to save: ' + err.message);
     }
   };
 
   const archiveEmployee = (employee: Employee) => {
-    setEmployees(prev => prev.map(e => e.id === employee.id ? { ...e, archived: true } : e));
+    setEmployees((prev) => prev.map((e) => (e.id === employee.id ? { ...e, archived: true } : e)));
     setSelectedEmployee(null);
   };
 
-  const downloadOfferLetter = () => {
-    if (!selectedEmployee) return;
+//   const downloadLetter = (letterType: string) => {
+//   if (!selectedEmployee) return;
 
-    const params = new URLSearchParams({
-      type: 'offer',
-      name: selectedEmployee.full_name,
-      empId: selectedEmployee.employee_id,
-      dept: selectedEmployee.department,
-      desig: selectedEmployee.designation,
-      joining: formatDate(selectedEmployee.joining_date),
-      ctc: (selectedEmployee.annual_ctc || 0).toString(),
-    });
+//   const params = new URLSearchParams({
+//     type: letterType,
+//     empId: selectedEmployee.employee_id,
+//     name: selectedEmployee.full_name,
+//     dept: selectedEmployee.department,
+//     desig: selectedEmployee.designation,
+//     joining: formatDate(selectedEmployee.joining_date),
+//     ctc: (selectedEmployee.annual_ctc || 0).toString(),
+//     // Add more params if needed: contract_amount, etc.
+//   });
 
-    window.open(`/letter.html?${params.toString()}`, '_blank');
-  };
+//   // Opens in new tab
+//   window.open(`/letter?${params.toString()}`, '_blank');
+// };
 
   return (
-    <div className="flex h-screen bg-gray-50">
-        {/* Fixed Sidebar */}
-        <div className="fixed inset-y-0 left-0 z-1 w-64 bg-white shadow-lg">
-          <Sidebar />
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
+      {/* Fixed Sidebar */}
+      <div className="fixed inset-y-0 left-0 z-1 w-64 bg-white shadow-lg overflow-y-auto">
+        <Sidebar />
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col ml-64">
+        {/* Fixed Navbar */}
+        <div className="fixed top-0 left-64 right-0 z-40 bg-white shadow-md">
+          <Navbar />
         </div>
 
-        {/* Main Content Area */}
-        <div className="flex-1 flex flex-col ml-64"> {/* ← Sidebar width ke baad start */}
-          {/* Fixed Navbar */}
-          <div className="fixed top-0 left-64 right-0 z-40 bg-white shadow-md">
-            <Navbar />
-          </div>
-
-          {/* Scrollable Main Content - Starts below Navbar */}
-          <main className="flex-1 overflow-y-auto pt-20 pb-10 px-6"> {/* ← pt-20 = Navbar height */}
-            <div className="max-w-7xl mx-auto">
-              {/* Header */}
-              <div className="flex justify-between items-center mb-8 mt-8">
-                <h1 className="text-3xl font-bold text-gray-800">Employee Contracts</h1>
-                <Link to="/ctc-components">
-                  <button className="flex items-center gap-3 px-6 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-semibold shadow-lg transition">
-                    <Settings size={22} />
-                    Manage CTC Components
-                  </button>
-                </Link>
-              </div>
+        {/* Scrollable Content */}
+        <main className="flex-1 overflow-y-auto pt-20 pb-10 px-6">
+          <div className="max-w-7xl mx-auto">
+            {/* Page Header */}
+            <div className="flex justify-between items-center mb-8 mt-8">
+              <h1 className="text-3xl font-bold text-gray-800">Employee Contracts</h1>
+              <Link to="/ctc-components">
+                <button className="flex items-center gap-3 px-6 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-semibold shadow-lg transition">
+                  <Settings size={22} />
+                  Manage CTC Components
+                </button>
+              </Link>
+            </div>
 
             {/* Filters */}
             <div className="flex flex-wrap gap-4 mb-8 items-center">
               <div className="flex gap-3">
-                <button onClick={() => setTab('active')} className={`px-6 py-3 rounded-xl font-medium transition ${tab === 'active' ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
+                <button
+                  onClick={() => setTab('active')}
+                  className={`px-6 py-3 rounded-xl font-medium transition ${
+                    tab === 'active' ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
                   Active ({activeEmployees.length})
                 </button>
-                <button onClick={() => setTab('archive')} className={`px-6 py-3 rounded-xl font-medium transition ${tab === 'archive' ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
+                <button
+                  onClick={() => setTab('archive')}
+                  className={`px-6 py-3 rounded-xl font-medium transition ${
+                    tab === 'archive' ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
                   Archive ({archivedEmployees.length})
                 </button>
               </div>
 
-              <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="px-5 py-3 border border-gray-300 rounded-xl bg-white font-medium">
-                {categories.map(cat => <option key={cat}>{cat}</option>)}
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="px-5 py-3 border border-gray-300 rounded-xl bg-white font-medium"
+              >
+                {categories.map((cat) => (
+                  <option key={cat}>{cat}</option>
+                ))}
               </select>
 
               <div className="relative flex-1 max-w-lg">
@@ -264,7 +333,7 @@ export default function EmployeeContractsPage() {
               <p className="text-center py-20 text-gray-500 text-xl">No employees found</p>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
-                {filtered.map(emp => (
+                {filtered.map((emp) => (
                   <div
                     key={emp.id}
                     onClick={() => setSelectedEmployee(emp)}
@@ -272,19 +341,23 @@ export default function EmployeeContractsPage() {
                   >
                     <div className="flex items-center gap-5 mb-5">
                       {emp.photo ? (
-                        <img src={emp.photo} alt={emp.full_name} className="w-16 h-16 rounded-full object-cover border-4 border-gray-200" />
+                        <img
+                          src={emp.photo}
+                          alt={emp.full_name}
+                          className="w-16 h-16 rounded-full object-cover border-4 border-gray-200"
+                        />
                       ) : (
                         <div className="w-16 h-16 rounded-full bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center text-white text-2xl font-bold">
                           {getInitials(emp.full_name)}
                         </div>
                       )}
                       <div>
-                        <p className="font-bold text-gray-900 text-lg">{emp.full_name}</p>
+                        <p className="font-bold text-gray-900 text-lg truncate">{emp.full_name}</p>
                         <p className="text-sm text-gray-500">{emp.employee_id}</p>
                       </div>
                     </div>
-                    <p className="text-base text-gray-700 mb-2 font-medium">{emp.designation}</p>
-                    <p className="text-sm text-gray-500 mb-6">{emp.department}</p>
+                    <p className="text-base text-gray-700 mb-2 font-medium truncate">{emp.designation}</p>
+                    <p className="text-sm text-gray-500 mb-6 truncate">{emp.department}</p>
                     <div className="space-y-2">
                       <div className="flex justify-between">
                         <span className="text-gray-600 font-medium">Annual CTC</span>
@@ -304,125 +377,149 @@ export default function EmployeeContractsPage() {
       </div>
 
       {/* Employee Details Modal */}
-      {selectedEmployee && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-6" onClick={() => setSelectedEmployee(null)}>
-          <div className="bg-white rounded-3xl shadow-3xl max-w-7xl w-full max-h-[95vh] overflow-y-auto p-10" onClick={(e) => e.stopPropagation()}>
-            {/* Header */}
-            <div className="flex justify-between items-start mb-12">
-              <div className="flex items-start gap-10">
-                <div>
-                  {selectedEmployee.photo ? (
-                    <img src={selectedEmployee.photo} alt={selectedEmployee.full_name} className="w-40 h-40 rounded-full object-cover border-8 border-gray-100 shadow-2xl" />
-                  ) : (
-                    <div className="w-40 h-40 rounded-full bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center text-white text-5xl font-bold shadow-2xl">
-                      {getInitials(selectedEmployee.full_name)}
-                    </div>
-                  )}
-                  <label className="block mt-6 cursor-pointer">
-                    <input type="file" accept="image/*" onChange={() => {}} className="hidden" />
-                    <span className="flex items-center justify-center gap-3 px-8 py-4 bg-gray-800 text-white rounded-xl hover:bg-gray-900 font-semibold shadow-lg transition">
-                      <Upload size={22} /> Upload Photo
-                    </span>
-                  </label>
-                </div>
-                <div>
-                  <h2 className="text-4xl font-bold text-gray-800 mb-2">{selectedEmployee.full_name}</h2>
-                  <p className="text-2xl text-gray-700 mb-8">{selectedEmployee.designation} • {selectedEmployee.department}</p>
-                  <div className="grid grid-cols-2 gap-8 text-lg">
-                    <div>
-                      <p className="text-gray-600"><strong>Employee ID:</strong> {selectedEmployee.employee_id}</p>
-                      <p className="text-gray-600"><strong>Mobile:</strong> {selectedEmployee.mobile}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600"><strong>Category:</strong> {selectedEmployee.employee_category}</p>
-                      <p className="text-gray-600"><strong>Joining Date:</strong> {formatDate(selectedEmployee.joining_date)}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              {tab === 'active' && (
-                <button
-                  onClick={() => archiveEmployee(selectedEmployee)}
-                  className="px-8 py-5 bg-red-600 text-white rounded-2xl hover:bg-red-700 font-bold text-xl flex items-center gap-4 shadow-lg transition"
-                >
-                  <Trash2 size={24} /> Archive Employee
-                </button>
-              )}
+{selectedEmployee && (
+  <div
+    className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+    onClick={() => setSelectedEmployee(null)}
+  >
+    <div
+      className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto relative"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* Prominent Close Button */}
+      <button
+        onClick={() => setSelectedEmployee(null)}
+        className="absolute top-4 right-4 z-10 text-gray-500 hover:text-gray-800 text-4xl font-light p-2 rounded-full hover:bg-gray-100 transition"
+        aria-label="Close modal"
+      >
+        ×
+      </button>
+
+      {/* Compact Header */}
+      <div className="flex items-start gap-5 p-5 border-b">
+        <div className="flex-shrink-0">
+          {selectedEmployee.photo ? (
+            <img
+              src={selectedEmployee.photo}
+              alt={selectedEmployee.full_name}
+              className="w-20 h-20 rounded-full object-cover border-4 border-gray-200 shadow-sm"
+            />
+          ) : (
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center text-white text-2xl font-bold shadow-sm">
+              {getInitials(selectedEmployee.full_name)}
             </div>
+          )}
+        </div>
 
-            {/* Current Active Contract */}
-            <div className="mb-16">
-              <div className="flex justify-between items-center mb-10">
-                <h3 className="text-3xl font-bold text-gray-800">Current Active Contract</h3>
-                <button
-                  onClick={() => openContractModal(selectedEmployee)}
-                  className="flex items-center gap-4 px-8 py-5 bg-teal-600 text-white rounded-2xl hover:bg-teal-700 font-bold text-xl shadow-2xl transition"
-                >
-                  <Edit2 size={24} /> Update Annual CTC
-                </button>
-              </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-xl font-bold text-gray-900 truncate">
+            {selectedEmployee.full_name}
+          </h2>
+          <p className="text-base text-gray-600 mt-1">
+            {selectedEmployee.designation} • {selectedEmployee.department}
+          </p>
 
-              <div className="bg-gradient-to-r from-teal-50 to-cyan-50 rounded-3xl p-12 border-4 border-teal-200">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-16 text-center">
+          <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+            <p><span className="font-medium">ID:</span> {selectedEmployee.employee_id}</p>
+            <p><span className="font-medium">Mobile:</span> {selectedEmployee.mobile}</p>
+            <p><span className="font-medium">Category:</span> {selectedEmployee.employee_category}</p>
+            <p><span className="font-medium">Joining:</span> {formatDate(selectedEmployee.joining_date)}</p>
+          </div>
+        </div>
+
+        {/* Close & Archive */}
+        <div className="flex flex-col items-end gap-2">
+          <button
+            onClick={() => setSelectedEmployee(null)}
+            className="text-gray-400 hover:text-gray-600 text-3xl leading-none"
+          >
+            ×
+          </button>
+          {tab === 'active' && (
+            <button
+              onClick={() => archiveEmployee(selectedEmployee)}
+              className="px-4 py-1.5 bg-red-50 text-red-700 rounded-md hover:bg-red-100 text-sm font-medium flex items-center gap-1.5"
+            >
+              <Trash2 size={14} /> Archive
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Current Active Contract */}
+      <div className="p-5">
+        <div className="flex justify-between items-center mb-5">
+          <h3 className="text-lg font-bold text-gray-900">Current Active Contract</h3>
+          <button
+            onClick={() => openContractModal(selectedEmployee)}
+            className="flex items-center gap-1.5 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium"
+          >
+            <Edit2 size={14} /> Update CTC
+          </button>
+        </div>
+
+              <div className="bg-gray-50 rounded-xl p-5">
+                <div className="grid grid-cols-3 gap-4 mb-5 text-center text-sm">
                   <div>
-                    <p className="text-gray-700 text-xl mb-4">Annual CTC</p>
-                    <p className="text-5xl font-extrabold text-teal-800">
+                    <p className="text-gray-600">Annual CTC</p>
+                    <p className="font-bold text-teal-700 text-base">
                       {formatSalary(selectedEmployee.annual_ctc || 0)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-gray-700 text-xl mb-4">Monthly CTC</p>
-                    <p className="text-5xl font-extrabold text-teal-800">
+                    <p className="text-gray-600">Monthly CTC</p>
+                    <p className="font-bold text-teal-700 text-base">
                       {formatSalary(selectedEmployee.monthly_ctc || 0)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-gray-700 text-xl mb-4">Effective From</p>
-                    <p className="text-4xl font-bold text-teal-800">
+                    <p className="text-gray-600">Effective From</p>
+                    <p className="font-medium text-teal-700 text-base">
                       {selectedEmployee.sal_applicable_from ? formatDate(selectedEmployee.sal_applicable_from) : 'Not set'}
                     </p>
                   </div>
                 </div>
 
-                <h4 className="text-3xl font-bold text-center text-gray-800 mb-10">CTC Breakdown</h4>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8">
-                  {ctcComponents.map(comp => {
+                {/* Compact CTC Breakdown */}
+                <h4 className="text-base font-semibold text-gray-800 mb-3">CTC Breakdown</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {ctcComponents.map((comp) => {
                     const fieldMap: Record<string, keyof Employee> = {
-                      'BASIC': 'basic',
-                      'HRA': 'hra',
-                      'TELEPHONE': 'telephone_allowance',
-                      'CONVEYANCE': 'travel_allowance',
-                      'EDUCATION': 'childrens_education_allowance',
-                      'GROSS_MONTHLY': 'gross_monthly',
-                      'ESIC': 'employer_esi',
-                      'PF': 'employer_pf',
-                      'MONTHLY_CTC': 'monthly_ctc',
-                      'MED_REIMB': 'medical_reimbursement_annual',
-                      'VEHICLE': 'vehicle_reimbursement_annual',
-                      'DRIVER': 'driver_reimbursement_annual',
-                      'TEL_REIMB': 'telephone_reimbursement_annual',
-                      'MEALS': 'meals_reimbursement_annual',
-                      'UNIFORM': 'uniform_reimbursement_annual',
-                      'LTA': 'leave_travel_allowance_annual',
-                      'ANNUAL_BONUS': 'annual_bonus',
-                      'PERF_INCENTIVE': 'annual_performance_incentive',
-                      'MED_PREMIUM': 'medical_premium',
-                      'GRATUITY': 'gratuity',
-                      'ANNUAL_CTC': 'annual_ctc',
+                      BASIC: 'basic',
+                      HRA: 'hra',
+                      TELEPHONE: 'telephone_allowance',
+                      CONVEYANCE: 'travel_allowance',
+                      EDUCATION: 'childrens_education_allowance',
+                      GROSS_MONTHLY: 'gross_monthly',
+                      ESIC: 'employer_esi',
+                      PF: 'employer_pf',
+                      MONTHLY_CTC: 'monthly_ctc',
+                      MED_REIMB: 'medical_reimbursement_annual',
+                      VEHICLE: 'vehicle_reimbursement_annual',
+                      DRIVER: 'driver_reimbursement_annual',
+                      TEL_REIMB: 'telephone_reimbursement_annual',
+                      MEALS: 'meals_reimbursement_annual',
+                      UNIFORM: 'uniform_reimbursement_annual',
+                      LTA: 'leave_travel_allowance_annual',
+                      ANNUAL_BONUS: 'annual_bonus',
+                      PERF_INCENTIVE: 'annual_performance_incentive',
+                      MED_PREMIUM: 'medical_premium',
+                      GRATUITY: 'gratuity',
+                      ANNUAL_CTC: 'annual_ctc',
                     };
 
                     const field = fieldMap[comp.code] || 'basic';
                     const value = Number(selectedEmployee[field]) || 0;
 
                     return (
-                      <div key={comp.id} className="bg-white rounded-2xl p-8 shadow-2xl text-center border-2 border-gray-100 hover:border-teal-300 transition">
-                        <p className="text-lg font-semibold text-gray-700 mb-4">{comp.name}</p>
-                        <p className="text-3xl font-extrabold text-teal-700 mb-3">
+                      <div
+                        key={comp.id}
+                        className="bg-white rounded-lg p-3 shadow-sm text-center border border-gray-100"
+                      >
+                        <p className="text-xs font-medium text-gray-600 mb-1 truncate">{comp.name}</p>
+                        <p className="text-base font-bold text-teal-700">
                           {formatSalary(value)}
                         </p>
-                        {comp.formula && (
-                          <p className="text-sm text-gray-500 italic">Formula: {comp.formula}</p>
-                        )}
                       </div>
                     );
                   })}
@@ -430,106 +527,194 @@ export default function EmployeeContractsPage() {
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex justify-center gap-8 mt-16 pb-10">
-              <button
-                onClick={downloadOfferLetter}
-                className="px-12 py-6 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 font-bold text-2xl shadow-2xl transition"
-              >
-                Download Offer Letter
-              </button>
-            </div>
-
+            {/* Document Letters Dropdown */}
+      <div className="p-5 border-t">
+        <div className="relative inline-block text-left w-full">
+          <div>
             <button
-              onClick={() => setSelectedEmployee(null)}
-              className="absolute top-8 right-8 text-gray-400 hover:text-gray-700 text-5xl font-light"
+              type="button"
+              className="inline-flex w-full justify-center gap-x-3 rounded-md bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              onClick={() => document.getElementById('letter-dropdown')?.classList.toggle('hidden')}
+            >
+              <DocumentTextIcon className="h-5 w-5" />
+              Download Documents
+              <ChevronDownIcon className="h-5 w-5" aria-hidden="true" />
+            </button>
+          </div>
+
+          <div
+            id="letter-dropdown"
+            className="hidden absolute right-0 z-10 mt-2 w-72 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none"
+          >
+            <div className="py-1">
+              {[
+                { type: 'salary-revision', label: 'Salary Revision Letter' },
+                { type: 'confirmation', label: 'Confirmation Letter' },
+                { type: 'consultant-contract', label: 'Consultant Contract' },
+                { type: 'salary-breakdown', label: 'Salary Breakdown' },
+                { type: 'non-compete', label: 'Non-Compete Agreement' },
+                { type: 'non-disclosure', label: 'Non Disclosure Agreement' },
+                { type: 'code-of-ethics', label: 'Code of Ethics' },
+              ].map((item) => (
+                <button
+                  key={item.type}
+                  onClick={() => {
+                    if (!selectedEmployee) return;
+                    const params = new URLSearchParams({
+                      type: item.type,
+                      empId: selectedEmployee.id.toString(),
+                      name: selectedEmployee.full_name,
+                      dept: selectedEmployee.department,
+                      desig: selectedEmployee.designation,
+                      joining: formatDate(selectedEmployee.joining_date),
+                      ctc: (selectedEmployee.annual_ctc || 0).toString(),
+                    });
+                    window.open(`/letter?${params.toString()}`, '_blank');
+                    // Optional: close dropdown
+                    document.getElementById('letter-dropdown')?.classList.add('hidden');
+                  }}
+                  className="block w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+      {/* Compact Contract Update Modal */}
+      {showContractModal && selectedEmployee && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowContractModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Prominent Close Button */}
+            <button
+              onClick={() => setShowContractModal(false)}
+              className="absolute top-4 right-4 z-10 text-gray-500 hover:text-gray-800 text-4xl font-light p-2 rounded-full hover:bg-gray-100 transition"
+              aria-label="Close modal"
             >
               ×
             </button>
-          </div>
-        </div>
-      )}
 
-      {/* Contract Update Modal */}
-      {showContractModal && selectedEmployee && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-6" onClick={() => setShowContractModal(false)}>
-          <div className="bg-white rounded-3xl shadow-3xl max-w-5xl w-full p-12" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-10">
-              <h2 className="text-4xl font-bold text-gray-800">Update Annual CTC</h2>
-              <button onClick={() => setShowContractModal(false)} className="text-gray-400 hover:text-gray-700 text-5xl">×</button>
+            {/* Header */}
+            <div className="p-6 pb-4 border-b">
+              <h2 className="text-2xl font-bold text-gray-900">
+                Update CTC — {selectedEmployee.full_name}
+              </h2>
+              <p className="text-sm text-gray-600 mt-1">
+                {selectedEmployee.designation} • {selectedEmployee.department}
+              </p>
             </div>
 
-            <p className="text-2xl text-gray-700 mb-12">
-              <strong>{selectedEmployee.full_name}</strong> • {selectedEmployee.designation}
-            </p>
-
-            {/* Current Saved Values */}
-            <div className="bg-gray-50 rounded-2xl p-8 mb-12 border-2 border-gray-200">
-              <h3 className="text-2xl font-semibold text-gray-800 mb-6">Currently Saved in Database</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-10 text-xl">
-                <div className="text-center">
-                  <p className="text-gray-600 mb-3">Annual CTC</p>
-                  <p className="text-3xl font-bold text-teal-700">{formatSalary(selectedEmployee.annual_ctc || 0)}</p>
+            {/* Current Saved Snapshot */}
+            <div className="p-6 pb-4 bg-gray-50 border-b">
+              <h3 className="text-lg font-semibold text-gray-800 mb-3">Currently Saved</h3>
+              <div className="grid grid-cols-3 gap-6 text-sm">
+                <div>
+                  <p className="text-gray-600">Annual CTC</p>
+                  <p className="font-bold text-teal-700">{formatSalary(selectedEmployee.annual_ctc || 0)}</p>
                 </div>
-                <div className="text-center">
-                  <p className="text-gray-600 mb-3">Contract Period</p>
-                  <p className="text-3xl font-bold text-teal-700">{selectedEmployee.contract_period_months || 12} months</p>
+                <div>
+                  <p className="text-gray-600">Monthly CTC</p>
+                  <p className="font-bold text-teal-700">{formatSalary(selectedEmployee.monthly_ctc || 0)}</p>
                 </div>
-                <div className="text-center">
-                  <p className="text-gray-600 mb-3">Effective From</p>
-                  <p className="text-3xl font-bold text-teal-700">
+                <div>
+                  <p className="text-gray-600">Effective From</p>
+                  <p className="font-medium text-teal-700">
                     {selectedEmployee.sal_applicable_from ? formatDate(selectedEmployee.sal_applicable_from) : 'Not set'}
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Update Form */}
-            <h3 className="text-2xl font-semibold text-gray-800 mb-8">Enter New Values</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
-              <div>
-                <label className="block text-xl font-medium text-gray-700 mb-4">New Annual CTC (₹)</label>
-                <input
-                  type="number"
-                  value={contractForm.annual_ctc}
-                  onChange={(e) => setContractForm({ ...contractForm, annual_ctc: Number(e.target.value) || 0 })}
-                  className="w-full px-8 py-6 text-3xl border-4 border-gray-300 rounded-2xl focus:border-teal-600 focus:outline-none"
-                  placeholder="e.g. 1500000"
-                />
+            {/* Editable Fields - Compact Grid */}
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">Edit CTC Components</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {ctcComponents.map((comp) => {
+                  const fieldMap: Record<string, keyof Employee> = {
+                    BASIC: 'basic',
+                    HRA: 'hra',
+                    TELEPHONE: 'telephone_allowance',
+                    CONVEYANCE: 'travel_allowance',
+                    EDUCATION: 'childrens_education_allowance',
+                    GROSS_MONTHLY: 'gross_monthly',
+                    ESIC: 'employer_esi',
+                    PF: 'employer_pf',
+                    MONTHLY_CTC: 'monthly_ctc',
+                    MED_REIMB: 'medical_reimbursement_annual',
+                    VEHICLE: 'vehicle_reimbursement_annual',
+                    DRIVER: 'driver_reimbursement_annual',
+                    TEL_REIMB: 'telephone_reimbursement_annual',
+                    MEALS: 'meals_reimbursement_annual',
+                    UNIFORM: 'uniform_reimbursement_annual',
+                    LTA: 'leave_travel_allowance_annual',
+                    ANNUAL_BONUS: 'annual_bonus',
+                    PERF_INCENTIVE: 'annual_performance_incentive',
+                    MED_PREMIUM: 'medical_premium',
+                    GRATUITY: 'gratuity',
+                    ANNUAL_CTC: 'annual_ctc',
+                  };
+
+                  const field = fieldMap[comp.code] || 'basic';
+                  const savedValue = Number(selectedEmployee[field]) || 0;
+
+                  return (
+                    <div key={comp.id} className="space-y-1">
+                      <label className="block text-xs font-medium text-gray-700 truncate">
+                        {comp.name}
+                      </label>
+                      <input
+                        type="number"
+                        value={contractForm[field] ?? savedValue}
+                        onChange={(e) => {
+                          const value = Number(e.target.value) || 0;
+                          setContractForm((prev) => ({
+                            ...prev,
+                            [field]: value,
+                          }));
+                        }}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        placeholder="0"
+                      />
+                    </div>
+                  );
+                })}
               </div>
-              <div>
-                <label className="block text-xl font-medium text-gray-700 mb-4">Contract Period (months)</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={contractForm.contract_period_months}
-                  onChange={(e) => setContractForm({ ...contractForm, contract_period_months: Number(e.target.value) || 12 })}
-                  className="w-full px-8 py-6 text-2xl border-4 border-gray-300 rounded-2xl focus:border-teal-600 focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-xl font-medium text-gray-700 mb-4">Effective From</label>
-                <input
-                  type="date"
-                  value={contractForm.start_date}
-                  onChange={(e) => setContractForm({ ...contractForm, start_date: e.target.value })}
-                  className="w-full px-8 py-6 text-2xl border-4 border-gray-300 rounded-2xl focus:border-teal-600 focus:outline-none"
-                />
+
+              {/* Live Total Preview */}
+              <div className="mt-6 p-4 bg-teal-50 rounded-xl text-center">
+                <p className="text-sm text-gray-600">New Estimated Annual CTC</p>
+                <p className="text-2xl font-bold text-teal-700 mt-1">
+                  {formatSalary(
+                    Object.values(contractForm).reduce<number>((sum, val) => sum + Number(val || 0), 0)
+                  )}
+                </p>
               </div>
             </div>
 
-            <div className="flex justify-end gap-8 mt-16">
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-4 p-6 border-t">
               <button
                 onClick={() => setShowContractModal(false)}
-                className="px-12 py-6 bg-gray-200 text-gray-800 rounded-2xl font-bold text-2xl hover:bg-gray-300 transition"
+                className="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 text-sm font-medium"
               >
                 Cancel
               </button>
               <button
                 onClick={saveContract}
-                className="px-12 py-6 bg-teal-600 text-white rounded-2xl font-bold text-2xl shadow-2xl hover:bg-teal-700 transition"
+                className="px-6 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 text-sm font-medium shadow"
               >
-                Save & Recalculate
+                Save Changes
               </button>
             </div>
           </div>

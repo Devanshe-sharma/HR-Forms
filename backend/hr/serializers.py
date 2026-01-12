@@ -19,6 +19,18 @@ class EmployeeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Employee
         fields = '__all__'
+        extra_kwargs = {
+            # Auto-calculated fields read-only
+            'gross_monthly': {'read_only': True},
+            'monthly_ctc': {'read_only': True},
+            'gratuity': {'read_only': True},
+            'annual_ctc': {'read_only': True},
+            'equivalent_monthly_ctc': {'read_only': True},
+            # Make these writable & nullable
+            'contract_amount': {'required': False, 'allow_null': True},
+            'contract_period_months': {'required': False, 'allow_null': True},
+            'sal_applicable_from': {'required': False, 'allow_null': True},
+        }
 
 
 # Fixed class name: lowercase → PascalCase (standard Python/DRF convention)

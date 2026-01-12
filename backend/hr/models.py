@@ -1,11 +1,10 @@
 # hr/models.py
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 from datetime import timedelta
-import datetime
 
 
 class Profile(models.Model):
@@ -84,7 +83,7 @@ class Payslip(models.Model):
 
 
 # ======================================================
-# Employee — All 42 Salary Fields Here
+# Employee — All 22 CTC Components + Core Fields
 # ======================================================
 
 class Employee(models.Model):
@@ -107,28 +106,6 @@ class Employee(models.Model):
     exit_status = models.CharField(max_length=20, default="Active")
     sal_applicable_from = models.DateField(null=True, blank=True)
 
-    # CTC Core
-    basic = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    hra = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    telephone_allowance = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    travel_allowance = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    childrens_education_allowance = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    supplementary_allowance = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    employer_pf = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    employer_esi = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    annual_bonus = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    annual_performance_incentive = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    medical_premium = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-
-    # Reimbursements
-    medical_reimbursement_annual = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    vehicle_reimbursement_annual = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    driver_reimbursement_annual = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    telephone_reimbursement_annual = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    meals_reimbursement_annual = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    uniform_reimbursement_annual = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    leave_travel_allowance_annual = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-
     # Contract
     contract_amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     contract_period_months = models.PositiveIntegerField(null=True, blank=True)
@@ -139,7 +116,38 @@ class Employee(models.Model):
     reason_for_sal_review_not_applicable = models.TextField(blank=True)
     revision_due_date = models.DateField(null=True, blank=True)
 
-    # Auto-calculated
+    # ==================================================
+    # All 22 CTC Components (Editable + Auto-calculated)
+    # ==================================================
+
+    # CTC Core (editable)
+    basic = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    hra = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    telephone_allowance = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    travel_allowance = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    childrens_education_allowance = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+
+    # Statutory & Employer
+    employer_pf = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    employer_esi = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+
+    # Bonuses & Incentives (editable)
+    annual_bonus = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    annual_performance_incentive = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+
+    # Insurance & Premiums
+    medical_premium = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+
+    # Reimbursements (annual, editable)
+    medical_reimbursement_annual = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    vehicle_reimbursement_annual = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    driver_reimbursement_annual = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    telephone_reimbursement_annual = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    meals_reimbursement_annual = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    uniform_reimbursement_annual = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    leave_travel_allowance_annual = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+
+    # Auto-calculated fields (read-only)
     gross_monthly = models.DecimalField(max_digits=15, decimal_places=2, editable=False, default=0)
     monthly_ctc = models.DecimalField(max_digits=15, decimal_places=2, editable=False, default=0)
     gratuity = models.DecimalField(max_digits=15, decimal_places=2, editable=False, default=0)
@@ -150,32 +158,41 @@ class Employee(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
-        from decimal import Decimal
+        from decimal import Decimal, InvalidOperation
 
-        # Convert any non-Decimal values to Decimal
+        # All 22 CTC components + contract_amount
         fields_to_decimal = [
-            'basic', 'hra','telephone_allowance' 'travel_allowance', 'childrens_education_allowance', 'supplementary_allowance',
-            'employer_pf', 'employer_esi', 'annual_bonus', 'annual_performance_incentive',
-            'medical_premium', 'medical_reimbursement_annual', 'vehicle_reimbursement_annual',
-            'driver_reimbursement_annual', 'telephone_reimbursement_annual', 'meals_reimbursement_annual',
-            'uniform_reimbursement_annual', 'leave_travel_allowance_annual', 'contract_amount',
+            'basic', 'hra', 'telephone_allowance', 'travel_allowance',
+            'childrens_education_allowance', 'employer_pf', 'employer_esi',
+            'annual_bonus', 'annual_performance_incentive', 'medical_premium',
+            'medical_reimbursement_annual', 'vehicle_reimbursement_annual',
+            'driver_reimbursement_annual', 'telephone_reimbursement_annual',
+            'meals_reimbursement_annual', 'uniform_reimbursement_annual',
+            'leave_travel_allowance_annual', 'contract_amount',
         ]
+
         for field in fields_to_decimal:
             val = getattr(self, field)
-            if val is not None and not isinstance(val, Decimal):
-                setattr(self, field, Decimal(str(val)))
+            if val is not None:
+                if not isinstance(val, Decimal):
+                    try:
+                        setattr(self, field, Decimal(str(val)))
+                    except (InvalidOperation, ValueError, TypeError):
+                        setattr(self, field, Decimal('0.00'))
 
-        # Calculations
+        # Calculations (safe against None/zero)
         self.gross_monthly = (
             self.basic + self.hra + self.telephone_allowance + self.travel_allowance +
-            self.childrens_education_allowance + self.supplementary_allowance
-        )
+            self.childrens_education_allowance
+        ) or Decimal('0.00')
 
-        monthly_bonus = self.annual_bonus / Decimal('12') if self.annual_bonus else Decimal('0')
+        monthly_bonus = (self.annual_bonus / Decimal('12')) if self.annual_bonus else Decimal('0.00')
 
-        self.monthly_ctc = self.gross_monthly + self.employer_pf + self.employer_esi + monthly_bonus
+        self.monthly_ctc = (
+            self.gross_monthly + self.employer_pf + self.employer_esi + monthly_bonus
+        ) or Decimal('0.00')
 
-        self.gratuity = self.basic * Decimal('15') / Decimal('26')
+        self.gratuity = (self.basic * Decimal('15') / Decimal('26')) if self.basic else Decimal('0.00')
 
         self.annual_ctc = (
             self.monthly_ctc * Decimal('12') +
@@ -190,13 +207,13 @@ class Employee(models.Model):
             self.leave_travel_allowance_annual +
             self.annual_bonus +
             self.annual_performance_incentive
-        )
+        ) or Decimal('0.00')
 
         if self.contract_amount and self.contract_period_months:
             self.equivalent_monthly_ctc = self.contract_amount / Decimal(self.contract_period_months)
             self.annual_ctc = self.contract_amount
         else:
-            self.equivalent_monthly_ctc = Decimal('0')
+            self.equivalent_monthly_ctc = Decimal('0.00')
 
         super().save(*args, **kwargs)
 
@@ -208,13 +225,13 @@ class CTCComponent(models.Model):
     """
     Master list of all CTC components — fully managed by HR
     """
-    name = models.CharField(max_length=150, unique=True)          # e.g., "House Rent Allowance"
-    code = models.CharField(max_length=50, unique=True)           # e.g., "HRA" — used in formulas (uppercase, no spaces)
-    formula = models.TextField(blank=True, null=True)              # e.g., "BASIC * 0.4" or "500" or "IF(GROSS_MONTHLY < 21000, GROSS_MONTHLY * 0.0325, 0)"
-    order = models.PositiveIntegerField(default=0)                # Display order
-    is_active = models.BooleanField(default=True)                 # Soft delete
-    show_in_documents = models.BooleanField(default=True)         # Appear in offer letter, payslip, etc.
-    notes = models.TextField(blank=True)                          # Optional description for HR
+    name = models.CharField(max_length=150, unique=True)
+    code = models.CharField(max_length=50, unique=True)
+    formula = models.TextField(blank=True, null=True)
+    order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    show_in_documents = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='ctc_components')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -236,10 +253,7 @@ class Contract(models.Model):
     effective_from = models.DateField(help_text="Salary applicable from this date")
     total_annual_ctc = models.DecimalField(max_digits=16, decimal_places=2, help_text="Annual CTC entered by HR")
     
-    # All calculated values stored here — fully dynamic
-    breakdown = models.JSONField(default=dict, help_text="Key = component code, Value = amount (annual unless specified)")
-    
-    # Optional manual overrides (for special cases)
+    breakdown = models.JSONField(default=dict, help_text="Key = component code, Value = amount (annual)")
     manual_overrides = models.JSONField(default=dict, blank=True, help_text="e.g., {'TELEPHONE': 2000}")
     
     contract_period_months = models.PositiveIntegerField(null=True, blank=True)
@@ -260,7 +274,7 @@ class Contract(models.Model):
     def __str__(self):
         return f"{self.employee.full_name} - CTC ₹{self.total_annual_ctc} from {self.effective_from}"
 
-# User Profile for mobile number (used in forgot password)
+
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     mobile = models.CharField(max_length=15, blank=True, null=True)
@@ -269,7 +283,6 @@ class UserProfile(models.Model):
         return f"{self.user.username} - {self.mobile}"
 
 
-# OTP for password reset
 class OTP(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     otp = models.CharField(max_length=6)
