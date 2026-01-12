@@ -8,6 +8,7 @@ import SalaryRevision from "./pages/SalaryRevision";
 import ProtectedRoute from './components/ProtectedRoute';
 import Recruitment from "./pages/Recruitment";
 import CTCComponentsDashboard from "./components/CTCComponentsDashboard";
+import LetterTemplate from "./pages/LetterTemplate";
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
       
       <Route path="/recruitment" element={ <ProtectedRoute> <Recruitment /> </ProtectedRoute> } />
       <Route path="/ctc-components" element={<CTCComponentsDashboard />} />
+      <Route path="/letter" element={<LetterTemplate />} />
       
       {/* Safety */}
       <Route path="*" element={<Navigate to="/" />} />
