@@ -274,7 +274,7 @@ export default function EmployeeContractsPage() {
           <div className="max-w-7xl mx-auto">
             {/* Page Header */}
             <div className="flex justify-between items-center mb-8 mt-8">
-              <h1 className="text-3xl font-bold text-gray-800">Employee Contracts</h1>
+              <h1 className="text-3xl font-bold text-gray-800">Employee Documents</h1>
               <Link to="/ctc-components">
                 <button className="flex items-center gap-3 px-6 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-semibold shadow-lg transition">
                   <Settings size={22} />
@@ -552,8 +552,8 @@ export default function EmployeeContractsPage() {
                 { type: 'confirmation', label: 'Confirmation Letter' },
                 { type: 'consultant-contract', label: 'Consultant Contract' },
                 { type: 'salary-breakdown', label: 'Salary Breakdown' },
-                { type: 'non-compete', label: 'Non-Compete Agreement' },
-                { type: 'non-disclosure', label: 'Non Disclosure Agreement' },
+                { type: 'non-compete-agreement', label: 'Non-Compete Agreement' },
+                { type: 'non-disclosure-agreement', label: 'Non Disclosure Agreement' },
                 { type: 'code-of-ethics', label: 'Code of Ethics' },
               ].map((item) => (
                 <button
