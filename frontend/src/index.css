@@ -24,3 +24,12 @@ input:focus, select:focus, textarea:focus {
   outline: none;
   @apply ring-4 ring-lime-300;
 }
+
+@media print {
+  @page {
+    margin-top: 10cm;
+    margin-bottom: 5cm;
+    margin-left: 5cm;
+    margin-right: 5cm;
+  }
+}
