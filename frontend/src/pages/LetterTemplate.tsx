@@ -982,6 +982,186 @@ export default function LetterTemplate() {
     </div>
 );
 
+const renderCodeOfEthics = () => (
+  <div className="max-w-4xl mx-auto p-10 mt- bg-white font-bold print:p-16 print:text-xs print:max-w-none">
+
+    {/* Header */}
+    <div className="text-center mb-4">
+      <h2 className='text-[20px]'>
+        Code of Ethics (Employees, Consultants, Contractual Staff)
+      </h2>
+    </div>
+
+    {/* Main Content */}
+    <ol className="list-decimal ml-4 space-y-2 text-justify">
+
+      {/* 1 */}
+      <li>
+        <span className="font-bold">
+          ADHERENCE TO COMPANY VISION, MISSION, VALUES AND GOALS:
+        </span>{" "}
+        Employees shall ensure that their work and actions are in alignment with
+        the Vision, Mission and Goals of the Company, which are as follows:
+
+        {/* a */}
+        <ol className="list-[lower-alpha] ml-6 mt-1 space-y-1">
+          <li>
+            <span className="font-bold">MISSION:</span> To develop unique
+            solutions, products and services, through Wisdom, Integrity and
+            Technology
+          </li>
+
+          <li>
+            <span className="font-bold">VALUES:</span> These shall serve as
+            guidelines to persons at all levels in the Company:
+
+            {/* i */}
+            <ol className="list-[lower-roman] ml-6 mt-1 space-y-1">
+              <li><span className="font-bold">WISDOM:</span> in all endeavors.</li>
+              <li><span className="font-bold">INTEGRITY:</span> in approach – what we promise, we deliver. Ethical dealings.</li>
+              <li><span className="font-bold">TECHNOLOGY focus:</span> a unique workplace, an exciting environment to innovate.</li>
+              <li><span className="font-bold">ASSOCIATES:</span> equality at work.</li>
+
+              {/* nested 1,2,3 */}
+              <ol className="list-decimal ml-6 mt-1 space-y-1">
+                <li>
+                  We have no employees. We are associates. Our associates’ needs,
+                  wants and aspirations are important to us. We create strong
+                  MOUs for growth and sharing. We create profits for self,
+                  clients, as a route to our wants and aspirations.
+                </li>
+                <li>
+                  Transparency, Flat Structure, Egalitarianism and Collaborative
+                  Decision Making: We believe these four go together. We believe
+                  in transparency in our dealings and expect the same from our
+                  employees and associates. We are flat against hierarchy and
+                  strive towards collaboration. Inflated egos are strictly not
+                  permitted.
+                </li>
+                <li>Equal focus at work and play.</li>
+              </ol>
+            </ol>
+          </li>
+
+          <li>
+            <span className="font-bold">VISION:</span> Be amongst top three
+            producers of technology products, solutions, services and talent in
+            India
+          </li>
+
+          <li>
+            <span className="font-bold">GOALS:</span>
+
+            <ol className="list-[lower-roman] ml-6 mt-1 space-y-1">
+              <li>
+                By March 2020:
+                <ol className="list-decimal ml-6 mt-1 space-y-1">
+                  <li>Known creator of unique technology solutions (amongst top 30 in India).</li>
+                  <li>Own a product line (5 new products by March 2015).</li>
+                  <li>
+                    Lead in software services
+                    <ol className="list-[lower-alpha] ml-6 mt-1">
+                      <li>ERPs: Amongst top 30 by March 2015.</li>
+                    </ol>
+                  </li>
+                  <li>Recognized creator of in-house talent.</li>
+                </ol>
+              </li>
+
+              <li>
+                By 2025: Amongst top 3 in our niche as technology solution providers.
+              </li>
+            </ol>
+          </li>
+        </ol>
+      </li>
+      <li>
+        AWARENESS OF AND ADHERANCE TO COMPANY POLICIES AND PROCEDURES, INCLUDING DISCIPLINARY PROCEDURES:
+        Employees shall keep themselves abreast of, and adhere to, Company Policies and Procedures, ignorance of which shall not be an acceptable reason for non-adherence.
+        </li>
+        <li>
+        LOYALTY: Loyalty is two-way. We shall be loyal to our associates, while expecting the same from them, i.e., they shall keep the interests of their associates and group in mind at all times.
+        </li>
+        <li>
+            OBLIGATION TO MAINTAIN SECRECY: Every employee shall maintain the strictest secrecy regarding the affairs of the Company, its associates OR subsidiaries wherever warranted and shall not divulge, directly or indirectly, any information of a confidential nature. The HR and Accounts Departments too shall ensure the utmost propriety while sharing information about employees’ emoluments with outside agencies like consultants, etc.
+
+        </li>
+        <li>
+            CONFLICT OF INTEREST: As a general rule, employees should also be aware of, avoid and disclose situations where there may be a conflict of their interest or benefits with the interests or benefits of the Company. These include situations where there would be questions of:
+            <ol className="list-[lower-alpha] ml-6 mt-1 space-y-1">
+                <li>
+                    Preferential treatment or Loss of impartiality.
+                </li>
+                <li>
+                    Compromising company efficiency or business ethics.
+                </li>
+                <li>
+                    Placing personal interest or interests of relatives or acquaintances over Company’s.
+                </li>
+                <li>
+                    CORPORATE OPPORTUNITIES: Employees may not exploit for personal gain opportunities discovered through use of corporate property, information or position, unless the opportunity is disclosed fully in writing to the Company and approved in writing.
+                </li>
+                <li>
+                    OTHER SITUATIONS: Since other conflicts of interest may arise, it would be impractical to attempt to list all situations. If a proposed transaction or situation raises questions or doubts of a conflict, employees must consult the Head HR and Admin or Legal Head.
+                </li>
+            </ol>
+
+        </li>
+        <li>
+            PAYMENTS OR GIFTS FROM OTHERS: Under no circumstances may Employees accept any offer, payment, promise to pay, or authorization to pay any money, gift, or anything of value from customers, vendors, consultants, etc., that is perceived as intended, directly or indirectly, to influence any business decision, any act or failure to act, any commitment of fraud, or opportunity for commitment of any fraud. Inexpensive gifts, infrequent business meals, celebratory events and entertainment, provided they are not excessive or create an appearance of impropriety, do not violate this policy. 
+            
+            <div className="max-w-4xl mx-auto p-8 mt-8 bg-white font-serif leading-snug text-sm print:p-16 print:text-xs print:max-w-none"></div>
+            
+            Before accepting anything which may not qualify as inexpensive or token gift from any entity, the Head HR may be consulted. Gifts given by Company to or received from suppliers or customers, should be appropriate to the circumstances and never be of a kind that could create an appearance of impropriety.
+
+        </li>
+        <li>USE OF COMPANY MATERIALS: Use of Company Materials. All manuals, forms and Training materials are the copyright of the Company and cannot be copied or taken out without specific approval of the CEO or Director.</li>
+        <li>ISSUE OF TESTIMONIALS, CERTIFICATES OF SERVICE, ETC.: Employees, in their individual capacity, shall not issue testimonials or certificates of service in respect of any Company employee / ex-employee – these shall be issued only by the HR Dept at the Corporate Office.</li>
+        <li>INTERACTION WITH MEDIA INCLUDING PRESS OR TV OR RADIO: Directors or CEO of the company or any executive authorized by a Director shall be the only ‘Spokesperson’ who would interact with media, radio, press, etc. No other employee of the Company can represent the Company in any article or in a radio orTV broadcast etc.</li>
+        <li>
+            DISCLOSURE: Our policy is to provide full, fair, accurate, timely, and understandable disclosure in reports and documents that are filed with, or submitted to any outside agency and in our other public communications. Accordingly, Employees must ensure that they and others in the Company comply with the Company’s disclosure controls and procedures.
+        </li>
+        <li>
+            COMPLIANCE WITH GOVERNMENT LAWS, RULES AND REGULATIONS: Employees must comply with all applicable governmental laws, rules and regulations. Employees must acquire appropriate knowledge of the legal requirements relating to their duties sufficiently, to enable them to recognize potential dangers, and to know when to seek advice. Employees must comply with the company’s internal policies. The Head HR and Admin and Legal Head, along with the Heads of various Departments or Business Units, will arrange training for those employees, who are discharging functions relating to compliance with the rules, laws, technical knowledge and research and development activities for their respective departments or units.
+        </li>
+        <li>
+            VIOLATIONS OF THE CODE: Part of an officer's job, and ethical responsibility, is to help maintain this Code. Employees should be alert to possible serious violations and report these to the Head HR and Admin. and Legal Head. Employees must co-operate in any internal or external investigations of possible violations. Reprisal, threat, retribution or retaliation against any person who has, in good faith, reported a violation ior suspected violation of law, this Code, or Company policies, or against a person assisting in such investigation or process, is prohibited.
+        </li>
+        <li>
+            The Company shall take appropriate action against any Employee whose actions are found to violate the Code or any other policy of the Company, after giving him a reasonable opportunity of being heard. Where laws have been violated, the Company will cooperate fully with the appropriate authorities and regulators.
+        </li>
+    </ol>
+    <p className='mt-10'>For Brisk Olive Business Solutions Pvt Ltd</p>
+    <p className='mt-20'>Authorized Signatory</p>
+
+    <h4 className='mt-4'>ACKNOWLEDGMENT OF RECEIPT OF CODE OF ETHICS</h4>
+    <p>(Please sign and return this form to the Head – HR and Administration for filing in the respective Employee’s Personal File.) I have received and read the Company's Code of Ethics for the Employees. I understand the standards and policies contained in the Code and understand that there may be additional policies or laws specific to my job. I agree to comply with the Code. If I have questions concerning the meaning or application of the Code, any Company policies, or the legal and regulatory requirements applicable to my job, I understand I can consult the Head – HR and Administration and Legal Head, and that my questions or reports to these sources will be maintained in confidence.
+</p>
+   <div className="mt-6 space-y-1">
+  <p>Signatures</p>
+
+  <p>
+    First Name: {firstName || "[First_Name_Custom]"}
+  </p>
+
+  {middleName?.trim() && (
+    <p>
+      Middle Name: {middleName}
+    </p>
+  )}
+
+  <p>
+    Surname: {lastName || "[Last_Name_Custom]"}
+  </p>
+
+  <p>
+    Designation: {employee?.designation || "[Designation_Custom]"}
+  </p>
+</div>
+
+
+  </div>
+);
 
   
   return (
@@ -998,8 +1178,8 @@ export default function LetterTemplate() {
       ? renderNonCompeteAgreement()
       : type === 'non-disclosure-agreement'
       ? renderNonDisclosureAgreement()
-    //   : type === 'code-of-ethics'
-    //   ? renderCodeOfEthics()
+      : type === 'code-of-ethics'
+      ? renderCodeOfEthics()
 
       : (
           <div className="p-10 text-center text-gray-600">
