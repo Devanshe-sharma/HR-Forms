@@ -8,7 +8,7 @@ import csv
 from io import TextIOWrapper
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
-from .models import CTCComponent
+from .models import CTCComponent, Department, Designation
 
 from import_export import resources
 from import_export.admin import ImportExportModelAdmin
@@ -40,9 +40,9 @@ class EmployeeResource(resources.ModelResource):
         return None
 
 
-# ========== CSV Import Form ==========
 class CsvImportForm(forms.Form):
     csv_file = forms.FileField(label="CSV file")
+
 
 
 # ========== Admins for other models ==========
@@ -261,3 +261,247 @@ class CTCComponentAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         return qs.order_by('order')
+    
+
+# ────────────────────────────────────────────────────────────────
+# Department Resource – explicit mapping for your exact headers
+# ────────────────────────────────────────────────────────────────
+class DepartmentResource(resources.ModelResource):
+    name = resources.Field(attribute='name', column_name='Department')
+    dept_page_link = resources.Field(attribute='dept_page_link', column_name='Dept Page Link (BO Internal Site)')
+    dept_head_email = resources.Field(attribute='dept_head_email', column_name='Dept Head Email')
+    dept_group_email = resources.Field(attribute='dept_group_email', column_name='Dept Group Email')
+    parent = resources.Field(
+        attribute='parent',
+        column_name='Parent Department',
+        widget=resources.widgets.ForeignKeyWidget(Department, 'name'),
+        default=None
+    )
+    department_type = resources.Field(attribute='department_type', column_name='Department Type (Delivery or Support)')
+
+    class Meta:
+        model = Department
+        skip_unchanged = True
+        report_skipped = True
+        import_id_fields = ('name',)
+        fields = ('name', 'dept_page_link', 'dept_head_email', 'dept_group_email', 'parent', 'department_type')
+
+    def before_import_row(self, row, row_result=None, **kwargs):
+        parent_name = (row.get('Parent Department') or '').strip()
+
+        if parent_name:
+            try:
+                parent = Department.objects.get(name=parent_name)
+                row['parent'] = parent.pk
+            except Department.DoesNotExist:
+                row['parent'] = None
+
+                # Only log diff if row_result exists
+                if row_result is not None:
+                    row_result.diff.append(
+                        f"Parent '{parent_name}' not found → set to None"
+                    )
+        else:
+            row['parent'] = None
+
+@admin.register(Department)
+class DepartmentAdmin(ImportExportModelAdmin):
+    resource_classes = [DepartmentResource]
+
+    list_display = ('name', 'department_type', 'dept_head_email', 'parent_display', 'has_children')
+    list_filter = ('department_type',)
+    search_fields = ('name', 'dept_head_email', 'dept_group_email')
+    ordering = ('name',)
+    readonly_fields = ('created_at', 'updated_at')
+
+    fieldsets = (
+        (None, {'fields': ('name', 'department_type', 'parent')}),
+        ('Contact & Links', {'fields': ('dept_head_email', 'dept_group_email', 'dept_page_link')}),
+        ('Timestamps', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
+    )
+
+    def parent_display(self, obj):
+        return obj.parent.name if obj.parent else "—"
+    parent_display.short_description = "Parent"
+
+    def has_children(self, obj):
+        return obj.children.exists()
+    has_children.boolean = True
+    has_children.short_description = "Has children"
+
+    # Keep your custom import view (optional – can coexist with import-export)
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('import-csv/', self.admin_site.admin_view(self.import_csv),
+                 name='hr_department_import_csv'),
+        ]
+        return custom_urls + urls
+
+    def import_csv(self, request):
+        # ... your existing custom import_csv code remains unchanged ...
+        # (you can keep it or remove if you prefer only import-export)
+        pass
+
+
+# ────────────────────────────────────────────────────────────────
+# Designation Resource – explicit mapping for your exact headers
+# ────────────────────────────────────────────────────────────────
+class DesignationResource(resources.ModelResource):
+    department = resources.Field(
+        attribute='department',
+        column_name='Department',
+        widget=resources.widgets.ForeignKeyWidget(Department, 'name')  # lookup by department name
+    )
+    name = resources.Field(
+        attribute='name',
+        column_name='Designation'
+    )
+    role_document_link = resources.Field(
+        attribute='role_document_link',
+        column_name='Role Document Link'
+    )
+    jd_link = resources.Field(
+        attribute='jd_link',
+        column_name='JD Link'
+    )
+    remarks = resources.Field(
+        attribute='remarks',
+        column_name='Remarks'
+    )
+    role_document_text = resources.Field(
+        attribute='role_document_text',
+        column_name='Role Document'
+    )
+
+    class Meta:
+        model = Designation
+        skip_unchanged = True
+        report_skipped = False          # show skipped rows with reason
+        import_id_fields = ('department', 'name')  # unique together
+        fields = (
+            'department', 'name', 'role_document_link', 'jd_link',
+            'remarks', 'role_document_text'
+        )
+
+
+@admin.register(Designation)
+class DesignationAdmin(ImportExportModelAdmin):
+    resource_classes = [DesignationResource]
+
+    list_display = ('name', 'department', 'jd_link_display', 'has_remarks')
+    list_filter = ('department__department_type', 'department')
+    search_fields = ('name', 'department__name')
+    ordering = ('department', 'name')
+    readonly_fields = ('created_at', 'updated_at')
+
+    fieldsets = (
+        (None, {'fields': ('department', 'name')}),
+        ('Documents', {'fields': ('role_document_link', 'jd_link', 'role_document_text')}),
+        ('Extra', {'fields': ('remarks',)}),
+        ('Timestamps', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
+    )
+
+    def jd_link_display(self, obj):
+        if obj.jd_link:
+            return format_html('<a href="{}" target="_blank">JD</a>', obj.jd_link)
+        return "—"
+    jd_link_display.short_description = "JD"
+
+    def has_remarks(self, obj):
+        return bool(obj.remarks)
+    has_remarks.boolean = True
+    has_remarks.short_description = "Remarks?"
+    resource_classes = [DesignationResource]
+
+    list_display = ('name', 'department', 'jd_link_display', 'has_remarks')
+    list_filter = ('department__department_type', 'department')
+    search_fields = ('name', 'department__name')
+    ordering = ('department', 'name')
+    readonly_fields = ('created_at', 'updated_at')
+
+    fieldsets = (
+        (None, {'fields': ('department', 'name')}),
+        ('Documents', {'fields': ('role_document_link', 'jd_link', 'role_document_text')}),
+        ('Extra', {'fields': ('remarks',)}),
+        ('Timestamps', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
+    )
+
+    def jd_link_display(self, obj):
+        if obj.jd_link:
+            return format_html('<a href="{}" target="_blank">JD</a>', obj.jd_link)
+        return "—"
+    jd_link_display.short_description = "JD"
+
+    def has_remarks(self, obj):
+        return bool(obj.remarks)
+    has_remarks.boolean = True
+    has_remarks.short_description = "Remarks?"
+
+    # Optional: keep custom CSV import alongside import-export
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('import-csv/', self.admin_site.admin_view(self.import_csv),
+                 name='hr_designation_import_csv'),
+        ]
+        return custom_urls + urls
+
+    def import_csv(self, request):
+        if request.method == "POST":
+            form = CsvImportForm(request.POST, request.FILES)
+            if form.is_valid():
+                csv_file = form.cleaned_data['csv_file']
+                file = TextIOWrapper(csv_file.file, encoding='utf-8')
+                reader = csv.DictReader(file)
+
+                created = 0
+                updated = 0
+                skipped = 0
+                errors = []
+
+                for row in reader:
+                    dept_name = row.get('Department', '').strip()
+                    desig_name = row.get('Designation', '').strip()
+
+                    if not dept_name or not desig_name:
+                        skipped += 1
+                        continue
+
+                    try:
+                        department = Department.objects.get(name=dept_name)
+                    except Department.DoesNotExist:
+                        errors.append(f"Department '{dept_name}' not found for '{desig_name}'")
+                        skipped += 1
+                        continue
+
+                    obj, is_new = Designation.objects.update_or_create(
+                        department=department,
+                        name=desig_name,
+                        defaults={
+                            'role_document_link': row.get('Role Document Link', '').strip() or None,
+                            'jd_link': row.get('JD Link', '').strip() or None,
+                            'remarks': row.get('Remarks', '').strip(),
+                            'role_document_text': row.get('Role Document', '').strip(),
+                        }
+                    )
+
+                    if is_new:
+                        created += 1
+                    else:
+                        updated += 1
+
+                msg = f"Designations import: {created} created, {updated} updated, {skipped} skipped."
+                if errors:
+                    msg += "\nErrors:\n" + "\n".join(errors)
+                self.message_user(request, msg, level='success' if not errors else 'warning')
+                return redirect('..')
+
+        form = CsvImportForm()
+        context = {
+            'form': form,
+            'title': 'Import Designations from CSV',
+            'opts': self.model._meta,
+            'app_label': self.model._meta.app_label,
+        }
+        return render(request, 'admin/hr/csv_form.html', context)

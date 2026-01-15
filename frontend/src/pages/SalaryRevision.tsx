@@ -547,44 +547,66 @@ export default function EmployeeContractsPage() {
             className="hidden absolute right-0 z-10 mt-2 w-72 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none"
           >
             <div className="py-1">
-              {[
-                { type: 'salary-revision', label: 'Salary Revision Letter' },
-                { type: 'confirmation', label: 'Confirmation Letter' },
-                { type: 'consultant-contract', label: 'Consultant Contract' },
-                { type: 'salary-breakdown', label: 'Salary Breakdown' },
-                { type: 'non-compete-agreement', label: 'Non-Compete Agreement' },
-                { type: 'non-disclosure-agreement', label: 'Non Disclosure Agreement' },
-                { type: 'code-of-ethics', label: 'Code of Ethics' },
-              ].map((item) => (
-                <button
-                  key={item.type}
-                  onClick={() => {
-                    if (!selectedEmployee) return;
-                    const params = new URLSearchParams({
-                      type: item.type,
-                      empId: selectedEmployee.id.toString(),
-                      name: selectedEmployee.full_name,
-                      dept: selectedEmployee.department,
-                      desig: selectedEmployee.designation,
-                      joining: formatDate(selectedEmployee.joining_date),
-                      ctc: (selectedEmployee.annual_ctc || 0).toString(),
-                    });
-                    window.open(`/letter?${params.toString()}`, '_blank');
-                    // Optional: close dropdown
-                    document.getElementById('letter-dropdown')?.classList.add('hidden');
-                  }}
-                  className="block w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-100"
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
+                {[
+                  { type: 'salary-revision', label: 'Salary Revision Letter' },
+                  { type: 'confirmation', label: 'Confirmation Letter' },
+                  { type: 'consultant-contract', label: 'Consultant Contract' },
+                  { type: 'salary-breakdown', label: 'Salary Breakdown' },
+                  { type: 'non-compete-agreement', label: 'Non-Compete Agreement' },
+                  { type: 'non-disclosure-agreement', label: 'Non Disclosure Agreement' },
+                  { type: 'code-of-ethics', label: 'Code of Ethics' },
+                  { type: 'internship-certificate', label: 'Internship Certificate' },
+                  { type: 'experience-certificate', label: 'Experience Certificate' },
+
+                  // ──────────────────────────────────────────────────────────────
+                  // Exit Clearance → open static Google Doc / Drive link directly
+                  // ──────────────────────────────────────────────────────────────
+                  {
+                    type: 'exit-clearance',
+                    label: 'Exit Clearance Form',
+                    directLink: 'https://docs.google.com/document/d/1d8MFqQAISbuOwP0SGM3IWBWf2J2V9s1O/edit',  
+                  },
+
+                  { type: 'Appointment-letter', label: 'Appointment Letter' },
+                  { type: 'offer-letter', label: 'Offer Letter' },
+                ].map((item) => (
+                  <button
+                    key={item.type}
+                    onClick={() => {
+                      if (!selectedEmployee) return;
+
+                      if (item.directLink) {
+                        // Open the real Exit Clearance document directly (no /letter route)
+                        window.open(item.directLink, '_blank', 'noopener,noreferrer');
+                      } else {
+                        // Normal dynamic letter generation for all other types
+                        const params = new URLSearchParams({
+                          type: item.type,
+                          empId: selectedEmployee.id.toString(),
+                          name: selectedEmployee.full_name,
+                          dept: selectedEmployee.department,
+                          desig: selectedEmployee.designation,
+                          joining: formatDate(selectedEmployee.joining_date),
+                          ctc: (selectedEmployee.annual_ctc || 0).toString(),
+                        });
+                        window.open(`/letter?${params.toString()}`, '_blank');
+                      }
+
+                      // Optional: close the dropdown/menu
+                      document.getElementById('letter-dropdown')?.classList.add('hidden');
+                    }}
+                    className="block w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
       {/* Compact Contract Update Modal */}
       {showContractModal && selectedEmployee && (

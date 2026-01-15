@@ -300,3 +300,87 @@ class OTP(models.Model):
 
     def __str__(self):
         return f"OTP {self.otp} for {self.user.username}"
+    
+
+# ────────────────────────────────────────────────────────────────
+# Department Master (supports hierarchy + type Delivery/Support)
+# ────────────────────────────────────────────────────────────────
+
+class Department(models.Model):
+    DEPARTMENT_TYPE_CHOICES = [
+        ('Delivery', 'Delivery'),
+        ('Support', 'Support'),
+    ]
+
+    name = models.CharField(max_length=120, unique=True, verbose_name="Department Name")
+    dept_page_link = models.URLField(max_length=500, blank=True, null=True,
+                                     verbose_name="Department Page Link (BO Internal)")
+    dept_head_email = models.EmailField(blank=True, null=True, verbose_name="Department Head Email")
+    dept_group_email = models.EmailField(blank=True, null=True, verbose_name="Department Group Email")
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='children',
+        verbose_name="Parent Department"
+    )
+    department_type = models.CharField(
+        max_length=20,
+        choices=DEPARTMENT_TYPE_CHOICES,
+        default='Delivery'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = "Department"
+        verbose_name_plural = "Departments"
+
+    def __str__(self):
+        return self.name
+
+    def get_hierarchy(self):
+        path = [self.name]
+        current = self.parent
+        while current:
+            path.append(current.name)
+            current = current.parent
+        return " → ".join(reversed(path))
+
+
+# ────────────────────────────────────────────────────────────────
+# Designation Master (linked to Department)
+# ────────────────────────────────────────────────────────────────
+
+class Designation(models.Model):
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.CASCADE,
+        related_name='designations'
+    )
+    name = models.CharField(max_length=120, verbose_name="Designation")
+    role_document_link = models.URLField(max_length=500, blank=True, null=True,
+                                         verbose_name="Role Document Link")
+    jd_link = models.URLField(max_length=500, blank=True, null=True,
+                              verbose_name="Job Description (JD) Link")
+    remarks = models.TextField(blank=True, null=True)
+    role_document_text = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Role Document Content (text fallback)"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['department', 'name']
+        unique_together = [['department', 'name']]
+        verbose_name = "Designation"
+        verbose_name_plural = "Designations"
+
+    def __str__(self):
+        return f"{self.name} • {self.department.name}"

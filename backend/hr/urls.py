@@ -5,6 +5,8 @@ from .views import (
     CandidateApplicationRetrieveUpdate,
     CustomLoginView,
     CountryViewSet,
+    DepartmentViewSet,
+    DesignationViewSet,
     StateViewSet,
     CityViewSet,
     EmployeeViewSet,
@@ -14,6 +16,8 @@ from .views import (
     reset_password,
     users_exist,
     setup_user,
+    DepartmentViewSet,
+    DesignationViewSet,
 )
 
 router = DefaultRouter()
@@ -22,6 +26,8 @@ router.register(r'states', StateViewSet, basename='state')
 router.register(r'cities', CityViewSet, basename='city')
 router.register(r'employees', EmployeeViewSet, basename='employee')
 router.register(r'ctc-components', CTCComponentViewSet)
+router.register(r'departments', DepartmentViewSet, basename='department')
+router.register(r'designations', DesignationViewSet, basename='designation')
 
 urlpatterns = [
     # Router URLs (countries, states, cities, employees)
