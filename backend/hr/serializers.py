@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import CandidateApplication, Country, State, City, Employee, CTCComponent, Contract, Payslip
+from .models import CandidateApplication, Country, Department, Designation, State, City, Employee, CTCComponent, Contract, Payslip
 
 class ContractSerializer(serializers.ModelSerializer):
     class Meta:
@@ -85,3 +85,27 @@ class CandidateApplicationSerializer(serializers.ModelSerializer):
         if obj.resume:
             return self.context["request"].build_absolute_uri(obj.resume.url)
         return None
+
+class DepartmentSerializer(serializers.ModelSerializer):
+    parent_name = serializers.CharField(source='parent.name', read_only=True, allow_null=True)
+    hierarchy = serializers.CharField(source='get_hierarchy', read_only=True)
+
+    class Meta:
+        model = Department
+        fields = [
+            'id', 'name', 'dept_page_link', 'dept_head_email', 'dept_group_email',
+            'parent', 'parent_name', 'department_type', 'hierarchy',
+            'created_at', 'updated_at'
+        ]
+
+
+class DesignationSerializer(serializers.ModelSerializer):
+    department_name = serializers.CharField(source='department.name', read_only=True)
+
+    class Meta:
+        model = Designation
+        fields = [
+            'id', 'department', 'department_name', 'name',
+            'role_document_link', 'jd_link', 'remarks', 'role_document_text',
+            'created_at', 'updated_at'
+        ]

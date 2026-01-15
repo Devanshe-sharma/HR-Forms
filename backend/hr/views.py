@@ -11,8 +11,8 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.filters import SearchFilter
 
-from .models import CTCComponent
-from .serializers import CTCComponentSerializer
+from .models import CTCComponent, Department, Designation
+from .serializers import CTCComponentSerializer, DepartmentSerializer, DesignationSerializer
 
 from django.contrib.auth.models import User
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
@@ -317,3 +317,18 @@ class ResetPasswordView(APIView):
         except User.DoesNotExist:
             return Response({'error': 'Invalid username'}, status=status.HTTP_400_BAD_REQUEST)
 
+class DepartmentViewSet(viewsets.ModelViewSet):
+    queryset = Department.objects.all()
+    serializer_class = DepartmentSerializer
+    permission_classes = [AllowAny]   # ← change later if needed
+    filter_backends = [SearchFilter]
+    search_fields = ['name', 'dept_head_email']
+
+
+class DesignationViewSet(viewsets.ModelViewSet):
+    queryset = Designation.objects.all()
+    serializer_class = DesignationSerializer
+    permission_classes = [AllowAny]
+    filter_backends = [SearchFilter, DjangoFilterBackend]
+    search_fields = ['name', 'department__name']
+    filterset_fields = ['department']
