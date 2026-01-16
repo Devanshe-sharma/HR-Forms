@@ -155,9 +155,9 @@ export default function LetterTemplate() {
           I accept the Company's terms and conditions and confirm my taking up the above position.
         </p>
         <div className="mt-6 space-y-1.5">
-          <p><strong>Signatures [Employee]:</strong></p>
+          <p><strong>Signatures:</strong></p>
           <p><strong>Name:</strong> {employee.full_name}</p>
-          <p><strong>Date:</strong></p>
+          <p><strong>Date:</strong> {today}</p>
         </div>
 
       </div>
