@@ -36,7 +36,7 @@ export default function OutsiderDashboard() {
 
       {/* Footer */}
       <footer className="bg-gray-800 text-white text-center py-8">
-        <p className="text-lg">© 2025 Brisk Olive. All rights reserved.</p>
+        <p className="text-lg">© 2026 Brisk Olive. All rights reserved.</p>
       </footer>
     </div>
   );
