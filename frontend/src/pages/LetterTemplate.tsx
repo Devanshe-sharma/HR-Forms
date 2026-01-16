@@ -1070,7 +1070,7 @@ export default function LetterTemplate() {
                 </li>
 
                 <li>
-                  By 2025: Amongst top 3 in our niche as technology solution providers.
+                  By 2026: Amongst top 3 in our niche as technology solution providers.
                 </li>
               </ol>
             </li>
