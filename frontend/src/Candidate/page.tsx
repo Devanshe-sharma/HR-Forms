@@ -67,8 +67,6 @@ export default function CandidateApplicationPage() {
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-
-
   const {
     register,
     handleSubmit,
@@ -81,20 +79,21 @@ export default function CandidateApplicationPage() {
       experience: 'No',
       relocation: 'Yes',
       whatsapp_same: false,
-      countries_code: '+91', // ✅ ADD THIS
+      countries_code: '+91', // Default to India
     },
   });
-
 
   const watchedState = watch('state');
   const experience = watch('experience');
 
-  // Fetch countries for phone code
+  // Fetch countries (with name + code)
   useEffect(() => {
     fetch('https://hr-forms.onrender.com/api/countries/')
       .then((res) => res.json())
-      .then((data: Country[]) => setCountries(data.sort((a, b) => a.name.localeCompare(b.name))))
-      .catch((err) => console.error(err));
+      .then((data: Country[]) => {
+        setCountries(data.sort((a, b) => a.name.localeCompare(b.name)));
+      })
+      .catch((err) => console.error('Failed to load countries:', err));
   }, []);
 
   // Fetch states
@@ -107,7 +106,7 @@ export default function CandidateApplicationPage() {
         setLoadingStates(false);
       })
       .catch((err) => {
-        console.error(err);
+        console.error('Failed to load states:', err);
         setLoadingStates(false);
       });
   }, []);
@@ -127,7 +126,7 @@ export default function CandidateApplicationPage() {
         setLoadingCities(false);
       })
       .catch((err) => {
-        console.error(err);
+        console.error('Failed to load cities:', err);
         setLoadingCities(false);
       });
   }, [watchedState, setValue]);
@@ -135,7 +134,6 @@ export default function CandidateApplicationPage() {
   useEffect(() => {
     setShowExperience(experience === 'Yes');
   }, [experience]);
-
 
   const onSubmit = async (data: FormData) => {
     console.log("Form data:", data);
@@ -207,7 +205,7 @@ export default function CandidateApplicationPage() {
     <div className="max-w-4xl mx-auto p-6 bg-white rounded-2xl shadow-2xl">
       <h2 className="text-4xl font-bold text-center text-lime-600 mb-10">Candidate Application Form</h2>
 
-      <form onSubmit={handleSubmit(onSubmit, (errors) => { console.log(' FORM ERRORS:', errors); alert('Form has errors. Check console 👀'); })} className="space-y-8" >
+      <form onSubmit={handleSubmit(onSubmit, (errors) => { console.log('FORM ERRORS:', errors); alert('Form has errors. Check console 👀'); })} className="space-y-8" >
         {/* Full Name */}
         <div>
           <label className="block text-lg font-medium text-gray-800 mb-2">Full Name</label>
@@ -275,7 +273,7 @@ export default function CandidateApplicationPage() {
           <label className="block text-lg font-medium text-gray-800 mb-4">Location</label>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">State</label>
+              <label className="block text-sm font-medium mb-2">State</label>
               <select
                 {...register('state')}
                 className="w-full px-5 py-3 border border-gray-300 rounded-lg focus:ring-4 focus:ring-lime-200 focus:border-lime-500"
@@ -291,7 +289,7 @@ export default function CandidateApplicationPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
+              <label className="block text-sm font-medium mb-2">City</label>
               <select
                 {...register('city')}
                 className="w-full px-5 py-3 border border-gray-300 rounded-lg focus:ring-4 focus:ring-lime-200 focus:border-lime-500"
@@ -367,8 +365,6 @@ export default function CandidateApplicationPage() {
             </p>
           )}
         </div>
-
-
 
         {/* Experience */}
         <div>
@@ -528,7 +524,6 @@ export default function CandidateApplicationPage() {
         </div>
 
         {/* Submit */}
-        {/* Submit Button with Spinner Loader */}
         <div className="text-center pt-8">
           <button
             type="submit"

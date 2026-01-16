@@ -9,7 +9,7 @@ import {
     ListItemText,
     // Toolbar,
     Avatar,
-    Typography,
+    // Typography,
     Box,
     Divider,
     Collapse
@@ -108,14 +108,14 @@ export default function Sidebar() {
                     <Avatar sx={{ width: 56, height: 56, mr: 2 }} src="/avatar.png" />
                 </NavLink>
                 <Box>
-                    <NavLink to="/profile" style={{ textDecoration: "none", color: "inherit" }}>
+                    {/* <NavLink to="/profile" style={{ textDecoration: "none", color: "inherit" }}>
                         <Typography variant="subtitle1" fontWeight={700}>
                             Diksha
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
                             HR Manager
                         </Typography>
-                    </NavLink>
+                    </NavLink> */}
                 </Box>
             </Box>
 
