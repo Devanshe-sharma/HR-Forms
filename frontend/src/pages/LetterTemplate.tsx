@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { formatSalary, formatDate } from '../utils/helpers'; // or '../utils/format' - use your correct path
+import { formatSalary, formatDate } from '../utils/helpers'; 
 
 const API_BASE = 'https://hr-forms.onrender.com/api';
 
