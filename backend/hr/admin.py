@@ -8,10 +8,10 @@ import csv
 from io import TextIOWrapper
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
-from .models import CTCComponent, Department, Designation
 
 from import_export import resources
 from import_export.admin import ImportExportModelAdmin
+from import_export.widgets import ForeignKeyWidget
 
 from .models import (
     CandidateApplication,
@@ -21,189 +21,129 @@ from .models import (
     JobDesignation,
     Employee,
     Payslip,
+    CTCComponent,
+    Department,
+    Designation,
 )
 
 
-# ========== ImportExport Resource for Employee ==========
-class EmployeeResource(resources.ModelResource):
-    class Meta:
-        model = Employee
-        exclude = ('id',)  # exclude Django PK to avoid conflicts
-
-    def get_instance(self, instance_loader, row):
-        employee_id = row.get('employee_id')
-        if employee_id:
-            try:
-                return Employee.objects.get(employee_id=employee_id)
-            except Employee.DoesNotExist:
-                return None
-        return None
-
-
+# ────────────────────────────────────────────────
+#  CSV Import Form (shared)
+# ────────────────────────────────────────────────
 class CsvImportForm(forms.Form):
     csv_file = forms.FileField(label="CSV file")
 
 
-
-# ========== Admins for other models ==========
+# ────────────────────────────────────────────────
+# CandidateApplication Admin
+# ────────────────────────────────────────────────
 @admin.register(CandidateApplication)
 class CandidateApplicationAdmin(admin.ModelAdmin):
-    # ────────────────────────────────────────────────
-    #  List view – which fields appear in the table
-    # ────────────────────────────────────────────────
     list_display = (
         'full_name',
         'email',
         'phone',
         'designation',
-        'experience_summary',
+        'experience_tag',
         'expected_monthly_ctc',
-        'location_summary',
-        'created_at',
-        'status_badge',           # optional – if you add status field later
+        'location',
+        'created_at_formatted',
     )
-    
-    list_display_links = ('full_name', 'email')
-    
-    # Makes rows clickable faster
-    list_per_page = 25
-    
-    # ────────────────────────────────────────────────
-    #  Search – which fields can be searched
-    # ────────────────────────────────────────────────
+
+    # Fixed: use direct relation fields instead of __name
+    list_filter = (
+        'designation',
+        'experience',
+        'relocation',
+        'state',          # ← shows states dropdown
+        'city',           # ← shows cities dropdown
+        'created_at',
+        'english_speak',
+        'hindi_speak',
+    )
+
     search_fields = (
         'full_name',
         'email',
         'phone',
         'designation',
-        'highest_qualification',
         'linkedin',
-        'facebookLink',
     )
-    
-    # ────────────────────────────────────────────────
-    #  Filters – sidebar filters
-    # ────────────────────────────────────────────────
-    list_filter = (
-        'designation',
-        'experience',
-        'relocation',
-        'state__name',               # if State is ForeignKey
-        'city__name',                # if City is ForeignKey
-        'created_at',
-        'hindi_speak',
-        'english_speak',
-    )
-    
-    # ────────────────────────────────────────────────
-    #  Ordering & date hierarchy
-    # ────────────────────────────────────────────────
-    ordering = ('-created_at',)
-    date_hierarchy = 'created_at'
-    
-    # ────────────────────────────────────────────────
-    #  Fieldsets – organize detail view (change form)
-    # ────────────────────────────────────────────────
+
+    readonly_fields = ('created_at', 'updated_at')
+
     fieldsets = (
-        ('Personal Information', {
-            'fields': (
-                'full_name',
-                'email',
-                'phone',
-                'whatsapp_same',
-                'dob',
-            )
+        ("Personal Info", {
+            'fields': ('full_name', 'email', 'phone', 'whatsapp_same', 'dob')
         }),
-        ('Location', {
-            'fields': (
-                'state',
-                'city',
-                'pin_code',
-                'relocation',
-            )
+        ("Location", {
+            'fields': ('state', 'city', 'pin_code', 'relocation')
         }),
-        ('Application Details', {
+        ("Job Details", {
             'fields': (
                 'designation',
                 'highest_qualification',
                 'experience',
-                'total_experience',
-                'current_ctc',
-                'notice_period',
-                'expected_monthly_ctc',
+                ('total_experience', 'current_ctc', 'notice_period'),
+                'expected_monthly_ctc'
             )
         }),
-        ('Language Proficiency', {
+        ("Language Proficiency", {
             'fields': (
                 ('hindi_read', 'hindi_write', 'hindi_speak'),
                 ('english_read', 'english_write', 'english_speak'),
             )
         }),
-        ('Social & Media', {
-            'fields': (
-                'facebookLink',
-                'linkedin',
-                'short_video_url',
-            )
+        ("Social & Video", {
+            'fields': ('facebookLink', 'linkedin', 'short_video_url')
         }),
-        ('Metadata', {
+        ("Timestamps", {
             'fields': ('created_at', 'updated_at'),
-            'classes': ('collapse',),
+            'classes': ('collapse',)
         }),
     )
-    
-    # ────────────────────────────────────────────────
-    #  Read-only fields in detail view
-    # ────────────────────────────────────────────────
-    readonly_fields = ('created_at', 'updated_at')
-    
-    # ────────────────────────────────────────────────
-    #  Custom methods for better list_display
-    # ────────────────────────────────────────────────
-    
-    @admin.display(description='Experience', ordering='total_experience')
-    def experience_summary(self, obj):
-        if obj.experience == 'No':
-            return "Fresher"
-        if obj.total_experience:
-            return f"{obj.total_experience} yrs"
-        return "Yes (no duration)"
-    
-    @admin.display(description='Location')
-    def location_summary(self, obj):
+
+    def experience_tag(self, obj):
+        if not obj.experience:
+            return "—"
+        color = "green" if obj.experience == "Yes" else "orange"
+        text = "Experienced" if obj.experience == "Yes" else "Fresher"
+        return format_html(
+            '<span style="color:{}; font-weight:600;">{}</span>',
+            color, text
+        )
+    experience_tag.short_description = "Experience"
+
+    def location(self, obj):
         parts = []
         if obj.city:
-            parts.append(str(obj.city))
+            parts.append(obj.city.name)
         if obj.state:
-            parts.append(str(obj.state))
-        return " → ".join(parts) or "—"
-    
-    @admin.display(description='Exp. CTC', ordering='expected_monthly_ctc')
-    def expected_monthly_ctc_formatted(self, obj):
-        if obj.expected_monthly_ctc:
-            return f"₹{obj.expected_monthly_ctc:,}"
-        return "—"
-    
-    # Optional – nice colored badge (if you later add status field)
-    @admin.display(description='Status')
-    def status_badge(self, obj):
-        # Example – customize when you add status
-        return format_html(
-            '<span style="background:#e0f7fa; color:#006064; padding:4px 8px; border-radius:12px;">New</span>'
-        )
+            parts.append(obj.state.name)
+        return " • ".join(parts) or "—"
+    location.short_description = "Location"
+
+    def created_at_formatted(self, obj):
+        return obj.created_at.strftime("%d %b %Y") if obj.created_at else "—"
+    created_at_formatted.short_description = "Applied On"
 
 
+# ────────────────────────────────────────────────
+# Simple location models
+# ────────────────────────────────────────────────
 @admin.register(Country)
 class CountryAdmin(admin.ModelAdmin):
     list_display = ('name', 'code')
-    search_fields = ('name',)
+    search_fields = ('name', 'code')
     ordering = ('name',)
 
 
 @admin.register(State)
 class StateAdmin(admin.ModelAdmin):
     list_display = ('name', 'country')
+    list_filter = ('country',)
     search_fields = ('name',)
+    ordering = ('name',)
 
 
 @admin.register(City)
@@ -211,8 +151,12 @@ class CityAdmin(admin.ModelAdmin):
     list_display = ('name', 'state')
     list_filter = ('state',)
     search_fields = ('name',)
+    ordering = ('name',)
 
 
+# ────────────────────────────────────────────────
+# JobDesignation (assuming this is different from Designation)
+# ────────────────────────────────────────────────
 @admin.register(JobDesignation)
 class JobDesignationAdmin(admin.ModelAdmin):
     list_display = ('name', 'jd_link_display')
@@ -225,14 +169,137 @@ class JobDesignationAdmin(admin.ModelAdmin):
     jd_link_display.short_description = "Job Description"
 
 
+# ────────────────────────────────────────────────
+# Payslip
+# ────────────────────────────────────────────────
 @admin.register(Payslip)
 class PayslipAdmin(admin.ModelAdmin):
     list_display = ('employee', 'month', 'file')
     list_filter = ('month',)
-    search_fields = ('employee__full_name',)
+    search_fields = ('employee__full_name', 'employee__employee_id')
 
 
-# ========== Main Employee Admin with ImportExport + CSV Import ==========
+# ────────────────────────────────────────────────
+# CTCComponent
+# ────────────────────────────────────────────────
+@admin.register(CTCComponent)
+class CTCComponentAdmin(admin.ModelAdmin):
+    list_display = ('name', 'code', 'formula', 'order', 'is_active', 'show_in_documents')
+    list_editable = ('order', 'is_active', 'show_in_documents')
+    list_filter = ('is_active', 'show_in_documents')
+    search_fields = ('name', 'code')
+    ordering = ('order',)
+
+
+# ────────────────────────────────────────────────
+# Department with import-export
+# ────────────────────────────────────────────────
+class DepartmentResource(resources.ModelResource):
+    parent = resources.Field(
+        attribute='parent',
+        column_name='Parent Department',
+        widget=ForeignKeyWidget(Department, 'name')
+    )
+
+    class Meta:
+        model = Department
+        import_id_fields = ('name',)
+        fields = ('name', 'department_type', 'parent', 'dept_page_link', 'dept_head_email', 'dept_group_email')
+        skip_unchanged = True
+        report_skipped = True
+
+
+@admin.register(Department)
+class DepartmentAdmin(ImportExportModelAdmin):
+    resource_class = DepartmentResource
+
+    list_display = ('name', 'department_type', 'dept_head_email', 'parent_display', 'has_children')
+    list_filter = ('department_type',)
+    search_fields = ('name', 'dept_head_email', 'dept_group_email')
+    ordering = ('name',)
+    readonly_fields = ('created_at', 'updated_at')
+
+    fieldsets = (
+        (None, {'fields': ('name', 'department_type', 'parent')}),
+        ('Contact & Links', {'fields': ('dept_head_email', 'dept_group_email', 'dept_page_link')}),
+        ('Timestamps', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
+    )
+
+    def parent_display(self, obj):
+        return obj.parent.name if obj.parent else "—"
+    parent_display.short_description = "Parent"
+
+    def has_children(self, obj):
+        return obj.children.exists()
+    has_children.boolean = True
+    has_children.short_description = "Has children"
+
+
+# ────────────────────────────────────────────────
+# Designation with import-export
+# ────────────────────────────────────────────────
+class DesignationResource(resources.ModelResource):
+    department = resources.Field(
+        attribute='department',
+        column_name='Department',
+        widget=ForeignKeyWidget(Department, 'name')
+    )
+
+    class Meta:
+        model = Designation
+        import_id_fields = ('department', 'name')
+        fields = ('department', 'name', 'role_document_link', 'jd_link', 'remarks', 'role_document_text')
+        skip_unchanged = True
+
+
+@admin.register(Designation)
+class DesignationAdmin(ImportExportModelAdmin):
+    resource_class = DesignationResource
+
+    list_display = ('name', 'department', 'jd_link_display', 'has_remarks')
+    list_filter = ('department__department_type', 'department')
+    search_fields = ('name', 'department__name')
+    ordering = ('department', 'name')
+    readonly_fields = ('created_at', 'updated_at')
+
+    fieldsets = (
+        (None, {'fields': ('department', 'name')}),
+        ('Documents', {'fields': ('role_document_link', 'jd_link', 'role_document_text')}),
+        ('Extra', {'fields': ('remarks',)}),
+        ('Timestamps', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
+    )
+
+    def jd_link_display(self, obj):
+        if obj.jd_link:
+            return format_html('<a href="{}" target="_blank">JD</a>', obj.jd_link)
+        return "—"
+    jd_link_display.short_description = "JD"
+
+    def has_remarks(self, obj):
+        return bool(obj.remarks)
+    has_remarks.boolean = True
+    has_remarks.short_description = "Remarks?"
+
+
+# ────────────────────────────────────────────────
+# Employee Admin – with CSV + import-export
+# ────────────────────────────────────────────────
+class EmployeeResource(resources.ModelResource):
+    class Meta:
+        model = Employee
+        exclude = ('id',)
+        import_id_fields = ('employee_id',)
+
+    def get_instance(self, instance_loader, row):
+        employee_id = row.get('employee_id')
+        if employee_id:
+            try:
+                return Employee.objects.get(employee_id=employee_id)
+            except Employee.DoesNotExist:
+                return None
+        return None
+
+
 @admin.register(Employee)
 class EmployeeAdmin(ImportExportModelAdmin):
     resource_class = EmployeeResource
@@ -278,7 +345,8 @@ class EmployeeAdmin(ImportExportModelAdmin):
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
-            path('import-csv/', self.admin_site.admin_view(self.import_csv), name='hr_employee_import_csv'),
+            path('import-csv/', self.admin_site.admin_view(self.import_csv),
+                 name='hr_employee_import_csv'),
         ]
         return custom_urls + urls
 
@@ -302,29 +370,21 @@ class EmployeeAdmin(ImportExportModelAdmin):
                     if not val:
                         return Decimal('0')
                     try:
-                        return Decimal(str(val).strip())
+                        return Decimal(str(val).strip().replace(',', ''))
                     except (InvalidOperation, ValueError):
                         return Decimal('0')
-
-                def parse_int(val):
-                    if not val:
-                        return None
-                    try:
-                        return int(val)
-                    except ValueError:
-                        return None
 
                 count = 0
                 for row in reader:
                     emp_id = row.get('employee_id')
                     official_email = row.get('Official Email')
 
-                    # Prevent duplicate official_email conflict
+                    # Avoid unique constraint violation
                     if official_email:
                         try:
-                            existing_emp = Employee.objects.get(official_email=official_email)
-                            if existing_emp.employee_id != emp_id:
-                                official_email = None  # avoid unique constraint violation
+                            existing = Employee.objects.get(official_email=official_email)
+                            if existing.employee_id != emp_id:
+                                official_email = ''
                         except Employee.DoesNotExist:
                             pass
 
@@ -365,7 +425,7 @@ class EmployeeAdmin(ImportExportModelAdmin):
                             'uniform_reimbursement_annual': parse_decimal(row.get('Uniform Reimbursement Annual')),
                             'leave_travel_allowance_annual': parse_decimal(row.get('Leave Travel Allowance Annual')),
                             'contract_amount': parse_decimal(row.get('Contract Amount')),
-                            'contract_period_months': parse_int(row.get('Contract Period (months)')),
+                            'contract_period_months': parse_date(row.get('Contract Period (months)')),
                             'next_sal_review_status': row.get('Next Sal Review Status', ''),
                             'next_sal_review_type': row.get('Next Sal Review Type', ''),
                             'reason_for_sal_review_not_applicable': row.get('Reason for Sal Review Not Applicable', ''),
@@ -374,12 +434,10 @@ class EmployeeAdmin(ImportExportModelAdmin):
                     )
                     count += 1
 
-                self.message_user(request, f"Successfully imported/updated {count} employees from CSV.")
+                self.message_user(request, f"Successfully processed {count} employees.")
                 return redirect("..")
 
-        else:
-            form = CsvImportForm()
-
+        form = CsvImportForm()
         context = {
             "form": form,
             "title": "Import Employees from CSV",
@@ -387,260 +445,3 @@ class EmployeeAdmin(ImportExportModelAdmin):
             "app_label": self.model._meta.app_label,
         }
         return render(request, "admin/hr/csv_form.html", context)
-    
-@admin.register(CTCComponent)
-class CTCComponentAdmin(admin.ModelAdmin):
-    list_display = ('name', 'code', 'formula', 'order', 'is_active', 'show_in_documents')
-    list_editable = ('order', 'is_active', 'show_in_documents')
-    list_filter = ('is_active', 'show_in_documents')
-    search_fields = ('name', 'code')
-    ordering = ('order',)
-
-    # Enable drag-and-drop reordering (optional but nice)
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        return qs.order_by('order')
-    
-
-# ────────────────────────────────────────────────────────────────
-# Department Resource – explicit mapping for your exact headers
-# ────────────────────────────────────────────────────────────────
-class DepartmentResource(resources.ModelResource):
-    name = resources.Field(attribute='name', column_name='Department')
-    dept_page_link = resources.Field(attribute='dept_page_link', column_name='Dept Page Link (BO Internal Site)')
-    dept_head_email = resources.Field(attribute='dept_head_email', column_name='Dept Head Email')
-    dept_group_email = resources.Field(attribute='dept_group_email', column_name='Dept Group Email')
-    parent = resources.Field(
-        attribute='parent',
-        column_name='Parent Department',
-        widget=resources.widgets.ForeignKeyWidget(Department, 'name'),
-        default=None
-    )
-    department_type = resources.Field(attribute='department_type', column_name='Department Type (Delivery or Support)')
-
-    class Meta:
-        model = Department
-        skip_unchanged = True
-        report_skipped = True
-        import_id_fields = ('name',)
-        fields = ('name', 'dept_page_link', 'dept_head_email', 'dept_group_email', 'parent', 'department_type')
-
-    def before_import_row(self, row, row_result=None, **kwargs):
-        parent_name = (row.get('Parent Department') or '').strip()
-
-        if parent_name:
-            try:
-                parent = Department.objects.get(name=parent_name)
-                row['parent'] = parent.pk
-            except Department.DoesNotExist:
-                row['parent'] = None
-
-                # Only log diff if row_result exists
-                if row_result is not None:
-                    row_result.diff.append(
-                        f"Parent '{parent_name}' not found → set to None"
-                    )
-        else:
-            row['parent'] = None
-
-@admin.register(Department)
-class DepartmentAdmin(ImportExportModelAdmin):
-    resource_classes = [DepartmentResource]
-
-    list_display = ('name', 'department_type', 'dept_head_email', 'parent_display', 'has_children')
-    list_filter = ('department_type',)
-    search_fields = ('name', 'dept_head_email', 'dept_group_email')
-    ordering = ('name',)
-    readonly_fields = ('created_at', 'updated_at')
-
-    fieldsets = (
-        (None, {'fields': ('name', 'department_type', 'parent')}),
-        ('Contact & Links', {'fields': ('dept_head_email', 'dept_group_email', 'dept_page_link')}),
-        ('Timestamps', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
-    )
-
-    def parent_display(self, obj):
-        return obj.parent.name if obj.parent else "—"
-    parent_display.short_description = "Parent"
-
-    def has_children(self, obj):
-        return obj.children.exists()
-    has_children.boolean = True
-    has_children.short_description = "Has children"
-
-    # Keep your custom import view (optional – can coexist with import-export)
-    def get_urls(self):
-        urls = super().get_urls()
-        custom_urls = [
-            path('import-csv/', self.admin_site.admin_view(self.import_csv),
-                 name='hr_department_import_csv'),
-        ]
-        return custom_urls + urls
-
-    def import_csv(self, request):
-        # ... your existing custom import_csv code remains unchanged ...
-        # (you can keep it or remove if you prefer only import-export)
-        pass
-
-
-# ────────────────────────────────────────────────────────────────
-# Designation Resource – explicit mapping for your exact headers
-# ────────────────────────────────────────────────────────────────
-class DesignationResource(resources.ModelResource):
-    department = resources.Field(
-        attribute='department',
-        column_name='Department',
-        widget=resources.widgets.ForeignKeyWidget(Department, 'name')  # lookup by department name
-    )
-    name = resources.Field(
-        attribute='name',
-        column_name='Designation'
-    )
-    role_document_link = resources.Field(
-        attribute='role_document_link',
-        column_name='Role Document Link'
-    )
-    jd_link = resources.Field(
-        attribute='jd_link',
-        column_name='JD Link'
-    )
-    remarks = resources.Field(
-        attribute='remarks',
-        column_name='Remarks'
-    )
-    role_document_text = resources.Field(
-        attribute='role_document_text',
-        column_name='Role Document'
-    )
-
-    class Meta:
-        model = Designation
-        skip_unchanged = True
-        report_skipped = False          # show skipped rows with reason
-        import_id_fields = ('department', 'name')  # unique together
-        fields = (
-            'department', 'name', 'role_document_link', 'jd_link',
-            'remarks', 'role_document_text'
-        )
-
-
-@admin.register(Designation)
-class DesignationAdmin(ImportExportModelAdmin):
-    resource_classes = [DesignationResource]
-
-    list_display = ('name', 'department', 'jd_link_display', 'has_remarks')
-    list_filter = ('department__department_type', 'department')
-    search_fields = ('name', 'department__name')
-    ordering = ('department', 'name')
-    readonly_fields = ('created_at', 'updated_at')
-
-    fieldsets = (
-        (None, {'fields': ('department', 'name')}),
-        ('Documents', {'fields': ('role_document_link', 'jd_link', 'role_document_text')}),
-        ('Extra', {'fields': ('remarks',)}),
-        ('Timestamps', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
-    )
-
-    def jd_link_display(self, obj):
-        if obj.jd_link:
-            return format_html('<a href="{}" target="_blank">JD</a>', obj.jd_link)
-        return "—"
-    jd_link_display.short_description = "JD"
-
-    def has_remarks(self, obj):
-        return bool(obj.remarks)
-    has_remarks.boolean = True
-    has_remarks.short_description = "Remarks?"
-    resource_classes = [DesignationResource]
-
-    list_display = ('name', 'department', 'jd_link_display', 'has_remarks')
-    list_filter = ('department__department_type', 'department')
-    search_fields = ('name', 'department__name')
-    ordering = ('department', 'name')
-    readonly_fields = ('created_at', 'updated_at')
-
-    fieldsets = (
-        (None, {'fields': ('department', 'name')}),
-        ('Documents', {'fields': ('role_document_link', 'jd_link', 'role_document_text')}),
-        ('Extra', {'fields': ('remarks',)}),
-        ('Timestamps', {'fields': ('created_at', 'updated_at'), 'classes': ('collapse',)}),
-    )
-
-    def jd_link_display(self, obj):
-        if obj.jd_link:
-            return format_html('<a href="{}" target="_blank">JD</a>', obj.jd_link)
-        return "—"
-    jd_link_display.short_description = "JD"
-
-    def has_remarks(self, obj):
-        return bool(obj.remarks)
-    has_remarks.boolean = True
-    has_remarks.short_description = "Remarks?"
-
-    # Optional: keep custom CSV import alongside import-export
-    def get_urls(self):
-        urls = super().get_urls()
-        custom_urls = [
-            path('import-csv/', self.admin_site.admin_view(self.import_csv),
-                 name='hr_designation_import_csv'),
-        ]
-        return custom_urls + urls
-
-    def import_csv(self, request):
-        if request.method == "POST":
-            form = CsvImportForm(request.POST, request.FILES)
-            if form.is_valid():
-                csv_file = form.cleaned_data['csv_file']
-                file = TextIOWrapper(csv_file.file, encoding='utf-8')
-                reader = csv.DictReader(file)
-
-                created = 0
-                updated = 0
-                skipped = 0
-                errors = []
-
-                for row in reader:
-                    dept_name = row.get('Department', '').strip()
-                    desig_name = row.get('Designation', '').strip()
-
-                    if not dept_name or not desig_name:
-                        skipped += 1
-                        continue
-
-                    try:
-                        department = Department.objects.get(name=dept_name)
-                    except Department.DoesNotExist:
-                        errors.append(f"Department '{dept_name}' not found for '{desig_name}'")
-                        skipped += 1
-                        continue
-
-                    obj, is_new = Designation.objects.update_or_create(
-                        department=department,
-                        name=desig_name,
-                        defaults={
-                            'role_document_link': row.get('Role Document Link', '').strip() or None,
-                            'jd_link': row.get('JD Link', '').strip() or None,
-                            'remarks': row.get('Remarks', '').strip(),
-                            'role_document_text': row.get('Role Document', '').strip(),
-                        }
-                    )
-
-                    if is_new:
-                        created += 1
-                    else:
-                        updated += 1
-
-                msg = f"Designations import: {created} created, {updated} updated, {skipped} skipped."
-                if errors:
-                    msg += "\nErrors:\n" + "\n".join(errors)
-                self.message_user(request, msg, level='success' if not errors else 'warning')
-                return redirect('..')
-
-        form = CsvImportForm()
-        context = {
-            'form': form,
-            'title': 'Import Designations from CSV',
-            'opts': self.model._meta,
-            'app_label': self.model._meta.app_label,
-        }
-        return render(request, 'admin/hr/csv_form.html', context)
