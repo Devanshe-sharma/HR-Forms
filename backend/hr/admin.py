@@ -41,7 +41,6 @@ class CsvImportForm(forms.Form):
 
 @admin.register(CandidateApplication)
 class CandidateApplicationAdmin(admin.ModelAdmin):
-    # 1. Table Columns (Matches your request: Name, Email, Mobile, Sal, Exp, Loc, Profile, Status)
     list_display = (
         'full_name',
         'email',
@@ -50,13 +49,11 @@ class CandidateApplicationAdmin(admin.ModelAdmin):
         'experience_tag',
         'location',
         'profile_link',
-        'status',  # This will be the dropdown in the table
+        'status',
     )
 
-    # 2. Enable HR to change status directly from the list view
     list_editable = ('status',)
 
-    # 3. Filters for easy navigation
     list_filter = (
         'status',
         'designation',
@@ -67,7 +64,6 @@ class CandidateApplicationAdmin(admin.ModelAdmin):
         'created_at',
     )
 
-    # 4. Search functionality
     search_fields = (
         'full_name',
         'email',
@@ -77,7 +73,6 @@ class CandidateApplicationAdmin(admin.ModelAdmin):
 
     readonly_fields = ('created_at', 'updated_at')
 
-    # 5. Detail View Layout (Organized into sections)
     fieldsets = (
         ("Application Status", {
             'fields': ('status',),
@@ -113,14 +108,14 @@ class CandidateApplicationAdmin(admin.ModelAdmin):
         }),
     )
 
-    # --- Custom Column Methods ---
+    # --- Fixed Custom Column Methods ---
 
     def experience_tag(self, obj):
-        """Displays a colored tag for Experience status"""
         if not obj.experience:
             return "—"
         color = "#28a745" if obj.experience == "Yes" else "#ffc107"
         text = "Experienced" if obj.experience == "Yes" else "Fresher"
+        # Correctly passing 'color' and 'text' as arguments to format_html
         return format_html(
             '<span style="color:{}; font-weight:bold;">{}</span>',
             color, text
@@ -128,7 +123,6 @@ class CandidateApplicationAdmin(admin.ModelAdmin):
     experience_tag.short_description = "Experience"
 
     def location(self, obj):
-        """Combines City and State into one column"""
         parts = []
         if obj.city:
             parts.append(obj.city.name)
@@ -138,26 +132,29 @@ class CandidateApplicationAdmin(admin.ModelAdmin):
     location.short_description = "Location"
 
     def profile_link(self, obj):
-        """Provides quick links to LinkedIn or Video in the table"""
+        """Fixed: correctly generates safe HTML links"""
         links = []
         if obj.linkedin:
-            links.append(f'<a href="{obj.linkedin}" target="_blank" title="LinkedIn">🔗 LI</a>')
+            links.append(format_html('<a href="{}" target="_blank" title="LinkedIn">🔗 LI</a>', obj.linkedin))
         if obj.short_video_url:
-            links.append(f'<a href="{obj.short_video_url}" target="_blank" title="Video">🎥 Video</a>')
+            links.append(format_html('<a href="{}" target="_blank" title="Video">🎥 Video</a>', obj.short_video_url))
         
-        return format_html(" | ".join(links) if links else "No Links")
+        if not links:
+            return "No Links"
+        
+        # We use mark_safe to join pre-formatted safe HTML segments
+        from django.utils.safestring import mark_safe
+        return mark_safe(" | ".join(links))
     profile_link.short_description = "Profile"
 
     def created_at_formatted(self, obj):
         return obj.created_at.strftime("%d %b %Y") if obj.created_at else "—"
     created_at_formatted.short_description = "Applied On"
 
-    # Optional: CSS to make the status dropdown look cleaner in the table
     class Media:
         css = {
             'all': ('admin/css/forms.css',)
         }
-
 # ────────────────────────────────────────────────
 # Simple location models
 # ────────────────────────────────────────────────
