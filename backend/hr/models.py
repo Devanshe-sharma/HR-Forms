@@ -52,17 +52,37 @@ class City(models.Model):
 
 
 class CandidateApplication(models.Model):
-    full_name = models.CharField(max_length=100)
-    email = models.EmailField()
-    phone = models.CharField(max_length=20)
-    designation = models.CharField(max_length=100, blank=True, null=True)
-    experience = models.CharField(max_length=10)
-    expected_monthly_ctc = models.CharField(max_length=20)
-    resume = models.FileField(upload_to="resumes/", blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    full_name           = models.CharField(max_length=255)
+    email               = models.EmailField()
+    phone               = models.CharField(max_length=20)
+    whatsapp_same       = models.BooleanField(default=False)
+    dob                 = models.DateField()
+    state               = models.ForeignKey("State", on_delete=models.SET_NULL, null=True)
+    city                = models.ForeignKey("City", on_delete=models.SET_NULL, null=True)
+    pin_code            = models.CharField(max_length=6)
+    relocation          = models.CharField(max_length=3, choices=[("Yes","Yes"),("No","No")])
+    designation         = models.CharField(max_length=100)
+    highest_qualification = models.CharField(max_length=100)
+    experience          = models.CharField(max_length=3, choices=[("Yes","Yes"),("No","No")])
+    total_experience    = models.CharField(max_length=50, blank=True)
+    current_ctc         = models.CharField(max_length=50, blank=True)
+    notice_period       = models.CharField(max_length=50, blank=True)
+    expected_monthly_ctc = models.CharField(max_length=50)
+    hindi_read          = models.CharField(max_length=20)
+    hindi_write         = models.CharField(max_length=20)
+    hindi_speak         = models.CharField(max_length=20)
+    english_read        = models.CharField(max_length=20)
+    english_write       = models.CharField(max_length=20)
+    english_speak       = models.CharField(max_length=20)
+    facebookLink        = models.URLField(blank=True)
+    linkedin            = models.URLField(blank=True)
+    short_video_url     = models.URLField(blank=True)
+    
+    created_at          = models.DateTimeField(auto_now_add=True)
+    updated_at          = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return self.full_name
+        return f"{self.full_name} – {self.designation}"
 
 
 class JobDesignation(models.Model):

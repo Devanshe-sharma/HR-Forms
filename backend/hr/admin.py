@@ -48,10 +48,149 @@ class CsvImportForm(forms.Form):
 # ========== Admins for other models ==========
 @admin.register(CandidateApplication)
 class CandidateApplicationAdmin(admin.ModelAdmin):
-    list_display = ('full_name', 'email', 'phone', 'designation', 'created_at')
-    search_fields = ('full_name', 'email')
-    list_filter = ('designation', 'created_at')
+    # ────────────────────────────────────────────────
+    #  List view – which fields appear in the table
+    # ────────────────────────────────────────────────
+    list_display = (
+        'full_name',
+        'email',
+        'phone',
+        'designation',
+        'experience_summary',
+        'expected_monthly_ctc',
+        'location_summary',
+        'created_at',
+        'status_badge',           # optional – if you add status field later
+    )
+    
+    list_display_links = ('full_name', 'email')
+    
+    # Makes rows clickable faster
+    list_per_page = 25
+    
+    # ────────────────────────────────────────────────
+    #  Search – which fields can be searched
+    # ────────────────────────────────────────────────
+    search_fields = (
+        'full_name',
+        'email',
+        'phone',
+        'designation',
+        'highest_qualification',
+        'linkedin',
+        'facebookLink',
+    )
+    
+    # ────────────────────────────────────────────────
+    #  Filters – sidebar filters
+    # ────────────────────────────────────────────────
+    list_filter = (
+        'designation',
+        'experience',
+        'relocation',
+        'state__name',               # if State is ForeignKey
+        'city__name',                # if City is ForeignKey
+        'created_at',
+        'hindi_speak',
+        'english_speak',
+    )
+    
+    # ────────────────────────────────────────────────
+    #  Ordering & date hierarchy
+    # ────────────────────────────────────────────────
     ordering = ('-created_at',)
+    date_hierarchy = 'created_at'
+    
+    # ────────────────────────────────────────────────
+    #  Fieldsets – organize detail view (change form)
+    # ────────────────────────────────────────────────
+    fieldsets = (
+        ('Personal Information', {
+            'fields': (
+                'full_name',
+                'email',
+                'phone',
+                'whatsapp_same',
+                'dob',
+            )
+        }),
+        ('Location', {
+            'fields': (
+                'state',
+                'city',
+                'pin_code',
+                'relocation',
+            )
+        }),
+        ('Application Details', {
+            'fields': (
+                'designation',
+                'highest_qualification',
+                'experience',
+                'total_experience',
+                'current_ctc',
+                'notice_period',
+                'expected_monthly_ctc',
+            )
+        }),
+        ('Language Proficiency', {
+            'fields': (
+                ('hindi_read', 'hindi_write', 'hindi_speak'),
+                ('english_read', 'english_write', 'english_speak'),
+            )
+        }),
+        ('Social & Media', {
+            'fields': (
+                'facebookLink',
+                'linkedin',
+                'short_video_url',
+            )
+        }),
+        ('Metadata', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',),
+        }),
+    )
+    
+    # ────────────────────────────────────────────────
+    #  Read-only fields in detail view
+    # ────────────────────────────────────────────────
+    readonly_fields = ('created_at', 'updated_at')
+    
+    # ────────────────────────────────────────────────
+    #  Custom methods for better list_display
+    # ────────────────────────────────────────────────
+    
+    @admin.display(description='Experience', ordering='total_experience')
+    def experience_summary(self, obj):
+        if obj.experience == 'No':
+            return "Fresher"
+        if obj.total_experience:
+            return f"{obj.total_experience} yrs"
+        return "Yes (no duration)"
+    
+    @admin.display(description='Location')
+    def location_summary(self, obj):
+        parts = []
+        if obj.city:
+            parts.append(str(obj.city))
+        if obj.state:
+            parts.append(str(obj.state))
+        return " → ".join(parts) or "—"
+    
+    @admin.display(description='Exp. CTC', ordering='expected_monthly_ctc')
+    def expected_monthly_ctc_formatted(self, obj):
+        if obj.expected_monthly_ctc:
+            return f"₹{obj.expected_monthly_ctc:,}"
+        return "—"
+    
+    # Optional – nice colored badge (if you later add status field)
+    @admin.display(description='Status')
+    def status_badge(self, obj):
+        # Example – customize when you add status
+        return format_html(
+            '<span style="background:#e0f7fa; color:#006064; padding:4px 8px; border-radius:12px;">New</span>'
+        )
 
 
 @admin.register(Country)
