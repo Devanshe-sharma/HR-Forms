@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 import Login from "./pages/Login";
 import Home from "./pages/Home";
 import HRDashboard from "./pages/HRDashboard";
@@ -9,6 +9,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Recruitment from "./pages/Recruitment";
 import CTCComponentsDashboard from "./components/CTCComponentsDashboard";
 import LetterTemplate from "./pages/LetterTemplate";
+import ComingSoon from "./pages/ComingSoon";
 
 export default function App() {
   return (
@@ -16,20 +17,59 @@ export default function App() {
       <Route path="/" element={<Login />} />
       <Route path="/home" element={<Home />} />
 
-      {/* Employee dashboards (same UI) */}
-      <Route path="/hr-dashboard" element={<HRDashboard />} />
+      {/* Employee dashboards */}
+      <Route path="/hr-dashboard" element={
+        <ProtectedRoute>
+          <HRDashboard />
+        </ProtectedRoute>
+      } />
 
       {/* Outsider */}
       <Route path="/outsider-dashboard" element={<OutsiderDashboard />} />
       <Route path="/candidate-application" element={<CandidateApplicationPage />} />
-      <Route path="/salary-revision" element={<ProtectedRoute><SalaryRevision /></ProtectedRoute>} />
-      
-      <Route path="/recruitment" element={ <ProtectedRoute> <Recruitment /> </ProtectedRoute> } />
-      <Route path="/ctc-components" element={<CTCComponentsDashboard />} />
-      <Route path="/letter" element={<LetterTemplate />} />
-      
-      {/* Safety */}
-      <Route path="*" element={<Navigate to="/" />} />
+
+      {/* Protected routes */}
+      <Route path="/salary-revision" element={
+        <ProtectedRoute>
+          <SalaryRevision />
+        </ProtectedRoute>
+      } />
+      <Route path="/recruitment" element={
+        <ProtectedRoute>
+          <Recruitment />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/ctc-components" element={
+        <ProtectedRoute>
+          <CTCComponentsDashboard />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/letter" element={
+        <ProtectedRoute>
+          <LetterTemplate />
+        </ProtectedRoute>
+      } />
+
+      {/* Placeholder protected routes for pages under development */}
+      <Route path="/employees" element={
+        <ProtectedRoute>
+          <ComingSoon />
+        </ProtectedRoute>
+      } />
+      <Route path="/candidates" element={
+        <ProtectedRoute>
+          <ComingSoon />
+        </ProtectedRoute>
+      } />
+
+      {/* Catch-all: Show ComingSoon if logged in, else redirect to login */}
+      <Route path="*" element={
+        <ProtectedRoute>
+          <ComingSoon />
+        </ProtectedRoute>
+      } />
     </Routes>
   );
 }
