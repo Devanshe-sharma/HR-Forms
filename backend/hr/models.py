@@ -62,47 +62,40 @@ class CandidateApplication(models.Model):
     full_name = models.CharField(max_length=255)
     email = models.EmailField(unique=True)
     phone = models.CharField(max_length=20)
-    whatsapp_same = models.BooleanField(default=False)
-    dob = models.DateField(null=True, blank=True)
 
-    # FIXED: Use local State and City models (no "locations." prefix)
+    whatsapp_same = models.BooleanField(default=False, null=True, blank=True)      # ← must have this
+    dob           = models.DateField(null=True, blank=True)
+
     state = models.ForeignKey(State, on_delete=models.SET_NULL, null=True, blank=True, related_name='candidate_applications')
-    city = models.ForeignKey(City, on_delete=models.SET_NULL, null=True, blank=True, related_name='candidate_applications')
+    city  = models.ForeignKey(City,  on_delete=models.SET_NULL, null=True, blank=True, related_name='candidate_applications')
 
-    pin_code = models.CharField(max_length=6, blank=True)
+    pin_code = models.CharField(max_length=6, blank=True, null=True)
+
     relocation = models.CharField(max_length=3, choices=[("Yes", "Yes"), ("No", "No")], default="Yes")
-    designation = models.CharField(max_length=100, blank=True, null=True)
 
+    designation          = models.CharField(max_length=100, blank=True, null=True)
     highest_qualification = models.CharField(max_length=100, blank=True, null=True)
+
     experience = models.CharField(max_length=3, choices=[("Yes", "Yes"), ("No", "No")], default="No")
 
-    total_experience = models.CharField(max_length=50, blank=True, null=True)
-    current_ctc = models.CharField(max_length=50, blank=True, null=True)
-    notice_period = models.CharField(max_length=50, blank=True, null=True)
-    expected_monthly_ctc = models.CharField(max_length=50)
+    total_experience     = models.CharField(max_length=50, blank=True, null=True)
+    current_ctc          = models.CharField(max_length=50, blank=True, null=True)
+    notice_period        = models.CharField(max_length=50, blank=True, null=True)
+    expected_monthly_ctc = models.CharField(max_length=50, blank=True, null=True)  # ← also make nullable
 
-    hindi_read = models.CharField(max_length=20, blank=True, null=True)
-    hindi_write = models.CharField(max_length=20, blank=True, null=True)
-    hindi_speak = models.CharField(max_length=20, blank=True, null=True)
-    english_read = models.CharField(max_length=20, blank=True, null=True)
-    english_write = models.CharField(max_length=20, blank=True, null=True)
-    english_speak = models.CharField(max_length=20, blank=True, null=True)
+    hindi_read   = models.CharField(max_length=20, blank=True, null=True)
+    hindi_write  = models.CharField(max_length=20, blank=True, null=True)
+    hindi_speak  = models.CharField(max_length=20, blank=True, null=True)
+    english_read   = models.CharField(max_length=20, blank=True, null=True)
+    english_write  = models.CharField(max_length=20, blank=True, null=True)
+    english_speak  = models.CharField(max_length=20, blank=True, null=True)
 
-    facebookLink = models.URLField(blank=True, default='')
-    linkedin = models.URLField(blank=True, default='')
-    short_video_url = models.URLField(blank=True, default='')
+    facebookLink     = models.URLField(blank=True, default='')
+    linkedin         = models.URLField(blank=True, default='')
+    short_video_url  = models.URLField(blank=True, default='')
 
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
-    updated_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
-
-    class Meta:
-        ordering = ['-created_at']
-        verbose_name = "Candidate Application"
-        verbose_name_plural = "Candidate Applications"
-
-    def __str__(self):
-        return f"{self.full_name} – {self.designation}"
-
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
 
 class JobDesignation(models.Model):
     name = models.CharField(max_length=100, unique=True)
