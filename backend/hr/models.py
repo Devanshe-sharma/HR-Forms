@@ -97,13 +97,34 @@ class CandidateApplication(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
 
+    STATUS_CHOICES = [
+        ('Applied', 'Applied'),
+        ('Shortlisted', 'Shortlisted'),
+        ('Rejected', 'Rejected'),
+        ('1st', '1st'),
+        ('2nd', '2nd'),
+        ('3rd', '3rd'),
+        ('Final Interview Round', 'Final Interview Round'),
+        ('Selected', 'Selected'),
+        ('Offer Letter Sent', 'Offer Letter Sent'),
+        ('Offer Letter Accepted', 'Offer Letter Accepted'),
+        ('Offer Letter Accepted But Not Joined', 'Offer Letter Accepted But Not Joined'),
+        ('Joined', 'Joined'),
+    ]
+
+    status = models.CharField(
+        max_length=50, 
+        choices=STATUS_CHOICES, 
+        default='Applied'
+    )
+
 class JobDesignation(models.Model):
     name = models.CharField(max_length=100, unique=True)
     jd_link = models.URLField(blank=True, null=True)
 
     def __str__(self):
         return self.name
-
+    
 
 class Payslip(models.Model):
     employee = models.ForeignKey('Employee', on_delete=models.CASCADE, related_name='payslips')

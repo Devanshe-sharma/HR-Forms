@@ -85,6 +85,18 @@ class CandidateApplicationSerializer(serializers.ModelSerializer):
         if obj.resume:
             return self.context["request"].build_absolute_uri(obj.resume.url)
         return None
+    # This creates a read-only field for the React table
+    location = serializers.SerializerMethodField()
+
+
+
+    def get_location(self, obj):
+        parts = []
+        if obj.city:
+            parts.append(obj.city.name)
+        if obj.state:
+            parts.append(obj.state.name)
+        return " • ".join(parts) if parts else "—"
 
 class DepartmentSerializer(serializers.ModelSerializer):
     parent_name = serializers.CharField(source='parent.name', read_only=True, allow_null=True)

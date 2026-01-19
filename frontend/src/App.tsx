@@ -10,6 +10,7 @@ import Recruitment from "./pages/Recruitment";
 import CTCComponentsDashboard from "./components/CTCComponentsDashboard";
 import LetterTemplate from "./pages/LetterTemplate";
 import ComingSoon from "./pages/ComingSoon";
+import AllApplicants from "./pages/AllApplicants";
 
 export default function App() {
   return (
@@ -63,6 +64,8 @@ export default function App() {
           <ComingSoon />
         </ProtectedRoute>
       } />
+
+      <Route path="/applicants" element={<AllApplicants />} />
 
       {/* Catch-all: Show ComingSoon if logged in, else redirect to login */}
       <Route path="*" element={

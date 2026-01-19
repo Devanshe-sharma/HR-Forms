@@ -37,42 +37,52 @@ class CsvImportForm(forms.Form):
 # ────────────────────────────────────────────────
 # CandidateApplication Admin
 # ────────────────────────────────────────────────
+
+
 @admin.register(CandidateApplication)
 class CandidateApplicationAdmin(admin.ModelAdmin):
+    # 1. Table Columns (Matches your request: Name, Email, Mobile, Sal, Exp, Loc, Profile, Status)
     list_display = (
         'full_name',
         'email',
         'phone',
-        'designation',
+        'current_ctc',
         'experience_tag',
-        'expected_monthly_ctc',
         'location',
-        'created_at_formatted',
+        'profile_link',
+        'status',  # This will be the dropdown in the table
     )
 
-    # Fixed: use direct relation fields instead of __name
+    # 2. Enable HR to change status directly from the list view
+    list_editable = ('status',)
+
+    # 3. Filters for easy navigation
     list_filter = (
+        'status',
         'designation',
         'experience',
         'relocation',
-        'state',          # ← shows states dropdown
-        'city',           # ← shows cities dropdown
+        'state',
+        'city',
         'created_at',
-        'english_speak',
-        'hindi_speak',
     )
 
+    # 4. Search functionality
     search_fields = (
         'full_name',
         'email',
         'phone',
         'designation',
-        'linkedin',
     )
 
     readonly_fields = ('created_at', 'updated_at')
 
+    # 5. Detail View Layout (Organized into sections)
     fieldsets = (
+        ("Application Status", {
+            'fields': ('status',),
+            'description': "Current stage of the candidate in the hiring pipeline."
+        }),
         ("Personal Info", {
             'fields': ('full_name', 'email', 'phone', 'whatsapp_same', 'dob')
         }),
@@ -103,18 +113,22 @@ class CandidateApplicationAdmin(admin.ModelAdmin):
         }),
     )
 
+    # --- Custom Column Methods ---
+
     def experience_tag(self, obj):
+        """Displays a colored tag for Experience status"""
         if not obj.experience:
             return "—"
-        color = "green" if obj.experience == "Yes" else "orange"
+        color = "#28a745" if obj.experience == "Yes" else "#ffc107"
         text = "Experienced" if obj.experience == "Yes" else "Fresher"
         return format_html(
-            '<span style="color:{}; font-weight:600;">{}</span>',
+            '<span style="color:{}; font-weight:bold;">{}</span>',
             color, text
         )
     experience_tag.short_description = "Experience"
 
     def location(self, obj):
+        """Combines City and State into one column"""
         parts = []
         if obj.city:
             parts.append(obj.city.name)
@@ -123,10 +137,26 @@ class CandidateApplicationAdmin(admin.ModelAdmin):
         return " • ".join(parts) or "—"
     location.short_description = "Location"
 
+    def profile_link(self, obj):
+        """Provides quick links to LinkedIn or Video in the table"""
+        links = []
+        if obj.linkedin:
+            links.append(f'<a href="{obj.linkedin}" target="_blank" title="LinkedIn">🔗 LI</a>')
+        if obj.short_video_url:
+            links.append(f'<a href="{obj.short_video_url}" target="_blank" title="Video">🎥 Video</a>')
+        
+        return format_html(" | ".join(links) if links else "No Links")
+    profile_link.short_description = "Profile"
+
     def created_at_formatted(self, obj):
         return obj.created_at.strftime("%d %b %Y") if obj.created_at else "—"
     created_at_formatted.short_description = "Applied On"
 
+    # Optional: CSS to make the status dropdown look cleaner in the table
+    class Media:
+        css = {
+            'all': ('admin/css/forms.css',)
+        }
 
 # ────────────────────────────────────────────────
 # Simple location models
