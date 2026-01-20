@@ -6,11 +6,12 @@ import OutsiderDashboard from "./pages/OutsiderDashboard";
 import CandidateApplicationPage from "./Candidate/page";
 import SalaryRevision from "./pages/SalaryRevision";
 import ProtectedRoute from './components/ProtectedRoute';
-import Recruitment from "./pages/Recruitment";
+import Recruitment from "./pages/RequisitionDashboard";
 import CTCComponentsDashboard from "./components/CTCComponentsDashboard";
 import LetterTemplate from "./pages/LetterTemplate";
 import ComingSoon from "./pages/ComingSoon";
 import AllApplicants from "./pages/AllApplicants";
+import NewRequisitionForm from "./pages/new-requisition-form";
 
 export default function App() {
   return (
@@ -73,6 +74,14 @@ export default function App() {
           <ComingSoon />
         </ProtectedRoute>
       } />
+      <Route 
+        path="/new-hiring-requisition" 
+        element={
+          <ProtectedRoute>
+            <NewRequisitionForm />
+          </ProtectedRoute>
+        } 
+      />
     </Routes>
   );
 }

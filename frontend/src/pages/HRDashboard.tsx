@@ -23,7 +23,7 @@ export default function HRDashboard() {
             <p className="text-2xl text-gray-600 mb-12">
               Select an option from the sidebar to get started
             </p>
-            <div className="bg-gray-200 border-2 border-dashed rounded-xl w-96 h-96 mx-auto" />
+            {/* <div className="bg-gray-200 border-2 border-dashed rounded-xl w-96 h-96 mx-auto" /> */}
           </div>
         </main>
       </div>
