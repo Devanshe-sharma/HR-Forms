@@ -318,7 +318,7 @@ export default function EmployeeContractsPage() {
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={22} />
                 <input
                   type="text"
-                  placeholder="Search employees..."
+                  placeholder="Search ..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-12 pr-6 py-3 border border-gray-300 rounded-xl focus:outline-none focus:border-teal-500 text-lg"
