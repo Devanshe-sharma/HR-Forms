@@ -25,7 +25,7 @@ import {
 import { format, addDays } from 'date-fns';
 
 // ────────────────────────────────────────────────────────────────
-// Zod Schema (complete)
+// Zod Schema
 // ────────────────────────────────────────────────────────────────
 const schema = z.object({
   requisitioner_name: z.string().min(1, 'Requisitioner is required'),
@@ -42,10 +42,10 @@ const schema = z.object({
   special_instructions: z.string().optional(),
   hiring_status: z.string().min(1, 'Hiring status is required'),
   employees_in_cc: z.array(z.string()).optional(),
-  role_n_jd_exist: z.enum(['Yes', 'No']).refine(val => val !== undefined, { message: 'Required' }),
-  role_n_jd_read: z.enum(['Yes', 'No']).refine(val => val !== undefined, { message: 'Required' }),
-  role_n_jd_good: z.enum(['Yes', 'No']).refine(val => val !== undefined, { message: 'Required' }),
-  days_well_thought: z.enum(['Yes', 'No']).refine(val => val !== undefined, { message: 'Required' }),
+  role_n_jd_exist: z.enum(['Yes', 'No']),
+  role_n_jd_read: z.enum(['Yes', 'No']),
+  role_n_jd_good: z.enum(['Yes', 'No']),
+  days_well_thought: z.enum(['Yes', 'No']),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -92,14 +92,13 @@ export default function NewRequisitionForm() {
       try {
         const [empRes, deptRes] = await Promise.all([
           fetch('https://hr-forms.onrender.com/api/employees'),
-          fetch('https://hr-forms.onrender.com/api/departments'),
+          fetch('https://hr-forms.onrender.com/api/department'),
         ]);
 
-        const empData = await empRes.json();
-        const deptData = await deptRes.json();
+        if (!empRes.ok || !deptRes.ok) throw new Error('Failed to fetch');
 
-        setEmployees(empData);
-        setDepartments(deptData);
+        setEmployees(await empRes.json());
+        setDepartments(await deptRes.json());
       } catch (err) {
         console.error('Failed to fetch data:', err);
         setError('Failed to load data from server');
@@ -142,15 +141,10 @@ export default function NewRequisitionForm() {
     const totalDays = parseInt(daysMatch[0], 10);
     const today = new Date();
 
-    const startSharing = addDays(today, 3);
-    const startInterviews = addDays(today, 8);
-    const offerAccepted = addDays(today, totalDays - 15);
-    const joiningDate = addDays(today, totalDays);
-
-    setValue('plan_start_sharing_cvs', format(startSharing, 'dd-MM-yyyy'));
-    setValue('planned_interviews_started', format(startInterviews, 'dd-MM-yyyy'));
-    setValue('planned_offer_accepted', format(offerAccepted, 'dd-MM-yyyy'));
-    setValue('planned_joined', format(joiningDate, 'dd-MM-yyyy'));
+    setValue('plan_start_sharing_cvs', format(addDays(today, 3), 'dd-MM-yyyy'));
+    setValue('planned_interviews_started', format(addDays(today, 8), 'dd-MM-yyyy'));
+    setValue('planned_offer_accepted', format(addDays(today, totalDays - 15), 'dd-MM-yyyy'));
+    setValue('planned_joined', format(addDays(today, totalDays), 'dd-MM-yyyy'));
   }, [selectJoiningDays, setValue]);
 
   const onSubmit = async (data: FormData) => {
@@ -159,13 +153,22 @@ export default function NewRequisitionForm() {
     setError(null);
 
     try {
-      console.log('Submitting new hiring:', data);
-      // Replace with real API call
-      // await fetch('https://hr-forms.onrender.com/api/hiring-requisitions', { ... });
+      const response = await fetch('https://hr-forms.onrender.com/api/hiring-requisitions/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.detail || 'Failed to submit');
+      }
 
       setSuccess('Hiring requisition submitted successfully! HR has been notified.');
-    } catch (err) {
-      setError('Failed to submit. Please try again.');
+    } catch (err: any) {
+      setError(err.message || 'Failed to submit. Please try again.');
     } finally {
       setSubmitLoading(false);
     }
@@ -308,7 +311,7 @@ export default function NewRequisitionForm() {
               20 days = joining at 0 days notice = 8 days(shortlist), 8(interview), 4(accept offer), 0(notice to old employer)
             </Typography>
             <Typography variant="body2" sx={{ mb: 0.5 }}>
-              35 days = joining at 15-days notice = 8,8,15
+              35 days = joining at 15-days notice = 8,8,4,15
             </Typography>
             <Typography variant="body2" sx={{ mb: 0.5 }}>
               50 days = joining at 30-days notice = 8,8,4,30
@@ -378,9 +381,18 @@ export default function NewRequisitionForm() {
                   render={({ field }) => (
                     <Select {...field} displayEmpty>
                       <MenuItem value="" disabled>Select hiring status</MenuItem>
-                      <MenuItem value="Urgent">Urgent</MenuItem>
-                      <MenuItem value="Regular">Regular</MenuItem>
-                      <MenuItem value="Future Planning">Future Planning</MenuItem>
+                      <MenuItem value="No Change in Status">No Change in Status</MenuItem>
+                      <MenuItem value="New">New</MenuItem>
+                      <MenuItem value="CVs Shortlisting Started">CVs Shortlisting Started</MenuItem>
+                      <MenuItem value="Interviews Started">Interviews Started</MenuItem>
+                      <MenuItem value="Offer Letter Sent">Offer Letter Sent</MenuItem>
+                      <MenuItem value="Offer Letter Accepted">Offer Letter Accepted</MenuItem>
+                      <MenuItem value="Offer Not Accepted, interviews restarted">Offer Not Accepted, interviews restarted</MenuItem>
+                      <MenuItem value="Offer Not Accepted, next Offer Sent">Offer Not Accepted, next Offer Sent</MenuItem>
+                      <MenuItem value="Joined">Joined</MenuItem>
+                      <MenuItem value="Not Joined, interviews restarted">Not Joined, interviews restarted</MenuItem>
+                      <MenuItem value="Not Joined, next Offer Sent">Not Joined, next Offer Sent</MenuItem>
+                      <MenuItem value="Hiring Stopped">Hiring Stopped</MenuItem>
                     </Select>
                   )}
                 />
@@ -439,7 +451,86 @@ export default function NewRequisitionForm() {
           </Box>
         </Box>
 
-        {/* CHECKLIST FOR HR WHILE HIRING (FOR INFO) */}
+        {/* CHECKLIST FOR DEPT RAISING THE HIRING REQUISITION */}
+        <Box sx={{ mb: 5 }}>
+          <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+            CHECKLIST FOR DEPT RAISING THE HIRING REQUISITION
+          </Typography>
+
+          <Box sx={{ mb: 3 }}>
+            <InputLabel shrink>Do the Role & JD Documents exist?</InputLabel>
+            <FormControl fullWidth error={!!errors.role_n_jd_exist}>
+              <Controller
+                name="role_n_jd_exist"
+                control={control}
+                render={({ field }) => (
+                  <Select {...field} displayEmpty>
+                    <MenuItem value="" disabled>Select</MenuItem>
+                    <MenuItem value="Yes">Yes</MenuItem>
+                    <MenuItem value="No">No</MenuItem>
+                  </Select>
+                )}
+              />
+              {errors.role_n_jd_exist && <FormHelperText>{errors.role_n_jd_exist.message}</FormHelperText>}
+            </FormControl>
+          </Box>
+
+          <Box sx={{ mb: 3 }}>
+            <InputLabel shrink>Have you read the Role & JD?</InputLabel>
+            <FormControl fullWidth error={!!errors.role_n_jd_read}>
+              <Controller
+                name="role_n_jd_read"
+                control={control}
+                render={({ field }) => (
+                  <Select {...field} displayEmpty>
+                    <MenuItem value="" disabled>Select</MenuItem>
+                    <MenuItem value="Yes">Yes</MenuItem>
+                    <MenuItem value="No">No</MenuItem>
+                  </Select>
+                )}
+              />
+              {errors.role_n_jd_read && <FormHelperText>{errors.role_n_jd_read.message}</FormHelperText>}
+            </FormControl>
+          </Box>
+
+          <Box sx={{ mb: 3 }}>
+            <InputLabel shrink>Are the Role & JD suitable & well made?</InputLabel>
+            <FormControl fullWidth error={!!errors.role_n_jd_good}>
+              <Controller
+                name="role_n_jd_good"
+                control={control}
+                render={({ field }) => (
+                  <Select {...field} displayEmpty>
+                    <MenuItem value="" disabled>Select</MenuItem>
+                    <MenuItem value="Yes">Yes</MenuItem>
+                    <MenuItem value="No">No</MenuItem>
+                  </Select>
+                )}
+              />
+              {errors.role_n_jd_good && <FormHelperText>{errors.role_n_jd_good.message}</FormHelperText>}
+            </FormControl>
+          </Box>
+
+          <Box sx={{ mb: 4 }}>
+            <InputLabel shrink>Are the days to fulfil the requirement practical and realistic?</InputLabel>
+            <FormControl fullWidth error={!!errors.days_well_thought}>
+              <Controller
+                name="days_well_thought"
+                control={control}
+                render={({ field }) => (
+                  <Select {...field} displayEmpty>
+                    <MenuItem value="" disabled>Select</MenuItem>
+                    <MenuItem value="Yes">Yes</MenuItem>
+                    <MenuItem value="No">No</MenuItem>
+                  </Select>
+                )}
+              />
+              {errors.days_well_thought && <FormHelperText>{errors.days_well_thought.message}</FormHelperText>}
+            </FormControl>
+          </Box>
+        </Box>
+
+        {/* HR CHECKLIST (INFO ONLY) */}
         <Box sx={{ mb: 5 }}>
           <Typography variant="h6" fontWeight="bold" gutterBottom>
             CHECKLIST FOR HR DEPT (ONLY FOR INFO OF HIRING DEPT)
@@ -451,30 +542,12 @@ export default function NewRequisitionForm() {
               Shortlist CVs Checklist
             </Typography>
             <FormGroup>
-              <FormControlLabel
-                control={<Checkbox disabled checked />}
-                label="Role And JD Checked Done?"
-              />
-              <FormControlLabel
-                control={<Checkbox disabled checked />}
-                label="Asked for Reference Done?"
-              />
-              <FormControlLabel
-                control={<Checkbox disabled checked />}
-                label="Checked Internal References Done?"
-              />
-              <FormControlLabel
-                control={<Checkbox disabled checked />}
-                label="Checked Internal Candidates Done?"
-              />
-              <FormControlLabel
-                control={<Checkbox disabled checked />}
-                label="Thanked All Applicants Done?"
-              />
-              <FormControlLabel
-                control={<Checkbox disabled checked />}
-                label="Emailed Shortlisted Candidates Done?"
-              />
+              <FormControlLabel control={<Checkbox disabled checked />} label="Role And JD Checked Done?" />
+              <FormControlLabel control={<Checkbox disabled checked />} label="Asked for Reference Done?" />
+              <FormControlLabel control={<Checkbox disabled checked />} label="Checked Internal References Done?" />
+              <FormControlLabel control={<Checkbox disabled checked />} label="Checked Internal Candidates Done?" />
+              <FormControlLabel control={<Checkbox disabled checked />} label="Thanked All Applicants Done?" />
+              <FormControlLabel control={<Checkbox disabled checked />} label="Emailed Shortlisted Candidates Done?" />
             </FormGroup>
           </Box>
 
@@ -484,22 +557,10 @@ export default function NewRequisitionForm() {
               Interviews Checklist
             </Typography>
             <FormGroup>
-              <FormControlLabel
-                control={<Checkbox disabled checked />}
-                label="All Interviews Logged Done?"
-              />
-              <FormControlLabel
-                control={<Checkbox disabled checked />}
-                label="Asked Interviewers To Use Role Doc Done?"
-              />
-              <FormControlLabel
-                control={<Checkbox disabled checked />}
-                label="Asked Interviewers To Use Tests Done?"
-              />
-              <FormControlLabel
-                control={<Checkbox disabled checked />}
-                label="Asked Interviewers Hire Only Best Done?"
-              />
+              <FormControlLabel control={<Checkbox disabled checked />} label="All Interviews Logged Done?" />
+              <FormControlLabel control={<Checkbox disabled checked />} label="Asked Interviewers To Use Role Doc Done?" />
+              <FormControlLabel control={<Checkbox disabled checked />} label="Asked Interviewers To Use Tests Done?" />
+              <FormControlLabel control={<Checkbox disabled checked />} label="Asked Interviewers Hire Only Best Done?" />
             </FormGroup>
           </Box>
 
@@ -509,10 +570,7 @@ export default function NewRequisitionForm() {
               Offer Letter Checklist
             </Typography>
             <FormGroup>
-              <FormControlLabel
-                control={<Checkbox disabled checked />}
-                label="Asked Confirmation In 2 Days Done?"
-              />
+              <FormControlLabel control={<Checkbox disabled checked />} label="Asked Confirmation In 2 Days Done?" />
             </FormGroup>
           </Box>
 
@@ -522,10 +580,7 @@ export default function NewRequisitionForm() {
               General Feedback
             </Typography>
             <FormGroup>
-              <FormControlLabel
-                control={<Checkbox disabled checked />}
-                label="Kept All Needed In Cc Done?"
-              />
+              <FormControlLabel control={<Checkbox disabled checked />} label="Kept All Needed In Cc Done?" />
             </FormGroup>
           </Box>
         </Box>
@@ -547,8 +602,3 @@ export default function NewRequisitionForm() {
     </Box>
   );
 }
-
-
-// function register(arg0: string): import("react/jsx-runtime").JSX.IntrinsicAttributes & { variant?: import("@mui/material").TextFieldVariants | undefined; } & Omit<import("@mui/material").OutlinedTextFieldProps | import("@mui/material").FilledTextFieldProps | import("@mui/material").StandardTextFieldProps, "variant"> {
-//   throw new Error('Function not implemented.');
-// }

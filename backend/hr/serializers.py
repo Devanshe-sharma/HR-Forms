@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import CandidateApplication, Country, Department, Designation, State, City, Employee, CTCComponent, Contract, Payslip
+from .models import CandidateApplication, Country, Department, Designation, HiringRequisition, State, City, Employee, CTCComponent, Contract, Payslip
 
 class ContractSerializer(serializers.ModelSerializer):
     class Meta:
@@ -121,3 +121,9 @@ class DesignationSerializer(serializers.ModelSerializer):
             'role_document_link', 'jd_link', 'remarks', 'role_document_text',
             'created_at', 'updated_at'
         ]
+
+class HiringRequisitionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HiringRequisition
+        fields = '__all__'
+        read_only_fields = ('ser', 'request_date', 'created_at', 'updated_at')

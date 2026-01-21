@@ -16,6 +16,7 @@ from import_export.widgets import ForeignKeyWidget
 from .models import (
     CandidateApplication,
     Country,
+    HiringRequisition,
     State,
     City,
     JobDesignation,
@@ -472,3 +473,9 @@ class EmployeeAdmin(ImportExportModelAdmin):
             "app_label": self.model._meta.app_label,
         }
         return render(request, "admin/hr/csv_form.html", context)
+    
+@admin.register(HiringRequisition)
+class HiringRequisitionAdmin(admin.ModelAdmin):
+    list_display = ('ser', 'requisitioner_name', 'hiring_dept', 'hiring_status', 'created_at')
+    list_filter = ('hiring_status', 'hiring_dept')
+    search_fields = ('requisitioner_name', 'ser')

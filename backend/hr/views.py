@@ -11,8 +11,8 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.filters import SearchFilter
 
-from .models import CTCComponent, Department, Designation
-from .serializers import CTCComponentSerializer, DepartmentSerializer, DesignationSerializer
+from .models import CTCComponent, Department, Designation, HiringRequisition
+from .serializers import CTCComponentSerializer, DepartmentSerializer, DesignationSerializer, HiringRequisitionSerializer
 
 from django.contrib.auth.models import User
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
@@ -332,3 +332,49 @@ class DesignationViewSet(viewsets.ModelViewSet):
     filter_backends = [SearchFilter, DjangoFilterBackend]
     search_fields = ['name', 'department__name']
     filterset_fields = ['department']
+
+
+class HiringRequisitionViewSet(viewsets.ModelViewSet):
+    queryset = HiringRequisition.objects.all().order_by('-created_at')
+    serializer_class = HiringRequisitionSerializer
+    permission_classes = [AllowAny]  # Change to IsAuthenticated later if needed
+
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        # Send email
+        send_hiring_email(instance)
+
+def send_hiring_email(requisition):
+    try:
+        subject = f"New Hiring Requisition: {requisition.ser} - {requisition.requisitioner_name}"
+        message = f"""
+New Hiring Requisition Submitted!
+
+Serial No: {requisition.ser}
+Request Date: {requisition.request_date}
+Requisitioner: {requisition.requisitioner_name} ({requisition.requisitioner_email})
+Hiring Department: {requisition.hiring_dept} ({requisition.hiring_dept_email})
+Designation: {requisition.hiring_designation or requisition.new_designation}
+Joining Days: {requisition.select_joining_days}
+Planned Joining: {requisition.planned_joined}
+Special Instructions: {requisition.special_instructions or 'None'}
+Hiring Status: {requisition.hiring_status or 'Not Set'}
+
+CC Emails: {', '.join(requisition.employees_in_cc or [])}
+
+View in admin: https://yourdomain.com/admin/hr/hiringrequisition/
+        """
+        from_email = settings.DEFAULT_FROM_EMAIL
+        recipient_list = ['hr.manager@briskolive.com']  # Change to real HR email
+        cc_list = requisition.employees_in_cc or []
+
+        send_mail(
+            subject,
+            message,
+            from_email,
+            recipient_list,
+            cc=cc_list,
+            fail_silently=False,
+        )
+    except Exception as e:
+        print(f"Email sending failed: {e}")

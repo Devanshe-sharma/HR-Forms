@@ -370,3 +370,58 @@ class Designation(models.Model):
 
     def __str__(self):
         return f"{self.name} • {self.department.name}"
+
+
+class HiringRequisition(models.Model):
+    # Requester Details
+    ser = models.CharField(max_length=20, unique=True, blank=True, null=True)
+    request_date = models.DateField(auto_now_add=True)
+    requisitioner_name = models.CharField(max_length=255)
+    requisitioner_email = models.EmailField(blank=True, null=True)
+
+    # Position to Hire
+    hiring_dept = models.CharField(max_length=255)
+    hiring_dept_email = models.EmailField(blank=True, null=True)
+    designation_status = models.CharField(max_length=50)
+    hiring_designation = models.CharField(max_length=255, blank=True, null=True)
+    new_designation = models.CharField(max_length=255, blank=True, null=True)
+    role_link = models.URLField(blank=True, null=True)
+    jd_link = models.URLField(blank=True, null=True)
+
+    # Days & Plan
+    select_joining_days = models.CharField(max_length=50)
+    plan_start_sharing_cvs = models.DateField(blank=True, null=True)
+    planned_interviews_started = models.DateField(blank=True, null=True)
+    planned_offer_accepted = models.DateField(blank=True, null=True)
+    planned_joined = models.DateField(blank=True, null=True)
+
+    # Additional
+    special_instructions = models.TextField(blank=True, null=True)
+    hiring_status = models.CharField(max_length=100, blank=True, null=True)
+    employees_in_cc = models.JSONField(default=list, blank=True)  # list of emails
+
+    # Checklist
+    role_n_jd_exist = models.CharField(max_length=3, choices=[('Yes', 'Yes'), ('No', 'No')], default='Yes')
+    role_n_jd_read = models.CharField(max_length=3, choices=[('Yes', 'Yes'), ('No', 'No')], default='Yes')
+    role_n_jd_good = models.CharField(max_length=3, choices=[('Yes', 'Yes'), ('No', 'No')], default='Yes')
+    days_well_thought = models.CharField(max_length=3, choices=[('Yes', 'Yes'), ('No', 'No')], default='Yes')
+
+    # HR Checklist (info only, not saved)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Hiring Requisition"
+        verbose_name_plural = "Hiring Requisitions"
+
+    def __str__(self):
+        return f"{self.ser} - {self.requisitioner_name}"
+
+    def save(self, *args, **kwargs):
+        if not self.ser:
+            # Generate unique serial (HR-YYYYMM-001 format)
+            today = timezone.now().strftime('%Y%m')
+            last = HiringRequisition.objects.filter(ser__startswith=f"HR-{today}").count()
+            self.ser = f"HR-{today}-{last+1:03d}"
+        super().save(*args, **kwargs)

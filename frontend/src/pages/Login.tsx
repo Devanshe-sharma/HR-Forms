@@ -78,7 +78,7 @@ export default function Login() {
       // Optional: Add small delay for smooth UX
       setTimeout(() => {
         navigate('/home');
-      }, 1500); // 1.5 seconds of beautiful loader
+      }, 1500); 
 
     } catch (err: any) {
       setError('Invalid username or password');
