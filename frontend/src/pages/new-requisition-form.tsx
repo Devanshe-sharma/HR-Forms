@@ -17,12 +17,15 @@ import {
   CircularProgress,
   Alert,
   Divider,
-//   Chip,
+  Checkbox,
+  FormControlLabel,
+  FormGroup,
+  Chip,
 } from '@mui/material';
 import { format, addDays } from 'date-fns';
 
 // ────────────────────────────────────────────────────────────────
-// Zod Schema (fixed - removed invalid required_error)
+// Zod Schema (complete)
 // ────────────────────────────────────────────────────────────────
 const schema = z.object({
   requisitioner_name: z.string().min(1, 'Requisitioner is required'),
@@ -39,10 +42,10 @@ const schema = z.object({
   special_instructions: z.string().optional(),
   hiring_status: z.string().min(1, 'Hiring status is required'),
   employees_in_cc: z.array(z.string()).optional(),
-  role_n_jd_exist: z.enum(['Yes', 'No']),
-  role_n_jd_read: z.enum(['Yes', 'No']),
-  role_n_jd_good: z.enum(['Yes', 'No']),
-  days_well_thought: z.enum(['Yes', 'No']),
+  role_n_jd_exist: z.enum(['Yes', 'No']).refine(val => val !== undefined, { message: 'Required' }),
+  role_n_jd_read: z.enum(['Yes', 'No']).refine(val => val !== undefined, { message: 'Required' }),
+  role_n_jd_good: z.enum(['Yes', 'No']).refine(val => val !== undefined, { message: 'Required' }),
+  days_well_thought: z.enum(['Yes', 'No']).refine(val => val !== undefined, { message: 'Required' }),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -64,6 +67,7 @@ export default function NewRequisitionForm() {
     watch,
     setValue,
     handleSubmit,
+    register,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -71,10 +75,10 @@ export default function NewRequisitionForm() {
       designation: '',
       select_joining_days: '',
       employees_in_cc: [],
-    //   role_n_jd_exist: 'Select',
-    //   role_n_jd_read: 'Select',
-    //   role_n_jd_good: 'Select',
-    //   days_well_thought: 'Select',
+      role_n_jd_exist: 'Yes',
+      role_n_jd_read: 'Yes',
+      role_n_jd_good: 'Yes',
+      days_well_thought: 'Yes',
     },
   });
 
@@ -342,82 +346,187 @@ export default function NewRequisitionForm() {
           </Box>
         </Box>
 
-        {/* CHECKLIST FOR DEPT RAISING THE HIRING REQUISITION */}
+        {/* Special Instructions + Hiring Status */}
         <Box sx={{ mb: 5 }}>
           <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-            CHECKLIST FOR DEPT RAISING THE HIRING REQUISITION
+            Enter Special Instructions to the HR Dept
           </Typography>
 
+          <Typography variant="body2" color="text.secondary" paragraph>
+            Clearly mention for which role you need the new employee; plus any other special requirements that you have.
+          </Typography>
+
+          <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', mb: 3 }}>
+            <Box sx={{ flex: '2 1 60%', minWidth: 300 }}>
+              <InputLabel shrink>Enter Special Instructions to the HR Dept</InputLabel>
+              <TextField
+                fullWidth
+                multiline
+                rows={3}
+                {...register('special_instructions')}
+                variant="standard"
+                sx={{ borderBottom: '1px solid #000' }}
+              />
+            </Box>
+
+            <Box sx={{ flex: '1 1 35%', minWidth: 250 }}>
+              <InputLabel shrink>Hiring Status</InputLabel>
+              <FormControl fullWidth error={!!errors.hiring_status}>
+                <Controller
+                  name="hiring_status"
+                  control={control}
+                  render={({ field }) => (
+                    <Select {...field} displayEmpty>
+                      <MenuItem value="" disabled>Select hiring status</MenuItem>
+                      <MenuItem value="Urgent">Urgent</MenuItem>
+                      <MenuItem value="Regular">Regular</MenuItem>
+                      <MenuItem value="Future Planning">Future Planning</MenuItem>
+                    </Select>
+                  )}
+                />
+                {errors.hiring_status && <FormHelperText>{errors.hiring_status.message}</FormHelperText>}
+              </FormControl>
+            </Box>
+          </Box>
+        </Box>
+
+        {/* Email Details */}
+        <Box sx={{ mb: 5 }}>
+          <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+            Email Details
+          </Typography>
+
+          <Typography variant="body2" color="text.secondary" paragraph>
+            Select all whom you would like to keep in Cc:
+          </Typography>
+
+          <Typography variant="body2" color="text.secondary">
+            Note: The following are automatically included in Cc, so you do not need to add them again:
+          </Typography>
+
+          <ul className="list-disc pl-6 mb-2 text-gray-700">
+            <li>MD & CEO</li>
+            <li>Head Ops Dept & Deputy Ops Dept</li>
+            <li>HR, Admin, Accts Dept, and DME</li>
+          </ul>
+
           <Box sx={{ mb: 3 }}>
-            <InputLabel shrink>Do the Role & JD Documents exist?</InputLabel>
-            <FormControl fullWidth error={!!errors.role_n_jd_exist}>
+            <InputLabel shrink>Persons to Keep in Cc (MD, CEO, COO, HR, ACCTS & DME are already in Cc)</InputLabel>
+            <FormControl fullWidth>
               <Controller
-                name="role_n_jd_exist"
+                name="employees_in_cc"
                 control={control}
                 render={({ field }) => (
-                  <Select {...field} displayEmpty>
-                    <MenuItem value="" disabled>Select</MenuItem>
-                    <MenuItem value="Yes">Yes</MenuItem>
-                    <MenuItem value="No">No</MenuItem>
+                  <Select
+                    {...field}
+                    multiple
+                    displayEmpty
+                    renderValue={(selected: string[]) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected.map(value => <Chip key={value} label={value} size="small" />)}
+                      </Box>
+                    )}
+                  >
+                    {employees.map(emp => (
+                      <MenuItem key={emp.id} value={emp.full_name}>
+                        {emp.full_name}
+                      </MenuItem>
+                    ))}
                   </Select>
                 )}
               />
-              {errors.role_n_jd_exist && <FormHelperText>{errors.role_n_jd_exist.message}</FormHelperText>}
             </FormControl>
           </Box>
+        </Box>
 
-          <Box sx={{ mb: 3 }}>
-            <InputLabel shrink>Have you read the Role & JD?</InputLabel>
-            <FormControl fullWidth error={!!errors.role_n_jd_read}>
-              <Controller
-                name="role_n_jd_read"
-                control={control}
-                render={({ field }) => (
-                  <Select {...field} displayEmpty>
-                    <MenuItem value="" disabled>Select</MenuItem>
-                    <MenuItem value="Yes">Yes</MenuItem>
-                    <MenuItem value="No">No</MenuItem>
-                  </Select>
-                )}
-              />
-              {errors.role_n_jd_read && <FormHelperText>{errors.role_n_jd_read.message}</FormHelperText>}
-            </FormControl>
-          </Box>
+        {/* CHECKLIST FOR HR WHILE HIRING (FOR INFO) */}
+        <Box sx={{ mb: 5 }}>
+          <Typography variant="h6" fontWeight="bold" gutterBottom>
+            CHECKLIST FOR HR DEPT (ONLY FOR INFO OF HIRING DEPT)
+          </Typography>
 
-          <Box sx={{ mb: 3 }}>
-            <InputLabel shrink>Are the Role & JD suitable & well made?</InputLabel>
-            <FormControl fullWidth error={!!errors.role_n_jd_good}>
-              <Controller
-                name="role_n_jd_good"
-                control={control}
-                render={({ field }) => (
-                  <Select {...field} displayEmpty>
-                    <MenuItem value="" disabled>Select</MenuItem>
-                    <MenuItem value="Yes">Yes</MenuItem>
-                    <MenuItem value="No">No</MenuItem>
-                  </Select>
-                )}
-              />
-              {errors.role_n_jd_good && <FormHelperText>{errors.role_n_jd_good.message}</FormHelperText>}
-            </FormControl>
-          </Box>
-
+          {/* Shortlist CVs Checklist */}
           <Box sx={{ mb: 4 }}>
-            <InputLabel shrink>Are the days to fulfil the requirement practical and realistic?</InputLabel>
-            <FormControl fullWidth error={!!errors.days_well_thought}>
-              <Controller
-                name="days_well_thought"
-                control={control}
-                render={({ field }) => (
-                  <Select {...field} displayEmpty>
-                    <MenuItem value="" disabled>Select</MenuItem>
-                    <MenuItem value="Yes">Yes</MenuItem>
-                    <MenuItem value="No">No</MenuItem>
-                  </Select>
-                )}
+            <Typography variant="subtitle2" gutterBottom>
+              Shortlist CVs Checklist
+            </Typography>
+            <FormGroup>
+              <FormControlLabel
+                control={<Checkbox disabled checked />}
+                label="Role And JD Checked Done?"
               />
-              {errors.days_well_thought && <FormHelperText>{errors.days_well_thought.message}</FormHelperText>}
-            </FormControl>
+              <FormControlLabel
+                control={<Checkbox disabled checked />}
+                label="Asked for Reference Done?"
+              />
+              <FormControlLabel
+                control={<Checkbox disabled checked />}
+                label="Checked Internal References Done?"
+              />
+              <FormControlLabel
+                control={<Checkbox disabled checked />}
+                label="Checked Internal Candidates Done?"
+              />
+              <FormControlLabel
+                control={<Checkbox disabled checked />}
+                label="Thanked All Applicants Done?"
+              />
+              <FormControlLabel
+                control={<Checkbox disabled checked />}
+                label="Emailed Shortlisted Candidates Done?"
+              />
+            </FormGroup>
+          </Box>
+
+          {/* Interviews Checklist */}
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Interviews Checklist
+            </Typography>
+            <FormGroup>
+              <FormControlLabel
+                control={<Checkbox disabled checked />}
+                label="All Interviews Logged Done?"
+              />
+              <FormControlLabel
+                control={<Checkbox disabled checked />}
+                label="Asked Interviewers To Use Role Doc Done?"
+              />
+              <FormControlLabel
+                control={<Checkbox disabled checked />}
+                label="Asked Interviewers To Use Tests Done?"
+              />
+              <FormControlLabel
+                control={<Checkbox disabled checked />}
+                label="Asked Interviewers Hire Only Best Done?"
+              />
+            </FormGroup>
+          </Box>
+
+          {/* Offer Letter Checklist */}
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Offer Letter Checklist
+            </Typography>
+            <FormGroup>
+              <FormControlLabel
+                control={<Checkbox disabled checked />}
+                label="Asked Confirmation In 2 Days Done?"
+              />
+            </FormGroup>
+          </Box>
+
+          {/* General Feedback */}
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              General Feedback
+            </Typography>
+            <FormGroup>
+              <FormControlLabel
+                control={<Checkbox disabled checked />}
+                label="Kept All Needed In Cc Done?"
+              />
+            </FormGroup>
           </Box>
         </Box>
 
@@ -438,3 +547,8 @@ export default function NewRequisitionForm() {
     </Box>
   );
 }
+
+
+// function register(arg0: string): import("react/jsx-runtime").JSX.IntrinsicAttributes & { variant?: import("@mui/material").TextFieldVariants | undefined; } & Omit<import("@mui/material").OutlinedTextFieldProps | import("@mui/material").FilledTextFieldProps | import("@mui/material").StandardTextFieldProps, "variant"> {
+//   throw new Error('Function not implemented.');
+// }

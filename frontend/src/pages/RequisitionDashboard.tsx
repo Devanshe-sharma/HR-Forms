@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, FileText, User, Briefcase, ChevronRight, Clock } from 'lucide-react';
-import { Link } from 'react-router-dom'; // Assuming you use react-router
+import { Link } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
 
@@ -19,7 +19,6 @@ const RequisitionDashboard: React.FC = () => {
   const [requisitions, setRequisitions] = useState<Requisition[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Fetching data from your Django API
   useEffect(() => {
     fetch('https://hr-forms.onrender.com/api/hiring-requisitions/')
       .then(res => res.json())
@@ -37,29 +36,38 @@ const RequisitionDashboard: React.FC = () => {
     }
   };
 
-  const filteredData = requisitions.filter(req => 
+  const filteredData = requisitions.filter(req =>
     req.job_title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     req.requisitioner.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
-      <Sidebar />
+    <div className="flex h-screen w-full overflow-hidden bg-gray-50">
+      {/* Fixed Sidebar */}
+      <div className="hidden md:block w-64 flex-shrink-0">
+        <div className="fixed top-0 left-0 h-full w-64 bg-white shadow-lg overflow-y-auto z-30">
+          <Sidebar />
+        </div>
+      </div>
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <Navbar />
+      {/* Main content area */}
+      <div className="flex-1 flex flex-col min-w-0 ">
+        {/* Fixed Navbar */}
+        <div className="fixed top-0 left-0 right-0 z-40 bg-white shadow-md md:left-64">
+          <Navbar />
+        </div>
 
-        <main className="flex-1 overflow-auto p-8">
+        {/* Scrollable content */}
+        <main className="flex-1 overflow-y-auto pt-20 px-6 md:px-8 pb-8">
           {/* HEADER SECTION */}
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 mt-4">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Hiring Requisitions</h1>
               <p className="text-gray-500">Track and manage internal department hiring requests</p>
             </div>
 
-            {/* ACTION BUTTON IN CORNER */}
-            <Link 
-              to="/new-hiring-requisition" 
+            <Link
+              to="/new-hiring-requisition"
               className="flex items-center gap-2 bg-lime-400 hover:bg-lime-500 text-black font-bold py-2.5 px-5 rounded-lg shadow-sm transition-all active:scale-95"
             >
               <Plus size={20} />
@@ -70,23 +78,28 @@ const RequisitionDashboard: React.FC = () => {
           {/* QUICK STATS */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
-              <div className="p-3 bg-amber-50 text-amber-600 rounded-lg"><Clock size={24}/></div>
+              <div className="p-3 bg-amber-50 text-amber-600 rounded-lg">
+                <Clock size={24} />
+              </div>
               <div>
                 <p className="text-sm text-gray-500">Active Requests</p>
-                <p className="text-xl font-bold">{requisitions.filter(r => r.status !== 'Fulfilled').length}</p>
+                <p className="text-xl font-bold">
+                  {requisitions.filter(r => r.status !== 'Fulfilled').length}
+                </p>
               </div>
             </div>
-            {/* Add more stat cards as needed */}
+            {/* Add more stat cards here if needed */}
           </div>
 
           {/* SEARCH & TABLE */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="p-4 border-b border-gray-100 flex items-center gap-3">
               <Search className="text-gray-400" size={20} />
-              <input 
-                type="text" 
+              <input
+                type="text"
                 placeholder="Search by role or requisitioner..."
                 className="flex-1 outline-none text-sm"
+                value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
@@ -143,7 +156,7 @@ const RequisitionDashboard: React.FC = () => {
                 </tbody>
               </table>
             </div>
-            
+
             {filteredData.length === 0 && (
               <div className="py-20 text-center">
                 <FileText size={48} className="mx-auto text-gray-200 mb-4" />
