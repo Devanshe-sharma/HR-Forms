@@ -1,3 +1,4 @@
+from django.core.mail import EmailMessage
 from rest_framework import generics, viewsets
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.views import APIView
@@ -335,45 +336,77 @@ class DesignationViewSet(viewsets.ModelViewSet):
 
 
 class HiringRequisitionViewSet(viewsets.ModelViewSet):
-    queryset = HiringRequisition.objects.all()  # ← removed .order_by('-created_at')
+    queryset = HiringRequisition.objects.all()
     serializer_class = HiringRequisitionSerializer
     permission_classes = [AllowAny]
 
     def perform_create(self, serializer):
+        # Save the instance first to generate ID/Serial
         instance = serializer.save()
+        # Trigger the email
         send_hiring_email(instance)
 
 def send_hiring_email(requisition):
     try:
+        # 1. Gather Recipients
+        # We want to send TO the requisitioner and the Dept Head
+        # and CC everyone else.
+        to_emails = []
+        if requisition.requisitioner_email:
+            to_emails.append(requisitioner.requisitioner_email)
+        if requisition.hiring_dept_email:
+            to_emails.append(requisition.hiring_dept_email)
+        
+        # Fallback if no emails found
+        if not to_emails:
+            to_emails = [settings.DEFAULT_FROM_EMAIL]
+
+        # 2. Handle CC List
+        # Ensure it is a list. If it's a string from a comma-separated field, split it.
+        cc_emails = requisition.employees_in_cc or []
+        if isinstance(cc_emails, str):
+            cc_emails = [email.strip() for email in cc_emails.split(',')]
+
         subject = f"New Hiring Requisition: {requisition.ser} - {requisition.requisitioner_name}"
+
+        # 3. Format the Message
         message = f"""
 New Hiring Requisition Submitted!
 
 Serial No: {requisition.ser}
 Request Date: {requisition.request_date}
-Requisitioner: {requisition.requisitioner_name} ({requisition.requisitioner_email})
-Hiring Department: {requisition.hiring_dept} ({requisition.hiring_dept_email})
+Requisitioner: {requisition.requisitioner_name}
+Hiring Department: {requisition.hiring_dept}
 Designation: {requisition.hiring_designation or requisition.new_designation}
 Joining Days: {requisition.select_joining_days}
-Planned Joining: {requisition.planned_joined}
-Special Instructions: {requisition.special_instructions or 'None'}
-Hiring Status: {requisition.hiring_status or 'Not Set'}
+Planned Joining Target: {requisition.planned_joined}
 
-CC Emails: {', '.join(requisition.employees_in_cc or [])}
+Special Instructions:
+{requisition.special_instructions or 'None'}
 
-View in admin: https://yourdomain.com/admin/hr/hiringrequisition/
+Hiring Status: {requisition.hiring_status or 'New'}
+--------------------------------------------------
+This is an automated notification from the HR System.
         """
-        from_email = settings.DEFAULT_FROM_EMAIL
-        recipient_list = ['hr.manager@briskolive.com']  # Change to real HR email
-        cc_list = requisition.employees_in_cc or []
 
-        send_mail(
-            subject,
-            message,
-            from_email,
-            recipient_list,
-            cc=cc_list,
-            fail_silently=False,
+        # 4. Construct Email
+        email = EmailMessage(
+            subject=subject,
+            body=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=to_emails,
+            cc=cc_emails,
+            reply_to=[settings.DEFAULT_FROM_EMAIL],
         )
+
+        # 🚀 Execute Send
+        sent_count = email.send(fail_silently=False)
+
+        if sent_count:
+            print(f"✅ Email SENT successfully to {to_emails}")
+        else:
+            print("⚠️ Email NOT sent: SMTP accepted but 0 messages delivered.")
+
     except Exception as e:
-        print(f"Email sending failed: {e}")
+        # This will show up in your Render "Logs" tab
+        print(f"❌ Email sending FAILED for Requisition {requisition.ser}: {str(e)}")

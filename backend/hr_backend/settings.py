@@ -128,13 +128,16 @@ CORS_ALLOW_ALL_ORIGINS = True  # ← For development
 # ]
 
 # Email Settings (Gmail with App Password)
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+
+EMAIL_HOST = "smtp.gmail.com"        # Must be set for SMTP
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'software.developer@briskolive.com'          # Your Gmail
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')    # Must come from env
-DEFAULT_FROM_EMAIL = 'software.developer@briskolive.com'
+
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "software.developer@briskolive.com")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "ibctynkbixfwpgxd")  # Use env vars!
+
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 # Security headers (uncomment in production)
 # SECURE_SSL_REDIRECT = True

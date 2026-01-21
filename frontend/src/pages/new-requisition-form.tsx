@@ -235,72 +235,72 @@ export default function NewRequisitionForm() {
   }, [selectJoiningDays, setValue]);
 
   const onSubmit = async (data: FormData) => {
-  console.log('[SUBMIT] Form submit triggered');
-  console.log('[SUBMIT] Raw form data:', data);
+    console.log('[SUBMIT] Form submit triggered');
+    console.log('[SUBMIT] Raw form data:', data);
 
-  setSubmitLoading(true);
-  setSuccess(null);
-  setError(null);
+    setSubmitLoading(true);
+    setSuccess(null);
+    setError(null);
 
-  try {
-    // Convert dates to YYYY-MM-DD (ISO format expected by Django)
-    const convertDate = (dateStr: string | undefined) => {
-      if (!dateStr) return null;
-      // Input is dd-MM-yyyy → parse and convert to YYYY-MM-DD
-      const [day, month, year] = dateStr.split('-');
-      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-    };
+    try {
+      // Convert dates to YYYY-MM-DD (ISO format expected by Django)
+      const convertDate = (dateStr: string | undefined) => {
+        if (!dateStr) return null;
+        // Input is dd-MM-yyyy → parse and convert to YYYY-MM-DD
+        const [day, month, year] = dateStr.split('-');
+        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      };
 
-    const submitData = {
-      ...data,  // Send ALL fields as-is
-      designation_status: data.designation_type,  // Rename to match backend
-      designation: data.designation_type === 'existing' ? data.designation_existing : data.designation_new,
-      // Convert dates
-      request_date: convertDate(data.request_date),
-      plan_start_sharing_cvs: convertDate(data.plan_start_sharing_cvs),
-      planned_interviews_started: convertDate(data.planned_interviews_started),
-      planned_offer_accepted: convertDate(data.planned_offer_accepted),
-      planned_joined: convertDate(data.planned_joined),
-      // Ensure optional fields are null instead of empty string if backend prefers
-      dept_group_email: data.dept_group_email || null,
-      role_link: data.role_link || null,
-      jd_link: data.jd_link || null,
-      special_instructions: data.special_instructions || null,
-    };
+      const submitData = {
+        ...data,  // Send ALL fields as-is
+        designation_status: data.designation_type,  // Rename to match backend
+        designation: data.designation_type === 'existing' ? data.designation_existing : data.designation_new,
+        // Convert dates
+        request_date: convertDate(data.request_date),
+        plan_start_sharing_cvs: convertDate(data.plan_start_sharing_cvs),
+        planned_interviews_started: convertDate(data.planned_interviews_started),
+        planned_offer_accepted: convertDate(data.planned_offer_accepted),
+        planned_joined: convertDate(data.planned_joined),
+        // Ensure optional fields are null instead of empty string if backend prefers
+        dept_group_email: data.dept_group_email || null,
+        role_link: data.role_link || null,
+        jd_link: data.jd_link || null,
+        special_instructions: data.special_instructions || null,
+      };
 
-    console.log('[SUBMIT] Final payload being sent:', submitData);
+      console.log('[SUBMIT] Final payload being sent:', submitData);
 
-    const response = await fetch('https://hr-forms.onrender.com/api/hiring-requisitions/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(submitData),
-    });
+      const response = await fetch('https://hr-forms.onrender.com/api/hiring-requisitions/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(submitData),
+      });
 
-    console.log('[SUBMIT] Response status:', response.status);
+      console.log('[SUBMIT] Response status:', response.status);
 
-    if (!response.ok) {
-      const errData = await response.json();
-      console.error('[SUBMIT ERROR] Backend returned:', errData);
-      throw new Error(JSON.stringify(errData));
+      if (!response.ok) {
+        const errData = await response.json();
+        console.error('[SUBMIT ERROR] Backend returned:', errData);
+        throw new Error(JSON.stringify(errData));
+      }
+
+      const result = await response.json();
+      console.log('[SUBMIT SUCCESS] Backend response:', result);
+
+      setSuccess('Thank you! Your requisition has been submitted successfully. Redirecting to dashboard...');
+
+      setTimeout(() => {
+        window.location.href = '/dashboard';
+      }, 3000);
+    } catch (err: any) {
+      console.error('[SUBMIT CRASH]', err);
+      setError(err.message || 'Failed to submit. Check console for details.');
+    } finally {
+      setSubmitLoading(false);
     }
-
-    const result = await response.json();
-    console.log('[SUBMIT SUCCESS] Backend response:', result);
-
-    setSuccess('Thank you! Your requisition has been submitted successfully. Redirecting to dashboard...');
-
-    setTimeout(() => {
-      window.location.href = '/dashboard';
-    }, 3000);
-  } catch (err: any) {
-    console.error('[SUBMIT CRASH]', err);
-    setError(err.message || 'Failed to submit. Check console for details.');
-  } finally {
-    setSubmitLoading(false);
-  }
-};
+  };
 
   if (loading) {
     return (
@@ -471,7 +471,7 @@ export default function NewRequisitionForm() {
 
               {designationType === 'new' && (
                 <FormControl fullWidth error={!!errors.designation_new} sx={{ mb: 2 }}>
-                  <InputLabel htmlFor="designation-new">New Designation Name</InputLabel>
+                  <InputLabel htmlFor="designation-new"></InputLabel>
                   <Controller
                     name="designation_new"
                     control={control}
@@ -511,7 +511,7 @@ export default function NewRequisitionForm() {
           )}
         </Box>
 
-         
+
         {/* Days to Fulfil Requirement */}
         <Box sx={{ mb: 5 }}>
           <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
@@ -667,15 +667,29 @@ export default function NewRequisitionForm() {
                     multiple
                     displayEmpty
                     value={field.value || []}
-                    renderValue={(selected: string[]) => (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {selected.map(value => <Chip key={value} label={value} size="small" />)}
-                      </Box>
-                    )}
+                    renderValue={(selected: string[]) =>
+                      selected.length === 0 ? (
+                        <em>Select people</em>
+                      ) : (
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                          {selected.map(email => {
+                            const emp = employees.find(e => e.official_email === email);
+                            return (
+                              <Chip
+                                key={email}
+                                label={emp?.full_name || email}
+                                size="small"
+                              />
+                            );
+                          })}
+                        </Box>
+                      )
+                    }
                   >
                     {employees.map(emp => (
-                      <MenuItem key={emp.id} value={emp.full_name}>
-                        {emp.full_name}
+                      <MenuItem key={emp.id} value={emp.official_email}>
+                        <Checkbox checked={field.value?.includes(emp.official_email)} />
+                        <Typography>{emp.full_name}</Typography>
                       </MenuItem>
                     ))}
                   </Select>
@@ -764,7 +778,7 @@ export default function NewRequisitionForm() {
           </Box>
         </Box>
 
-    
+
         {/* HR CHECKLIST (INFO ONLY) */}
         <Box sx={{ mb: 5 }}>
           <Typography variant="h6" fontWeight="bold" gutterBottom>
