@@ -4,6 +4,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 from datetime import timedelta
+from django.contrib.postgres.fields import ArrayField
 
 
 class Profile(models.Model):
@@ -373,55 +374,183 @@ class Designation(models.Model):
 
 
 class HiringRequisition(models.Model):
+    # Auto-generated serial number (HR-YYYYMM-XXX)
+    ser = models.CharField(
+        max_length=20,
+        unique=True,
+        blank=True,
+        null=True,
+        verbose_name="Serial No"
+    )
+
     # Requester Details
-    ser = models.CharField(max_length=20, unique=True, blank=True, null=True)
-    request_date = models.DateField(auto_now_add=True)
-    requisitioner_name = models.CharField(max_length=255)
-    requisitioner_email = models.EmailField(blank=True, null=True)
+    request_date = models.DateField(
+        auto_now_add=True,
+        verbose_name="Request Date"
+    )
+    requisitioner_name = models.CharField(
+        max_length=255,
+        verbose_name="Requisitioner Name"
+    )
+    requisitioner_email = models.EmailField(
+        blank=True,
+        null=True,
+        verbose_name="Requisitioner Email"
+    )
 
     # Position to Hire
-    hiring_dept = models.CharField(max_length=255)
-    hiring_dept_email = models.EmailField(blank=True, null=True)
-    
-    # CHANGED: Match frontend field names
-    designation_type = models.CharField(max_length=10, choices=[('existing', 'Existing'), ('new', 'New')], default='existing')
-    designation_existing = models.CharField(max_length=255, blank=True, null=True)
-    designation_new = models.CharField(max_length=255, blank=True, null=True)
-    
-    # Keep these for the final designation value
-    designation = models.CharField(max_length=255, blank=True, null=True)  # ADD THIS
-    
-    role_link = models.URLField(blank=True, null=True)
-    jd_link = models.URLField(blank=True, null=True)
+    hiring_dept = models.CharField(
+        max_length=255,
+        verbose_name="Hiring Department"
+    )
+    hiring_dept_email = models.EmailField(
+        blank=True,
+        null=True,
+        verbose_name="Dept Head Email"
+    )
+    dept_group_email = models.EmailField(
+        blank=True,
+        null=True,
+        verbose_name="Dept Group Email"
+    )
 
-    # Days & Plan
-    select_joining_days = models.CharField(max_length=50)
-    plan_start_sharing_cvs = models.DateField(blank=True, null=True)
-    planned_interviews_started = models.DateField(blank=True, null=True)
-    planned_offer_accepted = models.DateField(blank=True, null=True)
-    planned_joined = models.DateField(blank=True, null=True)
+    # Designation Logic
+    designation_type = models.CharField(
+        max_length=10,
+        choices=[('existing', 'Existing'), ('new', 'New')],
+        default='existing',
+        verbose_name="Designation Type"
+    )
+    designation_existing = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="Existing Designation"
+    )
+    designation_new = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="New Designation Name"
+    )
+    designation = models.CharField(  # Final computed value
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="Final Designation"
+    )
 
-    # Additional
-    special_instructions = models.TextField(blank=True, null=True)
-    hiring_status = models.CharField(max_length=100, blank=True, null=True)
-    employees_in_cc = models.JSONField(default=list, blank=True)  # list of emails
+    role_link = models.URLField(
+        blank=True,
+        null=True,
+        verbose_name="Link to Role"
+    )
+    jd_link = models.URLField(
+        blank=True,
+        null=True,
+        verbose_name="Link to JD"
+    )
 
-    # Checklist
-    role_n_jd_exist = models.CharField(max_length=3, choices=[('Yes', 'Yes'), ('No', 'No')], default='Yes')
-    role_n_jd_read = models.CharField(max_length=3, choices=[('Yes', 'Yes'), ('No', 'No')], default='Yes')
-    role_n_jd_good = models.CharField(max_length=3, choices=[('Yes', 'Yes'), ('No', 'No')], default='Yes')
-    days_well_thought = models.CharField(max_length=3, choices=[('Yes', 'Yes'), ('No', 'No')], default='Yes')
-    
+    # Days & Hiring Plan
+    select_joining_days = models.CharField(
+        max_length=50,
+        verbose_name="Select Joining Days"
+    )
+    plan_start_sharing_cvs = models.DateField(
+        blank=True,
+        null=True,
+        verbose_name="Plan: Start Sharing CVs"
+    )
+    planned_interviews_started = models.DateField(
+        blank=True,
+        null=True,
+        verbose_name="Planned: Interviews Started By"
+    )
+    planned_offer_accepted = models.DateField(
+        blank=True,
+        null=True,
+        verbose_name="Planned: Offer Accepted By"
+    )
+    planned_joined = models.DateField(
+        blank=True,
+        null=True,
+        verbose_name="Planned: Joining By"
+    )
+
+    # Additional Info
+    special_instructions = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Special Instructions to HR"
+    )
+    hiring_status = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="Hiring Status"
+    )
+
+    # CC Emails (list of emails)
+    employees_in_cc = models.JSONField(
+    default=list,
+    blank=True,
+    verbose_name="Employees in CC (emails)"
+) 
+
+    # Checklist Fields
+    role_n_jd_exist = models.CharField(
+        max_length=3,
+        choices=[('Yes', 'Yes'), ('No', 'No')],
+        default='Yes',
+        verbose_name="Role & JD Exist?"
+    )
+    role_n_jd_read = models.CharField(
+        max_length=3,
+        choices=[('Yes', 'Yes'), ('No', 'No')],
+        default='Yes',
+        verbose_name="Role & JD Read?"
+    )
+    role_n_jd_good = models.CharField(
+        max_length=3,
+        choices=[('Yes', 'Yes'), ('No', 'No')],
+        default='Yes',
+        verbose_name="Role & JD Suitable?"
+    )
+    days_well_thought = models.CharField(
+        max_length=3,
+        choices=[('Yes', 'Yes'), ('No', 'No')],
+        default='Yes',
+        verbose_name="Days Well Thought?"
+    )
+
+    # Timestamps (fixes your deployment crash)
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Created At"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="Updated At"
+    )
+
+    class Meta:
+        verbose_name = "Hiring Requisition"
+        verbose_name_plural = "Hiring Requisitions"
+        ordering = ['-created_at']  # Newest first
+
+    def __str__(self):
+        return f"{self.ser or 'New'} - {self.designation or 'No Designation'} ({self.hiring_dept})"
+
     def save(self, *args, **kwargs):
         if not self.ser:
             today = timezone.now().strftime('%Y%m')
             last = HiringRequisition.objects.filter(ser__startswith=f"HR-{today}").count()
-            self.ser = f"HR-{today}-{last+1:03d}"
-        
-        # Auto-set designation based on type
+            self.ser = f"HR-{today}-{last + 1:03d}"
+
+        # Auto-compute final designation
         if self.designation_type == 'existing':
             self.designation = self.designation_existing
         else:
             self.designation = self.designation_new
-            
+
         super().save(*args, **kwargs)

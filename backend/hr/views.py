@@ -335,13 +335,12 @@ class DesignationViewSet(viewsets.ModelViewSet):
 
 
 class HiringRequisitionViewSet(viewsets.ModelViewSet):
-    queryset = HiringRequisition.objects.all().order_by('-created_at')
+    queryset = HiringRequisition.objects.all()  # ← removed .order_by('-created_at')
     serializer_class = HiringRequisitionSerializer
-    permission_classes = [AllowAny]  # Change to IsAuthenticated later if needed
+    permission_classes = [AllowAny]
 
     def perform_create(self, serializer):
         instance = serializer.save()
-        # Send email
         send_hiring_email(instance)
 
 def send_hiring_email(requisition):
