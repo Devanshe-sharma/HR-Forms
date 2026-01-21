@@ -492,10 +492,10 @@ class HiringRequisition(models.Model):
 
     # CC Emails (list of emails)
     employees_in_cc = models.JSONField(
-    default=list,
+    default=list,          
     blank=True,
-    verbose_name="Employees in CC (emails)"
-) 
+    verbose_name="Employees in CC (list of emails)"
+)
 
     # Checklist Fields
     role_n_jd_exist = models.CharField(
