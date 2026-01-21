@@ -21,6 +21,9 @@ import {
   FormControlLabel,
   FormGroup,
   Chip,
+  RadioGroup,
+  Radio,
+  FormLabel,
 } from '@mui/material';
 import { format, addDays } from 'date-fns';
 
@@ -32,7 +35,9 @@ const schema = z.object({
   requisitioner_email: z.string().email('Invalid email').optional(),
   hiring_dept: z.string().min(1, 'Hiring Department is required'),
   hiring_dept_email: z.string().email('Invalid email').optional(),
-  designation: z.string().min(1, 'Designation is required'),
+  designation_type: z.enum(['existing', 'new']).refine(val => val === 'existing' || val === 'new',{ message: 'Please select existing or new designation' }),
+  designation_existing: z.string().optional(),
+  designation_new: z.string().optional(),
   request_date: z.string().optional(),
   select_joining_days: z.string().min(1, 'Please select joining days'),
   plan_start_sharing_cvs: z.string().optional(),
@@ -46,17 +51,20 @@ const schema = z.object({
   role_n_jd_read: z.enum(['Yes', 'No']),
   role_n_jd_good: z.enum(['Yes', 'No']),
   days_well_thought: z.enum(['Yes', 'No']),
+  role_link: z.string().optional(),
+  jd_link: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
 
-// Types for API data
 type Employee = { id: number; full_name: string; official_email: string };
 type Department = { id: number; name: string; dept_head_email?: string };
+type Designation = { id: number; name: string; role_document_link?: string; jd_link?: string };
 
 export default function NewRequisitionForm() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [designations, setDesignations] = useState<Designation[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
@@ -72,18 +80,23 @@ export default function NewRequisitionForm() {
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      designation: '',
-      select_joining_days: '',
+      designation_type: 'existing',
+      designation_existing: '',
+      designation_new: '',
       employees_in_cc: [],
       role_n_jd_exist: 'Yes',
       role_n_jd_read: 'Yes',
       role_n_jd_good: 'Yes',
       days_well_thought: 'Yes',
+      role_link: '',
+      jd_link: '',
     },
   });
 
   const requisitionerName = watch('requisitioner_name');
   const hiringDept = watch('hiring_dept');
+  const designationType = watch('designation_type');
+  const designationExisting = watch('designation_existing');
   const selectJoiningDays = watch('select_joining_days');
 
   // Fetch employees and departments
@@ -91,8 +104,8 @@ export default function NewRequisitionForm() {
     const fetchData = async () => {
       try {
         const [empRes, deptRes] = await Promise.all([
-          fetch('https://hr-forms.onrender.com/api/employees'),
-          fetch('https://hr-forms.onrender.com/api/department'),
+          fetch('https://hr-forms.onrender.com/api/employees/'),
+          fetch('https://hr-forms.onrender.com/api/departments/'),
         ]);
 
         if (!empRes.ok || !deptRes.ok) throw new Error('Failed to fetch');
@@ -109,6 +122,35 @@ export default function NewRequisitionForm() {
 
     fetchData();
   }, []);
+
+  // Fetch designations when department is selected
+  useEffect(() => {
+    if (!hiringDept) {
+      setDesignations([]);
+      setValue('designation_existing', '');
+      setValue('role_link', '');
+      setValue('jd_link', '');
+      return;
+    }
+
+    const fetchDesignations = async () => {
+      try {
+        const dept = departments.find(d => d.name === hiringDept);
+        if (!dept?.id) return;
+
+        const res = await fetch(`https://hr-forms.onrender.com/api/designations/?department=${dept.id}`);
+        if (!res.ok) throw new Error('Failed to fetch designations');
+
+        const data = await res.json();
+        setDesignations(data);
+      } catch (err) {
+        console.error('Failed to fetch designations:', err);
+        setError('Failed to load designations');
+      }
+    };
+
+    fetchDesignations();
+  }, [hiringDept, departments, setValue]);
 
   // Auto-fill requisitioner email
   useEffect(() => {
@@ -131,6 +173,18 @@ export default function NewRequisitionForm() {
     setValue('request_date', format(new Date(), 'dd-MM-yyyy'));
   }, [setValue]);
 
+  // Auto-fill role & JD links when existing designation is selected
+  useEffect(() => {
+    if (designationType === 'existing' && designationExisting) {
+      const des = designations.find(d => d.name === designationExisting);
+      setValue('role_link', des?.role_document_link || '');
+      setValue('jd_link', des?.jd_link || '');
+    } else {
+      setValue('role_link', '');
+      setValue('jd_link', '');
+    }
+  }, [designationType, designationExisting, designations, setValue]);
+
   // Auto-calculate Hiring Plan dates
   useEffect(() => {
     if (!selectJoiningDays) return;
@@ -141,10 +195,15 @@ export default function NewRequisitionForm() {
     const totalDays = parseInt(daysMatch[0], 10);
     const today = new Date();
 
-    setValue('plan_start_sharing_cvs', format(addDays(today, 3), 'dd-MM-yyyy'));
-    setValue('planned_interviews_started', format(addDays(today, 8), 'dd-MM-yyyy'));
-    setValue('planned_offer_accepted', format(addDays(today, totalDays - 15), 'dd-MM-yyyy'));
-    setValue('planned_joined', format(addDays(today, totalDays), 'dd-MM-yyyy'));
+    const startSharing = addDays(today, 3);
+    const startInterviews = addDays(today, 8);
+    const offerAccepted = addDays(today, totalDays - 15);
+    const joiningDate = addDays(today, totalDays);
+
+    setValue('plan_start_sharing_cvs', format(startSharing, 'dd-MM-yyyy'));
+    setValue('planned_interviews_started', format(startInterviews, 'dd-MM-yyyy'));
+    setValue('planned_offer_accepted', format(offerAccepted, 'dd-MM-yyyy'));
+    setValue('planned_joined', format(joiningDate, 'dd-MM-yyyy'));
   }, [selectJoiningDays, setValue]);
 
   const onSubmit = async (data: FormData) => {
@@ -153,21 +212,33 @@ export default function NewRequisitionForm() {
     setError(null);
 
     try {
+      // Prepare data - use correct designation field
+      const submitData = {
+        ...data,
+        designation: data.designation_type === 'existing' ? data.designation_existing : data.designation_new,
+      };
+
       const response = await fetch('https://hr-forms.onrender.com/api/hiring-requisitions/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify(submitData),
       });
 
       if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.detail || 'Failed to submit');
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || errData.error || `Server error: ${response.status}`);
       }
 
-      setSuccess('Hiring requisition submitted successfully! HR has been notified.');
+      setSuccess('Thank you! Your requisition has been submitted successfully. Redirecting to dashboard...');
+
+      // Redirect after 3 seconds
+      setTimeout(() => {
+        window.location.href = '/dashboard'; // ← Change this to your actual dashboard route
+      }, 3000);
     } catch (err: any) {
+      console.error('Submit error:', err);
       setError(err.message || 'Failed to submit. Please try again.');
     } finally {
       setSubmitLoading(false);
@@ -230,7 +301,7 @@ export default function NewRequisitionForm() {
                 name="requisitioner_name"
                 control={control}
                 render={({ field }) => (
-                  <Select {...field} displayEmpty>
+                  <Select {...field} value={field.value || ''} displayEmpty>
                     <MenuItem value="" disabled>Requisition raised by</MenuItem>
                     {employees.map(emp => (
                       <MenuItem key={emp.id} value={emp.full_name}>{emp.full_name}</MenuItem>
@@ -261,7 +332,7 @@ export default function NewRequisitionForm() {
                 name="hiring_dept"
                 control={control}
                 render={({ field }) => (
-                  <Select {...field} displayEmpty>
+                  <Select {...field} value={field.value || ''} displayEmpty>
                     <MenuItem value="" disabled>Hiring Dept</MenuItem>
                     {departments.map(dept => (
                       <MenuItem key={dept.id} value={dept.name}>{dept.name}</MenuItem>
@@ -277,6 +348,89 @@ export default function NewRequisitionForm() {
             <InputLabel shrink>Hiring Dept Email (autofilled)</InputLabel>
             <TextField fullWidth value={watch('hiring_dept_email') || ''} disabled variant="standard" />
           </Box>
+
+          {/* Designation Section - only show after dept selected */}
+          {hiringDept && (
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Designation
+              </Typography>
+
+              {/* Existing or New */}
+              <FormControl component="fieldset" sx={{ mb: 2 }}>
+                <FormLabel component="legend">Is this an existing designation or a new one?</FormLabel>
+                <Controller
+                  name="designation_type"
+                  control={control}
+                  render={({ field }) => (
+                    <RadioGroup row {...field}>
+                      <FormControlLabel value="existing" control={<Radio />} label="Existing" />
+                      <FormControlLabel value="new" control={<Radio />} label="New" />
+                    </RadioGroup>
+                  )}
+                />
+                {errors.designation_type && <FormHelperText error>{errors.designation_type.message}</FormHelperText>}
+              </FormControl>
+
+              {/* Existing Designation Dropdown */}
+              {designationType === 'existing' && (
+                <FormControl fullWidth error={!!errors.designation_existing} sx={{ mb: 2 }}>
+                  <InputLabel>Select Existing Designation</InputLabel>
+                  <Controller
+                    name="designation_existing"
+                    control={control}
+                    render={({ field }) => (
+                      <Select {...field} value={field.value || ''}>
+                        <MenuItem value="" disabled>Select Designation</MenuItem>
+                        {designations.map(des => (
+                          <MenuItem key={des.id} value={des.name}>
+                            {des.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    )}
+                  />
+                  {errors.designation_existing && <FormHelperText>{errors.designation_existing.message}</FormHelperText>}
+                </FormControl>
+              )}
+
+              {/* New Designation Text Field */}
+              {designationType === 'new' && (
+                <FormControl fullWidth error={!!errors.designation_new} sx={{ mb: 2 }}>
+                  <InputLabel>New Designation Name</InputLabel>
+                  <Controller
+                    name="designation_new"
+                    control={control}
+                    render={({ field }) => (
+                      <TextField {...field} value={field.value || ''} placeholder="Enter new designation" />
+                    )}
+                  />
+                  {errors.designation_new && <FormHelperText>{errors.designation_new.message}</FormHelperText>}
+                </FormControl>
+              )}
+
+              {/* Autofilled Links (only for existing) */}
+              {designationType === 'existing' && designationExisting && (
+                <Box sx={{ mt: 2 }}>
+                  <TextField
+                    fullWidth
+                    label="Link to Role (autofilled)"
+                    value={watch('role_link') || ''}
+                    disabled
+                    variant="standard"
+                    sx={{ mb: 2 }}
+                  />
+                  <TextField
+                    fullWidth
+                    label="Link to JD (autofilled)"
+                    value={watch('jd_link') || ''}
+                    disabled
+                    variant="standard"
+                  />
+                </Box>
+              )}
+            </Box>
+          )}
         </Box>
 
         {/* Days to Fulfil Requirement */}
@@ -292,7 +446,7 @@ export default function NewRequisitionForm() {
                 name="select_joining_days"
                 control={control}
                 render={({ field }) => (
-                  <Select {...field} displayEmpty>
+                  <Select {...field} value={field.value || ''} displayEmpty>
                     <MenuItem value="" disabled>Days within which the candidate must join</MenuItem>
                     <MenuItem value="20 days">20 days = joining at 0 days notice</MenuItem>
                     <MenuItem value="35 days">35 days = joining at 15-days notice</MenuItem>
@@ -311,7 +465,7 @@ export default function NewRequisitionForm() {
               20 days = joining at 0 days notice = 8 days(shortlist), 8(interview), 4(accept offer), 0(notice to old employer)
             </Typography>
             <Typography variant="body2" sx={{ mb: 0.5 }}>
-              35 days = joining at 15-days notice = 8,8,4,15
+              35 days = joining at 15-days notice = 8,8,15
             </Typography>
             <Typography variant="body2" sx={{ mb: 0.5 }}>
               50 days = joining at 30-days notice = 8,8,4,30
@@ -379,7 +533,7 @@ export default function NewRequisitionForm() {
                   name="hiring_status"
                   control={control}
                   render={({ field }) => (
-                    <Select {...field} displayEmpty>
+                    <Select {...field} displayEmpty value={field.value || ''}>
                       <MenuItem value="" disabled>Select hiring status</MenuItem>
                       <MenuItem value="No Change in Status">No Change in Status</MenuItem>
                       <MenuItem value="New">New</MenuItem>
@@ -433,6 +587,7 @@ export default function NewRequisitionForm() {
                     {...field}
                     multiple
                     displayEmpty
+                    value={field.value || []}
                     renderValue={(selected: string[]) => (
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                         {selected.map(value => <Chip key={value} label={value} size="small" />)}
@@ -464,7 +619,7 @@ export default function NewRequisitionForm() {
                 name="role_n_jd_exist"
                 control={control}
                 render={({ field }) => (
-                  <Select {...field} displayEmpty>
+                  <Select {...field} displayEmpty value={field.value || ''}>
                     <MenuItem value="" disabled>Select</MenuItem>
                     <MenuItem value="Yes">Yes</MenuItem>
                     <MenuItem value="No">No</MenuItem>
@@ -482,7 +637,7 @@ export default function NewRequisitionForm() {
                 name="role_n_jd_read"
                 control={control}
                 render={({ field }) => (
-                  <Select {...field} displayEmpty>
+                  <Select {...field} displayEmpty value={field.value || ''}>
                     <MenuItem value="" disabled>Select</MenuItem>
                     <MenuItem value="Yes">Yes</MenuItem>
                     <MenuItem value="No">No</MenuItem>
@@ -500,7 +655,7 @@ export default function NewRequisitionForm() {
                 name="role_n_jd_good"
                 control={control}
                 render={({ field }) => (
-                  <Select {...field} displayEmpty>
+                  <Select {...field} displayEmpty value={field.value || ''}>
                     <MenuItem value="" disabled>Select</MenuItem>
                     <MenuItem value="Yes">Yes</MenuItem>
                     <MenuItem value="No">No</MenuItem>
@@ -518,7 +673,7 @@ export default function NewRequisitionForm() {
                 name="days_well_thought"
                 control={control}
                 render={({ field }) => (
-                  <Select {...field} displayEmpty>
+                  <Select {...field} displayEmpty value={field.value || ''}>
                     <MenuItem value="" disabled>Select</MenuItem>
                     <MenuItem value="Yes">Yes</MenuItem>
                     <MenuItem value="No">No</MenuItem>
@@ -536,7 +691,6 @@ export default function NewRequisitionForm() {
             CHECKLIST FOR HR DEPT (ONLY FOR INFO OF HIRING DEPT)
           </Typography>
 
-          {/* Shortlist CVs Checklist */}
           <Box sx={{ mb: 4 }}>
             <Typography variant="subtitle2" gutterBottom>
               Shortlist CVs Checklist
@@ -551,7 +705,6 @@ export default function NewRequisitionForm() {
             </FormGroup>
           </Box>
 
-          {/* Interviews Checklist */}
           <Box sx={{ mb: 4 }}>
             <Typography variant="subtitle2" gutterBottom>
               Interviews Checklist
@@ -564,7 +717,6 @@ export default function NewRequisitionForm() {
             </FormGroup>
           </Box>
 
-          {/* Offer Letter Checklist */}
           <Box sx={{ mb: 4 }}>
             <Typography variant="subtitle2" gutterBottom>
               Offer Letter Checklist
@@ -574,7 +726,6 @@ export default function NewRequisitionForm() {
             </FormGroup>
           </Box>
 
-          {/* General Feedback */}
           <Box sx={{ mb: 4 }}>
             <Typography variant="subtitle2" gutterBottom>
               General Feedback
