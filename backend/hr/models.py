@@ -382,9 +382,15 @@ class HiringRequisition(models.Model):
     # Position to Hire
     hiring_dept = models.CharField(max_length=255)
     hiring_dept_email = models.EmailField(blank=True, null=True)
-    designation_status = models.CharField(max_length=50)
-    hiring_designation = models.CharField(max_length=255, blank=True, null=True)
-    new_designation = models.CharField(max_length=255, blank=True, null=True)
+    
+    # CHANGED: Match frontend field names
+    designation_type = models.CharField(max_length=10, choices=[('existing', 'Existing'), ('new', 'New')], default='existing')
+    designation_existing = models.CharField(max_length=255, blank=True, null=True)
+    designation_new = models.CharField(max_length=255, blank=True, null=True)
+    
+    # Keep these for the final designation value
+    designation = models.CharField(max_length=255, blank=True, null=True)  # ADD THIS
+    
     role_link = models.URLField(blank=True, null=True)
     jd_link = models.URLField(blank=True, null=True)
 
@@ -405,23 +411,17 @@ class HiringRequisition(models.Model):
     role_n_jd_read = models.CharField(max_length=3, choices=[('Yes', 'Yes'), ('No', 'No')], default='Yes')
     role_n_jd_good = models.CharField(max_length=3, choices=[('Yes', 'Yes'), ('No', 'No')], default='Yes')
     days_well_thought = models.CharField(max_length=3, choices=[('Yes', 'Yes'), ('No', 'No')], default='Yes')
-
-    # HR Checklist (info only, not saved)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ['-created_at']
-        verbose_name = "Hiring Requisition"
-        verbose_name_plural = "Hiring Requisitions"
-
-    def __str__(self):
-        return f"{self.ser} - {self.requisitioner_name}"
-
+    
     def save(self, *args, **kwargs):
         if not self.ser:
-            # Generate unique serial (HR-YYYYMM-001 format)
             today = timezone.now().strftime('%Y%m')
             last = HiringRequisition.objects.filter(ser__startswith=f"HR-{today}").count()
             self.ser = f"HR-{today}-{last+1:03d}"
+        
+        # Auto-set designation based on type
+        if self.designation_type == 'existing':
+            self.designation = self.designation_existing
+        else:
+            self.designation = self.designation_new
+            
         super().save(*args, **kwargs)

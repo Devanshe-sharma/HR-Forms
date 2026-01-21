@@ -24,6 +24,7 @@ import {
   RadioGroup,
   Radio,
   FormLabel,
+  Backdrop,
 } from '@mui/material';
 import { format, addDays } from 'date-fns';
 
@@ -35,7 +36,11 @@ const schema = z.object({
   requisitioner_email: z.string().email('Invalid email').optional(),
   hiring_dept: z.string().min(1, 'Hiring Department is required'),
   hiring_dept_email: z.string().email('Invalid email').optional(),
-  designation_type: z.enum(['existing', 'new']).refine(val => val === 'existing' || val === 'new',{ message: 'Please select existing or new designation' }),
+  dept_group_email: z.string().email('Invalid email').optional(),
+  designation_type: z.enum(['existing', 'new']).refine(
+    val => val === 'existing' || val === 'new',
+    { message: 'Please select existing or new designation' }
+  ),
   designation_existing: z.string().optional(),
   designation_new: z.string().optional(),
   request_date: z.string().optional(),
@@ -58,7 +63,7 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 type Employee = { id: number; full_name: string; official_email: string };
-type Department = { id: number; name: string; dept_head_email?: string };
+type Department = { id: number; name: string; dept_head_email?: string; dept_group_email?: string };
 type Designation = { id: number; name: string; role_document_link?: string; jd_link?: string };
 
 export default function NewRequisitionForm() {
@@ -90,6 +95,8 @@ export default function NewRequisitionForm() {
       days_well_thought: 'Yes',
       role_link: '',
       jd_link: '',
+      hiring_status: '',
+      dept_group_email: '',
     },
   });
 
@@ -101,6 +108,7 @@ export default function NewRequisitionForm() {
 
   // Fetch employees and departments
   useEffect(() => {
+    console.log('[FETCH] Starting to load employees & departments...');
     const fetchData = async () => {
       try {
         const [empRes, deptRes] = await Promise.all([
@@ -108,12 +116,24 @@ export default function NewRequisitionForm() {
           fetch('https://hr-forms.onrender.com/api/departments/'),
         ]);
 
-        if (!empRes.ok || !deptRes.ok) throw new Error('Failed to fetch');
+        console.log('[FETCH] Employees status:', empRes.status);
+        console.log('[FETCH] Departments status:', deptRes.status);
 
-        setEmployees(await empRes.json());
-        setDepartments(await deptRes.json());
+        if (!empRes.ok || !deptRes.ok) {
+          throw new Error('Failed to fetch initial data');
+        }
+
+        const empData = await empRes.json();
+        const deptData = await deptRes.json();
+
+        console.log('[FETCH] Employees count:', empData.length);
+        console.log('[FETCH] Departments count:', deptData.length);
+        console.log('[FETCH] Sample department:', deptData[0] || 'No data');
+
+        setEmployees(empData);
+        setDepartments(deptData);
       } catch (err) {
-        console.error('Failed to fetch data:', err);
+        console.error('[FETCH ERROR]', err);
         setError('Failed to load data from server');
       } finally {
         setLoading(false);
@@ -123,69 +143,82 @@ export default function NewRequisitionForm() {
     fetchData();
   }, []);
 
-  // Fetch designations when department is selected
+  // Fetch designations when department changes
   useEffect(() => {
-    if (!hiringDept) {
-      setDesignations([]);
-      setValue('designation_existing', '');
-      setValue('role_link', '');
-      setValue('jd_link', '');
-      return;
-    }
+    if (!hiringDept) return;
+
+    console.log('[DESIGNATION] Department selected:', hiringDept);
 
     const fetchDesignations = async () => {
       try {
         const dept = departments.find(d => d.name === hiringDept);
-        if (!dept?.id) return;
+        if (!dept?.id) {
+          console.warn('[DESIGNATION] No ID found for department');
+          return;
+        }
 
-        const res = await fetch(`https://hr-forms.onrender.com/api/designations/?department=${dept.id}`);
-        if (!res.ok) throw new Error('Failed to fetch designations');
+        const url = `https://hr-forms.onrender.com/api/designations/?department=${dept.id}`;
+        console.log('[DESIGNATION] Fetching from:', url);
+
+        const res = await fetch(url);
+        console.log('[DESIGNATION] Status:', res.status);
+
+        if (!res.ok) throw new Error('Designations fetch failed');
 
         const data = await res.json();
+        console.log('[DESIGNATION] Loaded:', data.length, 'items');
         setDesignations(data);
       } catch (err) {
-        console.error('Failed to fetch designations:', err);
-        setError('Failed to load designations');
+        console.error('[DESIGNATION ERROR]', err);
       }
     };
 
     fetchDesignations();
-  }, [hiringDept, departments, setValue]);
+  }, [hiringDept, departments]);
 
   // Auto-fill requisitioner email
   useEffect(() => {
     if (requisitionerName) {
       const emp = employees.find(e => e.full_name === requisitionerName);
       setValue('requisitioner_email', emp?.official_email || '');
+      console.log('[AUTO] Requisitioner email set to:', emp?.official_email);
     }
   }, [requisitionerName, employees, setValue]);
 
-  // Auto-fill department email
+  // Auto-fill department emails
   useEffect(() => {
     if (hiringDept) {
       const dept = departments.find(d => d.name === hiringDept);
-      setValue('hiring_dept_email', dept?.dept_head_email || '');
+      if (dept) {
+        setValue('hiring_dept_email', dept.dept_head_email || '');
+        setValue('dept_group_email', dept.dept_group_email || '');
+        console.log('[AUTO] Dept head email:', dept.dept_head_email);
+        console.log('[AUTO] Dept group email:', dept.dept_group_email);
+      }
     }
   }, [hiringDept, departments, setValue]);
 
   // Auto-fill today's date
   useEffect(() => {
-    setValue('request_date', format(new Date(), 'dd-MM-yyyy'));
+    const today = format(new Date(), 'dd-MM-yyyy');
+    setValue('request_date', today);
   }, [setValue]);
 
-  // Auto-fill role & JD links when existing designation is selected
+  // Auto-fill role & JD links
   useEffect(() => {
     if (designationType === 'existing' && designationExisting) {
       const des = designations.find(d => d.name === designationExisting);
-      setValue('role_link', des?.role_document_link || '');
-      setValue('jd_link', des?.jd_link || '');
+      if (des) {
+        setValue('role_link', des.role_document_link || '');
+        setValue('jd_link', des.jd_link || '');
+      }
     } else {
       setValue('role_link', '');
       setValue('jd_link', '');
     }
   }, [designationType, designationExisting, designations, setValue]);
 
-  // Auto-calculate Hiring Plan dates
+  // Auto-calculate plan dates
   useEffect(() => {
     if (!selectJoiningDays) return;
 
@@ -195,55 +228,79 @@ export default function NewRequisitionForm() {
     const totalDays = parseInt(daysMatch[0], 10);
     const today = new Date();
 
-    const startSharing = addDays(today, 3);
-    const startInterviews = addDays(today, 8);
-    const offerAccepted = addDays(today, totalDays - 15);
-    const joiningDate = addDays(today, totalDays);
-
-    setValue('plan_start_sharing_cvs', format(startSharing, 'dd-MM-yyyy'));
-    setValue('planned_interviews_started', format(startInterviews, 'dd-MM-yyyy'));
-    setValue('planned_offer_accepted', format(offerAccepted, 'dd-MM-yyyy'));
-    setValue('planned_joined', format(joiningDate, 'dd-MM-yyyy'));
+    setValue('plan_start_sharing_cvs', format(addDays(today, 3), 'dd-MM-yyyy'));
+    setValue('planned_interviews_started', format(addDays(today, 8), 'dd-MM-yyyy'));
+    setValue('planned_offer_accepted', format(addDays(today, totalDays - 15), 'dd-MM-yyyy'));
+    setValue('planned_joined', format(addDays(today, totalDays), 'dd-MM-yyyy'));
   }, [selectJoiningDays, setValue]);
 
   const onSubmit = async (data: FormData) => {
-    setSubmitLoading(true);
-    setSuccess(null);
-    setError(null);
+  console.log('[SUBMIT] Form submit triggered');
+  console.log('[SUBMIT] Raw form data:', data);
 
-    try {
-      // Prepare data - use correct designation field
-      const submitData = {
-        ...data,
-        designation: data.designation_type === 'existing' ? data.designation_existing : data.designation_new,
-      };
+  setSubmitLoading(true);
+  setSuccess(null);
+  setError(null);
 
-      const response = await fetch('https://hr-forms.onrender.com/api/hiring-requisitions/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(submitData),
-      });
+  try {
+    // Convert dates to YYYY-MM-DD (ISO format expected by Django)
+    const convertDate = (dateStr: string | undefined) => {
+      if (!dateStr) return null;
+      // Input is dd-MM-yyyy → parse and convert to YYYY-MM-DD
+      const [day, month, year] = dateStr.split('-');
+      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    };
 
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.detail || errData.error || `Server error: ${response.status}`);
-      }
+    const submitData = {
+      ...data,  // Send ALL fields as-is
+      designation_status: data.designation_type,  // Rename to match backend
+      designation: data.designation_type === 'existing' ? data.designation_existing : data.designation_new,
+      // Convert dates
+      request_date: convertDate(data.request_date),
+      plan_start_sharing_cvs: convertDate(data.plan_start_sharing_cvs),
+      planned_interviews_started: convertDate(data.planned_interviews_started),
+      planned_offer_accepted: convertDate(data.planned_offer_accepted),
+      planned_joined: convertDate(data.planned_joined),
+      // Ensure optional fields are null instead of empty string if backend prefers
+      dept_group_email: data.dept_group_email || null,
+      role_link: data.role_link || null,
+      jd_link: data.jd_link || null,
+      special_instructions: data.special_instructions || null,
+    };
 
-      setSuccess('Thank you! Your requisition has been submitted successfully. Redirecting to dashboard...');
+    console.log('[SUBMIT] Final payload being sent:', submitData);
 
-      // Redirect after 3 seconds
-      setTimeout(() => {
-        window.location.href = '/dashboard'; // ← Change this to your actual dashboard route
-      }, 3000);
-    } catch (err: any) {
-      console.error('Submit error:', err);
-      setError(err.message || 'Failed to submit. Please try again.');
-    } finally {
-      setSubmitLoading(false);
+    const response = await fetch('https://hr-forms.onrender.com/api/hiring-requisitions/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(submitData),
+    });
+
+    console.log('[SUBMIT] Response status:', response.status);
+
+    if (!response.ok) {
+      const errData = await response.json();
+      console.error('[SUBMIT ERROR] Backend returned:', errData);
+      throw new Error(JSON.stringify(errData));
     }
-  };
+
+    const result = await response.json();
+    console.log('[SUBMIT SUCCESS] Backend response:', result);
+
+    setSuccess('Thank you! Your requisition has been submitted successfully. Redirecting to dashboard...');
+
+    setTimeout(() => {
+      window.location.href = '/dashboard';
+    }, 3000);
+  } catch (err: any) {
+    console.error('[SUBMIT CRASH]', err);
+    setError(err.message || 'Failed to submit. Check console for details.');
+  } finally {
+    setSubmitLoading(false);
+  }
+};
 
   if (loading) {
     return (
@@ -255,7 +312,6 @@ export default function NewRequisitionForm() {
 
   return (
     <Box sx={{ p: 4, maxWidth: 900, mx: 'auto' }}>
-      {/* Heading + Instructions */}
       <Typography variant="h4" gutterBottom>
         Enter a New Hiring Requisition
       </Typography>
@@ -265,9 +321,9 @@ export default function NewRequisitionForm() {
       </Typography>
 
       <ol className="list-decimal pl-6 mb-6 text-gray-700">
-        <li>Fill a separate form per person needed (for example, if 2 employees are needed to be hired, then fill this form twice).</li>
-        <li>Be practical while selecting the period within which you want the new employee to join. Recruitment takes time, especially when hiring experienced employees.</li>
-        <li>On submitting this form, an auto-email will be sent to all concerned including to you.</li>
+        <li>Fill a separate form per person needed.</li>
+        <li>Be practical with joining timeline.</li>
+        <li>Auto-email will be sent on submit.</li>
       </ol>
 
       <Divider sx={{ my: 4 }} />
@@ -284,24 +340,30 @@ export default function NewRequisitionForm() {
 
           <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', mb: 4 }}>
             <Box sx={{ flex: 1, minWidth: 280 }}>
-              <InputLabel shrink>Hiring Serial No (auto-filled)</InputLabel>
-              <TextField fullWidth value="Auto-generated" disabled variant="standard" />
+              <InputLabel shrink htmlFor="serial-no">Hiring Serial No (auto-filled)</InputLabel>
+              <TextField id="serial-no" name="serial-no" fullWidth value="Auto-generated" disabled variant="standard" />
             </Box>
 
             <Box sx={{ flex: 1, minWidth: 280 }}>
-              <InputLabel shrink>Request Date (auto-filled)</InputLabel>
-              <TextField fullWidth value={watch('request_date') || ''} disabled variant="standard" />
+              <InputLabel shrink htmlFor="request-date">Request Date (auto-filled)</InputLabel>
+              <TextField id="request-date" name="request-date" fullWidth value={watch('request_date') || ''} disabled variant="standard" />
             </Box>
           </Box>
 
           <Box sx={{ mb: 3 }}>
-            <InputLabel shrink>Requisition raised by</InputLabel>
+            <InputLabel shrink htmlFor="requisitioner-name">Requisition raised by</InputLabel>
             <FormControl fullWidth error={!!errors.requisitioner_name}>
               <Controller
                 name="requisitioner_name"
                 control={control}
                 render={({ field }) => (
-                  <Select {...field} value={field.value || ''} displayEmpty>
+                  <Select
+                    {...field}
+                    id="requisitioner-name"
+                    name="requisitioner_name"
+                    value={field.value || ''}
+                    displayEmpty
+                  >
                     <MenuItem value="" disabled>Requisition raised by</MenuItem>
                     {employees.map(emp => (
                       <MenuItem key={emp.id} value={emp.full_name}>{emp.full_name}</MenuItem>
@@ -314,8 +376,8 @@ export default function NewRequisitionForm() {
           </Box>
 
           <Box sx={{ mb: 4 }}>
-            <InputLabel shrink>Requisitioner's Email</InputLabel>
-            <TextField fullWidth value={watch('requisitioner_email') || ''} disabled variant="standard" />
+            <InputLabel shrink htmlFor="requisitioner-email">Requisitioner's Email</InputLabel>
+            <TextField id="requisitioner-email" name="requisitioner_email" fullWidth value={watch('requisitioner_email') || ''} disabled variant="standard" />
           </Box>
         </Box>
 
@@ -326,13 +388,19 @@ export default function NewRequisitionForm() {
           </Typography>
 
           <Box sx={{ mb: 3 }}>
-            <InputLabel shrink>Hiring Dept</InputLabel>
+            <InputLabel shrink htmlFor="hiring-dept">Hiring Dept</InputLabel>
             <FormControl fullWidth error={!!errors.hiring_dept}>
               <Controller
                 name="hiring_dept"
                 control={control}
                 render={({ field }) => (
-                  <Select {...field} value={field.value || ''} displayEmpty>
+                  <Select
+                    {...field}
+                    id="hiring-dept"
+                    name="hiring_dept"
+                    value={field.value || ''}
+                    displayEmpty
+                  >
                     <MenuItem value="" disabled>Hiring Dept</MenuItem>
                     {departments.map(dept => (
                       <MenuItem key={dept.id} value={dept.name}>{dept.name}</MenuItem>
@@ -344,19 +412,23 @@ export default function NewRequisitionForm() {
             </FormControl>
           </Box>
 
-          <Box sx={{ mb: 4 }}>
-            <InputLabel shrink>Hiring Dept Email (autofilled)</InputLabel>
-            <TextField fullWidth value={watch('hiring_dept_email') || ''} disabled variant="standard" />
+          <Box sx={{ mb: 2 }}>
+            <InputLabel shrink htmlFor="hiring-dept-email">Dept Head Email (autofilled)</InputLabel>
+            <TextField id="hiring-dept-email" name="hiring_dept_email" fullWidth value={watch('hiring_dept_email') || ''} disabled variant="standard" />
           </Box>
 
-          {/* Designation Section - only show after dept selected */}
+          <Box sx={{ mb: 4 }}>
+            <InputLabel shrink htmlFor="dept-group-email">Dept Group Email (autofilled)</InputLabel>
+            <TextField id="dept-group-email" name="dept_group_email" fullWidth value={watch('dept_group_email') || ''} disabled variant="standard" />
+          </Box>
+
+          {/* Designation Section */}
           {hiringDept && (
             <Box sx={{ mb: 4 }}>
               <Typography variant="subtitle2" gutterBottom>
                 Designation
               </Typography>
 
-              {/* Existing or New */}
               <FormControl component="fieldset" sx={{ mb: 2 }}>
                 <FormLabel component="legend">Is this an existing designation or a new one?</FormLabel>
                 <Controller
@@ -372,15 +444,18 @@ export default function NewRequisitionForm() {
                 {errors.designation_type && <FormHelperText error>{errors.designation_type.message}</FormHelperText>}
               </FormControl>
 
-              {/* Existing Designation Dropdown */}
               {designationType === 'existing' && (
                 <FormControl fullWidth error={!!errors.designation_existing} sx={{ mb: 2 }}>
-                  <InputLabel>Select Existing Designation</InputLabel>
+                  <InputLabel id="designation-existing-label">Select Existing Designation</InputLabel>
                   <Controller
                     name="designation_existing"
                     control={control}
                     render={({ field }) => (
-                      <Select {...field} value={field.value || ''}>
+                      <Select
+                        {...field}
+                        labelId="designation-existing-label"
+                        value={field.value || ''}
+                      >
                         <MenuItem value="" disabled>Select Designation</MenuItem>
                         {designations.map(des => (
                           <MenuItem key={des.id} value={des.name}>
@@ -394,22 +469,25 @@ export default function NewRequisitionForm() {
                 </FormControl>
               )}
 
-              {/* New Designation Text Field */}
               {designationType === 'new' && (
                 <FormControl fullWidth error={!!errors.designation_new} sx={{ mb: 2 }}>
-                  <InputLabel>New Designation Name</InputLabel>
+                  <InputLabel htmlFor="designation-new">New Designation Name</InputLabel>
                   <Controller
                     name="designation_new"
                     control={control}
                     render={({ field }) => (
-                      <TextField {...field} value={field.value || ''} placeholder="Enter new designation" />
+                      <TextField
+                        {...field}
+                        id="designation-new"
+                        value={field.value || ''}
+                        placeholder="Enter new designation"
+                      />
                     )}
                   />
                   {errors.designation_new && <FormHelperText>{errors.designation_new.message}</FormHelperText>}
                 </FormControl>
               )}
 
-              {/* Autofilled Links (only for existing) */}
               {designationType === 'existing' && designationExisting && (
                 <Box sx={{ mt: 2 }}>
                   <TextField
@@ -433,6 +511,7 @@ export default function NewRequisitionForm() {
           )}
         </Box>
 
+         
         {/* Days to Fulfil Requirement */}
         <Box sx={{ mb: 5 }}>
           <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
@@ -685,6 +764,7 @@ export default function NewRequisitionForm() {
           </Box>
         </Box>
 
+    
         {/* HR CHECKLIST (INFO ONLY) */}
         <Box sx={{ mb: 5 }}>
           <Typography variant="h6" fontWeight="bold" gutterBottom>
@@ -736,6 +816,7 @@ export default function NewRequisitionForm() {
           </Box>
         </Box>
 
+
         {/* Submit Button */}
         <Box sx={{ textAlign: 'center', mt: 6 }}>
           <Button
@@ -750,6 +831,14 @@ export default function NewRequisitionForm() {
           </Button>
         </Box>
       </form>
+
+      {/* Full-page loader overlay */}
+      <Backdrop
+        sx={{ color: '#fff', zIndex: (theme) => theme.zIndex.drawer + 1 }}
+        open={submitLoading}
+      >
+        <CircularProgress color="inherit" />
+      </Backdrop>
     </Box>
   );
 }
