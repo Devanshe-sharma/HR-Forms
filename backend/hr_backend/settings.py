@@ -71,8 +71,9 @@ WSGI_APPLICATION = 'hr_backend.wsgi.application'
 # Database (Render uses DATABASE_URL env var)
 DATABASES = {
     'default': dj_database_url.config(
-        default='sqlite:///' + os.path.join(BASE_DIR, 'db.sqlite3'),
-        conn_max_age=600
+        default='postgresql://hr_db_3f0y_user:dL8nySdACdiE12tQIBkh4hA0PTGdgr4i@dpg-d59n61f5r7bs739cbg70-a.singapore-postgres.render.com/hr_db_3f0y',
+        conn_max_age=600,
+        ssl_require=True,
     )
 }
 

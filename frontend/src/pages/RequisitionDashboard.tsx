@@ -86,11 +86,14 @@ const RequisitionDashboard: React.FC = () => {
                 </button>
                 <Link
                   to="/new-hiring-requisition"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-5 rounded-xl shadow-indigo-200 shadow-lg transition-all active:scale-95"
                 >
                   <Plus size={20} />
                   New Requisition
                 </Link>
+
               </div>
             </div>
 

@@ -24,7 +24,7 @@ class Profile(models.Model):
 
 
 class Country(models.Model):
-    code = models.CharField(max_length=5)
+    code = models.CharField(max_length=10)
     name = models.CharField(max_length=100, unique=True)
 
     class Meta:

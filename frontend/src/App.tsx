@@ -1,5 +1,4 @@
 import { Routes, Route } from "react-router-dom";
-import Login from "./pages/Login";
 import Home from "./pages/Home";
 import HRDashboard from "./pages/HRDashboard";
 import OutsiderDashboard from "./pages/OutsiderDashboard";
@@ -16,8 +15,7 @@ import NewRequisitionForm from "./pages/new-requisition-form";
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Login />} />
-      <Route path="/home" element={<Home />} />
+      <Route path="/" element={<Home />} />
 
       {/* Employee dashboards */}
       <Route path="/hr-dashboard" element={
