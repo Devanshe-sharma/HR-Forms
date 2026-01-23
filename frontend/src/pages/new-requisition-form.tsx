@@ -112,9 +112,10 @@ export default function NewRequisitionForm() {
     const fetchData = async () => {
       try {
         const [empRes, deptRes] = await Promise.all([
-          fetch('https://hr-forms.onrender.com/api/employees/'),
-          fetch('https://hr-forms.onrender.com/api/departments/'),
+          fetch('http://localhost:5000/api/employee'),
+          fetch('http://localhost:5000/api/departments/'),
         ]);
+
 
         console.log('[FETCH] Employees status:', empRes.status);
         console.log('[FETCH] Departments status:', deptRes.status);
@@ -157,7 +158,7 @@ export default function NewRequisitionForm() {
           return;
         }
 
-        const url = `https://hr-forms.onrender.com/api/designations/?department=${dept.id}`;
+        const url = `http://localhost:5000/api/designations/?department=${dept.id}`;
         console.log('[DESIGNATION] Fetching from:', url);
 
         const res = await fetch(url);
@@ -270,7 +271,7 @@ export default function NewRequisitionForm() {
 
       console.log('[SUBMIT] Final payload being sent:', submitData);
 
-      const response = await fetch('https://hr-forms.onrender.com/api/hiring-requisitions/', {
+      const response = await fetch('http://localhost:5000/api/hiringrequisition', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
