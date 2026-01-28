@@ -2,8 +2,13 @@ const mongoose = require('mongoose');
 
 const DesignationSchema = new mongoose.Schema(
     {
-        model: String,
-        fields: Object,
+        
+        department: String,
+        designation: String,
+        role_document_link: String,
+        jd_link: Number,
+        remarks: String,
+        role_document: String
     },
     { collection: 'designations' }
 );
