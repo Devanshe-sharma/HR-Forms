@@ -17,6 +17,7 @@ app.use('/api/designations', require('./routes/designations'));
 app.use('/api/hiringrequisitions', require('./routes/hiringRequisitions'));
 app.use('/api/ctc-components', require('./routes/ctcComponents'));
 app.use('/api/training-proposals', require('./routes/trainingProposals'));
+app.use('/api/onboarding', require('./routes/onboarding'));
 
 
 mongoose.connect(process.env.MONGO_URI)

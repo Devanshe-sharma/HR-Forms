@@ -12,6 +12,7 @@ import ComingSoon from "./pages/ComingSoon";
 import AllApplicants from "./pages/AllApplicants";
 import NewRequisitionForm from "./pages/new-requisition-form";
 import TrainingPage from "./pages/TrainingPage";
+import Onboarding from "./pages/Onboarding";
 
 export default function App() {
   return (
@@ -123,6 +124,16 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+       <Route
+        path="/onboarding"
+        element={
+          <ProtectedRoute>
+            <Onboarding />
+          </ProtectedRoute>
+        }
+      />
+      
+
     </Routes>
   );
 }
