@@ -14,7 +14,10 @@ app.get('/', (req, res) => {
 app.use('/api/employees', require('./routes/employees'));
 app.use('/api/departments', require('./routes/departments'));
 app.use('/api/designations', require('./routes/designations'));
-app.use('/api/hiringrequisition', require('./routes/hiringrequisition'));
+app.use('/api/hiringrequisitions', require('./routes/hiringRequisitions'));
+app.use('/api/ctc-components', require('./routes/ctcComponents'));
+app.use('/api/training-proposals', require('./routes/trainingProposals'));
+
 
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('Mongo connected'))
@@ -23,4 +26,19 @@ mongoose.connect(process.env.MONGO_URI)
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Node running on ${PORT}`);
+});
+
+// server.js
+app.post('/sync-sheet', async (req, res) => {
+  try {
+    const data = req.body; // row or full sheet
+    await Employee.updateOne(
+      { sheetRowId: data.sheetRowId },
+      { $set: data },
+      { upsert: true }
+    );
+    res.send({ success: true });
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
 });
