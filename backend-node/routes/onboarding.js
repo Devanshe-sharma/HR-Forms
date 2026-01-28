@@ -66,7 +66,7 @@ router.get('/', async (req, res) => {
     const accessToken = await getAccessToken();
 
     // Fetch all values
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A1:Z1000`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A1:CZ1000`;
     const response = await axios.get(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
