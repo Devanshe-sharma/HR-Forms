@@ -1,25 +1,24 @@
 {
   "compilerOptions": {
-    "target": "es5",
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
+    "target": "ESNext",
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "useDefineForClassFields": true,
+
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+
+    "allowJs": false,
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+
     "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "node",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "types": ["node"]           // ← add this line
+
+    "jsx": "react-jsx",
+    "types": ["node"]
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "src/pages/Onboarding.jsx"],
+  "include": ["src"],
   "exclude": ["node_modules"]
 }

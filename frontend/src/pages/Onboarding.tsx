@@ -1,10 +1,16 @@
 import { useEffect, useState } from "react";
 
-const API_BASE = 'http://localhost:5000/api';
-const OnboardingPage = () => {
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState(null);
+const API_BASE = "http://localhost:5000/api";
+
+type Row = {
+  ser: number | string;
+  [key: string]: any; // flexible keys, because your data can have dynamic columns
+};
+
+const OnboardingPage: React.FC = () => {
+  const [data, setData] = useState<Row[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [msg, setMsg] = useState<string | null>(null);
 
   // Fetch all rows
   const fetchData = async () => {
@@ -25,16 +31,16 @@ const OnboardingPage = () => {
   }, []);
 
   // Handle cell edit and send update to backend
-  const handleCellChange = (ser, key, value) => {
+  const handleCellChange = (ser: Row["ser"], key: string, value: any) => {
     setData((prev) =>
       prev.map((row) => (row.ser === ser ? { ...row, [key]: value } : row))
     );
   };
 
-  const handleCellBlur = async (ser, row) => {
+  const handleCellBlur = async (ser: Row["ser"], row: Row) => {
     try {
       setMsg(null);
-      const res = await fetch(`${API_URL}/${ser}`, {
+      const res = await fetch(`${API_BASE}/${ser}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -65,7 +71,7 @@ const OnboardingPage = () => {
 
       <p>{msg}</p>
 
-      <table border="1" cellPadding="5" style={{ borderCollapse: "collapse" }}>
+      <table border={1} cellPadding={5} style={{ borderCollapse: "collapse" }}>
         <thead>
           <tr>
             {headers.map((header) => (
@@ -82,7 +88,7 @@ const OnboardingPage = () => {
                 <td key={key}>
                   <input
                     type="text"
-                    value={row[key]}
+                    value={row[key] ?? ""}
                     onChange={(e) => handleCellChange(row.ser, key, e.target.value)}
                     onBlur={() => handleCellBlur(row.ser, row)}
                     style={{ width: "100%" }}
