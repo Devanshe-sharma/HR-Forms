@@ -1,7 +1,15 @@
-require('dotenv').config();
+require("dotenv").config({
+  path: require("path").join(__dirname, ".env"),
+});
+console.log(
+  "ENV LOADED:",
+  !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON
+);
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+
 
 const app = express();
 app.use(cors());

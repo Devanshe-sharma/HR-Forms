@@ -10,55 +10,40 @@ const qs = require("querystring");
 const spreadsheetId = "1pUlMGL05gnCr8Aqf-dWnzpXwTqYmW2oiONnFZw8L8qM";
 const sheetName = "FMS";
 function getAccessToken() {
-  const serviceAccountPath = path.join(__dirname, "../service-account.json");
-  if (!fs.existsSync(serviceAccountPath)) {
-    throw new Error("Service account file not found");
+  if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+    throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON env variable not found");
   }
-  const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf8"));
+
+  const serviceAccount = JSON.parse(
+    process.env.GOOGLE_SERVICE_ACCOUNT_JSON
+  );
+
   const jwtToken = jwt.sign(
     {
       iss: serviceAccount.client_email,
       scope: "https://www.googleapis.com/auth/spreadsheets",
-      aud: "https://oauth2.googleapis.com/token",
+      aud: serviceAccount.token_uri,
       exp: Math.floor(Date.now() / 1000) + 3600,
-      iat: Math.floor(Date.now() / 1000)
+      iat: Math.floor(Date.now() / 1000),
     },
     serviceAccount.private_key,
     { algorithm: "RS256" }
   );
 
   return axios.post(
-    "https://oauth2.googleapis.com/token",
+    serviceAccount.token_uri,
     qs.stringify({
       grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
       assertion: jwtToken,
     }),
-    { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    {
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+    }
   ).then(res => res.data.access_token);
 }
-// function getAccessToken() {
-//   const serviceAccountPath = path.join(__dirname, "../service-account.json");
-//   if (!fs.existsSync(serviceAccountPath)) {
-//     throw new Error("Service account file not found");
-//   }
-//   const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf8"));
-//   const token = jwt.sign(
-//     {
-//       iss: serviceAccount.client_email,
-//       scope: "https://www.googleapis.com/auth/spreadsheets",
-//       aud: "https://oauth2.googleapis.com/token",
-//       exp: Math.floor(Date.now() / 1000) + 3600,
-//     },
-//     serviceAccount.private_key,
-//     { algorithm: "RS256" }
-//   );
-//   return axios
-//     .post("https://oauth2.googleapis.com/token", {
-//       grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-//       assertion: token,
-//     })
-//     .then((res) => res.data.access_token);
-// }
+
 
 // GET all rows
 router.get('/', async (req, res) => {
@@ -147,7 +132,11 @@ router.put("/onboarding/:ser", async (req, res) => {
     res.json({ success: true, message: "Row updated successfully" });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({
+        error: err.message,
+        stack: err.stack,
+      });
+
   }
 });
 
