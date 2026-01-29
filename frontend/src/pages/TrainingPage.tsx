@@ -37,7 +37,7 @@ type Training = {
   trainerDept?: string;
   trainerDesig?: string;
   external?: ExternalInfo;
-  status: 'Pending' | 'Approved' | 'Rejected' | 'Scheduled';
+  status: 'Pending' | 'Approved' | 'Rejected' | 'Scheduled' | 'Archived';
   date?: string;
   reason?: string;
   isSuggestion?: boolean;
@@ -125,44 +125,42 @@ export default function TrainingPage() {
     : '/api';
 
   // Fetch trainers (HR tab)
-  useEffect(() => {
-    if (activeTab !== 'hr') return;
+  // Auto-set default quarter & FY + auto-archive past trainings
+useEffect(() => {
+  if (activeTab !== 'hr' && activeTab !== 'mgmt') return;
 
-    const fetchTrainers = async () => {
-      setLoadingTrainers(true);
-      setTrainerError(null);
-      try {
-        const res = await fetch(`${API_BASE}/employees?lightweight=true`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const now = new Date();
 
-        const data = await res.json();
-        let raw = Array.isArray(data) ? data : (data.data || data.employees || []);
+  const archiveOldTrainings = async () => {
+    const pastScheduled = trainings.filter(t => 
+      t.status === 'Scheduled' && 
+      t.date && 
+      new Date(t.date) < now
+    );
 
-        raw = raw.sort((a: any, b: any) =>
-          (a.full_name || a.name || '').localeCompare(b.full_name || b.name || '')
-        );
+    if (pastScheduled.length === 0) return;
 
-        const formatted = raw
-          .map((emp: any) => ({
-            name: emp.full_name || emp.name || '',
-            dept: emp.department || emp.dept || '',
-            desig: emp.designation || emp.desig || '',
-            email: emp.official_email || emp.email || '',
-          }))
-          .filter((t: { name: string; email: string; }) => t.name.trim() && t.email.trim());
+    console.log(`Archiving ${pastScheduled.length} past trainings...`);
 
-        setTrainers(formatted);
-
-        if (formatted.length === 0) setTrainerError('No employees found.');
-      } catch (err: any) {
-        setTrainerError('Failed to load trainers: ' + err.message);
-      } finally {
-        setLoadingTrainers(false);
+    for (const t of pastScheduled) {
+      if (t._id) {
+        try {
+          await axios.patch(`${API_BASE}/training-proposals/${t._id}`, {
+            status: 'Archived',
+            archivedAt: new Date().toISOString(),
+          });
+        } catch (err) {
+          console.error('Failed to archive:', t._id, err);
+        }
       }
-    };
+    }
 
-    fetchTrainers();
-  }, [activeTab]);
+    // Refresh after archiving
+    refreshTrainings();
+  };
+
+  archiveOldTrainings();
+}, [activeTab, trainings]);
 
   // Fetch employees (emp + score tabs)
   useEffect(() => {
@@ -194,35 +192,71 @@ export default function TrainingPage() {
 
   // Fetch trainings + suggestions (when tab changes)
   useEffect(() => {
-    const fetchTrainings = async () => {
-      try {
-        let url = `${API_BASE}/training-proposals`;
-        if (activeTab === 'mgmt') url += '?status=Pending';
+  const fetchTrainings = async () => {
+    try {
+      let url = `${API_BASE}/training-proposals`;
+      if (activeTab === 'mgmt') url += '?status=Pending';
 
-        const res = await axios.get(url);
-        if (res.data.success) {
-          setTrainings(res.data.data || []);
+      const res = await axios.get(url);
+      if (res.data.success) {
+        let fetchedTrainings = res.data.data || [];
+
+        // Auto-archive past Scheduled trainings (only in HR/Mgmt tabs)
+        if (activeTab === 'hr' || activeTab === 'mgmt') {
+          const now = new Date();
+          const toArchive = fetchedTrainings.filter((t: { status: string; date: string | number | Date; }) => 
+            t.status === 'Scheduled' && 
+            t.date && 
+            new Date(t.date) < now
+          );
+
+          if (toArchive.length > 0) {
+            console.log(`Auto-archiving ${toArchive.length} past trainings...`);
+
+            for (const t of toArchive) {
+              if (t._id) {
+                try {
+                  await axios.patch(`${API_BASE}/training-proposals/${t._id}`, {
+                    status: 'Archived',
+                    // Optional: add archivedAt timestamp
+                    archivedAt: now.toISOString()
+                  });
+                } catch (archiveErr) {
+                  console.error(`Failed to archive training ${t._id}:`, archiveErr);
+                }
+              }
+            }
+
+            // Re-fetch after archiving to show updated statuses
+            const refreshed = await axios.get(url);
+            if (refreshed.data.success) {
+              fetchedTrainings = refreshed.data.data || [];
+            }
+          }
         }
-      } catch (err) {
-        console.error('Fetch trainings failed:', err);
-      }
-    };
 
-    const fetchSuggestions = async () => {
-      if (activeTab !== 'mgmt') return;
-      try {
-        const res = await axios.get(`${API_BASE}/training-proposals?isSuggestion=true`);
-        if (res.data.success) {
-          setSuggestions(res.data.data || []);
-        }
-      } catch (err) {
-        console.error('Fetch suggestions failed:', err);
+        setTrainings(fetchedTrainings);
       }
-    };
+    } catch (err) {
+      console.error('Fetch trainings failed:', err);
+    }
+  };
 
-    fetchTrainings();
-    fetchSuggestions();
-  }, [activeTab]);
+  const fetchSuggestions = async () => {
+    if (activeTab !== 'mgmt') return;
+    try {
+      const res = await axios.get(`${API_BASE}/training-proposals?isSuggestion=true`);
+      if (res.data.success) {
+        setSuggestions(res.data.data || []);
+      }
+    } catch (err) {
+      console.error('Fetch suggestions failed:', err);
+    }
+  };
+
+  fetchTrainings();
+  fetchSuggestions();
+}, [activeTab]);
 
   const refreshTrainings = async () => {
     try {
@@ -232,6 +266,9 @@ export default function TrainingPage() {
       console.error('Refresh failed:', err);
     }
   };
+
+
+  
 
   // ────────────────────────────────────────────────
   // HR Table Filter & Sort
@@ -328,7 +365,7 @@ export default function TrainingPage() {
   };
 
   // ────────────────────────────────────────────────
-  // HR Submit Proposal
+  // HR Submit proposals
   // ────────────────────────────────────────────────
 
   const handleTrainerSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -673,10 +710,10 @@ export default function TrainingPage() {
             <main className="container mx-auto p-5 md:p-6 max-w-7xl pb-12">
               {activeTab === 'hr' && (
                 <div className="space-y-8">
-                  {/* HR Proposal Form */}
+                  {/* HR proposals Form */}
                   <div className="bg-white p-6 rounded-xl shadow-md">
                     <h3 className="text-xl font-bold text-gray-800 mb-6">
-                      HR – Training Proposal & Scheduling
+                      HR – Training proposals & Scheduling
                     </h3>
 
                     <div className="grid gap-5 md:grid-cols-2">
@@ -820,300 +857,313 @@ export default function TrainingPage() {
                   </div>
 
                   {/* Filtered & Editable Table (HR) */}
-                  <div className="bg-white p-6 rounded-xl shadow-md">
-                    <h4 className="text-lg font-bold text-gray-800 mb-4">
-                      All Trainings – HR Control Panel
-                    </h4>
+                    {/* Filtered & Editable Table (HR) */}
+                    <div className="bg-white p-6 rounded-xl shadow-md">
+                      <h4 className="text-lg font-bold text-gray-800 mb-4">
+                        All Trainings – HR Control Panel
+                      </h4>
 
-                    {/* Filters */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Trainer Name</label>
-                        <select
-                          className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={trainerFilter}
-                          onChange={(e) => setTrainerFilter(e.target.value)}
-                        >
-                          <option value="">All Trainers</option>
-                          {Array.from(new Set(trainings.map((t) => t.trainerName))).map((name) => (
-                            <option key={name} value={name}>
-                              {name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Quarter</label>
-                        <select
-                          className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={quarterFilter}
-                          onChange={(e) => setQuarterFilter(e.target.value)}
-                        >
-                          <option value="">All Quarters</option>
-                          <option value="Q1">Q1 (Jan–Mar)</option>
-                          <option value="Q2">Q2 (Apr–Jun)</option>
-                          <option value="Q3">Q3 (Jul–Sep)</option>
-                          <option value="Q4">Q4 (Oct–Dec)</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Financial Year</label>
-                        <select
-                          className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={fyFilter}
-                          onChange={(e) => setFyFilter(e.target.value)}
-                        >
-                          <option value="">All FY</option>
-                          {getAvailableFYs().map((fy) => (
-                            <option key={fy} value={fy}>
-                              {fy}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="flex items-end">
-                        <label className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            checked={showArchived}
-                            onChange={(e) => setShowArchived(e.target.checked)}
-                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                          />
-                          <span className="text-sm text-gray-700">Show Archived only</span>
-                        </label>
-                      </div>
-                    </div>
-
-                    {/* HR Table */}
-                    {filteredTrainings.length === 0 ? (
-                      <p className="text-gray-500 text-center py-8">
-                        No trainings match the selected filters.
-                      </p>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                S.No.
-                              </th>
-                              <th
-                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                                onClick={() => handleSort('topic')}
-                              >
-                                Training Topic{' '}
-                                {sortConfig.key === 'topic' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Topic Description
-                              </th>
-                              <th
-                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                                onClick={() => handleSort('trainerName')}
-                              >
-                                Trainer Name{' '}
-                                {sortConfig.key === 'trainerName' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                              </th>
-                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Status
-                              </th>
-                              <th
-                                className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                                onClick={() => handleSort('date')}
-                              >
-                                Date of Training{' '}
-                                {sortConfig.key === 'date' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                              </th>
-                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Action
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Remarks
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
-                            {filteredTrainings.map((t, idx) => (
-                              <tr key={t._id || idx} className="hover:bg-gray-50">
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
-
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  {editingId === t._id ? (
-                                    <input
-                                      value={editValues.topic ?? t.topic}
-                                      onChange={(e) => setEditValues((v) => ({ ...v, topic: e.target.value }))}
-                                      className="w-full px-2 py-1 border rounded"
-                                    />
-                                  ) : (
-                                    t.topic
-                                  )}
-                                </td>
-
-                                <td className="px-6 py-4">
-                                  {editingId === t._id ? (
-                                    <textarea
-                                      value={editValues.desc ?? t.desc}
-                                      onChange={(e) => setEditValues((v) => ({ ...v, desc: e.target.value }))}
-                                      className="w-full px-2 py-1 border rounded min-h-[60px]"
-                                    />
-                                  ) : (
-                                    t.desc
-                                  )}
-                                </td>
-
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  {editingId === t._id ? (
-                                    <input
-                                      value={editValues.trainerName ?? t.trainerName}
-                                      onChange={(e) => setEditValues((v) => ({ ...v, trainerName: e.target.value }))}
-                                      className="w-full px-2 py-1 border rounded"
-                                    />
-                                  ) : (
-                                    t.trainerName
-                                  )}
-                                </td>
-
-                                <td className="px-6 py-4 whitespace-nowrap text-center">
-                                  {editingId === t._id ? (
-                                    <select
-                                      value={editValues.status ?? t.status}
-                                      onChange={(e) => setEditValues((v) => ({ ...v, status: e.target.value as any }))}
-                                      className="px-2 py-1 border rounded"
-                                    >
-                                      <option value="Pending">Pending</option>
-                                      <option value="Approved">Approved</option>
-                                      <option value="Rejected">Rejected</option>
-                                      <option value="Scheduled">Scheduled</option>
-                                    </select>
-                                  ) : (
-                                    <span
-                                      className={`font-bold ${
-                                        t.status === 'Approved'
-                                          ? 'text-green-600'
-                                          : t.status === 'Rejected'
-                                          ? 'text-red-600'
-                                          : t.status === 'Scheduled'
-                                          ? 'text-blue-600'
-                                          : 'text-yellow-600'
-                                      }`}
-                                    >
-                                      {t.status}
-                                    </span>
-                                  )}
-                                </td>
-
-                                <td className="px-6 py-4 whitespace-nowrap text-center">
-                                  {editingId === t._id ? (
-                                    <input
-                                      type="text"
-                                      ref={(el) => {
-                                        if (el && !datePickers.current.has(t._id!)) {
-                                          datePickers.current.set(
-                                            t._id!,
-                                            flatpickr(el, {
-                                              dateFormat: 'd-M-Y h:i K',
-                                              defaultDate: editValues.date ?? t.date ?? '',
-                                              enableTime: true,
-                                              time_24hr: false,
-                                              minuteIncrement: 15,
-                                              onChange: (dates) => {
-                                                if (dates[0]) {
-                                                  const d = dates[0];
-                                                  const formatted =
-                                                    d
-                                                      .toLocaleDateString('en-GB', {
-                                                        day: '2-digit',
-                                                        month: 'short',
-                                                        year: 'numeric',
-                                                      })
-                                                      .replace(/ /g, '-') +
-                                                    ' ' +
-                                                    d.toLocaleTimeString('en-US', {
-                                                      hour: 'numeric',
-                                                      minute: '2-digit',
-                                                      hour12: true,
-                                                    });
-                                                  setEditValues((v) => ({ ...v, date: formatted }));
-                                                }
-                                              },
-                                            })
-                                          );
-                                        }
-                                      }}
-                                      className="w-full px-2 py-1 border rounded"
-                                    />
-                                  ) : (
-                                    t.date || '-'
-                                  )}
-                                </td>
-
-                                <td className="px-6 py-4 whitespace-nowrap text-center space-x-2">
-                                  {editingId === t._id ? (
-                                    <>
-                                      <button
-                                        onClick={() => saveEdit(t._id)}
-                                        className="text-green-600 hover:underline"
-                                      >
-                                        Save
-                                      </button>
-                                      <button
-                                        onClick={cancelEdit}
-                                        className="text-red-600 hover:underline"
-                                      >
-                                        Cancel
-                                      </button>
-                                    </>
-                                  ) : (
-                                    <>
-                                      {t.status === 'Approved' && (
-                                        <button
-                                          onClick={() => openScheduleModal(t, false)}
-                                          className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
-                                          disabled={savingSchedule}
-                                        >
-                                          Schedule
-                                        </button>
-                                      )}
-                                      {t.status === 'Scheduled' && (
-                                        <button
-                                          onClick={() => openScheduleModal(t, true)}
-                                          className="bg-purple-600 text-white px-3 py-1 rounded text-sm hover:bg-purple-700"
-                                          disabled={savingSchedule}
-                                        >
-                                          Reschedule
-                                        </button>
-                                      )}
-                                      <button
-                                        onClick={() => startEdit(t)}
-                                        className="text-indigo-600 hover:underline text-sm"
-                                      >
-                                        Edit
-                                      </button>
-                                    </>
-                                  )}
-                                </td>
-
-                                <td className="px-6 py-4">
-                                  {editingId === t._id ? (
-                                    <input
-                                      value={editValues.reason ?? t.reason ?? ''}
-                                      onChange={(e) => setEditValues((v) => ({ ...v, reason: e.target.value }))}
-                                      className="w-full px-2 py-1 border rounded"
-                                    />
-                                  ) : (
-                                    t.reason || '-'
-                                  )}
-                                </td>
-                              </tr>
+                      {/* Filters */}
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Trainer Name</label>
+                          <select
+                            className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            value={trainerFilter}
+                            onChange={(e) => setTrainerFilter(e.target.value)}
+                          >
+                            <option value="">All Trainers</option>
+                            {Array.from(new Set(trainings.map((t) => t.trainerName))).map((name) => (
+                              <option key={name} value={name}>
+                                {name}
+                              </option>
                             ))}
-                          </tbody>
-                        </table>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Quarter</label>
+                          <select
+                            className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            value={quarterFilter}
+                            onChange={(e) => setQuarterFilter(e.target.value)}
+                          >
+                            <option value="">All Quarters</option>
+                            <option value="Q1">Q1 (Jan–Mar)</option>
+                            <option value="Q2">Q2 (Apr–Jun)</option>
+                            <option value="Q3">Q3 (Jul–Sep)</option>
+                            <option value="Q4">Q4 (Oct–Dec)</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Financial Year</label>
+                          <select
+                            className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            value={fyFilter}
+                            onChange={(e) => setFyFilter(e.target.value)}
+                          >
+                            <option value="">All FY</option>
+                            {getAvailableFYs().map((fy) => (
+                              <option key={fy} value={fy}>
+                                {fy}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="flex items-end">
+                          <label className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              checked={showArchived}
+                              onChange={(e) => setShowArchived(e.target.checked)}
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                            />
+                            <span className="text-sm text-gray-700">Show Archived only</span>
+                          </label>
+                        </div>
                       </div>
-                    )}
+
+                {/* HR Table */}
+                {filteredTrainings.length === 0 ? (
+                  <p className="text-gray-500 text-center py-8">
+                    No trainings match the selected filters.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">S.No.</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('topic')}>
+                            Training Topic {sortConfig.key === 'topic' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Topic Description</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('trainerName')}>
+                            Trainer Name {sortConfig.key === 'trainerName' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                          </th>
+                          <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                          <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('date')}>
+                            Date of Training {sortConfig.key === 'date' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                          </th>
+                          <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
+                          <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Remarks</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {filteredTrainings.map((t, idx) => (
+                          <tr key={t._id || idx} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
+
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {editingId === t._id ? (
+                                <input
+                                  value={editValues.topic ?? t.topic}
+                                  onChange={(e) => setEditValues((v) => ({ ...v, topic: e.target.value }))}
+                                  className="w-full px-2 py-1 border rounded"
+                                />
+                              ) : (
+                                t.topic
+                              )}
+                            </td>
+
+                            <td className="px-6 py-4">
+                              {editingId === t._id ? (
+                                <textarea
+                                  value={editValues.desc ?? t.desc}
+                                  onChange={(e) => setEditValues((v) => ({ ...v, desc: e.target.value }))}
+                                  className="w-full px-2 py-1 border rounded min-h-[60px]"
+                                />
+                              ) : (
+                                t.desc
+                              )}
+                            </td>
+
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {editingId === t._id ? (
+                                <input
+                                  value={editValues.trainerName ?? t.trainerName}
+                                  onChange={(e) => setEditValues((v) => ({ ...v, trainerName: e.target.value }))}
+                                  className="w-full px-2 py-1 border rounded"
+                                />
+                              ) : (
+                                t.trainerName
+                              )}
+                            </td>
+
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              {editingId === t._id ? (
+                                <select
+                                  value={editValues.status ?? t.status}
+                                  onChange={(e) => setEditValues((v) => ({ ...v, status: e.target.value as any }))}
+                                  className="px-2 py-1 border rounded"
+                                >
+                                  <option value="Pending">Pending</option>
+                                  <option value="Approved">Approved</option>
+                                  <option value="Rejected">Rejected</option>
+                                  <option value="Scheduled">Scheduled</option>
+                                  <option value="Archived">Archived</option>
+                                </select>
+                              ) : (
+                                <span
+                                  className={`font-bold ${
+                                    t.status === 'Approved'
+                                      ? 'text-green-600'
+                                      : t.status === 'Rejected'
+                                      ? 'text-red-600'
+                                      : t.status === 'Scheduled'
+                                      ? 'text-blue-600'
+                                      : t.status === 'Archived'
+                                      ? 'text-gray-600'
+                                      : 'text-yellow-600'
+                                  }`}
+                                >
+                                  {t.status}
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              {editingId === t._id ? (
+                                <input
+                                  type="text"
+                                  ref={(el) => {
+                                    if (el && !datePickers.current.has(t._id!)) {
+                                      datePickers.current.set(
+                                        t._id!,
+                                        flatpickr(el, {
+                                          dateFormat: 'd-M-Y h:i K',
+                                          defaultDate: editValues.date ?? t.date ?? '',
+                                          enableTime: true,
+                                          time_24hr: false,
+                                          minuteIncrement: 15,
+                                          onChange: (dates) => {
+                                            if (dates[0]) {
+                                              const d = dates[0];
+                                              const formatted =
+                                                d
+                                                  .toLocaleDateString('en-GB', {
+                                                    day: '2-digit',
+                                                    month: 'short',
+                                                    year: 'numeric',
+                                                  })
+                                                  .replace(/ /g, '-') +
+                                                ' ' +
+                                                d.toLocaleTimeString('en-US', {
+                                                  hour: 'numeric',
+                                                  minute: '2-digit',
+                                                  hour12: true,
+                                                });
+                                              setEditValues((v) => ({ ...v, date: formatted }));
+                                            }
+                                          },
+                                        })
+                                      );
+                                    }
+                                  }}
+                                  className="w-full px-2 py-1 border rounded"
+                                />
+                              ) : (
+                                t.date || '-'
+                              )}
+                            </td>
+
+                            {/* New Priority Column */}
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              {editingId === t._id ? (
+                                <select
+                                  value={editValues.priority ?? t.priority ?? ''}
+                                  onChange={(e) => setEditValues((v) => ({ ...v, priority: (e.target.value || undefined) as 'P1' | 'P2' | 'P3' | undefined }))}
+                                  className="px-2 py-1 border rounded"
+                                >
+                                  <option value="">None</option>
+                                  <option value="P1">P1</option>
+                                  <option value="P2">P2</option>
+                                  <option value="P3">P3</option>
+                                </select>
+                              ) : (
+                                <span
+                                  className={`font-medium ${
+                                    t.priority === 'P1'
+                                      ? 'text-red-600'
+                                      : t.priority === 'P2'
+                                      ? 'text-orange-600'
+                                      : t.priority === 'P3'
+                                      ? 'text-green-600'
+                                      : 'text-gray-500'
+                                  }`}
+                                >
+                                  {t.priority || '-'}
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="px-6 py-4 whitespace-nowrap text-center space-x-2">
+                              {editingId === t._id ? (
+                                <>
+                                  <button
+                                    onClick={() => saveEdit(t._id)}
+                                    className="text-green-600 hover:underline"
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    onClick={cancelEdit}
+                                    className="text-red-600 hover:underline"
+                                  >
+                                    Cancel
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  {t.status === 'Approved' && !t.date && (
+                                    <button
+                                      onClick={() => openScheduleModal(t, false)}
+                                      className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+                                      disabled={savingSchedule}
+                                    >
+                                      Schedule
+                                    </button>
+                                  )}
+                                  {t.status === 'Scheduled' && (
+                                    <button
+                                      onClick={() => openScheduleModal(t, true)}
+                                      className="bg-purple-600 text-white px-3 py-1 rounded text-sm hover:bg-purple-700"
+                                      disabled={savingSchedule}
+                                    >
+                                      Reschedule
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => startEdit(t)}
+                                    className="text-indigo-600 hover:underline text-sm"
+                                  >
+                                    Edit
+                                  </button>
+                                </>
+                              )}
+                            </td>
+
+                            <td className="px-6 py-4">
+                              {editingId === t._id ? (
+                                <input
+                                  value={editValues.reason ?? t.reason ?? ''}
+                                  onChange={(e) => setEditValues((v) => ({ ...v, reason: e.target.value }))}
+                                  className="w-full px-2 py-1 border rounded"
+                                />
+                              ) : (
+                                t.reason || '-'
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
+                )}
+              </div>
                 </div>
               )}
 
@@ -1122,7 +1172,7 @@ export default function TrainingPage() {
     {/* Management – All Trainings Table (same structure as HR) */}
     <div className="bg-white p-6 rounded-xl shadow-md">
       <h3 className="text-xl font-bold text-gray-800 mb-6">
-        Management – All Training Proposals
+        Management – All Training proposals
       </h3>
 
       {/* Filters (same as HR) */}
@@ -1605,7 +1655,7 @@ export default function TrainingPage() {
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
             <h3 className="text-xl font-bold text-gray-900 mb-4">
-              Reject Training Proposal
+              Reject Training proposals
             </h3>
             <p className="text-gray-600 mb-4">
               Please provide a reason for rejection:
