@@ -13,27 +13,33 @@ import {
   Avatar,
   Typography,
 } from '@mui/material';
-import {
-  Dashboard,
-  People,
-  PersonSearch,
-  BusinessCenter,
-  GroupAdd,
-  ExitToApp,
-  AccountCircle,
-  Settings,
-  ListAlt,
-  Assignment,
-  Score as ScoreIcon,
-  ExpandLess,
-  ExpandMore,
-  Checklist,
-  School,
-} from '@mui/icons-material';
-import { Event } from "@mui/icons-material";
+import DashboardIcon from '@mui/icons-material/Dashboard';
+import PeopleIcon from '@mui/icons-material/People';
+import PersonSearchIcon from '@mui/icons-material/PersonSearch';
+import BusinessCenterIcon from '@mui/icons-material/BusinessCenter';
+import GroupAddIcon from '@mui/icons-material/GroupAdd';
+import ExitToAppIcon from '@mui/icons-material/ExitToApp';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import SettingsIcon from '@mui/icons-material/Settings';
+import ListAltIcon from '@mui/icons-material/ListAlt';
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import ScoreIcon from '@mui/icons-material/Score';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ChecklistIcon from '@mui/icons-material/Checklist';
+import SchoolIcon from '@mui/icons-material/School';
 import { NavLink, useLocation } from 'react-router-dom';
 
 const drawerWidth = 240;
+
+type MenuItem = {
+  to?: string;
+  text: string;
+  icon: React.ReactNode;
+  onClick?: () => void;
+  open?: boolean;
+  subItems?: MenuItem[];
+};
 
 export default function Sidebar() {
   const location = useLocation();
@@ -47,35 +53,34 @@ export default function Sidebar() {
   const isActive = (path: string) => location.pathname === path;
 
   // Menu items
-  const menuItems = [
-  { to: '/hr-dashboard', text: 'HR Dashboard', icon: <Dashboard /> },
-  { to: '/employees', text: 'Employees', icon: <People /> },
-  { to: '/candidates', text: 'Candidates', icon: <PersonSearch /> },
-  { to: '/salary-revision', text: 'Employee Letters', icon: <ExitToApp /> },
+  const menuItems: MenuItem[] = [
+    { to: '/hr-dashboard', text: 'HR Dashboard', icon: <DashboardIcon /> },
+    { to: '/employees', text: 'Employees', icon: <PeopleIcon /> },
+    { to: '/candidates', text: 'Candidates', icon: <PersonSearchIcon /> },
+    { to: '/salary-revision', text: 'Employee Letters', icon: <ExitToAppIcon /> },
 
-  {
-    text: 'Recruitment',
-    icon: <GroupAdd />,
-    onClick: handleRecruitmentClick,
-    open: openRecruitment,
-    subItems: [
-      { to: '/recruitment', text: 'All Requisitions', icon: <ListAlt /> },
-      { to: '/applicants', text: 'All Applicants', icon: <Assignment /> },
-      { to: '/scoring', text: 'Recruitment Scoring', icon: <ScoreIcon /> },
-    ],
-  },
+    {
+      text: 'Recruitment',
+      icon: <GroupAddIcon />,
+      onClick: handleRecruitmentClick,
+      open: openRecruitment,
+      subItems: [
+        { to: '/recruitment', text: 'All Requisitions', icon: <ListAltIcon /> },
+        { to: '/applicants', text: 'All Applicants', icon: <AssignmentIcon /> },
+        { to: '/scoring', text: 'Recruitment Scoring', icon: <ScoreIcon /> },
+      ],
+    },
 
-  { to: '/onboarding', text: 'Onboardings', icon: <BusinessCenter /> },
-  { to: '/exits', text: 'Exits', icon: <ExitToApp /> },
+    { to: '/onboarding', text: 'Onboardings', icon: <BusinessCenterIcon /> },
+    { to: '/exits', text: 'Exits', icon: <ExitToAppIcon /> },
 
-  // ✅ TRAINING PAGE (kept)
-  { to: '/training-page', text: 'Trainings', icon: <School /> },
+    // ✅ TRAINING PAGE (kept)
+    { to: '/training-page', text: 'Trainings', icon: <SchoolIcon /> },
 
-  { to: '/confirmations', text: 'Confirmations', icon: <Checklist /> },
-  { to: '/profile', text: 'Profile', icon: <AccountCircle /> },
-  { to: '/settings', text: 'Settings', icon: <Settings /> },
-];
-
+    { to: '/confirmations', text: 'Confirmations', icon: <ChecklistIcon /> },
+    { to: '/profile', text: 'Profile', icon: <AccountCircleIcon /> },
+    { to: '/settings', text: 'Settings', icon: <SettingsIcon /> },
+  ];
 
   return (
     <Drawer
@@ -94,12 +99,12 @@ export default function Sidebar() {
       }}
     >
       {/* Profile / Header Section (optional) */}
-      <Box sx={{ px: 3, py: 2, display: 'flex',backgroundColor: "#3B82F6", alignItems: 'center' }}>
+      <Box sx={{ px: 3, py: 2, display: 'flex', backgroundColor: '#3B82F6', alignItems: 'center' }}>
         <NavLink to="/profile">
           <Avatar sx={{ width: 56, height: 56, mr: 2 }} src="/avatar.png" />
         </NavLink>
         <Box>
-          <Typography variant="subtitle1" fontWeight={600}>
+          <Typography variant="subtitle1" fontWeight={600} color="white">
             HR Portal
           </Typography>
         </Box>
@@ -110,8 +115,7 @@ export default function Sidebar() {
       {/* Main Menu */}
       <List sx={{ px: 1 }}>
         {menuItems.map((item) => {
-          // Submenu item (Recruitment)
-          if ('subItems' in item && item.subItems) {
+          if (item.subItems && item.subItems.length > 0) {
             return (
               <div key={item.text}>
                 <ListItemButton
@@ -119,20 +123,16 @@ export default function Sidebar() {
                   sx={{
                     borderRadius: 2,
                     my: 0.5,
-                    bgcolor: location.pathname.startsWith('/recruitment') || location.pathname === '/applicants'
-                      ? '#f3e8ff'
-                      : 'transparent',
+                    bgcolor:
+                      location.pathname.startsWith('/recruitment') || location.pathname === '/applicants'
+                        ? '#f3e8ff'
+                        : 'transparent',
                     '&:hover': { bgcolor: '#ede7f6' },
                   }}
                 >
-                  <ListItemIcon sx={{ minWidth: 40, color: 'text.primary' }}>
-                    {item.icon}
-                  </ListItemIcon>
-                  <ListItemText
-                    primary={item.text}
-                    primaryTypographyProps={{ fontSize: '0.95rem', fontWeight: 600 }}
-                  />
-                  {item.open ? <ExpandLess /> : <ExpandMore />}
+                  <ListItemIcon sx={{ minWidth: 40, color: 'text.primary' }}>{item.icon}</ListItemIcon>
+                  <ListItemText primary={item.text} primaryTypographyProps={{ fontSize: '0.95rem', fontWeight: 600 }} />
+                  {item.open ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                 </ListItemButton>
 
                 <Collapse in={item.open} timeout="auto" unmountOnExit>
@@ -141,19 +141,19 @@ export default function Sidebar() {
                       <ListItemButton
                         key={sub.to}
                         component={NavLink}
-                        to={sub.to}
+                        to={sub.to!}
                         sx={{
                           pl: 7,
                           borderRadius: 2,
                           my: 0.3,
-                          bgcolor: isActive(sub.to) ? '#e8f5e9' : 'transparent',
+                          bgcolor: isActive(sub.to!) ? '#e8f5e9' : 'transparent',
                           '&:hover': { bgcolor: '#f1f8e9' },
                         }}
                       >
                         <ListItemIcon
                           sx={{
                             minWidth: 36,
-                            color: isActive(sub.to) ? '#2e7d32' : 'text.secondary',
+                            color: isActive(sub.to!) ? '#2e7d32' : 'text.secondary',
                           }}
                         >
                           {sub.icon}
@@ -162,8 +162,8 @@ export default function Sidebar() {
                           primary={sub.text}
                           primaryTypographyProps={{
                             fontSize: '0.9rem',
-                            color: isActive(sub.to) ? '#2e7d32' : 'text.primary',
-                            fontWeight: isActive(sub.to) ? 600 : 400,
+                            color: isActive(sub.to!) ? '#2e7d32' : 'text.primary',
+                            fontWeight: isActive(sub.to!) ? 600 : 400,
                           }}
                         />
                       </ListItemButton>
@@ -174,23 +174,22 @@ export default function Sidebar() {
             );
           }
 
-          // Regular menu item
           return (
             <ListItemButton
               key={item.to}
               component={NavLink}
-              to={item.to}
+              to={item.to!}
               sx={{
                 borderRadius: 2,
                 my: 0.5,
-                bgcolor: isActive(item.to) ? '#f3e8ff' : 'transparent',
+                bgcolor: isActive(item.to!) ? '#f3e8ff' : 'transparent',
                 '&:hover': { bgcolor: '#ede7f6' },
               }}
             >
               <ListItemIcon
                 sx={{
                   minWidth: 40,
-                  color: isActive(item.to) ? '#673ab7' : 'text.secondary',
+                  color: isActive(item.to!) ? '#673ab7' : 'text.secondary',
                 }}
               >
                 {item.icon}
@@ -199,8 +198,8 @@ export default function Sidebar() {
                 primary={item.text}
                 primaryTypographyProps={{
                   fontSize: '0.95rem',
-                  fontWeight: isActive(item.to) ? 600 : 500,
-                  color: isActive(item.to) ? '#673ab7' : 'text.primary',
+                  fontWeight: isActive(item.to!) ? 600 : 500,
+                  color: isActive(item.to!) ? '#673ab7' : 'text.primary',
                 }}
               />
             </ListItemButton>
