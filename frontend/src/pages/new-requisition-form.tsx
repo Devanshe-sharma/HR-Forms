@@ -276,6 +276,10 @@ export default function NewRequisitionForm() {
     );
   }
 
+  function register(arg0: string): import("react").JSX.IntrinsicAttributes & { variant?: import("@mui/material").TextFieldVariants | undefined; } & Omit<import("@mui/material").FilledTextFieldProps | import("@mui/material").OutlinedTextFieldProps | import("@mui/material").StandardTextFieldProps, "variant"> {
+    throw new Error('Function not implemented.');
+  }
+
   return (
     <Box sx={{ p: 4, maxWidth: 900, mx: 'auto' }}>
       <Typography variant="h4" gutterBottom>
