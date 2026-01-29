@@ -1,6 +1,4 @@
-require("dotenv").config({
-  path: require("path").join(__dirname, ".env"),
-});
+require('dotenv').config({ path: './backend-node/.env' });
 console.log(
   "ENV LOADED:",
   !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON
