@@ -1,1494 +1,309 @@
 'use client';
 
-import { useState, useEffect, useRef, ReactNode } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
 import flatpickr from 'flatpickr';
 import 'flatpickr/dist/flatpickr.min.css';
+import { Plus, Edit, Trash2, Globe, UserCheck } from 'lucide-react';
 
+// --- TYPES ---
 type Employee = {
   name: string;
   dept: string;
   desig: string;
-  score: number;
-};
-
-type TrainerOption = {
-  name: string;
-  dept: string;
-  desig: string;
-  email: string;
-};
-
-type ExternalInfo = {
-  source: string;
-  org: string;
-  mobile: string;
   email: string;
 };
 
 type Training = {
-  status: string;
-  trainerName: string;
-  isSuggestion: any;
-  trainerType: string;
-  desc: any;
-  priority: any;
-  reason: any;
-  topic: ReactNode;
   _id?: string;
-  hr_info: {
-    topic: string;
-    desc: string;
-    trainerType: 'internal' | 'external';
-    trainerName: string;
-    trainerDept?: string;
-    trainerDesig?: string;
-    external?: ExternalInfo;
+  topic: string;
+  description: string;
+  trainingDate?: string | Date;
+  status: 'Pending' | 'Approved' | 'Rejected' | 'Scheduled' | 'Archived';
+  priority: 'P1' | 'P2' | 'P3';
+  remark?: string;
+  trainer: {
+    name: string;
+    isExternal: boolean;
+    department?: string;
+    designation?: string;
+    source?: string;
+    organisation?: string;
+    mobile?: string;
+    email?: string;
   };
-  mgmt_info: {
-    status: string;
-    priority?: 'P1' | 'P2' | 'P3' | null;
-    reason?: string;
-    isSuggestion?: boolean;
-  };
-  date?: string;
 };
 
-type Tab = 'hr' | 'mgmt' | 'emp' | 'score';
-
 export default function TrainingPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('hr');
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [training, setTraining] = useState<Training[]>([]);
-  const [attendanceLog, setAttendanceLog] = useState<Record<number, string[]>>({});
+  const [searchParams] = useSearchParams();
+  const currentTab = searchParams.get('tab') || 'hr';
 
-  // HR form state
-  const [form, setForm] = useState({
+  // Data States
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [trainingList, setTrainingList] = useState<Training[]>([]);
+  
+  // UI Toggle States
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [trainerType, setTrainerType] = useState<'internal' | 'external'>('internal');
+
+  // Form State
+  const [formData, setFormData] = useState({
     topic: '',
-    desc: '',
-    trainerType: 'internal' as 'internal' | 'external',
-    trainer: '',
+    description: '',
+    priority: 'P3',
+    internalTrainer: '',
     dept: '',
     desig: '',
-    extSource: '',
+    source: '',
     extName: '',
-    extOrg: '',
-    extMobile: '',
-    extEmail: '',
+    org: '',
+    mobile: '',
+    email: ''
   });
 
-  // Trainers + filters + editing
-  const [trainers, setTrainers] = useState<TrainerOption[]>([]);
-  const [loadingTrainers, setLoadingTrainers] = useState(false);
-  const [trainerError, setTrainerError] = useState<string | null>(null);
+  const API_BASE = process.env.NODE_ENV === 'development' ? 'http://localhost:5000/api' : '/api';
 
-  const [trainerFilter, setTrainerFilter] = useState('');
-  const [quarterFilter, setQuarterFilter] = useState('');
-  const [fyFilter, setFyFilter] = useState('');
-  const [showArchived, setShowArchived] = useState(false);
-  const [sortConfig, setSortConfig] = useState<{ key: keyof Training; direction: 'asc' | 'desc' }>({
-    key: 'date',
-    direction: 'desc',
-  });
-
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editValues, setEditValues] = useState<Partial<Training>>({});
-  const datePickers = useRef<Map<string, flatpickr.Instance>>(new Map());
-
-  // Rejection modal
-  const [showRejectModal, setShowRejectModal] = useState(false);
-  const [rejectProposalId, setRejectProposalId] = useState<string | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
-
-  // Schedule/Reschedule modal
-  const [showScheduleModal, setShowScheduleModal] = useState(false);
-  const [selectedTrainingForSchedule, setSelectedTrainingForSchedule] = useState<Training | null>(null);
-  const [isReschedule, setIsReschedule] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<string>('');
-  const [savingSchedule, setSavingSchedule] = useState(false);
-
-  const calendarRef = useRef<flatpickr.Instance | null>(null);
-  const calendarInputRef = useRef<HTMLInputElement>(null);
-
-  // Feedback states
-  const [selectedEmp, setSelectedEmp] = useState('');
-  const [selectedTrainingIndex, setSelectedTrainingIndex] = useState(-1);
-  const [feedback, setFeedback] = useState({
-    overall: '',
-    content: '',
-    missing: '',
-    helpful: '',
-    suggestion: '',
-  });
-
-  // Management suggestion form + list
-  const [suggestionForm, setSuggestionForm] = useState({
-    topic: '',
-    desc: '',
-    trainerName: '',
-    reason: '',
-    priority: '',
-  });
-  const [suggestions, setSuggestions] = useState<any[]>([]);
-
-  const API_BASE = process.env.NODE_ENV === 'development'
-    ? 'http://localhost:5000/api'
-    : '/api';
-
-  // Combined fetching, archiving, default filters, and suggestions
   useEffect(() => {
-    // Only run for relevant tabs
-    if (!['hr', 'mgmt'].includes(activeTab)) return;
-
-    const processTrainings = async () => {
+    const fetchData = async () => {
       try {
-        let url = `${API_BASE}/training`;
-        if (activeTab === 'mgmt') url += '?status=Pending';
-
-        // Fetch training
-        const res = await axios.get(url);
-        if (!res.data.success) return;
-
-        let fetchedTraining = res.data.data || [];
-
-        // Auto-archive past Scheduled training (HR & Mgmt only)
-        const now = new Date();
-        const toArchive = fetchedTraining.filter((t: Training) =>
-          t.status === 'Scheduled' &&
-          t.date &&
-          new Date(t.date) < now
-        );
-
-        if (toArchive.length > 0) {
-          console.log(`Auto-archiving ${toArchive.length} past training...`);
-
-          for (const t of toArchive) {
-            if (t._id) {
-              try {
-                await axios.patch(`${API_BASE}/training/${t._id}`, {
-                  status: 'Archived',
-                  archivedAt: now.toISOString(),
-                });
-              } catch (err) {
-                console.error(`Failed to archive ${t._id}:`, err);
-              }
-            }
-          }
-
-          // Re-fetch to get updated statuses
-          const refreshed = await axios.get(url);
-          if (refreshed.data.success) {
-            fetchedTraining = refreshed.data.data || [];
-          }
-        }
-
-        setTraining(fetchedTraining);
+        const [tRes, eRes] = await Promise.all([
+          axios.get(`${API_BASE}/training`),
+          axios.get(`${API_BASE}/employees?lightweight=true`)
+        ]);
+        setTrainingList(tRes.data.data || []);
+        setEmployees(eRes.data.data || []);
       } catch (err) {
-        console.error('Fetch/archive error:', err);
+        console.error("Data load failed", err);
       }
     };
+    fetchData();
+  }, []);
 
-    const setDefaultFilters = () => {
-      const now = new Date();
-      const month = now.getMonth() + 1;
-      const currentQuarter = `Q${Math.ceil(month / 3)}`;
-
-      const year = now.getFullYear();
-      const currentFY = month >= 4 ? `FY ${year}-${year + 1}` : `FY ${year - 1}-${year}`;
-
-      // Set only if not already set by user
-      if (!quarterFilter) setQuarterFilter(currentQuarter);
-      if (!fyFilter) setFyFilter(currentFY);
-    };
-
-    // Run fetch + archive
-    processTrainings();
-
-    // Set defaults
-    setDefaultFilters();
-
-    // Fetch suggestions only in Management tab
-    if (activeTab === 'mgmt') {
-      const fetchSuggestions = async () => {
-        try {
-          const res = await axios.get(`${API_BASE}/training?isSuggestion=true`);
-          if (res.data.success) {
-            setSuggestions(res.data.data || []);
-          }
-        } catch (err) {
-          console.error('Fetch suggestions failed:', err);
-        }
-      };
-      fetchSuggestions();
-    }
-  }, [activeTab]);
-
-  // Fetch trainers (HR tab only)
-  useEffect(() => {
-    if (activeTab !== 'hr') return;
-
-    const fetchTrainers = async () => {
-      setLoadingTrainers(true);
-      setTrainerError(null);
-      try {
-        const res = await fetch(`${API_BASE}/employees?lightweight=true`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-        const data = await res.json();
-        let raw = Array.isArray(data) ? data : (data.data || data.employees || []);
-
-        raw = raw.sort((a: any, b: any) =>
-          (a.full_name || a.name || '').localeCompare(b.full_name || b.name || '')
-        );
-
-        const formatted = raw
-          .map((emp: any) => ({
-            name: emp.full_name || emp.name || '',
-            dept: emp.department || emp.dept || '',
-            desig: emp.designation || emp.desig || '',
-            email: emp.official_email || emp.email || '',
-          }))
-          .filter((t: { name: string; email: string; }) => t.name.trim() && t.email.trim());
-
-        setTrainers(formatted);
-
-        if (formatted.length === 0) setTrainerError('No employees found.');
-      } catch (err: any) {
-        setTrainerError('Failed to load trainers: ' + err.message);
-      } finally {
-        setLoadingTrainers(false);
-      }
-    };
-
-    fetchTrainers();
-  }, [activeTab]);
-
-  // Fetch employees (emp + score tabs)
-  useEffect(() => {
-    if (activeTab !== 'emp' && activeTab !== 'score') return;
-
-    const fetchEmployees = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/employees?lightweight=true`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-        const data = await res.json();
-        let raw = Array.isArray(data) ? data : (data.data || data.employees || []);
-
-        const formatted: Employee[] = raw.map((emp: any) => ({
-          name: emp.full_name || emp.name || '',
-          dept: emp.department || emp.dept || '',
-          desig: emp.designation || emp.desig || '',
-          score: emp.score || 0,
-        }));
-
-        setEmployees(formatted);
-      } catch (err) {
-        console.error('Failed to load employees:', err);
-      }
-    };
-
-    fetchEmployees();
-  }, [activeTab]);
-
-  const refreshTrainings = async () => {
-    try {
-      const res = await axios.get(`${API_BASE}/training`);
-      if (res.data.success) setTraining(res.data.data || []);
-    } catch (err) {
-      console.error('Refresh failed:', err);
-    }
-  };
-
-  // ────────────────────────────────────────────────
-  // HR Table Filter & Sort
-  // ────────────────────────────────────────────────
-
-  const filteredTraining = training
-    .filter((t) => {
-      if (trainerFilter && t.hr_info?.trainerName !== trainerFilter) return false;
-
-      if (quarterFilter && t.date) {
-        const [d, m, y] = t.date.split(/[- :]/);
-        const month = new Date(`${m} ${d}, ${y}`).getMonth() + 1;
-        const q = Math.ceil(month / 3);
-        if (`Q${q}` !== quarterFilter) return false;
-      }
-
-      if (fyFilter && t.date) {
-        const [d, m, y] = t.date.split(/[- :]/);
-        const dateObj = new Date(`${m} ${d}, ${y}`);
-        const fyStart = dateObj.getMonth() >= 3 ? dateObj.getFullYear() : dateObj.getFullYear() - 1;
-        if (`FY ${fyStart}-${fyStart + 1}` !== fyFilter) return false;
-      }
-
-      if (showArchived) {
-        return t.status === 'Archived' || t.status === 'Rejected';
-      }
-
-      return !t.isSuggestion;
-    })
-    .sort((a, b) => {
-      if (!sortConfig.key) return 0;
-      let aVal: any = a[sortConfig.key] ?? '';
-      let bVal: any = b[sortConfig.key] ?? '';
-      if (sortConfig.key === 'date' && a.date && b.date) {
-        aVal = new Date(a.date).getTime();
-        bVal = new Date(b.date).getTime();
-      }
-      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
-      return 0;
+  // --- FORM HANDLERS ---
+  const handleInternalSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const emp = employees.find(emp => emp.name === e.target.value);
+    setFormData({
+      ...formData,
+      internalTrainer: e.target.value,
+      dept: emp?.dept || '',
+      desig: emp?.desig || ''
     });
-
-  const handleSort = (key: keyof Training) => {
-    setSortConfig((prev) => ({
-      key,
-      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
-    }));
   };
 
-  // ────────────────────────────────────────────────
-  // Inline Editing (HR table)
-  // ────────────────────────────────────────────────
+  const submitProposal = async (e: React.FormEvent) => {
+  e.preventDefault();
 
-  const startEdit = (training: Training) => {
-    if (training.status === 'Archived') return;
-    setEditingId(training._id || '');
-    setEditValues({ ...training });
-  };
+  const trainerName = trainerType === 'internal' ? formData.internalTrainer : formData.extName;
+  
+  if (!trainerName) return alert("Trainer Name is required");
 
-  const saveEdit = async (id?: string) => {
-    if (!id || !editingId) return;
-    try {
-      const res = await axios.patch(`${API_BASE}/training/${id}`, editValues);
-      if (res.data.success) {
-        refreshTrainings();
-        setEditingId(null);
-        setEditValues({});
-        alert('Training updated successfully');
-      }
-    } catch (err: any) {
-      alert('Failed to update: ' + (err.response?.data?.error || err.message));
+  const payload = {
+    topic: formData.topic,
+    description: formData.description,
+    trainingDate: new Date(), // Sending current date as a valid Date object
+    proposedByRole: 'HR',
+    proposedByName: 'HR Admin',
+    status: 'Under Review',
+    priority: formData.priority,
+    trainer: {
+      name: trainerName,
+      isExternal: trainerType === 'external',
+      department: trainerType === 'internal' ? formData.dept : undefined,
+      designation: trainerType === 'internal' ? formData.desig : undefined,
+      externalOrg: trainerType === 'external' ? formData.org : undefined,
+      externalContact: trainerType === 'external' ? (formData.mobile || formData.email) : undefined
     }
   };
 
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditValues({});
-  };
-
-  // ────────────────────────────────────────────────
-  // Quarter & FY Helpers
-  // ────────────────────────────────────────────────
-
-  const getAvailableFYs = () => {
-    const fys = new Set<string>();
-    training.forEach((t) => {
-      if (t.date) {
-        const [d, m, y] = t.date.split(/[- :]/);
-        const dateObj = new Date(`${m} ${d}, ${y}`);
-        const fyStart = dateObj.getMonth() >= 3 ? dateObj.getFullYear() : dateObj.getFullYear() - 1;
-        fys.add(`FY ${fyStart}-${fyStart + 1}`);
-      }
-    });
-    return Array.from(fys).sort().reverse();
-  };
-
-  // ────────────────────────────────────────────────
-  // HR Submit Proposal
-  // ────────────────────────────────────────────────
-
-  const handleTrainerSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const email = e.target.value;
-    const selected = trainers.find((t) => t.email === email);
-    setForm((prev) => ({
-      ...prev,
-      trainer: email,
-      dept: selected?.dept || '',
-      desig: selected?.desig || '',
-    }));
-  };
-
-  // Replace your existing submitTraining (HR) function
-const submitTraining = async () => {
-    if (!form.topic.trim() || !form.desc.trim()) return alert('Topic and Description required');
-
-    const trainerName = form.trainerType === 'internal'
-        ? trainers.find((t) => t.email === form.trainer)?.name || ''
-        : form.extName.trim();
-
-    if (!trainerName) return alert('Trainer name required');
-
-    // WRAP DATA IN hr_info OBJECT
-    const payload = {
-      hr_info: {
-        topic: form.topic.trim(),
-        desc: form.desc.trim(),
-        trainerType: form.trainerType,
-        trainerName,
-        trainerDept: form.dept.trim() || undefined,
-        trainerDesig: form.desig.trim() || undefined,
-        external: form.trainerType === 'external' ? {
-          source: form.extSource.trim(),
-          org: form.extOrg.trim(),
-          mobile: form.extMobile.trim(),
-          email: form.extEmail.trim(),
-        } : undefined,
-      }
-    };
-
-    try {
-      const res = await axios.post(`${API_BASE}/training`, payload);
-      if (res.data.success) {
-        alert('Submitted successfully!');
-        setForm({ topic: '', desc: '', trainerType: 'internal', trainer: '', dept: '', desig: '', extSource: '', extName: '', extOrg: '', extMobile: '', extEmail: '' });
-        refreshTrainings();
-      }
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to submit HR proposal');
+  try {
+    const res = await axios.post(`${API_BASE}/training`, payload);
+    if (res.data.success) {
+      alert("Proposal Submitted Successfully!");
+      setIsFormOpen(false);
+      refreshData(); // Refresh table
     }
-  };
+  } catch (err: any) {
+    console.error("Submission failed:", err.response?.data || err.message);
+    alert("Error: " + (err.response?.data?.error || "Server could not process request"));
+  }
+};
 
-  const submitManagementProposal = async () => {
-    if (!form.topic.trim() || !form.desc.trim()) return alert("Topic and Description are required");
-
-    const trainerName = form.trainerType === 'internal'
-      ? trainers.find((t) => t.email === form.trainer)?.name || ""
-      : form.extName.trim();
-
-    // WRAP DATA IN hr_info AND mgmt_info
-    const payload = {
-      hr_info: {
-        topic: form.topic.trim(),
-        desc: form.desc.trim(),
-        trainerType: form.trainerType,
-        trainerName: trainerName || "To Be Assigned",
-        trainerDept: form.dept || "",
-        trainerDesig: form.desig || "",
-      },
-      mgmt_info: {
-        priority: suggestionForm.priority || "P3",
-        reason: suggestionForm.reason.trim(),
-        isSuggestion: true,
-        status: 'Pending'
-      }
-    };
-
-    try {
-      const res = await axios.post(`${API_BASE}/training`, payload);
-      if (res.data.success) {
-        alert('Management suggestion submitted!');
-        setSuggestionForm({ topic: '', desc: '', trainerName: '', reason: '', priority: '' });
-        refreshTrainings();
-      }
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to submit Management suggestion');
-    }
-  };
-
-  const approve = async (id: string) => {
-    try {
-      const res = await axios.patch(`${API_BASE}/training/${id}/approve`);
-      if (res.data.success) refreshTrainings();
-    } catch (err) {
-      alert('Approve failed');
-    }
-  };
-
-  const openRejectModal = (id: string) => {
-    setRejectProposalId(id);
-    setRejectReason('');
-    setShowRejectModal(true);
-  };
-
-  const confirmReject = async () => {
-    if (!rejectProposalId || !rejectReason.trim()) return alert('Reason required');
-    try {
-      const res = await axios.patch(
-        `${API_BASE}/training/${rejectProposalId}/reject`,
-        { reason: rejectReason.trim() }
-      );
-      if (res.data.success) refreshTrainings();
-    } catch (err) {
-      alert('Reject failed');
-    } finally {
-      setShowRejectModal(false);
-      setRejectProposalId(null);
-      setRejectReason('');
-    }
-  };
-
-  const openScheduleModal = (training: Training, isResched: boolean = false) => {
-    setSelectedTrainingForSchedule(training);
-    setIsReschedule(isResched);
-    setSelectedDate(training.date || '');
-    setShowScheduleModal(true);
-  };
-
-  const confirmScheduleOrReschedule = async () => {
-    if (!selectedTrainingForSchedule || !selectedDate) {
-      alert('Please select a date and time');
-      return;
-    }
-
-    setSavingSchedule(true);
-
-    try {
-      const updatedTraining = {
-        ...selectedTrainingForSchedule,
-        date: selectedDate,
-        status: isReschedule ? selectedTrainingForSchedule.status : 'Scheduled' as const,
-      };
-
-      setTraining((prev) =>
-        prev.map((t) =>
-          t._id === selectedTrainingForSchedule._id ? updatedTraining : t
-        )
-      );
-
-      if (selectedTrainingForSchedule._id) {
-        await axios.patch(`${API_BASE}/training/${selectedTrainingForSchedule._id}`, {
-          date: selectedDate,
-          status: isReschedule ? undefined : 'Scheduled',
-        });
-      }
-
-      if (
-        !isReschedule &&
-        selectedTrainingForSchedule.trainerType === 'internal' &&
-        selectedTrainingForSchedule.status !== 'Scheduled'
-      ) {
-        setEmployees((prev) =>
-          prev.map((e) =>
-            e.name === selectedTrainingForSchedule.trainerName
-              ? { ...e, score: e.score + 1 }
-              : e
-          )
-        );
-      }
-
-      const index = training.findIndex((t) => t._id === selectedTrainingForSchedule._id);
-      if (index >= 0 && !attendanceLog[index]) {
-        setAttendanceLog((prev) => ({ ...prev, [index]: [] }));
-      }
-
-      await refreshTrainings();
-      alert(isReschedule ? 'Training rescheduled!' : 'Training scheduled successfully!');
-    } catch (err: any) {
-      console.error('Schedule error:', err);
-      alert('Failed to schedule/reschedule training');
-    } finally {
-      setSavingSchedule(false);
-      setShowScheduleModal(false);
-      setSelectedTrainingForSchedule(null);
-      setSelectedDate('');
-    }
-  };
-
-  useEffect(() => {
-    if (!showScheduleModal || !calendarInputRef.current) return;
-
-    if (calendarRef.current) calendarRef.current.destroy();
-
-    calendarRef.current = flatpickr(calendarInputRef.current, {
-      dateFormat: 'd-M-Y h:i K',
-      defaultDate: selectedDate || new Date(),
-      minDate: 'today',
-      enableTime: true,
-      time_24hr: false,
-      minuteIncrement: 15,
-      onChange: (selectedDates) => {
-        if (selectedDates[0]) {
-          const datePart = selectedDates[0].toLocaleDateString('en-GB', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric',
-          }).replace(/ /g, '-');
-          const timePart = selectedDates[0].toLocaleTimeString('en-US', {
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true,
-          });
-          setSelectedDate(`${datePart} ${timePart}`);
-        }
-      },
-    });
-
-    return () => {
-      calendarRef.current?.destroy();
-    };
-  }, [showScheduleModal]);
-
-  const submitFeedback = () => {
-    if (selectedTrainingIndex < 0 || !selectedEmp) return alert('Select employee and training');
-
-    const log = attendanceLog[selectedTrainingIndex] || [];
-    if (!log.includes(selectedEmp)) {
-      setAttendanceLog((prev) => ({
-        ...prev,
-        [selectedTrainingIndex]: [...log, selectedEmp],
-      }));
-    }
-
-    alert('Feedback submitted');
-    setFeedback({ overall: '', content: '', missing: '', helpful: '', suggestion: '' });
-  };
-
-  const finalizeAttendance = () => {
-    setEmployees((prev) =>
-      prev.map((emp) => {
-        let penalty = 0;
-        training.forEach((t, i) => {
-          if (t.status === 'Scheduled' && !attendanceLog[i]?.includes(emp.name)) {
-            penalty -= 1;
-          }
-        });
-        return { ...emp, score: emp.score + penalty };
-      })
-    );
-    alert('Attendance finalized – penalties applied');
-  };
-
-  const pendingTraining = training.filter((t) => t.status === 'Pending' && !t.isSuggestion);
-  const scheduledTraining = training.filter((t) => t.status === 'Scheduled');
-
-
- return (
-    <div className="flex min-h-screen w-full bg-gray-50">
+  return (
+    <div className="flex min-h-screen bg-[#f4f6f2]">
       <Sidebar />
-
       <div className="flex-1 flex flex-col">
         <Navbar />
+        
+        <main className="p-8 pt-20 max-w-7xl mx-auto w-full">
+          {currentTab === 'hr' && (
+            <div className="space-y-8">
+              
+              {/* --- 1. HR FORM SECTION --- */}
+              <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                <div 
+                  className="p-6 border-b flex justify-between items-center cursor-pointer hover:bg-gray-50 transition"
+                  onClick={() => setIsFormOpen(!isFormOpen)}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="bg-[#7a8b2e] p-2 rounded-lg text-white">
+                      <Plus size={20} />
+                    </div>
+                    <h3 className="font-bold text-gray-800 text-lg">Create New Training Proposal</h3>
+                  </div>
+                  <span className="text-gray-400 text-sm font-bold">{isFormOpen ? 'Collapse' : 'Expand Form'}</span>
+                </div>
 
-        <div className="flex-1 overflow-y-auto">
-          <div className="min-h-full bg-gray-50">
-            <header className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-20">
-              <h1 className="text-xl md:text-2xl font-semibold text-gray-800">
-                Brisk Olive – Training Automation HRMS
-              </h1>
-            </header>
+                {isFormOpen && (
+                  <form onSubmit={submitProposal} className="p-8 grid grid-cols-1 md:grid-cols-2 gap-6 animate-in slide-in-from-top-4 duration-300">
+                    <div className="md:col-span-2">
+                      <label className="hr-label">Training Topic *</label>
+                      <input required className="hr-input" placeholder="e.g. Behavioral Skills Workshop" 
+                        onChange={e => setFormData({...formData, topic: e.target.value})} />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="hr-label">Topic Description *</label>
+                      <textarea required className="hr-input h-24" placeholder="Mention key learning objectives..."
+                        onChange={e => setFormData({...formData, description: e.target.value})} />
+                    </div>
+                    
+                    <div>
+                      <label className="hr-label">Priority</label>
+                      <select className="hr-input" onChange={e => setFormData({...formData, priority: e.target.value})}>
+                        <option value="P3">P3 (Medium)</option>
+                        <option value="P2">P2 (High)</option>
+                        <option value="P1">P1 (Urgent)</option>
+                      </select>
+                    </div>
 
-            <nav className="bg-gradient-to-r from-blue-700 to-blue-600 px-4 py-4 flex gap-3 md:gap-4 justify-center md:justify-start shadow-md sticky top-0 z-10">
-              {(['hr', 'mgmt', 'emp', 'score'] as Tab[]).map((tab) => {
-                const isActive = activeTab === tab;
-                const label =
-                  tab === 'hr'
-                    ? 'HR'
-                    : tab === 'mgmt'
-                    ? 'Management'
-                    : tab === 'emp'
-                    ? 'Employee'
-                    : 'Scorecard';
-
-                return (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`
-                      group relative px-6 py-2.5
-                      font-semibold text-sm md:text-base
-                      rounded-lg overflow-hidden
-                      transition-all duration-300 ease-out
-                      ${isActive ? 'bg-white text-blue-700 shadow-xl scale-105' : 'text-white hover:text-white'}
-                      focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2 focus:ring-offset-blue-600
-                    `}
-                  >
-                    <span
-                      className={`
-                        absolute inset-0 bg-white/20
-                        transform -translate-x-full
-                        transition-transform duration-500 ease-out
-                        group-hover:translate-x-0
-                      `}
-                    />
-                    <span className="relative z-10 transition-transform duration-300 group-hover:-translate-y-0.5">
-                      {label}
-                    </span>
-                    {isActive && (
-                      <span className="absolute -bottom-1 left-1/2 h-1 w-8 bg-white rounded-full -translate-x-1/2 animate-pulse" />
-                    )}
-                  </button>
-                );
-              })}
-            </nav>
-
-            <main className="container mx-auto p-5 md:p-6 max-w-7xl pb-12">
-              {activeTab === 'hr' && (
-                <div className="space-y-8">
-                  {/* HR Proposal Form */}
-                  <div className="bg-white p-6 rounded-xl shadow-md">
-                    <h3 className="text-xl font-bold text-gray-800 mb-6">
-                      HR – Training Proposals & Scheduling
-                    </h3>
-
-                    <div className="grid gap-5 md:grid-cols-2">
-                      <div className="md:col-span-2">
-                        <label className="block font-medium text-gray-700 mb-1">Training Topic *</label>
-                        <input
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={form.topic}
-                          onChange={(e) => setForm({ ...form, topic: e.target.value })}
-                          placeholder="e.g. Leadership Skills Workshop"
-                        />
+                    {/* --- TRAINER TOGGLE --- */}
+                    <div className="md:col-span-2 bg-gray-50 p-6 rounded-xl border border-gray-100">
+                      <div className="flex gap-6 mb-6">
+                        <button type="button" onClick={() => setTrainerType('internal')} 
+                          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition ${trainerType === 'internal' ? 'bg-[#7a8b2e] text-white' : 'bg-white text-gray-400'}`}>
+                          <UserCheck size={14}/> Internal Trainer
+                        </button>
+                        <button type="button" onClick={() => setTrainerType('external')} 
+                          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition ${trainerType === 'external' ? 'bg-[#7a8b2e] text-white' : 'bg-white text-gray-400'}`}>
+                          <Globe size={14}/> External Consultant
+                        </button>
                       </div>
 
-                      <div className="md:col-span-2">
-                        <label className="block font-medium text-gray-700 mb-1">Description *</label>
-                        <textarea
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg min-h-[110px] focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={form.desc}
-                          onChange={(e) => setForm({ ...form, desc: e.target.value })}
-                          placeholder="Brief description of the training content and objectives..."
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block font-medium text-gray-700 mb-1">Trainer Type</label>
-                        <select
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={form.trainerType}
-                          onChange={(e) =>
-                            setForm({ ...form, trainerType: e.target.value as 'internal' | 'external' })
-                          }
-                        >
-                          <option value="internal">Internal Trainer</option>
-                          <option value="external">External Trainer</option>
-                        </select>
-                      </div>
-
-                      {form.trainerType === 'internal' ? (
-                        <>
+                      {trainerType === 'internal' ? (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           <div>
-                            <label className="block font-medium text-gray-700 mb-1">Trainer Name *</label>
-                            {loadingTrainers ? (
-                              <div className="text-gray-500">Loading employees...</div>
-                            ) : trainerError ? (
-                              <div className="text-red-600">{trainerError}</div>
-                            ) : (
-                              <select
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                value={form.trainer}
-                                onChange={handleTrainerSelect}
-                                required
-                              >
-                                <option value="">-- Select Employee --</option>
-                                {trainers.map((t) => (
-                                  <option key={t.email} value={t.email}>
-                                    {t.name}
-                                    {t.dept && ` • ${t.dept}`}
-                                    {t.desig && ` (${t.desig})`}
-                                  </option>
-                                ))}
-                              </select>
-                            )}
+                            <label className="hr-label text-[10px]">Trainer Name (Employee DB)</label>
+                            <select className="hr-input" onChange={handleInternalSelect}>
+                              <option value="">Select Employee</option>
+                              {employees.map(e => <option key={e.email} value={e.name}>{e.name}</option>)}
+                            </select>
                           </div>
-
                           <div>
-                            <label className="block font-medium text-gray-700 mb-1">Department</label>
-                            <input
-                              className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 cursor-not-allowed"
-                              value={form.dept}
-                              disabled
-                              readOnly
-                            />
+                            <label className="hr-label text-[10px]">Department</label>
+                            <input className="hr-input bg-gray-100 cursor-not-allowed" value={formData.dept} readOnly />
                           </div>
-
                           <div>
-                            <label className="block font-medium text-gray-700 mb-1">Designation</label>
-                            <input
-                              className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 cursor-not-allowed"
-                              value={form.desig}
-                              disabled
-                              readOnly
-                            />
+                            <label className="hr-label text-[10px]">Designation</label>
+                            <input className="hr-input bg-gray-100 cursor-not-allowed" value={formData.desig} readOnly />
                           </div>
-                        </>
+                        </div>
                       ) : (
-                        <>
-                          <div>
-                            <label className="block font-medium text-gray-700 mb-1">Trainer Name *</label>
-                            <input
-                              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              value={form.extName}
-                              onChange={(e) => setForm({ ...form, extName: e.target.value })}
-                              placeholder="e.g. Dr. Rajesh Kumar"
-                            />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <input className="hr-input" placeholder="Source (e.g. LinkedIn)" onChange={e => setFormData({...formData, source: e.target.value})} />
+                          <input className="hr-input" placeholder="Trainer Name" onChange={e => setFormData({...formData, extName: e.target.value})} />
+                          <input className="hr-input" placeholder="Organisation" onChange={e => setFormData({...formData, org: e.target.value})} />
+                          <div className="flex gap-2">
+                            <input className="hr-input" placeholder="Mobile" onChange={e => setFormData({...formData, mobile: e.target.value})} />
+                            <input className="hr-input" placeholder="Email" onChange={e => setFormData({...formData, email: e.target.value})} />
                           </div>
-                          <div>
-                            <label className="block font-medium text-gray-700 mb-1">Source/Platform</label>
-                            <input
-                              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              value={form.extSource}
-                              onChange={(e) => setForm({ ...form, extSource: e.target.value })}
-                              placeholder="e.g. LinkedIn, Upwork, Consultant"
-                            />
-                          </div>
-                          <div>
-                            <label className="block font-medium text-gray-700 mb-1">Organisation</label>
-                            <input
-                              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              value={form.extOrg}
-                              onChange={(e) => setForm({ ...form, extOrg: e.target.value })}
-                            />
-                          </div>
-                          <div>
-                            <label className="block font-medium text-gray-700 mb-1">Mobile</label>
-                            <input
-                              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              value={form.extMobile}
-                              onChange={(e) => setForm({ ...form, extMobile: e.target.value })}
-                            />
-                          </div>
-                          <div className="md:col-span-2">
-                            <label className="block font-medium text-gray-700 mb-1">Email</label>
-                            <input
-                              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              type="email"
-                              value={form.extEmail}
-                              onChange={(e) => setForm({ ...form, extEmail: e.target.value })}
-                            />
-                          </div>
-                        </>
+                        </div>
                       )}
                     </div>
 
-                    <button
-                      onClick={submitTraining}
-                      className="mt-8 bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition shadow-sm"
-                      disabled={loadingTrainers}
-                    >
-                      Submit for Management Approval
-                    </button>
-                  </div>
-
-                  {/* HR Table */}
-                  <div className="bg-white p-6 rounded-xl shadow-md">
-                    <h4 className="text-lg font-bold text-gray-800 mb-4">
-                      All Trainings – HR Control Panel
-                    </h4>
-
-                    {/* Filters */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Trainer Name</label>
-                        <select
-                          className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={trainerFilter}
-                          onChange={(e) => setTrainerFilter(e.target.value)}
-                        >
-                          <option value="">All Trainers</option>
-                          {Array.from(new Set(training.map((t) => t.hr_info?.trainerName))).map((name) => (
-                            <option key={name} value={name}>
-                              {name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Quarter</label>
-                        <select
-                          className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={quarterFilter}
-                          onChange={(e) => setQuarterFilter(e.target.value)}
-                        >
-                          <option value="">All Quarters</option>
-                          <option value="Q1">Q1 (Jan–Mar)</option>
-                          <option value="Q2">Q2 (Apr–Jun)</option>
-                          <option value="Q3">Q3 (Jul–Sep)</option>
-                          <option value="Q4">Q4 (Oct–Dec)</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Financial Year</label>
-                        <select
-                          className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={fyFilter}
-                          onChange={(e) => setFyFilter(e.target.value)}
-                        >
-                          <option value="">All FY</option>
-                          {getAvailableFYs().map((fy) => (
-                            <option key={fy} value={fy}>
-                              {fy}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="flex items-end">
-                        <label className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            checked={showArchived}
-                            onChange={(e) => setShowArchived(e.target.checked)}
-                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                          />
-                          <span className="text-sm text-gray-700">Show Archived only</span>
-                        </label>
-                      </div>
+                    <div className="md:col-span-2 flex justify-end gap-4">
+                      <button type="button" onClick={() => setIsFormOpen(false)} className="px-6 py-2 text-gray-400 font-bold">Discard</button>
+                      <button type="submit" className="bg-[#7a8b2e] text-white px-10 py-2 rounded-xl font-bold shadow-lg shadow-green-100 hover:bg-[#4f5a22] transition">Submit for Management Approval</button>
                     </div>
+                  </form>
+                )}
+              </section>
 
-                    {/* Table */}
-                    {filteredTraining.length === 0 ? (
-                      <p className="text-gray-500 text-center py-8">
-                        No trainings match the selected filters.
-                      </p>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">S.No.</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('topic')}>
-                                Training Topic {sortConfig.key === 'topic' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Topic Description</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('trainerName')}>
-                                Trainer Name {sortConfig.key === 'trainerName' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                              </th>
-                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('date')}>
-                                Date of Training {sortConfig.key === 'date' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                              </th>
-                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
-                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Remarks</th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
-                                {filteredTraining.map((t, idx) => {
-                                  // Correctly check nested status for archiving
-                                  const isArchived = t.mgmt_info?.status === 'Archived';
-                                  
-                                  return (
-                                    <tr key={t._id || `training-${idx}`} className={`hover:bg-gray-50 ${isArchived ? 'bg-gray-100' : ''}`}>
-                                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
-
-                                      {/* Training Topic */}
-                                      <td className="px-6 py-4 whitespace-nowrap">
-                                        {editingId === t._id ? (
-                                          <input
-                                            value={editValues.hr_info?.topic ?? t.hr_info?.topic}
-                                            onChange={(e) => setEditValues((v: any) => ({ 
-                                              ...v, 
-                                              hr_info: { ...v.hr_info, topic: e.target.value } 
-                                            }))}
-                                            className="w-full px-2 py-1 border rounded"
-                                          />
-                                        ) : (
-                                          t.hr_info?.topic || 'N/A'
-                                        )}
-                                      </td>
-
-                                      {/* Topic Description */}
-                                      <td className="px-6 py-4">
-                                        {editingId === t._id ? (
-                                          <textarea
-                                            value={editValues.hr_info?.desc ?? t.hr_info?.desc}
-                                            onChange={(e) => setEditValues((v: any) => ({ 
-                                              ...v, 
-                                              hr_info: { ...v.hr_info, desc: e.target.value } 
-                                            }))}
-                                            className="w-full px-2 py-1 border rounded min-h-[60px]"
-                                          />
-                                        ) : (
-                                          t.hr_info?.desc || 'No description'
-                                        )}
-                                      </td>
-
-                                      {/* Trainer Name */}
-                                      <td className="px-6 py-4 whitespace-nowrap">
-                                        {editingId === t._id ? (
-                                          <input
-                                            value={editValues.hr_info?.trainerName ?? t.hr_info?.trainerName}
-                                            onChange={(e) => setEditValues((v: any) => ({ 
-                                              ...v, 
-                                              hr_info: { ...v.hr_info, trainerName: e.target.value } 
-                                            }))}
-                                            className="w-full px-2 py-1 border rounded"
-                                          />
-                                        ) : (
-                                          t.hr_info?.trainerName || 'Not Assigned'
-                                        )}
-                                      </td>
-
-                                      {/* Status */}
-                                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                                        <span
-                                          className={`font-bold ${
-                                            t.mgmt_info?.status === 'Approved' ? 'text-green-600' :
-                                            t.mgmt_info?.status === 'Rejected' ? 'text-red-600' :
-                                            t.mgmt_info?.status === 'Scheduled' ? 'text-blue-600' :
-                                            t.mgmt_info?.status === 'Archived' ? 'text-gray-600' :
-                                            'text-yellow-600'
-                                          }`}
-                                        >
-                                          {t.mgmt_info?.status || 'Pending'}
-                                        </span>
-                                      </td>
-
-                                      {/* Date of Training */}
-                                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                                        {t.date || '-'}
-                                      </td>
-
-                                      {/* Priority */}
-                                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                                        <span
-                                          className={`font-medium ${
-                                            t.mgmt_info?.priority === 'P1' ? 'text-red-600' :
-                                            t.mgmt_info?.priority === 'P2' ? 'text-orange-600' :
-                                            t.mgmt_info?.priority === 'P3' ? 'text-green-600' :
-                                            'text-gray-500'
-                                          }`}
-                                        >
-                                          {t.mgmt_info?.priority || '-'}
-                                        </span>
-                                      </td>
-
-                                      {/* Actions */}
-                                      <td className="px-6 py-4 whitespace-nowrap text-center space-x-2">
-                                        {isArchived ? (
-                                          <span className="text-gray-500 text-sm italic">Archived</span>
-                                        ) : (
-                                          <>
-                                            {t.mgmt_info?.status === 'Approved' && (
-                                              <button
-                                                onClick={() => openScheduleModal(t, false)}
-                                                className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
-                                              >
-                                                Schedule
-                                              </button>
-                                            )}
-                                            <button
-                                              onClick={() => startEdit(t)}
-                                              className="text-indigo-600 hover:underline text-sm"
-                                            >
-                                              Edit
-                                            </button>
-                                          </>
-                                        )}
-                                      </td>
-
-                                      {/* Remarks/Reason */}
-                                      <td className="px-6 py-4 text-sm text-gray-500">
-                                        {t.mgmt_info?.reason || '-'}
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
+              {/* --- 2. HR TABLE SECTION --- */}
+              <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="p-6 bg-gray-50 border-b">
+                  <h3 className="font-bold text-gray-700 uppercase text-xs tracking-widest">Training Inventory Control Panel</h3>
                 </div>
-              )}
-              
-              {/* Management Tab */}
-              {activeTab === 'mgmt' && (
-  <div className="space-y-8">
-    {/* 1. Management Proposal Form */}
-    <div className="bg-white p-6 rounded-xl shadow-md">
-      <h3 className="text-xl font-bold text-gray-800 mb-6">
-        Management – Training Proposals & Suggestions
-      </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead className="bg-white text-[10px] font-black text-gray-400 uppercase tracking-tighter border-b">
+                      <tr>
+                        <th className="p-4">Sno.</th>
+                        <th className="p-4">Training Topic</th>
+                        <th className="p-4">Description</th>
+                        <th className="p-4">Trainer Name</th>
+                        <th className="p-4">Status</th>
+                        <th className="p-4">Date</th>
+                        <th className="p-4">Priority</th>
+                        <th className="p-4 text-center">Remark</th>
+                        <th className="p-4 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-xs divide-y divide-gray-100">
+                      {trainingList.map((t, i) => (
+                        <tr key={t._id} className="hover:bg-gray-50/50 transition group">
+                          <td className="p-4 text-gray-400">{i + 1}</td>
+                          <td className="p-4 font-bold text-gray-800">{t.topic}</td>
+                          <td className="p-4 text-gray-500 max-w-[150px] truncate">{t.description}</td>
+                          <td className="p-4 font-medium text-blue-600 underline decoration-blue-100">{t.trainer.name}</td>
+                          <td className="p-4">
+                            <span className={`status-pill ${t.status.toLowerCase()}`}>{t.status}</span>
+                          </td>
+                          <td className="p-4 text-gray-600 font-mono italic">{t.trainingDate ? new Date(t.trainingDate).toLocaleDateString() : 'TBD'}</td>
+                          <td className="p-4">
+                            <span className={`priority-text ${t.priority.toLowerCase()}`}>{t.priority}</span>
+                          </td>
+                          <td className="p-4 text-center text-gray-400 italic font-medium">{t.remark || '--'}</td>
+                          <td className="p-4 text-center">
+                            <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition">
+                              <button className="p-2 hover:bg-blue-50 text-blue-600 rounded-lg"><Edit size={14}/></button>
+                              <button className="p-2 hover:bg-red-50 text-red-600 rounded-lg"><Trash2 size={14}/></button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          )}
 
-      <div className="grid gap-5 md:grid-cols-2">
-        <div className="md:col-span-2">
-          <label className="block font-medium text-gray-700 mb-1">Training Topic *</label>
-          <input
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            value={form.topic}
-            onChange={(e) => setForm({ ...form, topic: e.target.value })}
-            placeholder="e.g. Strategic Planning Workshop"
-          />
-        </div>
-
-        <div className="md:col-span-2">
-          <label className="block font-medium text-gray-700 mb-1">Description *</label>
-          <textarea
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg min-h-[110px] focus:ring-2 focus:ring-blue-500"
-            value={form.desc}
-            onChange={(e) => setForm({ ...form, desc: e.target.value })}
-          />
-        </div>
-
-        <div>
-          <label className="block font-medium text-gray-700 mb-1">Priority *</label>
-          <select
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            value={suggestionForm.priority}
-            onChange={(e) => setSuggestionForm({ ...suggestionForm, priority: e.target.value })}
-          >
-            <option value="">-- Select Priority --</option>
-            <option value="P1">P1 (Urgent)</option>
-            <option value="P2">P2 (High)</option>
-            <option value="P3">P3 (Medium)</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block font-medium text-gray-700 mb-1">Trainer Type</label>
-          <select
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            value={form.trainerType}
-            onChange={(e) => setForm({ ...form, trainerType: e.target.value as 'internal' | 'external' })}
-          >
-            <option value="internal">Internal Trainer</option>
-            <option value="external">External Trainer</option>
-          </select>
-        </div>
+          {/* Other Tabs handled here */}
+          {currentTab !== 'hr' && <div className="text-gray-400 italic">Content for {currentTab} view</div>}
+        </main>
       </div>
 
-      <button
-        onClick={submitManagementProposal}
-        className="mt-8 bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition"
-      >
-        Submit Suggestion
-      </button>
-    </div>
-
-    {/* 2. Management Table */}
-    <div className="bg-white p-6 rounded-xl shadow-md">
-      <h4 className="text-lg font-bold text-gray-800 mb-4">Review All Proposals</h4>
-
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sno.</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Training Topic</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Trainer</th>
-              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Action</th>
-              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Priority</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Remarks</th>
-              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Date</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {training.map((t, idx) => (
-              <tr key={t._id || idx} className="hover:bg-gray-50">
-                <td className="px-6 py-4 text-sm text-gray-500">{idx + 1}</td>
-                {/* Notice the use of optional chaining for nested objects */}
-                <td className="px-6 py-4 font-medium text-gray-900">{t.hr_info?.topic || "N/A"}</td>
-                <td className="px-6 py-4 text-sm text-gray-600 truncate max-w-xs">{t.hr_info?.desc || "N/A"}</td>
-                <td className="px-6 py-4 text-sm">{t.hr_info?.trainerName || 'TBD'}</td>
-                <td className="px-6 py-4 text-center space-x-2">
-                  {t.mgmt_info?.status === 'Pending' ? (
-                    <>
-                      <button onClick={() => approve(t._id!)} className="bg-green-600 text-white px-3 py-1 rounded text-xs">Approve</button>
-                      <button onClick={() => openRejectModal(t._id!)} className="bg-red-600 text-white px-3 py-1 rounded text-xs">Reject</button>
-                    </>
-                  ) : (
-                    <span className="text-xs font-bold uppercase text-blue-600">{t.mgmt_info?.status}</span>
-                  )}
-                </td>
-                <td className="px-6 py-4 text-center">
-                  <span className={`px-2 py-1 rounded text-xs font-bold ${
-                    t.mgmt_info?.priority === 'P1' ? 'bg-red-100 text-red-700' :
-                    t.mgmt_info?.priority === 'P2' ? 'bg-orange-100 text-orange-700' :
-                    'bg-green-100 text-green-700'
-                  }`}>
-                    {t.mgmt_info?.priority || 'P3'}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-500">{t.mgmt_info?.reason || '-'}</td>
-                <td className="px-6 py-4 text-center text-sm text-gray-600">{t.date || 'TBD'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-)}
-
-              {/* Employee Tab */}
-              {activeTab === 'emp' && (
-                <div className="bg-white p-6 rounded-xl shadow-md mb-8">
-                  <h3 className="text-xl font-bold text-gray-800 mb-6">
-                    Training Feedback & Attendance
-                  </h3>
-
-                  {employees.length === 0 ? (
-                    <p className="text-gray-500 text-center py-8">
-                      Loading employees... or no employees found in the system.
-                    </p>
-                  ) : (
-                    <div className="grid gap-5 md:grid-cols-2">
-                      <div>
-                        <label className="block font-medium text-gray-700 mb-1">Your Name</label>
-                        <select
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={selectedEmp}
-                          onChange={(e) => setSelectedEmp(e.target.value)}
-                        >
-                          <option value="">-- Select Employee --</option>
-                          {employees.map((emp) => (
-                            <option key={emp.name} value={emp.name}>
-                              {emp.name} ({emp.dept} - {emp.desig})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block font-medium text-gray-700 mb-1">Training Session</label>
-                        {scheduledTraining.length === 0 ? (
-                          <p className="text-gray-500 py-2 italic">
-                            No scheduled trainings available yet.
-                          </p>
-                        ) : (
-                          <select
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            value={selectedTrainingIndex}
-                            onChange={(e) => setSelectedTrainingIndex(Number(e.target.value))}
-                          >
-                            <option value={-1}>-- Select Training --</option>
-                            {scheduledTraining.map((t, idx) => (
-                              <option key={t._id || idx} value={training.indexOf(t)}>
-                                {t.hr_info?.topic}
-                                {t.date ? ` (${t.date})` : ' (Date TBD)'}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="block font-medium text-gray-700 mb-1">Overall Rating</label>
-                        <select
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={feedback.overall}
-                          onChange={(e) => setFeedback({ ...feedback, overall: e.target.value })}
-                        >
-                          <option value="">-- Select --</option>
-                          {[1, 2, 3, 4, 5].map((v) => (
-                            <option key={v} value={v.toString()}>
-                              {v} Stars
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block font-medium text-gray-700 mb-1">Content Quality</label>
-                        <select
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={feedback.content}
-                          onChange={(e) => setFeedback({ ...feedback, content: e.target.value })}
-                        >
-                          <option value="">-- Select --</option>
-                          {[1, 2, 3, 4, 5].map((v) => (
-                            <option key={v} value={v.toString()}>
-                              {v} Stars
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="md:col-span-2">
-                        <label className="block font-medium text-gray-700 mb-1">What was missing?</label>
-                        <textarea
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg min-h-[90px] focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={feedback.missing}
-                          onChange={(e) => setFeedback({ ...feedback, missing: e.target.value })}
-                          placeholder="Suggestions for improvement..."
-                        />
-                      </div>
-
-                      <div className="md:col-span-2">
-                        <label className="block font-medium text-gray-700 mb-1">How was it helpful?</label>
-                        <textarea
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg min-h-[90px] focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={feedback.helpful}
-                          onChange={(e) => setFeedback({ ...feedback, helpful: e.target.value })}
-                          placeholder="Key takeaways and benefits..."
-                        />
-                      </div>
-                      <div className="md:col-span-2">
-                        <label className="block font-medium text-gray-700 mb-1">Suggestion for Training Topics</label>
-                        <textarea
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg min-h-[40px] focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={feedback.suggestion}
-                          onChange={(e) => setFeedback({ ...feedback, suggestion: e.target.value })}
-                          placeholder="Key takeaways and benefits..."
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="mt-8 flex flex-wrap gap-4">
-                    <button
-                      onClick={submitFeedback}
-                      className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition shadow-sm"
-                      disabled={employees.length === 0 || scheduledTraining.length === 0}
-                    >
-                      Submit Feedback
-                    </button>
-
-                    <button
-                      onClick={finalizeAttendance}
-                      className="bg-gray-700 text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-800 transition shadow-sm"
-                      disabled={employees.length === 0}
-                    >
-                      Finalize Attendance (Apply Penalties)
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'score' && (
-                <div className="bg-white p-6 rounded-xl shadow-md mb-8">
-                  <h3 className="text-xl font-bold text-gray-800 mb-6">
-                    Employee Training Scorecard
-                  </h3>
-
-                  {employees.length === 0 ? (
-                    <p className="text-gray-500 text-center py-8">
-                      Loading employees... or no employees found.
-                    </p>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Name
-                            </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Department
-                            </th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Designation
-                            </th>
-                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Training Score
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {employees.map((emp, i) => (
-                            <tr key={i} className="hover:bg-gray-50">
-                              <td className="px-6 py-4 whitespace-nowrap font-medium">{emp.name}</td>
-                              <td className="px-6 py-4 whitespace-nowrap">{emp.dept}</td>
-                              <td className="px-6 py-4 whitespace-nowrap">{emp.desig}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-center">
-                                <span
-                                  className={`font-bold text-lg ${
-                                    emp.score < 0 ? 'text-red-600' : 'text-green-600'
-                                  }`}
-                                >
-                                  {emp.score}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
-            </main>
-          </div>
-        </div>
-      </div>
-
-      {/* Rejection Modal */}
-      {showRejectModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">
-              Reject Training Proposal
-            </h3>
-            <p className="text-gray-600 mb-4">
-              Please provide a reason for rejection:
-            </p>
-            <textarea
-              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 min-h-[120px] resize-y"
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="Enter detailed reason here..."
-            />
-            <div className="mt-6 flex justify-end gap-4">
-              <button
-                onClick={() => {
-                  setShowRejectModal(false);
-                  setRejectReason('');
-                }}
-                className="px-5 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmReject}
-                disabled={!rejectReason.trim()}
-                className={`px-5 py-2 rounded-lg text-white font-medium transition ${
-                  rejectReason.trim()
-                    ? 'bg-red-600 hover:bg-red-700'
-                    : 'bg-red-400 cursor-not-allowed'
-                }`}
-              >
-                Confirm Reject
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Schedule / Reschedule Modal */}
-      {showScheduleModal && selectedTrainingForSchedule && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-lg">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">
-              {isReschedule ? 'Reschedule Training' : 'Schedule Training'}
-            </h3>
-            <p className="text-gray-600 mb-4">
-              Select date & time for: <strong>{selectedTrainingForSchedule.topic}</strong>
-            </p>
-
-            <div className="mb-6">
-              <label className="block font-medium text-gray-700 mb-2">Date & Time</label>
-              <input
-                ref={calendarInputRef}
-                type="text"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Select date and time..."
-                value={selectedDate}
-                readOnly
-              />
-            </div>
-
-            <div className="flex justify-end gap-4">
-              <button
-                onClick={() => setShowScheduleModal(false)}
-                className="px-5 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition"
-                disabled={savingSchedule}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmScheduleOrReschedule}
-                disabled={!selectedDate || savingSchedule}
-                className={`px-5 py-2 rounded-lg text-white font-medium transition ${
-                  selectedDate && !savingSchedule
-                    ? 'bg-blue-600 hover:bg-blue-700'
-                    : 'bg-blue-400 cursor-not-allowed'
-                }`}
-              >
-                {savingSchedule ? 'Saving...' : (isReschedule ? 'Confirm Reschedule' : 'Confirm Schedule')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <style>{`
+        .hr-label { font-size: 11px; font-weight: 800; color: #9ca3af; text-transform: uppercase; margin-bottom: 6px; display: block; }
+        .hr-input { width: 100%; border: 2px solid #f3f4f6; border-radius: 0.75rem; padding: 0.6rem 1rem; outline: none; transition: all 0.2s; font-size: 13px; font-weight: 600; }
+        .hr-input:focus { border-color: #7a8b2e; background-color: #fff; }
+        
+        .status-pill { padding: 3px 10px; border-radius: 6px; font-size: 9px; font-weight: 900; text-transform: uppercase; }
+        .status-pill.pending { background: #fef3c7; color: #92400e; }
+        .status-pill.scheduled { background: #dbeafe; color: #1e40af; }
+        .status-pill.approved { background: #dcfce7; color: #166534; }
+        
+        .priority-text { font-weight: 900; }
+        .priority-text.p1 { color: #ef4444; }
+        .priority-text.p2 { color: #f97316; }
+        .priority-text.p3 { color: #7a8b2e; }
+      `}</style>
     </div>
   );
+}
+
+function refreshData() {
+  throw new Error('Function not implemented.');
 }

@@ -1,10 +1,15 @@
 const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
 
+/**
+ * Training Schema
+ * Handles the lifecycle of a training session from Management suggestion
+ * to HR scheduling and final employee feedback.
+ */
 const TrainingSchema = new Schema(
   {
     // ───────────────────────────────────────────────
-    // Core training details (topic, date, etc.)
+    // Core training details
     // ───────────────────────────────────────────────
     topic: {
       type: String,
@@ -34,18 +39,19 @@ const TrainingSchema = new Schema(
     },
 
     // ───────────────────────────────────────────────
-    // Status & Priority – controls visibility in tabs
+    // Status & Priority
     // ───────────────────────────────────────────────
     status: {
       type: String,
       enum: [
-        'Proposed',       // Management suggestion (visible in Management tab)
+        'Proposed',       // Management suggestion
         'Under Review',   // HR is checking
-        'Approved',
-        'Scheduled',
-        'Completed',
+        'Approved',       // Ready to be scheduled
+        'Scheduled',      // Date finalized
+        'Completed',      // Training over
         'Cancelled',
-        'Archived',
+        'Archived',       // Past date auto-archive
+        'Rejected'        // Management/HR rejected
       ],
       default: 'Proposed',
       index: true,
@@ -58,17 +64,18 @@ const TrainingSchema = new Schema(
     },
 
     // ───────────────────────────────────────────────
-    // Origin / Who proposed it
+    // Origin Information
     // ───────────────────────────────────────────────
     proposedBy: {
       type: Schema.Types.ObjectId,
       ref: 'Employee',
-      required: true,
+      required: false, 
     },
     proposedByName: {
       type: String,
       required: true,
-    }, // denormalized
+      default: 'System Admin'
+    },
     proposedByRole: {
       type: String,
       enum: ['Management', 'HR', 'Employee'],
@@ -78,8 +85,6 @@ const TrainingSchema = new Schema(
       type: Date,
       default: Date.now,
     },
-
-    // Management-specific fields (only relevant if proposedByRole = 'Management')
     managementReason: {
       type: String,
       trim: true,
@@ -87,13 +92,13 @@ const TrainingSchema = new Schema(
     },
 
     // ───────────────────────────────────────────────
-    // Trainer (internal or external)
+    // Trainer Details
     // ───────────────────────────────────────────────
     trainer: {
       employee: {
         type: Schema.Types.ObjectId,
         ref: 'Employee',
-      }, // null = external
+      }, 
       name: {
         type: String,
         required: [true, 'Trainer name is required'],
@@ -106,11 +111,11 @@ const TrainingSchema = new Schema(
         default: false,
       },
       externalOrg: String,
-      externalContact: String,
+      externalContact: String, // Mobile or Email
     },
 
     // ───────────────────────────────────────────────
-    // Feedbacks from employees (embedded array)
+    // Feedback & Attendance Log
     // ───────────────────────────────────────────────
     feedbacks: [
       {
@@ -122,13 +127,11 @@ const TrainingSchema = new Schema(
         employeeName: {
           type: String,
           required: true,
-        }, // denormalized
-
+        },
         attended: {
           type: Boolean,
           default: false,
         },
-
         overallRating: {
           type: Number,
           min: 1,
@@ -142,7 +145,6 @@ const TrainingSchema = new Schema(
         whatWasMissing: String,
         howHelpful: String,
         suggestedTopics: String,
-
         submittedAt: {
           type: Date,
           default: Date.now,
@@ -151,7 +153,7 @@ const TrainingSchema = new Schema(
     ],
 
     // ───────────────────────────────────────────────
-    // Scorecard / Aggregated stats (auto-updated)
+    // Automated Stats (Scorecard)
     // ───────────────────────────────────────────────
     scorecard: {
       trainerAvgRating: { type: Number, default: 0 },
@@ -162,59 +164,71 @@ const TrainingSchema = new Schema(
     },
 
     // ───────────────────────────────────────────────
-    // Metadata
+    // Metadata for Filtering
     // ───────────────────────────────────────────────
-    quarter: String,
-    financialYear: String,
+    quarter: { type: String, index: true },
+    financialYear: { type: String, index: true },
     archivedAt: Date,
   },
   {
     timestamps: true,
-    collection: 'training',  // ← exactly as you want (lowercase)
+    collection: 'training',
   }
 );
 
 // ───────────────────────────────────────────────
-// Indexes – crucial for your tabs & reports
+// Indexes
 // ───────────────────────────────────────────────
 TrainingSchema.index({ status: 1, trainingDate: -1 });
-TrainingSchema.index({ proposedBy: 1 });
-TrainingSchema.index({ 'trainer.employee': 1 });
-TrainingSchema.index({ 'feedbacks.employee': 1 });
+TrainingSchema.index({ financialYear: 1, quarter: 1 });
+TrainingSchema.index({ 'trainer.name': 1 });
 
 // ───────────────────────────────────────────────
-// Auto-calculate quarter, FY, and scorecard summary
+// Middleware: Pre-save logic
 // ───────────────────────────────────────────────
 TrainingSchema.pre('save', function (next) {
-  // Quarter & Financial Year
-  if (this.trainingDate && (this.isNew || this.isModified('trainingDate'))) {
-    const month = this.trainingDate.getMonth() + 1;
-    this.quarter = `Q${Math.ceil(month / 3)}`;
-    const year = this.trainingDate.getFullYear();
+  const doc = this;
+
+  // 1. Calculate Quarter and Financial Year (Indian FY: April to March)
+  if (doc.trainingDate && (doc.isNew || doc.isModified('trainingDate'))) {
+    const date = new Date(doc.trainingDate);
+    const month = date.getMonth() + 1; // getMonth is 0-indexed
+    const year = date.getFullYear();
+
+    // Quarter calculation
+    doc.quarter = `Q${Math.ceil(month / 3)}`;
+
+    // FY calculation (Starts April)
     const fyStart = month >= 4 ? year : year - 1;
-    this.financialYear = `FY ${fyStart}-${fyStart + 1}`;
+    doc.financialYear = `FY ${fyStart}-${fyStart + 1}`;
   }
 
-  // Scorecard auto-update when feedbacks change
-  if (this.isModified('feedbacks')) {
-    const attended = this.feedbacks.filter(f => f.attended).length;
-    const ratings = this.feedbacks
+  // 2. Auto-calculate Scorecard stats if feedbacks are updated
+  if (doc.isModified('feedbacks')) {
+    const total = doc.feedbacks.length;
+    const attended = doc.feedbacks.filter(f => f.attended).length;
+    
+    const validRatings = doc.feedbacks
       .filter(f => f.overallRating != null)
       .map(f => f.overallRating);
 
-    this.scorecard = {
-      trainerAvgRating:
-        ratings.length > 0
-          ? Number((ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(1))
-          : 0,
-      totalAttendees: this.feedbacks.length,
+    const avgRating = validRatings.length > 0 
+      ? (validRatings.reduce((a, b) => a + b, 0) / validRatings.length).toFixed(1)
+      : 0;
+
+    doc.scorecard = {
+      trainerAvgRating: Number(avgRating),
+      totalAttendees: total,
       attendedCount: attended,
-      noShowCount: this.feedbacks.length - attended,
+      noShowCount: total - attended,
       lastCalculated: new Date(),
     };
   }
 
-  next();
+  // Important: next() must be called to proceed
+  if (typeof next === 'function') {
+    next();
+  }
 });
 
 module.exports = mongoose.model('Training', TrainingSchema);

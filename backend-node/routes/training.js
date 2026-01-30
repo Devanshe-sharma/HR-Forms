@@ -6,30 +6,24 @@ const Training = require('../models/Training'); // make sure path is correct
 // 1. CREATE new training / proposal / suggestion
 router.post('/', async (req, res) => {
   try {
-    const data = req.body;
-
-    // Optional fallback values (you can remove or adjust)
-    data.proposedByRole = data.proposedByRole || 'HR';
-    data.proposedByName = data.proposedByName || 'System / Anonymous';
-    data.proposedAt = new Date();
-
-    // Auto-set initial status based on role
-    if (!data.status) {
-      data.status = data.proposedByRole === 'Management' ? 'Proposed' : 'Under Review';
-    }
-
-    const training = new Training(data);
-    await training.save();
-
+    console.log("Receiving Payload:", req.body);
+    
+    const newTraining = new Training(req.body);
+    
+    // The .save() call triggers the pre('save') middleware
+    const savedTraining = await newTraining.save();
+    
     res.status(201).json({
       success: true,
-      data: training
+      data: savedTraining
     });
   } catch (err) {
-    console.error(err);
+    // Log the full error in your terminal to catch middleware bugs
+    console.error("POST /api/training ERROR:", err);
+    
     res.status(400).json({
       success: false,
-      error: err.message || 'Failed to create training'
+      error: err.message || "Validation failed"
     });
   }
 });

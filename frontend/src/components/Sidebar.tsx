@@ -43,14 +43,28 @@ type MenuItem = {
 
 export default function Sidebar() {
   const location = useLocation();
+
+  // State for collapsible menus
   const [openRecruitment, setOpenRecruitment] = useState(false);
+  const [openTrainings, setOpenTrainings] = useState(false);
 
   const handleRecruitmentClick = () => {
     setOpenRecruitment((prev) => !prev);
   };
 
-  // Check if current route is active
-  const isActive = (path: string) => location.pathname === path;
+  const handleTrainingsClick = () => {
+    setOpenTrainings((prev) => !prev);
+  };
+
+  // Helper to check if a path is active
+  const isActive = (path: string) => {
+    if (!path) return false;
+    const currentPath = location.pathname + location.search;
+    return currentPath === path || currentPath.startsWith(path);
+  };
+
+  // Check if any training tab is active (for parent highlight)
+  const isTrainingActive = location.pathname === '/training-page';
 
   // Menu items
   const menuItems: MenuItem[] = [
@@ -74,8 +88,38 @@ export default function Sidebar() {
     { to: '/onboarding', text: 'Onboardings', icon: <BusinessCenterIcon /> },
     { to: '/exits', text: 'Exits', icon: <ExitToAppIcon /> },
 
-    // ✅ TRAINING PAGE (kept)
-    { to: '/training-page', text: 'Trainings', icon: <SchoolIcon /> },
+    // ────────────────────────────────────────────────
+    // TRAINING SUBMENU – 4 tabs as requested
+    // All point to same page with different ?tab= value
+    // ────────────────────────────────────────────────
+    {
+      text: 'Trainings',
+      icon: <SchoolIcon />,
+      onClick: handleTrainingsClick,
+      open: openTrainings,
+      subItems: [
+        {
+          to: '/training-page?tab=hr',
+          text: 'HR',
+          icon: <PeopleIcon />,
+        },
+        {
+          to: '/training-page?tab=management',
+          text: 'Management',
+          icon: <BusinessCenterIcon />,
+        },
+        {
+          to: '/training-page?tab=employee-feedback',
+          text: 'Employee Feedback',
+          icon: <AssignmentIcon />,
+        },
+        {
+          to: '/training-page?tab=scorecard',
+          text: 'Scorecard',
+          icon: <ScoreIcon />,
+        },
+      ],
+    },
 
     { to: '/confirmations', text: 'Confirmations', icon: <ChecklistIcon /> },
     { to: '/profile', text: 'Profile', icon: <AccountCircleIcon /> },
@@ -94,11 +138,11 @@ export default function Sidebar() {
           backgroundColor: '#ffffff',
           borderRight: '1px solid #e0e0e0',
           overflowX: 'hidden',
-          mt: 8, // space below app bar if you have one
+          mt: 8, // space below app bar
         },
       }}
     >
-      {/* Profile / Header Section (optional) */}
+      {/* Profile / Header Section */}
       <Box sx={{ px: 3, py: 2, display: 'flex', backgroundColor: '#3B82F6', alignItems: 'center' }}>
         <NavLink to="/profile">
           <Avatar sx={{ width: 56, height: 56, mr: 2 }} src="/avatar.png" />
@@ -116,6 +160,7 @@ export default function Sidebar() {
       <List sx={{ px: 1 }}>
         {menuItems.map((item) => {
           if (item.subItems && item.subItems.length > 0) {
+            // Parent menu item (collapsible)
             return (
               <div key={item.text}>
                 <ListItemButton
@@ -124,7 +169,8 @@ export default function Sidebar() {
                     borderRadius: 2,
                     my: 0.5,
                     bgcolor:
-                      location.pathname.startsWith('/recruitment') || location.pathname === '/applicants'
+                      (item.text === 'Recruitment' && location.pathname.startsWith('/recruitment')) ||
+                      (item.text === 'Trainings' && isTrainingActive)
                         ? '#f3e8ff'
                         : 'transparent',
                     '&:hover': { bgcolor: '#ede7f6' },
@@ -174,6 +220,7 @@ export default function Sidebar() {
             );
           }
 
+          // Regular menu item
           return (
             <ListItemButton
               key={item.to}
