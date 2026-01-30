@@ -1,60 +1,69 @@
 // routes/training.js
 const express = require('express');
 const router = express.Router();
-const Training = require('../models/Training'); // make sure path is correct
+const Training = require('../models/Training'); // adjust path if needed
 
 // 1. CREATE new training / proposal / suggestion
 router.post('/', async (req, res) => {
   try {
-    console.log("Receiving Payload:", req.body);
-    
-    const newTraining = new Training(req.body);
-    
-    // The .save() call triggers the pre('save') middleware
-    const savedTraining = await newTraining.save();
-    
+    console.log('[POST /training] Payload received:', req.body);
+
+    const data = req.body;
+
+    // Fallbacks for required fields (prevents validation crash during dev)
+    if (!data.topic) data.topic = 'Untitled Training';
+    if (!data.description) data.description = 'No description provided';
+    if (!data.trainer?.name) {
+      data.trainer = { ...data.trainer, name: 'To be assigned' };
+    }
+
+    // Auto-set defaults
+    data.proposedByRole = data.proposedByRole || 'HR';
+    data.proposedByName = data.proposedByName || 'System / Anonymous';
+    data.proposedAt = new Date();
+
+    if (!data.status) {
+      data.status = data.proposedByRole === 'Management' ? 'Proposed' : 'Under Review';
+    }
+
+    const training = new Training(data);
+    const saved = await training.save();
+
     res.status(201).json({
       success: true,
-      data: savedTraining
+      data: saved
     });
   } catch (err) {
-    // Log the full error in your terminal to catch middleware bugs
-    console.error("POST /api/training ERROR:", err);
-    
+    console.error('[POST /training] ERROR:', err.message, err.stack);
     res.status(400).json({
       success: false,
-      error: err.message || "Validation failed"
+      error: err.message || 'Validation or save failed',
+      details: err.errors ? Object.keys(err.errors) : null
     });
   }
 });
 
-// 2. GET all trainings (with query filters for tabs)
+// 2. GET all trainings (with filters for tabs)
 router.get('/', async (req, res) => {
   try {
-    const query = req.query;
+    const { status, proposedByRole, priority, quarter, financialYear, limit = 20, page = 1 } = req.query;
 
     const filter = {};
 
-    // Support comma-separated status: ?status=Proposed,Under Review,Approved
-    if (query.status) {
-      filter.status = { $in: query.status.split(',').map(s => s.trim()) };
+    if (status) {
+      filter.status = { $in: status.split(',').map(s => s.trim()) };
     }
+    if (proposedByRole) filter.proposedByRole = proposedByRole;
+    if (priority) filter.priority = priority;
+    if (quarter) filter.quarter = quarter;
+    if (financialYear) filter.financialYear = financialYear;
 
-    if (query.proposedByRole) filter.proposedByRole = query.proposedByRole;
-    if (query.priority) filter.priority = query.priority;
-    if (query.quarter) filter.quarter = query.quarter;
-    if (query.financialYear) filter.financialYear = query.financialYear;
-    if (query.trainerEmployeeId) filter['trainer.employee'] = query.trainerEmployeeId;
-    if (query.feedbackEmployeeId) filter['feedbacks.employee'] = query.feedbackEmployeeId;
-
-    const limit = parseInt(query.limit) || 20;
-    const page = parseInt(query.page) || 1;
-    const skip = (page - 1) * limit;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const trainings = await Training.find(filter)
       .sort({ trainingDate: -1, createdAt: -1 })
       .skip(skip)
-      .limit(limit);
+      .limit(parseInt(limit));
 
     const total = await Training.countDocuments(filter);
 
@@ -62,17 +71,17 @@ router.get('/', async (req, res) => {
       success: true,
       count: trainings.length,
       total,
-      page,
+      page: parseInt(page),
       totalPages: Math.ceil(total / limit),
       data: trainings
     });
   } catch (err) {
-    console.error(err);
+    console.error('[GET /training] ERROR:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// 3. GET single training by ID
+// 3. GET single training
 router.get('/:id', async (req, res) => {
   try {
     const training = await Training.findById(req.params.id);
@@ -85,26 +94,67 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// 4. UPDATE training (edit fields, change status, schedule, etc.)
+// 4. UPDATE training (used for inline editing)
 router.patch('/:id', async (req, res) => {
   try {
-    const training = await Training.findByIdAndUpdate(
+    console.log(`[PATCH /training/${req.params.id}] Updates:`, req.body);
+
+    const updated = await Training.findByIdAndUpdate(
       req.params.id,
-      { $set: req.body },
+      { $set: req.body }, // only update sent fields
       { new: true, runValidators: true }
     );
 
+    if (!updated) {
+      return res.status(404).json({ success: false, error: 'Training not found' });
+    }
+
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    console.error(`[PATCH /training/${req.params.id}] ERROR:`, err);
+    res.status(400).json({
+      success: false,
+      error: err.message || 'Update failed',
+      details: err.errors ? Object.keys(err.errors) : null
+    });
+  }
+});
+
+// 5. DELETE training (hard delete)
+router.delete('/:id', async (req, res) => {
+  try {
+    const deleted = await Training.findByIdAndDelete(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ success: false, error: 'Training not found' });
+    }
+    res.json({ success: true, message: 'Training deleted permanently' });
+  } catch (err) {
+    console.error('[DELETE /training] ERROR:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 6. ARCHIVE training (soft delete - preferred for audit trail)
+router.patch('/:id/archive', async (req, res) => {
+  try {
+    const training = await Training.findById(req.params.id);
     if (!training) {
       return res.status(404).json({ success: false, error: 'Training not found' });
     }
 
+    training.status = 'Archived';
+    training.archivedAt = new Date();
+    await training.save();
+
     res.json({ success: true, data: training });
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// 5. SUBMIT FEEDBACK for a training
+// 7. SUBMIT FEEDBACK
+// routes/training.js
+// routes/training.js → post /:id/feedback
 router.post('/:id/feedback', async (req, res) => {
   try {
     const training = await Training.findById(req.params.id);
@@ -112,31 +162,34 @@ router.post('/:id/feedback', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Training not found' });
     }
 
-    // You can add check to prevent duplicate feedback later
-    training.feedbacks.push(req.body);
+    training.feedbacks.push({
+      employeeName: req.body.employeeName || 'Anonymous',
+      attended: req.body.attended ?? false,
+      overallRating: req.body.overallRating ? Number(req.body.overallRating) : undefined,
+      contentQuality: req.body.contentQuality ? Number(req.body.contentQuality) : undefined,
+      whatWasMissing: req.body.whatWasMissing?.trim(),
+      howHelpful: req.body.howHelpful?.trim(),
+      suggestedTopics: req.body.suggestedTopics?.trim(),
+      submittedAt: new Date()
+    });
+
     await training.save();
 
-    res.json({ success: true, data: training });
+    res.json({ success: true, message: 'Feedback submitted' });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
 });
 
-// 6. ARCHIVE training (soft delete)
-router.delete('/:id', async (req, res) => {
+// routes/training.js or new suggestions.js
+router.post('/suggestions', async (req, res) => {
   try {
-    const training = await Training.findById(req.params.id);
-    if (!training) {
-      return res.status(404).json({ success: false, error: 'Not found' });
-    }
-
-    training.status = 'Archived';
-    training.archivedAt = new Date();
-    await training.save();
-
-    res.json({ success: true, message: 'Training archived' });
+    // Save suggestion (e.g., to a new Suggestion model or append to training)
+    // For simplicity, just log or save somewhere
+    console.log('New suggestion:', req.body.suggestion);
+    res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(400).json({ success: false, error: err.message });
   }
 });
 

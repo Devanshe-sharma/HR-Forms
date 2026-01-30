@@ -27,7 +27,8 @@ function getAccessToken() {
   { algorithm: "RS256" }
 );
 console.log("hello", serviceAccount.client_email);
-console.log( "hekkkk",serviceAccount.private_key.includes("BEGIN PRIVATE KEY"));
+console.log( "hekkkk",serviceAccount.private_key);
+console.log("jwtToken", jwtToken);
 
 
   return axios.post(

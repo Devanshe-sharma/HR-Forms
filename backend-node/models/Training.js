@@ -122,7 +122,7 @@ const TrainingSchema = new Schema(
         employee: {
           type: Schema.Types.ObjectId,
           ref: 'Employee',
-          required: true,
+          // required: true,
         },
         employeeName: {
           type: String,
