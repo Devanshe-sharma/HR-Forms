@@ -1,7 +1,5 @@
 const express = require("express");
 const router = express.Router();
-const fs = require("fs");
-const path = require("path");
 const axios = require("axios");
 const jwt = require("jsonwebtoken");
 const qs = require("querystring");
@@ -10,36 +8,41 @@ const qs = require("querystring");
 const spreadsheetId = "1lCR-U79naPW6GPS8CRQb89o7Oebc-mY8g9nWw62PdGk";
 const sheetName = "FMS";
 function getAccessToken() {
-  const serviceAccountPath = path.join(__dirname, "../service-account.json");
-  if (!fs.existsSync(serviceAccountPath)) {
-    throw new Error("Service account file not found");
+  const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
+  const privateKey = process.env.GOOGLE_PRIVATE_KEY;
+
+  if (!clientEmail || !privateKey) {
+    throw new Error("Missing Google service account env vars");
   }
-  const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf8"));
- const jwtToken = jwt.sign(
-  {
-    iss: serviceAccount.client_email,
-    scope: "https://www.googleapis.com/auth/spreadsheets",
-    aud: "https://oauth2.googleapis.com/token",
-    exp: Math.floor(Date.now() / 1000) + 3600,
-    iat: Math.floor(Date.now() / 1000),
-  },
-  serviceAccount.private_key.replace(/\\n/g, "\n"),
-  { algorithm: "RS256" }
-);
-console.log("hello", serviceAccount.client_email);
-console.log( "hekkkk",serviceAccount.private_key);
-console.log("jwtToken", jwtToken);
 
+  const jwtToken = jwt.sign(
+    {
+      iss: clientEmail,
+      scope: "https://www.googleapis.com/auth/spreadsheets",
+      aud: "https://oauth2.googleapis.com/token",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      iat: Math.floor(Date.now() / 1000),
+    },
+    privateKey.replace(/\\n/g, "\n"),
+    { algorithm: "RS256" }
+  );
+  console.log("ENV CHECK", {
+  email: !!process.env.GOOGLE_CLIENT_EMAIL,
+  key: !!process.env.GOOGLE_PRIVATE_KEY,
+});
 
-  return axios.post(
-    "https://oauth2.googleapis.com/token",
-    qs.stringify({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwtToken,
-    }),
-    { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
-  ).then(res => res.data.access_token);
+  return axios
+    .post(
+      "https://oauth2.googleapis.com/token",
+      qs.stringify({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion: jwtToken,
+      }),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    )
+    .then(res => res.data.access_token);
 }
+
 // function getAccessToken() {
 //   const serviceAccountPath = path.join(__dirname, "../service-account.json");
 //   if (!fs.existsSync(serviceAccountPath)) {
