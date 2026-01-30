@@ -15,17 +15,20 @@ function getAccessToken() {
     throw new Error("Service account file not found");
   }
   const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf8"));
-  const jwtToken = jwt.sign(
-    {
-      iss: serviceAccount.client_email,
-      scope: "https://www.googleapis.com/auth/spreadsheets",
-      aud: "https://oauth2.googleapis.com/token",
-      exp: Math.floor(Date.now() / 1000) + 3600,
-      iat: Math.floor(Date.now() / 1000)
-    },
-    serviceAccount.private_key,
-    { algorithm: "RS256" }
-  );
+ const jwtToken = jwt.sign(
+  {
+    iss: serviceAccount.client_email,
+    scope: "https://www.googleapis.com/auth/spreadsheets",
+    aud: "https://oauth2.googleapis.com/token",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    iat: Math.floor(Date.now() / 1000),
+  },
+  serviceAccount.private_key.replace(/\\n/g, "\n"),
+  { algorithm: "RS256" }
+);
+console.log("hello", serviceAccount.client_email);
+console.log( "hekkkk",serviceAccount.private_key.includes("BEGIN PRIVATE KEY"));
+
 
   return axios.post(
     "https://oauth2.googleapis.com/token",
