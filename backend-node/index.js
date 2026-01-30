@@ -1,3 +1,4 @@
+require('dotenv').config();
 require('dotenv').config({ path: './backend-node/.env' });
 console.log(
   "ENV LOADED:",
@@ -22,8 +23,10 @@ app.use('/api/departments', require('./routes/departments'));
 app.use('/api/designations', require('./routes/designations'));
 app.use('/api/hiringrequisitions', require('./routes/hiringRequisitions'));
 app.use('/api/ctc-components', require('./routes/ctcComponents'));
-app.use('/api/training-proposals', require('./routes/trainingProposals'));
+app.use('/api/training', require('./routes/training'));
+app.use('/api/requisition', require('./routes/requisition'));
 app.use('/api/onboarding', require('./routes/onboarding'));
+app.use('/api/exit', require('./routes/exit'));
 
 
 mongoose.connect(process.env.MONGO_URI)

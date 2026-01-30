@@ -7,7 +7,7 @@ const jwt = require("jsonwebtoken");
 const qs = require("querystring");
 
 
-const spreadsheetId = "1lCR-U79naPW6GPS8CRQb89o7Oebc-mY8g9nWw62PdGk";
+const spreadsheetId = "1pUlMGL05gnCr8Aqf-dWnzpXwTqYmW2oiONnFZw8L8qM";
 const sheetName = "FMS";
 function getAccessToken() {
   const serviceAccountPath = path.join(__dirname, "../service-account.json");
@@ -66,7 +66,7 @@ router.get('/', async (req, res) => {
     const accessToken = await getAccessToken();
 
     // Fetch all values
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A1:Z1000`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A1:CZ1000`;
     const response = await axios.get(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -97,7 +97,7 @@ router.get('/', async (req, res) => {
 });
 
 // PUT update row by 'Ser'
-router.put("/onboarding/:ser", async (req, res) => {
+router.put("/requisition/:ser", async (req, res) => {
   try {
     const serToUpdate = req.params.ser;
     const updatedData = req.body; // expect full row as object

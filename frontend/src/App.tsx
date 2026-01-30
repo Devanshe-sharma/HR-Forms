@@ -12,7 +12,10 @@ import ComingSoon from "./pages/ComingSoon";
 import AllApplicants from "./pages/AllApplicants";
 import NewRequisitionForm from "./pages/new-requisition-form";
 import TrainingPage from "./pages/TrainingPage";
+import Requisition from "./pages/Requisition";
 import Onboarding from "./pages/Onboarding";
+import Exit from "./pages/Exit";
+
 
 export default function App() {
   return (
@@ -125,6 +128,14 @@ export default function App() {
         }
       />
        <Route
+        path="/requisition"
+        element={
+          <ProtectedRoute>
+            <Requisition />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/onboarding"
         element={
           <ProtectedRoute>
@@ -132,7 +143,14 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      
+      <Route
+        path="/exit"
+        element={
+          <ProtectedRoute>
+            <Exit />
+          </ProtectedRoute>
+        }
+      />
 
     </Routes>
   );

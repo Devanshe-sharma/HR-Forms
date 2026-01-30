@@ -7,8 +7,8 @@ const jwt = require("jsonwebtoken");
 const qs = require("querystring");
 
 
-const spreadsheetId = "1lCR-U79naPW6GPS8CRQb89o7Oebc-mY8g9nWw62PdGk";
-const sheetName = "FMS";
+const spreadsheetId = "19xZwCcBoTepR64kKoj_Gum29cX3MF9rcYhl0dVXjTuM";
+const sheetName = "Exit FMS";
 function getAccessToken() {
   const serviceAccountPath = path.join(__dirname, "../service-account.json");
   if (!fs.existsSync(serviceAccountPath)) {
@@ -97,7 +97,7 @@ router.get('/', async (req, res) => {
 });
 
 // PUT update row by 'Ser'
-router.put("/onboarding/:ser", async (req, res) => {
+router.put("/exit/:ser", async (req, res) => {
   try {
     const serToUpdate = req.params.ser;
     const updatedData = req.body; // expect full row as object

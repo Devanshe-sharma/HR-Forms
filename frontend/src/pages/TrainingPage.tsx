@@ -61,7 +61,7 @@ type Tab = 'hr' | 'mgmt' | 'emp' | 'score';
 export default function TrainingPage() {
   const [activeTab, setActiveTab] = useState<Tab>('hr');
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [trainings, setTrainings] = useState<Training[]>([]);
+  const [training, setTraining] = useState<Training[]>([]);
   const [attendanceLog, setAttendanceLog] = useState<Record<number, string[]>>({});
 
   // HR form state
@@ -144,30 +144,30 @@ export default function TrainingPage() {
 
     const processTrainings = async () => {
       try {
-        let url = `${API_BASE}/training-proposals`;
+        let url = `${API_BASE}/training`;
         if (activeTab === 'mgmt') url += '?status=Pending';
 
-        // Fetch trainings
+        // Fetch training
         const res = await axios.get(url);
         if (!res.data.success) return;
 
-        let fetchedTrainings = res.data.data || [];
+        let fetchedTraining = res.data.data || [];
 
-        // Auto-archive past Scheduled trainings (HR & Mgmt only)
+        // Auto-archive past Scheduled training (HR & Mgmt only)
         const now = new Date();
-        const toArchive = fetchedTrainings.filter((t: Training) =>
+        const toArchive = fetchedTraining.filter((t: Training) =>
           t.status === 'Scheduled' &&
           t.date &&
           new Date(t.date) < now
         );
 
         if (toArchive.length > 0) {
-          console.log(`Auto-archiving ${toArchive.length} past trainings...`);
+          console.log(`Auto-archiving ${toArchive.length} past training...`);
 
           for (const t of toArchive) {
             if (t._id) {
               try {
-                await axios.patch(`${API_BASE}/training-proposals/${t._id}`, {
+                await axios.patch(`${API_BASE}/training/${t._id}`, {
                   status: 'Archived',
                   archivedAt: now.toISOString(),
                 });
@@ -180,11 +180,11 @@ export default function TrainingPage() {
           // Re-fetch to get updated statuses
           const refreshed = await axios.get(url);
           if (refreshed.data.success) {
-            fetchedTrainings = refreshed.data.data || [];
+            fetchedTraining = refreshed.data.data || [];
           }
         }
 
-        setTrainings(fetchedTrainings);
+        setTraining(fetchedTraining);
       } catch (err) {
         console.error('Fetch/archive error:', err);
       }
@@ -213,7 +213,7 @@ export default function TrainingPage() {
     if (activeTab === 'mgmt') {
       const fetchSuggestions = async () => {
         try {
-          const res = await axios.get(`${API_BASE}/training-proposals?isSuggestion=true`);
+          const res = await axios.get(`${API_BASE}/training?isSuggestion=true`);
           if (res.data.success) {
             setSuggestions(res.data.data || []);
           }
@@ -295,8 +295,8 @@ export default function TrainingPage() {
 
   const refreshTrainings = async () => {
     try {
-      const res = await axios.get(`${API_BASE}/training-proposals`);
-      if (res.data.success) setTrainings(res.data.data || []);
+      const res = await axios.get(`${API_BASE}/training`);
+      if (res.data.success) setTraining(res.data.data || []);
     } catch (err) {
       console.error('Refresh failed:', err);
     }
@@ -306,7 +306,7 @@ export default function TrainingPage() {
   // HR Table Filter & Sort
   // ────────────────────────────────────────────────
 
-  const filteredTrainings = trainings
+  const filteredTraining = training
     .filter((t) => {
       if (trainerFilter && t.hr_info?.trainerName !== trainerFilter) return false;
 
@@ -363,7 +363,7 @@ export default function TrainingPage() {
   const saveEdit = async (id?: string) => {
     if (!id || !editingId) return;
     try {
-      const res = await axios.patch(`${API_BASE}/training-proposals/${id}`, editValues);
+      const res = await axios.patch(`${API_BASE}/training/${id}`, editValues);
       if (res.data.success) {
         refreshTrainings();
         setEditingId(null);
@@ -386,7 +386,7 @@ export default function TrainingPage() {
 
   const getAvailableFYs = () => {
     const fys = new Set<string>();
-    trainings.forEach((t) => {
+    training.forEach((t) => {
       if (t.date) {
         const [d, m, y] = t.date.split(/[- :]/);
         const dateObj = new Date(`${m} ${d}, ${y}`);
@@ -441,7 +441,7 @@ const submitTraining = async () => {
     };
 
     try {
-      const res = await axios.post(`${API_BASE}/training-proposals`, payload);
+      const res = await axios.post(`${API_BASE}/training`, payload);
       if (res.data.success) {
         alert('Submitted successfully!');
         setForm({ topic: '', desc: '', trainerType: 'internal', trainer: '', dept: '', desig: '', extSource: '', extName: '', extOrg: '', extMobile: '', extEmail: '' });
@@ -478,7 +478,7 @@ const submitTraining = async () => {
     };
 
     try {
-      const res = await axios.post(`${API_BASE}/training-proposals`, payload);
+      const res = await axios.post(`${API_BASE}/training`, payload);
       if (res.data.success) {
         alert('Management suggestion submitted!');
         setSuggestionForm({ topic: '', desc: '', trainerName: '', reason: '', priority: '' });
@@ -491,7 +491,7 @@ const submitTraining = async () => {
 
   const approve = async (id: string) => {
     try {
-      const res = await axios.patch(`${API_BASE}/training-proposals/${id}/approve`);
+      const res = await axios.patch(`${API_BASE}/training/${id}/approve`);
       if (res.data.success) refreshTrainings();
     } catch (err) {
       alert('Approve failed');
@@ -508,7 +508,7 @@ const submitTraining = async () => {
     if (!rejectProposalId || !rejectReason.trim()) return alert('Reason required');
     try {
       const res = await axios.patch(
-        `${API_BASE}/training-proposals/${rejectProposalId}/reject`,
+        `${API_BASE}/training/${rejectProposalId}/reject`,
         { reason: rejectReason.trim() }
       );
       if (res.data.success) refreshTrainings();
@@ -543,14 +543,14 @@ const submitTraining = async () => {
         status: isReschedule ? selectedTrainingForSchedule.status : 'Scheduled' as const,
       };
 
-      setTrainings((prev) =>
+      setTraining((prev) =>
         prev.map((t) =>
           t._id === selectedTrainingForSchedule._id ? updatedTraining : t
         )
       );
 
       if (selectedTrainingForSchedule._id) {
-        await axios.patch(`${API_BASE}/training-proposals/${selectedTrainingForSchedule._id}`, {
+        await axios.patch(`${API_BASE}/training/${selectedTrainingForSchedule._id}`, {
           date: selectedDate,
           status: isReschedule ? undefined : 'Scheduled',
         });
@@ -570,7 +570,7 @@ const submitTraining = async () => {
         );
       }
 
-      const index = trainings.findIndex((t) => t._id === selectedTrainingForSchedule._id);
+      const index = training.findIndex((t) => t._id === selectedTrainingForSchedule._id);
       if (index >= 0 && !attendanceLog[index]) {
         setAttendanceLog((prev) => ({ ...prev, [index]: [] }));
       }
@@ -641,7 +641,7 @@ const submitTraining = async () => {
     setEmployees((prev) =>
       prev.map((emp) => {
         let penalty = 0;
-        trainings.forEach((t, i) => {
+        training.forEach((t, i) => {
           if (t.status === 'Scheduled' && !attendanceLog[i]?.includes(emp.name)) {
             penalty -= 1;
           }
@@ -652,8 +652,8 @@ const submitTraining = async () => {
     alert('Attendance finalized – penalties applied');
   };
 
-  const pendingTrainings = trainings.filter((t) => t.status === 'Pending' && !t.isSuggestion);
-  const scheduledTrainings = trainings.filter((t) => t.status === 'Scheduled');
+  const pendingTraining = training.filter((t) => t.status === 'Pending' && !t.isSuggestion);
+  const scheduledTraining = training.filter((t) => t.status === 'Scheduled');
 
 
  return (
@@ -880,7 +880,7 @@ const submitTraining = async () => {
                           onChange={(e) => setTrainerFilter(e.target.value)}
                         >
                           <option value="">All Trainers</option>
-                          {Array.from(new Set(trainings.map((t) => t.hr_info?.trainerName))).map((name) => (
+                          {Array.from(new Set(training.map((t) => t.hr_info?.trainerName))).map((name) => (
                             <option key={name} value={name}>
                               {name}
                             </option>
@@ -933,7 +933,7 @@ const submitTraining = async () => {
                     </div>
 
                     {/* Table */}
-                    {filteredTrainings.length === 0 ? (
+                    {filteredTraining.length === 0 ? (
                       <p className="text-gray-500 text-center py-8">
                         No trainings match the selected filters.
                       </p>
@@ -960,7 +960,7 @@ const submitTraining = async () => {
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-gray-200">
-                                {filteredTrainings.map((t, idx) => {
+                                {filteredTraining.map((t, idx) => {
                                   // Correctly check nested status for archiving
                                   const isArchived = t.mgmt_info?.status === 'Archived';
                                   
@@ -1172,7 +1172,7 @@ const submitTraining = async () => {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {trainings.map((t, idx) => (
+            {training.map((t, idx) => (
               <tr key={t._id || idx} className="hover:bg-gray-50">
                 <td className="px-6 py-4 text-sm text-gray-500">{idx + 1}</td>
                 {/* Notice the use of optional chaining for nested objects */}
@@ -1240,7 +1240,7 @@ const submitTraining = async () => {
 
                       <div>
                         <label className="block font-medium text-gray-700 mb-1">Training Session</label>
-                        {scheduledTrainings.length === 0 ? (
+                        {scheduledTraining.length === 0 ? (
                           <p className="text-gray-500 py-2 italic">
                             No scheduled trainings available yet.
                           </p>
@@ -1251,8 +1251,8 @@ const submitTraining = async () => {
                             onChange={(e) => setSelectedTrainingIndex(Number(e.target.value))}
                           >
                             <option value={-1}>-- Select Training --</option>
-                            {scheduledTrainings.map((t, idx) => (
-                              <option key={t._id || idx} value={trainings.indexOf(t)}>
+                            {scheduledTraining.map((t, idx) => (
+                              <option key={t._id || idx} value={training.indexOf(t)}>
                                 {t.hr_info?.topic}
                                 {t.date ? ` (${t.date})` : ' (Date TBD)'}
                               </option>
@@ -1328,7 +1328,7 @@ const submitTraining = async () => {
                     <button
                       onClick={submitFeedback}
                       className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition shadow-sm"
-                      disabled={employees.length === 0 || scheduledTrainings.length === 0}
+                      disabled={employees.length === 0 || scheduledTraining.length === 0}
                     >
                       Submit Feedback
                     </button>
