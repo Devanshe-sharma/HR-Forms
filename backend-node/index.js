@@ -27,12 +27,14 @@ app.use('/api/training', require('./routes/training'));
 app.use('/api/requisition', require('./routes/requisition'));
 app.use('/api/onboarding', require('./routes/onboarding'));
 app.use('/api/exit', require('./routes/exit'));
+app.use('/api', require('./routes/training'));
 
 
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('Mongo connected'))
     .catch(err => console.error(err));
 
+const { startEmailScheduler } = require('./utils/scheduler');
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Node running on ${PORT}`);
@@ -52,3 +54,5 @@ app.post('/sync-sheet', async (req, res) => {
     res.status(500).send(err.message);
   }
 });
+
+startEmailScheduler();

@@ -1,7 +1,33 @@
 // routes/training.js
 const express = require('express');
 const router = express.Router();
-const Training = require('../models/Training'); // adjust path if needed
+const Training = require('../models/Training');
+const sendEmail = require('../utils/sendEmail'); // adjust path if needed
+
+router.get('/test-email', async (req, res) => {
+  try {
+    const result = await sendEmail({
+      to: 'Software.developer@briskolive.com',
+      subject: 'Test Email from HR Training System',
+      html: `
+        <h2>Hello from your app!</h2>
+        <p>This is a test email sent using Nodemailer.</p>
+        <p>Time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</p>
+        <hr>
+        <small>If you received this → Nodemailer is working!</small>
+      `,
+    });
+
+    if (result.success) {
+      res.json({ success: true, message: 'Test email sent!' });
+    } else {
+      res.status(500).json({ success: false, error: result.error?.message || 'Email failed' });
+    }
+  } catch (err) {
+    console.error('Test email route error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // 1. CREATE new training / proposal / suggestion
 router.post('/', async (req, res) => {
@@ -153,7 +179,6 @@ router.patch('/:id/archive', async (req, res) => {
 });
 
 // 7. SUBMIT FEEDBACK
-// routes/training.js
 // routes/training.js → post /:id/feedback
 router.post('/:id/feedback', async (req, res) => {
   try {
@@ -192,5 +217,8 @@ router.post('/suggestions', async (req, res) => {
     res.status(400).json({ success: false, error: err.message });
   }
 });
+
+
+module.exports = router;
 
 module.exports = router;
