@@ -25,7 +25,8 @@ const TrainingSchema = new Schema(
     },
     trainingDate: {
       type: Date,
-      required: [true, 'Training date is required'],
+      required: [false, 'Training date is required'],
+      default: null,
     },
     durationHours: {
       type: Number,
@@ -56,6 +57,11 @@ const TrainingSchema = new Schema(
       default: 'Proposed',
       index: true,
     },
+    reason: {
+        type: String,
+        trim: true,
+        default: '',
+      },
     priority: {
       type: String,
       enum: ['P1', 'P2', 'P3'],

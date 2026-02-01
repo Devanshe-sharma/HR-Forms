@@ -15,12 +15,24 @@ type Employee = {
   email: string;
 };
 
+type Feedback = {
+  employeeName: string;
+  attended: boolean;
+  overallRating?: number;
+  contentQuality?: number;
+  whatWasMissing?: string;
+  howHelpful?: string;
+  submittedAt?: string;
+};
+
 type Training = {
+  feedbacks?: Feedback[];
   _id?: string;
   topic: string;
   description: string;
   trainingDate?: string | Date;
   status: string;
+  reason?: string;
   priority: 'P1' | 'P2' | 'P3';
   remark?: string;
   proposedByRole?: string;
@@ -72,6 +84,30 @@ export default function TrainingPage() {
   const [rejectTrainingId, setRejectTrainingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
+  // Management: Suggestion Modal
+  const [isManagementSuggestModalOpen, setIsManagementSuggestModalOpen] = useState(false);
+  const [suggestForm, setSuggestForm] = useState({
+    topic: '',
+    description: '',
+    trainerName: '',
+    reason: '',
+    priority: 'P3' as 'P1' | 'P2' | 'P3',
+  });
+
+  // Employee Feedback
+  const [feedbackForm, setFeedbackForm] = useState({
+    employeeName: '',
+    trainingId: '',
+    overallRating: '',
+    attended: false,
+    contentQuality: '',
+    whatWasMissing: '',
+    howHelpful: ''
+  });
+  const [loadingFeedback, setLoadingFeedback] = useState(false);
+  const [showSuggestionModal, setShowSuggestionModal] = useState(false);
+  const [nextTopicSuggestion, setNextTopicSuggestion] = useState('');
+
   const API_BASE = process.env.NODE_ENV === 'development' ? 'http://localhost:5000/api' : '/api';
 
   // ─── LOAD DATA ────────────────────────────────────────────
@@ -118,7 +154,7 @@ export default function TrainingPage() {
     try {
       await axios.patch(`${API_BASE}/training/${rejectTrainingId}`, {
         status: 'Rejected',
-        remark: rejectReason.trim()
+        reason: rejectReason.trim() // ← fixed field name
       });
       alert('Training rejected!');
       setIsRejectModalOpen(false);
@@ -188,7 +224,8 @@ export default function TrainingPage() {
       topic: training.topic,
       description: training.description,
       priority: training.priority,
-      trainer: { ...training.trainer }
+      trainer: { ...training.trainer },
+      status: training.status,
     });
   };
 
@@ -223,117 +260,176 @@ export default function TrainingPage() {
     }
   };
 
+  // ─── MANAGEMENT SUGGESTION ───────────────────────────────
+  const submitManagementSuggestion = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-const [feedbackForm, setFeedbackForm] = useState({
-  employeeName: '',
-  trainingId: '',
-  overallRating: '',
-  attended: false,
-  contentQuality: '',
-  whatWasMissing: '',
-  howHelpful: ''
-});
+    if (!suggestForm.topic.trim() || !suggestForm.description.trim() || !suggestForm.trainerName.trim()) {
+      return alert('Topic, Description, and Trainer Name are required');
+    }
 
-const [loadingFeedback, setLoadingFeedback] = useState(false);
-const [showSuggestionModal, setShowSuggestionModal] = useState(false);
-const [nextTopicSuggestion, setNextTopicSuggestion] = useState('');
+    const payload = {
+      topic: suggestForm.topic.trim(),
+      description: suggestForm.description.trim(),
+      trainer: { name: suggestForm.trainerName.trim(), isExternal: false },
+      reason: suggestForm.reason.trim() || undefined,
+      priority: suggestForm.priority,
+      status: 'Proposed',
+      proposedByRole: 'Management',
+      proposedByName: 'Management User',
+      proposedAt: new Date().toISOString(),
+    };
 
-// Add this function (you can place it near submitProposal)
-const handleFeedbackSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-
-  if (!feedbackForm.employeeName || !feedbackForm.trainingId) {
-    return alert('Please select your name and training');
-  }
-  if (!feedbackForm.attended) {
-    return alert('Please confirm that you attended the training');
-  }
-  if (!feedbackForm.overallRating || !feedbackForm.contentQuality) {
-    return alert('Please provide ratings');
-  }
-
-  setLoadingFeedback(true);
-
-  try {
-    await axios.post(`${API_BASE}/training/${feedbackForm.trainingId}/feedback`, {
-      employeeName: feedbackForm.employeeName,
-      attended: feedbackForm.attended,
-      overallRating: Number(feedbackForm.overallRating),
-      contentQuality: Number(feedbackForm.contentQuality),
-      whatWasMissing: feedbackForm.whatWasMissing.trim(),
-      howHelpful: feedbackForm.howHelpful.trim(),
-      submittedAt: new Date().toISOString(),
-    });
-
-    // ── Success flow ──
-    alert('Feedback submitted successfully!');
-    setShowSuggestionModal(true);           // ← open suggestion modal
-
-    // Reset feedback form
-    setFeedbackForm({
-      employeeName: '',
-      trainingId: '',
-      overallRating: '',
-      attended: false,
-      contentQuality: '',
-      whatWasMissing: '',
-      howHelpful: '',
-    });
-  } catch (err: any) {
-    alert('Failed to submit feedback: ' + (err.response?.data?.error || err.message));
-  } finally {
-    setLoadingFeedback(false);
-  }
-};
-
-
-
-const submitTopicSuggestion = async () => {
-  if (nextTopicSuggestion.trim()) {
     try {
-      // Optional: save suggestion to backend
-      await axios.post(`${API_BASE}/suggestions`, { suggestion: nextTopicSuggestion.trim() });
-      // OR attach to last training if needed
-      alert('Thank you! Your topic suggestion has been recorded.');
-    } catch (err) {
-      console.error('Suggestion save failed', err);
+      const res = await axios.post(`${API_BASE}/training`, payload);
+      if (res.data.success) {
+        alert('Training topic suggested successfully!');
+        setIsManagementSuggestModalOpen(false);
+        setSuggestForm({ topic: '', description: '', trainerName: '', reason: '', priority: 'P3' });
+        refreshData();
+      }
+    } catch (err: any) {
+      alert('Failed to suggest topic: ' + (err.response?.data?.error || err.message));
     }
-  }
+  };
 
-  // Close modal & reset
-  setIsSuggestionModalOpen(false);
-  setNextTopicSuggestion('');
-};
+  // ─── EMPLOYEE FEEDBACK ───────────────────────────────────
+  const handleFeedbackSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
 
+    if (!feedbackForm.employeeName || !feedbackForm.trainingId) {
+      return alert('Please select your name and training');
+    }
+    if (!feedbackForm.attended) {
+      return alert('Please confirm that you attended the training');
+    }
+    if (!feedbackForm.overallRating || !feedbackForm.contentQuality) {
+      return alert('Please provide ratings');
+    }
 
-// Optional: submit suggestion (you can send it to a separate endpoint or same training)
-const submitSuggestion = async () => {
-  if (!nextTopicSuggestion.trim()) return;
+    setLoadingFeedback(true);
 
-  try {
-    // You can either:
-    // 1. Send to a new endpoint: /api/suggestions
-    // await axios.post(`${API_BASE}/suggestions`, { suggestion: nextTopicSuggestion });
-
-    // OR 2. Add to last submitted training's remark/suggestedTopics
-    if (feedbackForm.trainingId) {
-      await axios.patch(`${API_BASE}/training/${feedbackForm.trainingId}`, {
-        remark: `Suggested topic: ${nextTopicSuggestion.trim()}`
+    try {
+      await axios.post(`${API_BASE}/training/${feedbackForm.trainingId}/feedback`, {
+        employeeName: feedbackForm.employeeName,
+        attended: feedbackForm.attended,
+        overallRating: Number(feedbackForm.overallRating),
+        contentQuality: Number(feedbackForm.contentQuality),
+        whatWasMissing: feedbackForm.whatWasMissing.trim(),
+        howHelpful: feedbackForm.howHelpful.trim(),
+        submittedAt: new Date().toISOString(),
       });
+
+      alert('Feedback submitted successfully!');
+      setShowSuggestionModal(true); // Open suggestion modal only here
+
+      setFeedbackForm({
+        employeeName: '',
+        trainingId: '',
+        overallRating: '',
+        attended: false,
+        contentQuality: '',
+        whatWasMissing: '',
+        howHelpful: '',
+      });
+    } catch (err: any) {
+      alert('Failed to submit feedback: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setLoadingFeedback(false);
     }
+  };
 
-    alert('Thank you! Your suggestion has been recorded.');
-  } catch (err) {
-    alert('Suggestion submission failed');
-  } finally {
-    setShowSuggestionModal(false);
-    setNextTopicSuggestion('');
-  }
+  const [scorecardData, setScorecardData] = useState<{
+  trainerAvgRating: number;
+  totalInvited: number;       // all employees who could have attended
+  attendedCount: number;
+  feedbackReceived: number;
+  noShowCount: number;
+  perEmployeeRatings?: { name: string; rating: number }[]; // optional detailed view
+} | null>(null);
+
+const loadScorecard = () => {
+  if (currentTab !== 'scorecard') return;
+
+  // For simplicity: aggregate from all trainings
+  // In real app → you might want per-training or filtered view
+
+  let totalTrainerPoints = 0;
+  let totalRatingsCount = 0;
+  let totalAttended = 0;
+  let totalFeedbacks = 0;
+  let totalNoShows = 0;
+  let totalPossible = employees.length * trainingList.length; // rough estimate
+
+  trainingList.forEach(training => {
+    const feedbacks = training.feedbacks || [];
+
+    // Attended count from feedbacks
+    const attended = feedbacks.filter(f => f.attended).length;
+    totalAttended += attended;
+
+    // No-shows = people who attended but didn't give feedback? Or just non-feedback?
+    // Here: assuming no-show = attended but no feedback
+    const noFeedbackButAttended = attended - feedbacks.filter(f => f.overallRating != null).length;
+    totalNoShows += noFeedbackButAttended;
+
+    // Trainer points calculation
+    const validRatings = feedbacks
+      .filter(f => f.attended && typeof f.overallRating === 'number')
+      .map(f => f.overallRating!);
+
+    totalTrainerPoints += validRatings.reduce((sum, r) => sum + r, 0);
+    totalRatingsCount += validRatings.length;
+    totalFeedbacks += feedbacks.length;
+  });
+
+  const avgRating = totalRatingsCount > 0 
+    ? Number((totalTrainerPoints / totalRatingsCount).toFixed(1)) 
+    : 0;
+
+  setScorecardData({
+    trainerAvgRating: avgRating,
+    totalInvited: totalPossible, // very approximate – improve later
+    attendedCount: totalAttended,
+    feedbackReceived: totalFeedbacks,
+    noShowCount: totalNoShows,
+    // Optional: detailed per-employee view (example)
+    perEmployeeRatings: employees.map(emp => {
+      // Find if this employee gave feedback to any training
+      let rating = -1; // default = didn't fill
+
+      for (const t of trainingList) {
+        const fb = t.feedbacks?.find(f => f.employeeName === emp.name);
+        if (fb?.attended && typeof fb.overallRating === 'number') {
+          rating = fb.overallRating;
+          break;
+        }
+      }
+
+      return { name: emp.name, rating };
+    })
+  });
 };
-
-  function setIsSuggestionModalOpen(arg0: boolean): void {
-    throw new Error('Function not implemented.');
+useEffect(() => {
+  if (currentTab === 'scorecard') {
+    loadScorecard();
   }
+}, [currentTab, trainingList, employees]);
+
+const [expandedTrainings, setExpandedTrainings] = useState<Record<string, boolean>>({});
+
+const getStatusColor = (status: string) => {
+  const colors: Record<string, string> = {
+    Approved: 'text-green-600',
+    Scheduled: 'text-blue-600',
+    Completed: 'text-purple-600',
+    Rejected: 'text-red-600',
+    Cancelled: 'text-gray-600',
+    'Under Review': 'text-amber-600',
+    Proposed: 'text-amber-600',
+  };
+  return colors[status] || 'text-gray-600';
+};
 
   // ─── RENDER ────────────────────────────────────────────────
   return (
@@ -349,6 +445,17 @@ const submitSuggestion = async () => {
               onClick={() => setIsCreateModalOpen(true)}
               className="fixed top-24 right-8 z-40 bg-[#7a8b2e] text-white rounded-full p-5 shadow-2xl hover:bg-[#5e6c24] transition transform hover:scale-110 active:scale-95"
               title="Create New Training Proposal"
+            >
+              <Plus size={32} />
+            </button>
+          )}
+
+          {/* Floating + Button - only in Management tab */}
+          {currentTab === 'management' && (
+            <button
+              onClick={() => setIsManagementSuggestModalOpen(true)}
+              className="fixed top-24 right-8 z-40 bg-indigo-600 text-white rounded-full p-5 shadow-2xl hover:bg-indigo-700 transition transform hover:scale-110 active:scale-95"
+              title="Suggest New Training Topic"
             >
               <Plus size={32} />
             </button>
@@ -379,6 +486,7 @@ const submitSuggestion = async () => {
                         <th className="p-4">Description</th>
                         <th className="p-4">Trainer Name</th>
                         <th className="p-4">Status</th>
+                        <th className="p-4">Reason</th>
                         <th className="p-4">Date</th>
                         <th className="p-4">Priority</th>
                         <th className="p-4 text-center">Remark</th>
@@ -392,8 +500,6 @@ const submitSuggestion = async () => {
                         return (
                           <tr key={t._id} className="hover:bg-gray-50/50 transition group">
                             <td className="p-4 text-gray-400">{i + 1}</td>
-
-                            {/* Topic */}
                             <td className="p-4">
                               {isEditing ? (
                                 <input
@@ -405,8 +511,6 @@ const submitSuggestion = async () => {
                                 <span className="font-bold text-gray-800">{t.topic}</span>
                               )}
                             </td>
-
-                            {/* Description */}
                             <td className="p-4">
                               {isEditing ? (
                                 <textarea
@@ -418,8 +522,6 @@ const submitSuggestion = async () => {
                                 <span className="text-gray-500 block max-w-[180px] truncate">{t.description}</span>
                               )}
                             </td>
-
-                            {/* Trainer Name */}
                             <td className="p-4">
                               {isEditing ? (
                                 <input
@@ -443,20 +545,43 @@ const submitSuggestion = async () => {
                                 <span className="font-medium text-blue-600">{t.trainer.name}</span>
                               )}
                             </td>
-
-                            {/* Status */}
                             <td className="p-4">
-                              <span className={`status-pill ${t.status.toLowerCase().replace(' ', '-')}`}>
-                                {t.status}
-                              </span>
+                              {isEditing ? (
+                                <select
+                                  className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                                  value={editData.status ?? t.status}
+                                  onChange={(e) =>
+                                    setEditData((prev) => ({
+                                      ...prev,
+                                      status: e.target.value,
+                                    }))
+                                  }
+                                >
+                                  <option value="Proposed">Proposed</option>
+                                  <option value="Under Review">Under Review</option>
+                                  <option value="Approved">Approved</option>
+                                  <option value="Scheduled">Scheduled</option>
+                                  <option value="Completed">Completed</option>
+                                  <option value="Rejected">Rejected</option>
+                                </select>
+                              ) : (
+                                <span className={`status-pill ${t.status.toLowerCase().replace(' ', '-')}`}>
+                                  {t.status}
+                                </span>
+                              )}
                             </td>
-
-                            {/* Date */}
+                            <td className="p-4 text-center text-gray-700 font-medium">
+                              {t.status === 'Rejected' ? (
+                                <span className="text-red-600 italic">
+                                  {t.reason || 'No reason provided'}
+                                </span>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
                             <td className="p-4 text-gray-600 font-mono italic">
                               {t.trainingDate ? new Date(t.trainingDate).toLocaleDateString() : 'TBD'}
                             </td>
-
-                            {/* Priority */}
                             <td className="p-4">
                               {isEditing ? (
                                 <select
@@ -472,13 +597,9 @@ const submitSuggestion = async () => {
                                 <span className={`priority-text ${t.priority.toLowerCase()}`}>{t.priority}</span>
                               )}
                             </td>
-
-                            {/* Remark */}
                             <td className="p-4 text-center text-gray-400 italic font-medium">
                               {t.remark || '--'}
                             </td>
-
-                            {/* Actions */}
                             <td className="p-4 text-center">
                               <div className="flex justify-center gap-3">
                                 {isEditing ? (
@@ -598,243 +719,392 @@ const submitSuggestion = async () => {
             </div>
           )}
 
-          {/* Scorecard & Employee Feedback */}
+          {/* Scorecard */}
           {currentTab === 'scorecard' && (
-            <div className="text-center py-20 text-gray-500 italic text-lg">
-              Scorecard View Coming Soon...
+  <div className="space-y-6">
+    <h3 className="text-2xl font-bold text-gray-800 text-center mb-8">
+      Training Participation & Feedback Scorecard
+    </h3>
+
+    {trainingList.length === 0 ? (
+      <div className="bg-white rounded-2xl p-12 text-center text-gray-500 italic shadow-sm border border-gray-200">
+        No trainings have been created yet.
+      </div>
+    ) : (
+      trainingList.map((training) => {
+        // Compute scores for every employee for this training
+        const employeeScores = employees.map((emp) => {
+          const feedback = training.feedbacks?.find(
+            (f) => f.employeeName === emp.name
+          );
+
+          const attended = feedback?.attended ?? false;
+          const hasFeedback = !!feedback && feedback.submittedAt != null;
+
+          const score = attended && hasFeedback ? 0 : -1;
+
+          return {
+            name: emp.name,
+            attended,
+            hasFeedback,
+            score,
+          };
+        });
+
+        // Summary statistics
+        const attendedCount = employeeScores.filter((e) => e.attended).length;
+        const feedbackCount = employeeScores.filter((e) => e.hasFeedback).length;
+        const perfectCount = employeeScores.filter((e) => e.score === 0).length;
+        const missingCount = employeeScores.filter((e) => e.score === -1).length;
+
+        // Expand/collapse state per training
+        const trainingId = training._id || `training-${training.topic}`;
+        const isExpanded = expandedTrainings[trainingId] || false;
+
+        const toggleExpanded = () => {
+          setExpandedTrainings((prev) => ({
+            ...prev,
+            [trainingId]: !prev[trainingId],
+          }));
+        };
+
+        return (
+          <div
+            key={trainingId}
+            className="bg-white rounded-xl shadow border border-gray-200 overflow-hidden transition-all duration-200"
+          >
+            {/* Clickable header with summary */}
+            <div
+              className="p-5 cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+              onClick={toggleExpanded}
+            >
+              <div className="flex-1">
+                <h4 className="text-lg font-semibold text-gray-800 mb-1">
+                  {training.topic}
+                </h4>
+                <div className="text-sm text-gray-600 flex flex-wrap gap-x-4 gap-y-1">
+                  <span>
+                    Date:{' '}
+                    {training.trainingDate
+                      ? new Date(training.trainingDate).toLocaleDateString()
+                      : 'Not scheduled'}
+                  </span>
+                  <span className={`font-medium ${getStatusColor(training.status)}`}>
+                    {training.status}
+                  </span>
+                </div>
+              </div>
+
+              {/* Summary stats */}
+              <div className="flex items-center gap-5 sm:gap-6 text-sm font-medium whitespace-nowrap">
+                <div className="text-center">
+                  <div className="text-green-600 font-bold">{attendedCount}</div>
+                  <div className="text-xs text-gray-500">Attended</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-purple-600 font-bold">{feedbackCount}</div>
+                  <div className="text-xs text-gray-500">Feedback</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-emerald-600 font-bold">{perfectCount}</div>
+                  <div className="text-xs text-gray-500">Score 0</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-red-600 font-bold">{missingCount}</div>
+                  <div className="text-xs text-gray-500">Score -1</div>
+                </div>
+
+                <span className="text-gray-500 text-xl ml-2">
+                  {isExpanded ? '▲' : '▼'}
+                </span>
+              </div>
+            </div>
+
+            {/* Expandable content */}
+            {isExpanded && (
+              <div className="border-t">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[640px]">
+                    <thead className="bg-gray-50 text-gray-600 uppercase text-xs font-semibold">
+                      <tr>
+                        <th className="p-4 text-left pl-6">Employee Name</th>
+                        <th className="p-4 text-center">Attended</th>
+                        <th className="p-4 text-center">Feedback Submitted</th>
+                        <th className="p-4 text-center">Score</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {employeeScores.map((item, idx) => (
+                        <tr
+                          key={idx}
+                          className={`hover:bg-gray-50 transition-colors ${
+                            item.score === 0 ? 'bg-green-50/40' : ''
+                          }`}
+                        >
+                          <td className="p-4 pl-6 font-medium">{item.name}</td>
+                          <td className="p-4 text-center">
+                            {item.attended ? (
+                              <span className="text-green-600 font-bold">Yes</span>
+                            ) : (
+                              <span className="text-red-600">No</span>
+                            )}
+                          </td>
+                          <td className="p-4 text-center">
+                            {item.hasFeedback ? (
+                              <span className="text-green-600 font-bold">Yes</span>
+                            ) : (
+                              <span className="text-red-600">No</span>
+                            )}
+                          </td>
+                          <td className="p-4 text-center text-lg font-bold">
+                            {item.score === 0 ? (
+                              <span className="text-emerald-700">0</span>
+                            ) : (
+                              <span className="text-red-700">-1</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {employeeScores.length === 0 && (
+                  <div className="p-10 text-center text-gray-500 italic">
+                    No employees found in the system
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })
+    )}
+  </div>
+)}
+          {/* ─── EMPLOYEE FEEDBACK TAB ─── */}
+          {currentTab === 'employee-feedback' && (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 max-w-3xl mx-auto">
+              <h3 className="text-2xl font-bold text-gray-800 mb-8 text-center">
+                Training Feedback (Attendance)
+              </h3>
+
+              <form onSubmit={handleFeedbackSubmit} className="space-y-6">
+                {/* Your Name */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Your Name *
+                  </label>
+                  <select
+                    required
+                    value={feedbackForm.employeeName}
+                    onChange={(e) => setFeedbackForm({ ...feedbackForm, employeeName: e.target.value })}
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                  >
+                    <option value="">Select your name</option>
+                    {employees.map((emp) => (
+                      <option key={emp.email} value={emp.name}>
+                        {emp.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Training */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Training *
+                  </label>
+                  <select
+                    required
+                    value={feedbackForm.trainingId}
+                    onChange={(e) => setFeedbackForm({ ...feedbackForm, trainingId: e.target.value })}
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                  >
+                    <option value="">-- Select Training --</option>
+                    {trainingList
+                      .filter((t) => ['Approved', 'Scheduled', 'Completed'].includes(t.status))
+                      .map((t) => (
+                        <option key={t._id} value={t._id}>
+                          {t.topic} 
+                          {t.trainingDate ? ` (${new Date(t.trainingDate).toLocaleDateString()})` : ' (Date TBD)'}
+                          {' - '}
+                          <span className={`font-medium ${
+                            t.status === 'Approved' ? 'text-green-600' :
+                            t.status === 'Scheduled' ? 'text-blue-600' :
+                            'text-purple-600'
+                          }`}>
+                            {t.status}
+                          </span>
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                {/* Attendance */}
+                <div className="flex items-center space-x-3">
+                  <input
+                    type="checkbox"
+                    id="attended"
+                    checked={feedbackForm.attended}
+                    onChange={(e) => setFeedbackForm({ ...feedbackForm, attended: e.target.checked })}
+                    className="h-5 w-5 text-[#7a8b2e] border-gray-300 rounded focus:ring-[#7a8b2e]"
+                  />
+                  <label htmlFor="attended" className="text-sm font-medium text-gray-700">
+                    I attended this training session *
+                  </label>
+                </div>
+
+                {/* Ratings */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Overall Rating *
+                  </label>
+                  <select
+                    required
+                    value={feedbackForm.overallRating}
+                    onChange={(e) => setFeedbackForm({ ...feedbackForm, overallRating: e.target.value })}
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                  >
+                    <option value="">--Select--</option>
+                    {[1, 2, 3, 4, 5].map((val) => (
+                      <option key={val} value={val.toString()}>
+                        {val}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Content Quality *
+                  </label>
+                  <select
+                    required
+                    value={feedbackForm.contentQuality}
+                    onChange={(e) => setFeedbackForm({ ...feedbackForm, contentQuality: e.target.value })}
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                  >
+                    <option value="">--Select--</option>
+                    {[1, 2, 3, 4, 5].map((val) => (
+                      <option key={val} value={val.toString()}>
+                        {val}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Feedback Text */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    What was missing?
+                  </label>
+                  <textarea
+                    value={feedbackForm.whatWasMissing}
+                    onChange={(e) => setFeedbackForm({ ...feedbackForm, whatWasMissing: e.target.value })}
+                    placeholder="Any topics, examples, or areas that were not covered..."
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 h-24 focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    How was it helpful?
+                  </label>
+                  <textarea
+                    value={feedbackForm.howHelpful}
+                    onChange={(e) => setFeedbackForm({ ...feedbackForm, howHelpful: e.target.value })}
+                    placeholder="How did this training help you in your work/role..."
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 h-24 focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                  />
+                </div>
+
+                {/* Submit */}
+                <div className="flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={loadingFeedback || !feedbackForm.attended}
+                    className={`px-10 py-3 rounded-xl font-bold text-white transition ${
+                      loadingFeedback || !feedbackForm.attended
+                        ? 'bg-gray-400 cursor-not-allowed'
+                        : 'bg-[#7a8b2e] hover:bg-[#5e6c24] shadow-lg'
+                    }`}
+                  >
+                    {loadingFeedback ? 'Submitting...' : 'Submit Feedback'}
+                  </button>
+                </div>
+              </form>
             </div>
           )}
 
-          {currentTab === 'employee-feedback' && (
-  <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 max-w-3xl mx-auto">
-    <h3 className="text-2xl font-bold text-gray-800 mb-8 text-center">
-      Training Feedback (Attendance)
-    </h3>
+          {/* ─── SUGGESTION MODAL (only after feedback) ─── */}
+          {showSuggestionModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+                <div className="p-6 border-b flex justify-between items-center bg-green-50">
+                  <h3 className="text-xl font-bold text-green-800">Thank You!</h3>
+                  <button
+                    onClick={() => {
+                      setShowSuggestionModal(false);
+                      setNextTopicSuggestion('');
+                    }}
+                    className="p-2 hover:bg-gray-200 rounded-full transition"
+                  >
+                    <X size={24} className="text-gray-600" />
+                  </button>
+                </div>
 
-    <form onSubmit={handleFeedbackSubmit} className="space-y-6">
-      {/* Your Name */}
-      <div>
-        <label className="block text-sm font-semibold text-gray-700 mb-2">
-          Your Name *
-        </label>
-        <select
-          required
-          value={feedbackForm.employeeName}
-          onChange={(e) => setFeedbackForm({ ...feedbackForm, employeeName: e.target.value })}
-          className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-        >
-          <option value="">Select your name</option>
-          {employees.map((emp) => (
-            <option key={emp.email} value={emp.name}>
-              {emp.name}
-            </option>
-          ))}
-        </select>
-      </div>
+                <div className="p-6">
+                  <p className="text-gray-700 mb-4">
+                    Your feedback has been submitted successfully.<br />
+                    Would you like to suggest a topic for the next training session?
+                  </p>
 
-      {/* Training */}
-      <div>
-        <label className="block text-sm font-semibold text-gray-700 mb-2">
-          Training *
-        </label>
-        <select
-          required
-          value={feedbackForm.trainingId}
-          onChange={(e) => setFeedbackForm({ ...feedbackForm, trainingId: e.target.value })}
-          className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-        >
-          <option value="">-- Select Training --</option>
-          {trainingList
-            .filter((t) => ['Approved', 'Scheduled', 'Completed'].includes(t.status))
-            .map((t) => (
-              <option key={t._id} value={t._id}>
-                {t.topic} 
-                {t.trainingDate ? ` (${new Date(t.trainingDate).toLocaleDateString()})` : ' (Date TBD)'}
-                {' - '}
-                <span className={`font-medium ${
-                  t.status === 'Approved' ? 'text-green-600' :
-                  t.status === 'Scheduled' ? 'text-blue-600' :
-                  'text-purple-600'
-                }`}>
-                  {t.status}
-                </span>
-              </option>
-            ))}
-        </select>
-      </div>
+                  <textarea
+                    value={nextTopicSuggestion}
+                    onChange={(e) => setNextTopicSuggestion(e.target.value)}
+                    placeholder="E.g. Leadership Skills, Advanced Excel, Team Building Activities..."
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3 h-32 resize-none focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                  />
+                </div>
 
-      {/* Attendance Checkbox */}
-      <div className="flex items-center space-x-3">
-        <input
-          type="checkbox"
-          id="attended"
-          checked={feedbackForm.attended}
-          onChange={(e) => setFeedbackForm({ ...feedbackForm, attended: e.target.checked })}
-          className="h-5 w-5 text-[#7a8b2e] border-gray-300 rounded focus:ring-[#7a8b2e]"
-        />
-        <label htmlFor="attended" className="text-sm font-medium text-gray-700">
-          I attended this training session *
-        </label>
-      </div>
+                <div className="p-6 border-t bg-gray-50 flex justify-end gap-4">
+                  <button
+                    onClick={() => {
+                      setShowSuggestionModal(false);
+                      setNextTopicSuggestion('');
+                    }}
+                    className="px-6 py-3 text-gray-700 font-medium hover:bg-gray-200 rounded-xl transition"
+                  >
+                    Skip
+                  </button>
 
-      {/* Ratings */}
-      <div>
-        <label className="block text-sm font-semibold text-gray-700 mb-2">
-          Overall Rating *
-        </label>
-        <select
-          required
-          value={feedbackForm.overallRating}
-          onChange={(e) => setFeedbackForm({ ...feedbackForm, overallRating: e.target.value })}
-          className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-        >
-          <option value="">--Select--</option>
-          {[1, 2, 3, 4, 5].map((val) => (
-            <option key={val} value={val.toString()}>
-              {val}
-            </option>
-          ))}
-        </select>
-      </div>
+                  <button
+                    onClick={() => {
+                      if (nextTopicSuggestion.trim()) {
+                        alert('Thank you! Your suggestion has been noted.');
+                        // Optional: await axios.post(`${API_BASE}/suggestions`, { topic: nextTopicSuggestion.trim() });
+                      } else {
+                        alert('Suggestion skipped.');
+                      }
+                      setShowSuggestionModal(false);
+                      setNextTopicSuggestion('');
+                    }}
+                    disabled={!nextTopicSuggestion.trim()}
+                    className={`px-8 py-3 rounded-xl font-bold transition ${
+                      nextTopicSuggestion.trim()
+                        ? 'bg-[#7a8b2e] text-white hover:bg-[#5e6c24]'
+                        : 'bg-gray-300 text-white cursor-not-allowed'
+                    }`}
+                  >
+                    Submit Suggestion
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
-      <div>
-        <label className="block text-sm font-semibold text-gray-700 mb-2">
-          Content Quality *
-        </label>
-        <select
-          required
-          value={feedbackForm.contentQuality}
-          onChange={(e) => setFeedbackForm({ ...feedbackForm, contentQuality: e.target.value })}
-          className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-        >
-          <option value="">--Select--</option>
-          {[1, 2, 3, 4, 5].map((val) => (
-            <option key={val} value={val.toString()}>
-              {val}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Feedback Text */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          What was missing?
-        </label>
-        <textarea
-          value={feedbackForm.whatWasMissing}
-          onChange={(e) => setFeedbackForm({ ...feedbackForm, whatWasMissing: e.target.value })}
-          placeholder="Any topics, examples, or areas that were not covered..."
-          className="w-full border border-gray-300 rounded-xl px-4 py-3 h-24 focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-        />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          How was it helpful?
-        </label>
-        <textarea
-          value={feedbackForm.howHelpful}
-          onChange={(e) => setFeedbackForm({ ...feedbackForm, howHelpful: e.target.value })}
-          placeholder="How did this training help you in your work/role..."
-          className="w-full border border-gray-300 rounded-xl px-4 py-3 h-24 focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-        />
-      </div>
-
-      {/* Submit */}
-      <div className="flex justify-end">
-        <button
-          type="submit"
-          disabled={loadingFeedback || !feedbackForm.attended}
-          className={`px-10 py-3 rounded-xl font-bold text-white transition ${
-            loadingFeedback || !feedbackForm.attended
-              ? 'bg-gray-400 cursor-not-allowed'
-              : 'bg-[#7a8b2e] hover:bg-[#5e6c24] shadow-lg'
-          }`}
-        >
-          {loadingFeedback ? 'Submitting...' : 'Submit Feedback'}
-        </button>
-      </div>
-    </form>
-  </div>
-)}
-
-{/* ─── SUGGESTION POPUP MODAL ─── */}
-{/* Suggestion Modal – appears after successful feedback */}
-{showSuggestionModal && (
-  <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-      {/* Header */}
-      <div className="p-6 border-b flex justify-between items-center bg-green-50">
-        <h3 className="text-xl font-bold text-green-800">Thank You!</h3>
-        <button
-          onClick={() => {
-            setShowSuggestionModal(false);
-            setNextTopicSuggestion('');
-          }}
-          className="p-2 hover:bg-gray-200 rounded-full transition"
-        >
-          <X size={24} className="text-gray-600" />
-        </button>
-      </div>
-
-      {/* Body */}
-      <div className="p-6">
-        <p className="text-gray-700 mb-4">
-          Your feedback has been submitted successfully.<br />
-          Would you like to suggest a topic for the next training session?
-        </p>
-
-        <textarea
-          value={nextTopicSuggestion}
-          onChange={(e) => setNextTopicSuggestion(e.target.value)}
-          placeholder="E.g. Leadership Skills, Advanced Excel, Team Building Activities..."
-          className="w-full border border-gray-300 rounded-xl px-4 py-3 h-32 resize-none focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-        />
-      </div>
-
-      {/* Footer */}
-      <div className="p-6 border-t bg-gray-50 flex justify-end gap-4">
-        <button
-          onClick={() => {
-            setShowSuggestionModal(false);
-            setNextTopicSuggestion('');
-          }}
-          className="px-6 py-3 text-gray-700 font-medium hover:bg-gray-200 rounded-xl transition"
-        >
-          Skip
-        </button>
-
-        <button
-          onClick={() => {
-            if (nextTopicSuggestion.trim()) {
-              // You can add real save logic here later
-              // await axios.post(`${API_BASE}/suggestions`, { topic: nextTopicSuggestion.trim() });
-              alert('Thank you! Your suggestion has been recorded.');
-            } else {
-              alert('Suggestion skipped.');
-            }
-            setShowSuggestionModal(false);
-            setNextTopicSuggestion('');
-          }}
-          disabled={!nextTopicSuggestion.trim()}
-          className={`px-8 py-3 rounded-xl font-bold transition ${
-            nextTopicSuggestion.trim()
-              ? 'bg-[#7a8b2e] text-white hover:bg-[#5e6c24]'
-              : 'bg-gray-300 text-white cursor-not-allowed'
-          }`}
-        >
-          Submit Suggestion
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
-
-
-
-          {/* ─── REJECTION REASON MODAL ─── */}
+          {/* ─── REJECTION MODAL ─── */}
           {isRejectModalOpen && (
             <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
@@ -1062,10 +1332,119 @@ const submitSuggestion = async () => {
               </div>
             </div>
           )}
+
+          {/* ─── MANAGEMENT SUGGESTION MODAL ─── */}
+          {currentTab === 'management' && isManagementSuggestModalOpen && (
+            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+                <div className="sticky top-0 bg-white p-6 border-b flex justify-between items-center z-10">
+                  <h3 className="text-xl font-bold text-gray-800">
+                    Suggest New Training Topic
+                  </h3>
+                  <button
+                    onClick={() => {
+                      setIsManagementSuggestModalOpen(false);
+                      setSuggestForm({ topic: '', description: '', trainerName: '', reason: '', priority: 'P3' });
+                    }}
+                    className="p-2 hover:bg-gray-200 rounded-full"
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
+
+                <form onSubmit={submitManagementSuggestion} className="p-8 space-y-6">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Training Topic *
+                    </label>
+                    <input
+                      required
+                      className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder="e.g. Advanced Data Visualization with Power BI"
+                      value={suggestForm.topic}
+                      onChange={(e) => setSuggestForm({ ...suggestForm, topic: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Topic Description *
+                    </label>
+                    <textarea
+                      required
+                      className="w-full border border-gray-300 rounded-xl px-4 py-3 h-28 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder="What will participants learn? Target audience? Expected outcomes..."
+                      value={suggestForm.description}
+                      onChange={(e) => setSuggestForm({ ...suggestForm, description: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Suggested Trainer Name *
+                    </label>
+                    <input
+                      required
+                      className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder="e.g. John Doe or Priya Sharma"
+                      value={suggestForm.trainerName}
+                      onChange={(e) => setSuggestForm({ ...suggestForm, trainerName: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Reason for Suggesting this Training
+                    </label>
+                    <textarea
+                      className="w-full border border-gray-300 rounded-xl px-4 py-3 h-24 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder="Business need, skill gap, upcoming project, etc..."
+                      value={suggestForm.reason}
+                      onChange={(e) => setSuggestForm({ ...suggestForm, reason: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Priority
+                    </label>
+                    <select
+                      className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      value={suggestForm.priority}
+                      onChange={(e) => setSuggestForm({ ...suggestForm, priority: e.target.value as any })}
+                    >
+                      <option value="P3">P3 - Medium</option>
+                      <option value="P2">P2 - High</option>
+                      <option value="P1">P1 - Urgent</option>
+                    </select>
+                  </div>
+
+                  <div className="flex justify-end gap-4 pt-6 border-t">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsManagementSuggestModalOpen(false);
+                        setSuggestForm({ topic: '', description: '', trainerName: '', reason: '', priority: 'P3' });
+                      }}
+                      className="px-8 py-3 text-gray-600 font-medium hover:bg-gray-100 rounded-xl transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="bg-indigo-600 text-white px-10 py-3 rounded-xl font-bold shadow-lg hover:bg-indigo-700 transition"
+                    >
+                      Submit Suggestion
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </main>
       </div>
 
-  {/* Styles */}
+      {/* Styles */}
       <style>{`
         .status-pill {
           padding: 4px 12px;
@@ -1083,14 +1462,15 @@ const submitSuggestion = async () => {
         .priority-text.p1 { color: #ef4444; }
         .priority-text.p2 { color: #f97316; }
         .priority-text.p3 { color: #7a8b2e; }
+
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-10px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+          animation: fadeIn 0.3s ease-out;
+  }
       `}</style>
     </div>
   );
-}
-
-function setIsSuggestionModalOpen(arg0: boolean): void {
-  throw new Error('Function not implemented.');
-}
-function setIsSuggestionPopupOpen(arg0: boolean) {
-  throw new Error('Function not implemented.');
 }
