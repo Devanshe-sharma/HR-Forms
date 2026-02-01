@@ -235,7 +235,7 @@ const [feedbackForm, setFeedbackForm] = useState({
 });
 
 const [loadingFeedback, setLoadingFeedback] = useState(false);
-const [showSuggestionPrompt, setShowSuggestionPrompt] = useState(false);
+const [showSuggestionModal, setShowSuggestionModal] = useState(false);
 const [nextTopicSuggestion, setNextTopicSuggestion] = useState('');
 
 // Add this function (you can place it near submitProposal)
@@ -262,24 +262,23 @@ const handleFeedbackSubmit = async (e: React.FormEvent) => {
       contentQuality: Number(feedbackForm.contentQuality),
       whatWasMissing: feedbackForm.whatWasMissing.trim(),
       howHelpful: feedbackForm.howHelpful.trim(),
-      submittedAt: new Date().toISOString()
+      submittedAt: new Date().toISOString(),
     });
 
-    // Success → show suggestion popup
-    setIsSuggestionPopupOpen(true);
+    // ── Success flow ──
+    alert('Feedback submitted successfully!');
+    setShowSuggestionModal(true);           // ← open suggestion modal
 
-    // Reset form
+    // Reset feedback form
     setFeedbackForm({
       employeeName: '',
       trainingId: '',
-      attended: false,
       overallRating: '',
+      attended: false,
       contentQuality: '',
       whatWasMissing: '',
-      howHelpful: ''
+      howHelpful: '',
     });
-
-    alert('Feedback submitted successfully!');
   } catch (err: any) {
     alert('Failed to submit feedback: ' + (err.response?.data?.error || err.message));
   } finally {
@@ -287,18 +286,7 @@ const handleFeedbackSubmit = async (e: React.FormEvent) => {
   }
 };
 
-const handleSubmitSuggestion = () => {
-  if (nextTopicSuggestion.trim()) {
-    // Just show thank you – no backend call for now
-    alert('Thank you! Your suggestion has been noted.');
-  } else {
-    alert('Suggestion skipped.');
-  }
 
-  // Close modal
-  setIsSuggestionModalOpen(false);
-  setNextTopicSuggestion('');
-};
 
 const submitTopicSuggestion = async () => {
   if (nextTopicSuggestion.trim()) {
@@ -317,23 +305,6 @@ const submitTopicSuggestion = async () => {
   setNextTopicSuggestion('');
 };
 
-const submitNextTopicSuggestion = async () => {
-  if (!nextTopicSuggestion.trim()) {
-    setShowSuggestionPrompt(false);
-    return;
-  }
-
-  try {
-    alert('Thank you! Your suggestion for next training topic has been recorded.');
-    // Optional: send to backend
-    // await axios.post(`${API_BASE}/suggestions`, { topic: nextTopicSuggestion.trim() });
-  } catch (err) {
-    console.error('Suggestion save failed', err);
-  } finally {
-    setShowSuggestionPrompt(false);
-    setNextTopicSuggestion('');
-  }
-};
 
 // Optional: submit suggestion (you can send it to a separate endpoint or same training)
 const submitSuggestion = async () => {
@@ -355,7 +326,7 @@ const submitSuggestion = async () => {
   } catch (err) {
     alert('Suggestion submission failed');
   } finally {
-    setShowSuggestionPrompt(false);
+    setShowSuggestionModal(false);
     setNextTopicSuggestion('');
   }
 };
@@ -789,16 +760,18 @@ const submitSuggestion = async () => {
 )}
 
 {/* ─── SUGGESTION POPUP MODAL ─── */}
-{setIsSuggestionModalOpen && (
+{/* Suggestion Modal – appears after successful feedback */}
+{showSuggestionModal && (
   <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
       {/* Header */}
       <div className="p-6 border-b flex justify-between items-center bg-green-50">
-        <h3 className="text-xl font-bold text-green-800">
-          Thank You!
-        </h3>
+        <h3 className="text-xl font-bold text-green-800">Thank You!</h3>
         <button
-          onClick={() => setIsSuggestionModalOpen(false)}
+          onClick={() => {
+            setShowSuggestionModal(false);
+            setNextTopicSuggestion('');
+          }}
           className="p-2 hover:bg-gray-200 rounded-full transition"
         >
           <X size={24} className="text-gray-600" />
@@ -808,7 +781,7 @@ const submitSuggestion = async () => {
       {/* Body */}
       <div className="p-6">
         <p className="text-gray-700 mb-4">
-          Your feedback has been submitted successfully.<br/>
+          Your feedback has been submitted successfully.<br />
           Would you like to suggest a topic for the next training session?
         </p>
 
@@ -823,13 +796,27 @@ const submitSuggestion = async () => {
       {/* Footer */}
       <div className="p-6 border-t bg-gray-50 flex justify-end gap-4">
         <button
-          onClick={() => setIsSuggestionModalOpen(false)}
+          onClick={() => {
+            setShowSuggestionModal(false);
+            setNextTopicSuggestion('');
+          }}
           className="px-6 py-3 text-gray-700 font-medium hover:bg-gray-200 rounded-xl transition"
         >
           Skip
         </button>
+
         <button
-          onClick={submitTopicSuggestion}
+          onClick={() => {
+            if (nextTopicSuggestion.trim()) {
+              // You can add real save logic here later
+              // await axios.post(`${API_BASE}/suggestions`, { topic: nextTopicSuggestion.trim() });
+              alert('Thank you! Your suggestion has been recorded.');
+            } else {
+              alert('Suggestion skipped.');
+            }
+            setShowSuggestionModal(false);
+            setNextTopicSuggestion('');
+          }}
           disabled={!nextTopicSuggestion.trim()}
           className={`px-8 py-3 rounded-xl font-bold transition ${
             nextTopicSuggestion.trim()
@@ -1101,11 +1088,9 @@ const submitSuggestion = async () => {
   );
 }
 
+function setIsSuggestionModalOpen(arg0: boolean): void {
+  throw new Error('Function not implemented.');
+}
 function setIsSuggestionPopupOpen(arg0: boolean) {
   throw new Error('Function not implemented.');
 }
-
-function setIsSuggestionModalOpen(arg0: boolean) {
-  throw new Error('Function not implemented.');
-}
-
