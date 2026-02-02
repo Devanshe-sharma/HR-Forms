@@ -226,6 +226,7 @@ export default function TrainingPage() {
       priority: training.priority,
       trainer: { ...training.trainer },
       status: training.status,
+      trainingDate: training.trainingDate,
     });
   };
 
@@ -580,7 +581,16 @@ const getStatusColor = (status: string) => {
                               )}
                             </td>
                             <td className="p-4 text-gray-600 font-mono italic">
-                              {t.trainingDate ? new Date(t.trainingDate).toLocaleDateString() : 'TBD'}
+                              {isEditing ? (
+                                <input
+                                  className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                                  type="date"
+                                  value={editData.trainingDate ? new Date(editData.trainingDate).toISOString().split('T')[0] : ''}
+                                  onChange={e => setEditData(prev => ({ ...prev, trainingDate: e.target.value }))}
+                                />
+                              ) : (
+                                <span className="text-gray-500">{t.trainingDate ? new Date(t.trainingDate).toLocaleDateString() : 'TBD'}</span>
+                              )}
                             </td>
                             <td className="p-4">
                               {isEditing ? (

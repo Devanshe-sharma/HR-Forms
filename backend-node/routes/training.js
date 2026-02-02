@@ -2,7 +2,10 @@
 const express = require('express');
 const router = express.Router();
 const Training = require('../models/Training');
-const sendEmail = require('../utils/sendEmail'); // adjust path if needed
+const sendEmail = require('../utils/sendEmail');
+const { sendUpcomingTrainingReminder } = require('../utils/emailUpcomingTraining');
+ // adjust path if needed
+
 
 router.get('/test-email', async (req, res) => {
   try {
@@ -25,6 +28,24 @@ router.get('/test-email', async (req, res) => {
     }
   } catch (err) {
     console.error('Test email route error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+// Manual trigger for 2-week training reminder (for testing)
+router.post('/trigger-2week-reminder', async (req, res) => {
+  try {
+    const force = req.body.force === true || req.query.force === 'true';
+    console.log(`Manually triggered 2-week reminder (force: ${force})`);
+
+    const result = await sendUpcomingTrainingReminder();
+
+    res.json({
+      success: result.success,
+      message: result.success ? '2-week reminder(s) sent!' : result.reason || result.error,
+      details: result
+    });
+  } catch (err) {
+    console.error('Trigger 2-week reminder error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });

@@ -15,10 +15,10 @@ async function sendQuarterlyApprovalRequest() {
     const month = now.month() + 1;    // 1–12
 
     // Only proceed on 1st of March, June, September, December
-    // if (day !== 1 || ![3, 6, 9, 12].includes(month)) {
-    //   console.log(`[${now.format('YYYY-MM-DD HH:mm:ss')}] Not a quarterly send day. Skipping.`);
-    //   return { success: false, reason: 'Not send day' };
-    // }
+    if (day !== 1 || ![3, 6, 9, 12].includes(month)) {
+      console.log(`[${now.format('YYYY-MM-DD HH:mm:ss')}] Not a quarterly send day. Skipping.`);
+      return { success: false, reason: 'Not send day' };
+    }
 
     // Determine upcoming quarter
     let quarterNum, fyStartYear;
@@ -117,10 +117,6 @@ async function sendQuarterlyApprovalRequest() {
     return { success: false, error: err.message };
   }
 }
-(async () => {
-  console.log('=== FORCING QUARTERLY APPROVAL EMAIL TEST ===');
-  const result = await sendQuarterlyApprovalRequest();
-  console.log('Test result:', result);
-})();
+
 
 module.exports = { sendQuarterlyApprovalRequest };

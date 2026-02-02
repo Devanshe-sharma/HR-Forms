@@ -11,33 +11,52 @@ const TrainingSchema = new Schema(
     // ───────────────────────────────────────────────
     // Core training details
     // ───────────────────────────────────────────────
-    topic: {
-      type: String,
-      required: [true, 'Training topic is required'],
-      trim: true,
-      minlength: 3,
-    },
-    description: {
-      type: String,
-      required: [true, 'Description is required'],
-      trim: true,
-      minlength: 10,
-    },
-    trainingDate: {
-      type: Date,
-      required: [false, 'Training date is required'],
-      default: null,
-    },
-    durationHours: {
-      type: Number,
-      min: 0.5,
-      default: 2,
-    },
-    location: {
-      type: String,
-      trim: true,
-      default: 'Online / Conference Room',
-    },
+    // ───────────────────────────────────────────────
+// Core training details
+// ───────────────────────────────────────────────
+topic: {
+  type: String,
+  required: [true, 'Training topic is required'],
+  trim: true,
+  minlength: 3,
+},
+description: {
+  type: String,
+  required: [true, 'Description is required'],
+  trim: true,
+  minlength: 10,
+},
+trainingDate: {
+  type: Date,
+  required: [false, 'Training date is required'],
+  default: null,
+},
+durationHours: {
+  type: Number,
+  min: 0.5,
+  default: 2,
+},
+location: {
+  type: String,
+  trim: true,
+  default: 'Online / Conference Room',
+},
+mode: {
+  type: String,
+  enum: ['Online', 'In-Person', 'Hybrid'],
+  default: 'Online',
+  trim: true,
+},
+venue: {
+  type: String,
+  trim: true,
+  default: '',
+},
+meetingLink: {
+  type: String,
+  trim: true,
+  default: '',
+},
 
     // ───────────────────────────────────────────────
     // Status & Priority
@@ -194,6 +213,7 @@ TrainingSchema.index({ 'trainer.name': 1 });
 // ───────────────────────────────────────────────
 TrainingSchema.pre('save', function (next) {
   const doc = this;
+  
 
   // 1. Calculate Quarter and Financial Year (Indian FY: April to March)
   if (doc.trainingDate && (doc.isNew || doc.isModified('trainingDate'))) {
