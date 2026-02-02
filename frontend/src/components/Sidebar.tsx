@@ -28,6 +28,7 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ChecklistIcon from '@mui/icons-material/Checklist';
 import SchoolIcon from '@mui/icons-material/School';
+import EventIcon from '@mui/icons-material/Event'; // ← new icon for Outing
 import { NavLink, useLocation } from 'react-router-dom';
 
 const drawerWidth = 240;
@@ -47,15 +48,11 @@ export default function Sidebar() {
   // State for collapsible menus
   const [openRecruitment, setOpenRecruitment] = useState(false);
   const [openTrainings, setOpenTrainings] = useState(false);
+  const [openOuting, setOpenOuting] = useState(false); // ← new state for Outing
 
-  const handleRecruitmentClick = () => {
-    setOpenRecruitment((prev) => !prev);
-  };
-
-  const handleTrainingsClick = () => {
-    setOpenTrainings((prev) => !prev);
-  };
-
+  const handleRecruitmentClick = () => setOpenRecruitment((prev) => !prev);
+  const handleTrainingsClick = () => setOpenTrainings((prev) => !prev);
+  const handleOutingClick = () => setOpenOuting((prev) => !prev); // ← new handler
   // Helper to check if a path is active
   const isActive = (path: string) => {
     if (!path) return false;
@@ -65,6 +62,9 @@ export default function Sidebar() {
 
   // Check if any training tab is active (for parent highlight)
   const isTrainingActive = location.pathname === '/training-page';
+
+  // Check if any outing tab is active
+  const isOutingActive = location.pathname === '/outing';
 
   // Menu items
   const menuItems: MenuItem[] = [
@@ -89,8 +89,7 @@ export default function Sidebar() {
     { to: '/exits', text: 'Exits', icon: <ExitToAppIcon /> },
 
     // ────────────────────────────────────────────────
-    // TRAINING SUBMENU – 4 tabs as requested
-    // All point to same page with different ?tab= value
+    // TRAINING SUBMENU – 4 tabs
     // ────────────────────────────────────────────────
     {
       text: 'Trainings',
@@ -98,26 +97,26 @@ export default function Sidebar() {
       onClick: handleTrainingsClick,
       open: openTrainings,
       subItems: [
-        {
-          to: '/training-page?tab=hr',
-          text: 'HR',
-          icon: <PeopleIcon />,
-        },
-        {
-          to: '/training-page?tab=management',
-          text: 'Management',
-          icon: <BusinessCenterIcon />,
-        },
-        {
-          to: '/training-page?tab=employee-feedback',
-          text: 'Employee Feedback',
-          icon: <AssignmentIcon />,
-        },
-        {
-          to: '/training-page?tab=scorecard',
-          text: 'Scorecard',
-          icon: <ScoreIcon />,
-        },
+        { to: '/training-page?tab=hr', text: 'HR', icon: <PeopleIcon /> },
+        { to: '/training-page?tab=management', text: 'Management', icon: <BusinessCenterIcon /> },
+        { to: '/training-page?tab=employee-feedback', text: 'Employee Feedback', icon: <AssignmentIcon /> },
+        { to: '/training-page?tab=scorecard', text: 'Scorecard', icon: <ScoreIcon /> },
+      ],
+    },
+
+    // ────────────────────────────────────────────────
+    // OUTING / EVENT SUBMENU – same 4 tabs as Training
+    // ────────────────────────────────────────────────
+    {
+      text: 'Outings / Events',
+      icon: <EventIcon />,
+      onClick: handleOutingClick,
+      open: openOuting,
+      subItems: [
+        { to: '/outing?tab=hr', text: 'HR', icon: <PeopleIcon /> },
+        { to: '/outing?tab=management', text: 'Management', icon: <BusinessCenterIcon /> },
+        { to: '/outing?tab=employee-feedback', text: 'Employee Feedback', icon: <AssignmentIcon /> },
+        { to: '/outing?tab=scorecard', text: 'Scorecard', icon: <ScoreIcon /> },
       ],
     },
 
@@ -170,7 +169,8 @@ export default function Sidebar() {
                     my: 0.5,
                     bgcolor:
                       (item.text === 'Recruitment' && location.pathname.startsWith('/recruitment')) ||
-                      (item.text === 'Trainings' && isTrainingActive)
+                      (item.text === 'Trainings' && isTrainingActive) ||
+                      (item.text === 'Outings / Events' && isOutingActive)
                         ? '#f3e8ff'
                         : 'transparent',
                     '&:hover': { bgcolor: '#ede7f6' },

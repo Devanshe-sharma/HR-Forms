@@ -71,6 +71,7 @@ function getAccessToken() {
 router.get('/', async (req, res) => {
   try {
     const accessToken = await getAccessToken();
+     console.log("TOKEN OK", accessToken.slice(0, 20));
 
     // Fetch all values
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A1:Z1000`;
@@ -98,7 +99,7 @@ router.get('/', async (req, res) => {
 
     res.json({ data });
   } catch (err) {
-    console.error(err);
+    console.error("SHEETS ERROR:", err.response?.data || err.message);
     res.status(500).json({ error: err.message });
   }
 });

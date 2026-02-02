@@ -27,7 +27,7 @@ app.use('/api/training', require('./routes/training'));
 app.use('/api/requisition', require('./routes/requisition'));
 app.use('/api/onboarding', require('./routes/onboarding'));
 app.use('/api/exit', require('./routes/exit'));
-app.use('/api', require('./routes/training'));
+app.use('/api/outing', require('./routes/outing'));
 
 
 mongoose.connect(process.env.MONGO_URI)

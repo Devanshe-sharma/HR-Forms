@@ -12,6 +12,7 @@ import ComingSoon from "./pages/ComingSoon";
 import AllApplicants from "./pages/AllApplicants";
 import NewRequisitionForm from "./pages/new-requisition-form";
 import TrainingPage from "./pages/TrainingPage";
+import Outing from "./pages/Outing";
 import Requisition from "./pages/Requisition";
 import Onboarding from "./pages/Onboarding";
 import Exit from "./pages/Exit";
@@ -114,6 +115,16 @@ export default function App() {
         element={
           <ProtectedRoute>
             <TrainingPage />
+          </ProtectedRoute>
+        }
+      />
+
+  
+      <Route
+        path="/outing"
+        element={
+          <ProtectedRoute>
+            <Outing />
           </ProtectedRoute>
         }
       />

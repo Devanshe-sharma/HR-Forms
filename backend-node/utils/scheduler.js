@@ -61,6 +61,48 @@ cron.schedule('0 10 * * *', async () => {
   timezone: 'Asia/Kolkata'
 });
 
+
+//outingss -------------------------------------
+
+cron.schedule('0 0 * * *', async () => {
+  const now = new Date();
+  const threeMonthsAgo = new Date(now);
+  threeMonthsAgo.setMonth(now.getMonth() - 3);
+
+  await Outing.updateMany(
+    { tentativeDate: { $lt: threeMonthsAgo }, status: { $ne: 'Archived' } },
+    { $set: { status: 'Archived', archivedAt: now } }
+  );
+  console.log('Old outings archived');
+}, { timezone: 'Asia/Kolkata' });
+
+cron.schedule('0 0 * * *', async () => {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const completedYesterday = await Outing.find({
+    tentativeDate: { $gte: yesterday, $lt: new Date() },
+    status: 'Completed'
+  });
+
+  for (const outing of completedYesterday) {
+    const attendees = outing.feedbacks?.filter(f => f.attended) || [];
+    const feedbackGiven = attendees.filter(f => f.submittedAt);
+
+    const missing = attendees.filter(a => !feedbackGiven.some(f => f.employeeName === a.employeeName));
+
+    for (const miss of missing) {
+      outing.discrepancies.push({
+        employeeName: miss.employeeName,
+        reason: 'No feedback submitted after attending',
+        createdAt: new Date(),
+      });
+    }
+
+    await outing.save();
+  }
+});
+
 }
 
 module.exports = { startEmailScheduler };
