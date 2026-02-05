@@ -14,10 +14,10 @@ async function sendUpcomingTrainingReminder() {
 
     // Find trainings scheduled exactly 14 days from now
     const upcomingTrainings = await Training.find({
-      trainingDate: {
-        $gte: targetDate.toDate(),
-        $lt: targetDate.clone().add(1, 'day').toDate()
-      },
+      // trainingDate: {
+      //   $gte: targetDate.toDate(),
+      //   $lt: targetDate.clone().add(1, 'day').toDate()
+      // },
       status: 'Scheduled' // only for confirmed/scheduled trainings
     }).lean();
 

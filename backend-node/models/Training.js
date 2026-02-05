@@ -99,12 +99,13 @@ meetingLink: {
     proposedByName: {
       type: String,
       required: true,
-      default: 'System Admin'
+      default: 'System',
     },
     proposedByRole: {
       type: String,
       enum: ['Management', 'HR', 'Employee'],
       required: true,
+      default: 'HR',
     },
     proposedAt: {
       type: Date,
@@ -212,21 +213,32 @@ TrainingSchema.index({ 'trainer.name': 1 });
 // Middleware: Pre-save logic
 // ───────────────────────────────────────────────
 TrainingSchema.pre('save', function (next) {
-  const doc = this;
-  
+  console.log('===== TRAINING PRE-SAVE HOOK IS NOW RUNNING ====='); // <--- MUST SEE THIS
 
-  // 1. Calculate Quarter and Financial Year (Indian FY: April to March)
+  const doc = this;
+
   if (doc.trainingDate && (doc.isNew || doc.isModified('trainingDate'))) {
     const date = new Date(doc.trainingDate);
-    const month = date.getMonth() + 1; // getMonth is 0-indexed
+    const month = date.getMonth() + 1;
     const year = date.getFullYear();
+    doc.trainingDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
-    // Quarter calculation
-    doc.quarter = `Q${Math.ceil(month / 3)}`;
+    console.log('Month detected:', month, 'for date:', doc.trainingDate); // <--- DEBUG
 
-    // FY calculation (Starts April)
+    let quarter;
+    if (month >= 4 && month <= 6) quarter = 'Q1';
+    else if (month >= 7 && month <= 9) quarter = 'Q2';
+    else if (month >= 10 && month <= 12) quarter = 'Q3';
+    else quarter = 'Q4';
+
+    doc.quarter = quarter;
+
     const fyStart = month >= 4 ? year : year - 1;
     doc.financialYear = `FY ${fyStart}-${fyStart + 1}`;
+
+    console.log(`Assigned: quarter=${doc.quarter}, fy=${doc.financialYear}`); // <--- DEBUG
+  } else {
+    console.log('No trainingDate change or missing – skipping quarter calc');
   }
 
   // 2. Auto-calculate Scorecard stats if feedbacks are updated
@@ -239,11 +251,11 @@ TrainingSchema.pre('save', function (next) {
       .map(f => f.overallRating);
 
     const avgRating = validRatings.length > 0 
-      ? (validRatings.reduce((a, b) => a + b, 0) / validRatings.length).toFixed(1)
+      ? Number((validRatings.reduce((a, b) => a + b, 0) / validRatings.length).toFixed(1))
       : 0;
 
     doc.scorecard = {
-      trainerAvgRating: Number(avgRating),
+      trainerAvgRating: avgRating,
       totalAttendees: total,
       attendedCount: attended,
       noShowCount: total - attended,
@@ -251,10 +263,7 @@ TrainingSchema.pre('save', function (next) {
     };
   }
 
-  // Important: next() must be called to proceed
-  if (typeof next === 'function') {
-    next();
-  }
+  next();
 });
 
 module.exports = mongoose.model('Training', TrainingSchema);

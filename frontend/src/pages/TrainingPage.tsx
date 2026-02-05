@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import Sidebar from '../components/Sidebar';
@@ -26,14 +26,13 @@ type Feedback = {
 };
 
 type Training = {
-  feedbacks?: Feedback[];
   _id?: string;
   topic: string;
   description: string;
-  trainingDate?: string | Date;
+  trainingDate?: string | Date | null;
   status: string;
   reason?: string;
-  priority: 'P1' | 'P2' | 'P3';
+  priority?: 'P1' | 'P2' | 'P3';
   remark?: string;
   proposedByRole?: string;
   proposedByName?: string;
@@ -47,18 +46,104 @@ type Training = {
     mobile?: string;
     email?: string;
   };
+  feedbacks?: Feedback[];
+  quarter?: string;
+  financialYear?: string;
+  archivedAt?: Date;
+  scorecard?: {
+    trainerAvgRating: number;
+    totalAttendees: number;
+    attendedCount: number;
+    noShowCount: number;
+    lastCalculated?: Date;
+  };
 };
+const formatDate = (date?: string | Date | null): string => {
+  if (!date) return '—';
+
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return 'Invalid';
+
+  // Force to date-only (midnight local time, but we only take date part)
+  const day = String(d.getDate()).padStart(2, '0');
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = monthNames[d.getMonth()];
+  const year = d.getFullYear();
+
+  return `${day}-${month}-${year}`;
+};
+
 
 // ─── MAIN COMPONENT ───────────────────────────────────────
 export default function TrainingPage() {
   const [searchParams] = useSearchParams();
-  const currentTab = searchParams.get('tab') || 'hr';
+  const currentTab = searchParams.get('tab') || 'HR';
 
-  // Shared Data
+  // ─── SHARED DATA ──────────────────────────────────────────
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [trainingList, setTrainingList] = useState<Training[]>([]);
 
-  // HR: Create Modal
+  // ─── FILTER STATES (HR tab) ───────────────────────────────
+  const [trainerFilter, setTrainerFilter] = useState('');
+  const [quarterFilter, setQuarterFilter] = useState('');
+  const [fyFilter, setFyFilter] = useState('');
+  const [archivedFilter, setArchivedFilter] = useState('no');
+
+  // Auto-set current quarter & FY on mount (optional – comment out if not wanted)
+  useEffect(() => {
+  const now = new Date();
+  const month = now.getMonth() + 1;
+
+  let currentQuarter: string;
+  if (month >= 4 && month <= 6) currentQuarter = 'Q1';
+  else if (month >= 7 && month <= 9) currentQuarter = 'Q2';
+  else if (month >= 10 && month <= 12) currentQuarter = 'Q3';
+  else currentQuarter = 'Q4'; // Jan–Mar
+
+  const year = now.getFullYear();
+  const fyStart = month >= 4 ? year : year - 1;
+  const currentFY = `FY ${fyStart}-${fyStart + 1}`;
+
+  // Set defaults
+  setQuarterFilter(currentQuarter); // Now Q4 in February
+  setFyFilter(currentFY);
+}, []);
+
+  // Computed filtered trainings (always returns array)
+  const filteredTrainings = useMemo<Training[]>(() => {
+    let list = [...(trainingList || [])];
+
+    // Trainer filter
+    if (trainerFilter.trim()) {
+      const lower = trainerFilter.trim().toLowerCase();
+      list = list.filter(t => 
+        t.trainer?.name?.toLowerCase().includes(lower)
+      );
+    }
+
+    // Quarter filter
+    if (quarterFilter) {
+      list = list.filter(t => t.quarter === quarterFilter);
+    }
+
+    // Financial Year filter
+    if (fyFilter) {
+      list = list.filter(t => t.financialYear === fyFilter);
+    }
+
+    // Archived filter
+    if (archivedFilter === 'yes') {
+      list = list.filter(t => t.status === 'Archived');
+    } else if (archivedFilter === 'no') {
+      list = list.filter(t => t.status !== 'Archived');
+    }
+
+    console.log('After all filters → remaining trainings:', list.length);
+
+    return list;
+  }, [trainingList, trainerFilter, quarterFilter, fyFilter, archivedFilter]);
+
+  // ─── HR: CREATE MODAL STATES ─────────────────────────────
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [trainerType, setTrainerType] = useState<'internal' | 'external'>('internal');
   const [formData, setFormData] = useState({
@@ -75,16 +160,16 @@ export default function TrainingPage() {
     email: ''
   });
 
-  // HR: Inline Editing
+  // ─── HR: INLINE EDITING ──────────────────────────────────
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<Training>>({});
 
-  // Management: Reject Modal
+  // ─── MANAGEMENT: REJECT MODAL ────────────────────────────
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [rejectTrainingId, setRejectTrainingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
-  // Management: Suggestion Modal
+  // ─── MANAGEMENT: SUGGESTION MODAL ────────────────────────
   const [isManagementSuggestModalOpen, setIsManagementSuggestModalOpen] = useState(false);
   const [suggestForm, setSuggestForm] = useState({
     topic: '',
@@ -94,7 +179,7 @@ export default function TrainingPage() {
     priority: 'P3' as 'P1' | 'P2' | 'P3',
   });
 
-  // Employee Feedback
+  // ─── EMPLOYEE FEEDBACK ───────────────────────────────────
   const [feedbackForm, setFeedbackForm] = useState({
     employeeName: '',
     trainingId: '',
@@ -108,19 +193,33 @@ export default function TrainingPage() {
   const [showSuggestionModal, setShowSuggestionModal] = useState(false);
   const [nextTopicSuggestion, setNextTopicSuggestion] = useState('');
 
+  // ─── SCORECARD DATA ──────────────────────────────────────
+  const [scorecardData, setScorecardData] = useState<{
+    trainerAvgRating: number;
+    totalInvited: number;
+    attendedCount: number;
+    feedbackReceived: number;
+    noShowCount: number;
+    perEmployeeRatings?: { name: string; rating: number }[];
+  } | null>(null);
+
   const API_BASE = process.env.NODE_ENV === 'development' ? 'http://localhost:5000/api' : '/api';
 
-  // ─── LOAD DATA ────────────────────────────────────────────
+  // ─── DATA LOADING ────────────────────────────────────────
   const refreshData = async () => {
     try {
       const [tRes, eRes] = await Promise.all([
         axios.get(`${API_BASE}/training`),
         axios.get(`${API_BASE}/employees?lightweight=true`)
       ]);
-      setTrainingList(tRes.data.data || []);
-      setEmployees(eRes.data.data || []);
+
+      console.log('Fetched trainings:', tRes.data);
+      console.log('Fetched employees:', eRes.data);
+
+      setTrainingList(tRes.data.data || tRes.data || []);
+      setEmployees(eRes.data.data || eRes.data || []);
     } catch (err) {
-      console.error("Data load failed", err);
+      console.error('Data load failed:', err);
     }
   };
 
@@ -128,7 +227,7 @@ export default function TrainingPage() {
     refreshData();
   }, []);
 
-  // ─── MANAGEMENT ACTIONS ───────────────────────────────────
+  // ─── MANAGEMENT ACTIONS ──────────────────────────────────
   const approveTraining = async (id: string) => {
     if (!window.confirm('Approve this training proposal?')) return;
 
@@ -154,7 +253,7 @@ export default function TrainingPage() {
     try {
       await axios.patch(`${API_BASE}/training/${rejectTrainingId}`, {
         status: 'Rejected',
-        reason: rejectReason.trim() // ← fixed field name
+        reason: rejectReason.trim()
       });
       alert('Training rejected!');
       setIsRejectModalOpen(false);
@@ -217,7 +316,7 @@ export default function TrainingPage() {
     }
   };
 
-  // ─── HR: INLINE EDITING ───────────────────────────────────
+  // ─── HR: INLINE EDITING ──────────────────────────────────
   const startEditing = (training: Training) => {
     setEditingId(training._id || null);
     setEditData({
@@ -322,7 +421,7 @@ export default function TrainingPage() {
       });
 
       alert('Feedback submitted successfully!');
-      setShowSuggestionModal(true); // Open suggestion modal only here
+      setShowSuggestionModal(true);
 
       setFeedbackForm({
         employeeName: '',
@@ -340,97 +439,80 @@ export default function TrainingPage() {
     }
   };
 
-  const [scorecardData, setScorecardData] = useState<{
-  trainerAvgRating: number;
-  totalInvited: number;       // all employees who could have attended
-  attendedCount: number;
-  feedbackReceived: number;
-  noShowCount: number;
-  perEmployeeRatings?: { name: string; rating: number }[]; // optional detailed view
-} | null>(null);
+  // ─── SCORECARD LOGIC ─────────────────────────────────────
+  const loadScorecard = () => {
+    if (currentTab !== 'scorecard') return;
 
-const loadScorecard = () => {
-  if (currentTab !== 'scorecard') return;
+    let totalTrainerPoints = 0;
+    let totalRatingsCount = 0;
+    let totalAttended = 0;
+    let totalFeedbacks = 0;
+    let totalNoShows = 0;
+    let totalPossible = employees.length * trainingList.length;
 
-  // For simplicity: aggregate from all trainings
-  // In real app → you might want per-training or filtered view
+    trainingList.forEach(training => {
+      const feedbacks = training.feedbacks || [];
 
-  let totalTrainerPoints = 0;
-  let totalRatingsCount = 0;
-  let totalAttended = 0;
-  let totalFeedbacks = 0;
-  let totalNoShows = 0;
-  let totalPossible = employees.length * trainingList.length; // rough estimate
+      const attended = feedbacks.filter(f => f.attended).length;
+      totalAttended += attended;
 
-  trainingList.forEach(training => {
-    const feedbacks = training.feedbacks || [];
+      const noFeedbackButAttended = attended - feedbacks.filter(f => f.overallRating != null).length;
+      totalNoShows += noFeedbackButAttended;
 
-    // Attended count from feedbacks
-    const attended = feedbacks.filter(f => f.attended).length;
-    totalAttended += attended;
+      const validRatings = feedbacks
+        .filter(f => f.attended && typeof f.overallRating === 'number')
+        .map(f => f.overallRating!);
 
-    // No-shows = people who attended but didn't give feedback? Or just non-feedback?
-    // Here: assuming no-show = attended but no feedback
-    const noFeedbackButAttended = attended - feedbacks.filter(f => f.overallRating != null).length;
-    totalNoShows += noFeedbackButAttended;
+      totalTrainerPoints += validRatings.reduce((sum, r) => sum + r, 0);
+      totalRatingsCount += validRatings.length;
+      totalFeedbacks += feedbacks.length;
+    });
 
-    // Trainer points calculation
-    const validRatings = feedbacks
-      .filter(f => f.attended && typeof f.overallRating === 'number')
-      .map(f => f.overallRating!);
+    const avgRating = totalRatingsCount > 0 
+      ? Number((totalTrainerPoints / totalRatingsCount).toFixed(1)) 
+      : 0;
 
-    totalTrainerPoints += validRatings.reduce((sum, r) => sum + r, 0);
-    totalRatingsCount += validRatings.length;
-    totalFeedbacks += feedbacks.length;
-  });
-
-  const avgRating = totalRatingsCount > 0 
-    ? Number((totalTrainerPoints / totalRatingsCount).toFixed(1)) 
-    : 0;
-
-  setScorecardData({
-    trainerAvgRating: avgRating,
-    totalInvited: totalPossible, // very approximate – improve later
-    attendedCount: totalAttended,
-    feedbackReceived: totalFeedbacks,
-    noShowCount: totalNoShows,
-    // Optional: detailed per-employee view (example)
-    perEmployeeRatings: employees.map(emp => {
-      // Find if this employee gave feedback to any training
-      let rating = -1; // default = didn't fill
-
-      for (const t of trainingList) {
-        const fb = t.feedbacks?.find(f => f.employeeName === emp.name);
-        if (fb?.attended && typeof fb.overallRating === 'number') {
-          rating = fb.overallRating;
-          break;
+    setScorecardData({
+      trainerAvgRating: avgRating,
+      totalInvited: totalPossible,
+      attendedCount: totalAttended,
+      feedbackReceived: totalFeedbacks,
+      noShowCount: totalNoShows,
+      perEmployeeRatings: employees.map(emp => {
+        let rating = -1;
+        for (const t of trainingList) {
+          const fb = t.feedbacks?.find(f => f.employeeName === emp.name);
+          if (fb?.attended && typeof fb.overallRating === 'number') {
+            rating = fb.overallRating;
+            break;
+          }
         }
-      }
-
-      return { name: emp.name, rating };
-    })
-  });
-};
-useEffect(() => {
-  if (currentTab === 'scorecard') {
-    loadScorecard();
-  }
-}, [currentTab, trainingList, employees]);
-
-const [expandedTrainings, setExpandedTrainings] = useState<Record<string, boolean>>({});
-
-const getStatusColor = (status: string) => {
-  const colors: Record<string, string> = {
-    Approved: 'text-green-600',
-    Scheduled: 'text-blue-600',
-    Completed: 'text-purple-600',
-    Rejected: 'text-red-600',
-    Cancelled: 'text-gray-600',
-    'Under Review': 'text-amber-600',
-    Proposed: 'text-amber-600',
+        return { name: emp.name, rating };
+      })
+    });
   };
-  return colors[status] || 'text-gray-600';
-};
+
+  useEffect(() => {
+    if (currentTab === 'scorecard') {
+      loadScorecard();
+    }
+  }, [currentTab, trainingList, employees]);
+
+  // ─── EXPANDABLE SCORE CARD LOGIC ─────────────────────────
+  const [expandedTrainings, setExpandedTrainings] = useState<Record<string, boolean>>({});
+
+  const getStatusColor = (status: string) => {
+    const colors: Record<string, string> = {
+      Approved: 'text-green-600',
+      Scheduled: 'text-blue-600',
+      Completed: 'text-purple-600',
+      Rejected: 'text-red-600',
+      Cancelled: 'text-gray-600',
+      'Under Review': 'text-amber-600',
+      Proposed: 'text-amber-600',
+    };
+    return colors[status] || 'text-gray-600';
+  };
 
   // ─── RENDER ────────────────────────────────────────────────
   return (
@@ -441,7 +523,7 @@ const getStatusColor = (status: string) => {
 
         <main className="p-8 max-w-7xl mx-auto w-full relative">
           {/* Floating + Button - only in HR tab */}
-          {currentTab === 'hr' && (
+          {currentTab === 'HR' && (
             <button
               onClick={() => setIsCreateModalOpen(true)}
               className="fixed top-24 right-8 z-40 bg-[#7a8b2e] text-white rounded-full p-5 shadow-2xl hover:bg-[#5e6c24] transition transform hover:scale-110 active:scale-95"
@@ -469,61 +551,164 @@ const getStatusColor = (status: string) => {
           </div>
 
           {/* ─── HR TAB ─── */}
-          {currentTab === 'hr' && (
-            <div className="space-y-8">
-              {/* Editable Table */}
-              <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="p-6 bg-gray-50 border-b">
-                  <h3 className="font-bold text-gray-700 uppercase text-xs tracking-widest">
-                    Training Inventory Control Panel
-                  </h3>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead className="bg-white text-[10px] font-black text-gray-400 uppercase tracking-tighter border-b">
-                      <tr>
-                        <th className="p-4">Sno.</th>
-                        <th className="p-4">Training Topic</th>
-                        <th className="p-4">Description</th>
-                        <th className="p-4">Trainer Name</th>
-                        <th className="p-4">Status</th>
-                        <th className="p-4">Reason</th>
-                        <th className="p-4">Date</th>
-                        <th className="p-4">Priority</th>
-                        <th className="p-4 text-center">Remark</th>
-                        <th className="p-4 text-center">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-xs divide-y divide-gray-100">
-                      {trainingList.map((t, i) => {
-                        const isEditing = editingId === t._id;
+          {currentTab === 'HR' && (
+  <div className="space-y-8">
+    {/* Debug Info – helps see what's happening */}
+    <div className="bg-yellow-100 p-4 rounded border border-yellow-400 text-sm">
+      <strong>Debug Info:</strong><br />
+      Total trainings loaded: {trainingList.length}<br />
+      Filtered trainings: {filteredTrainings.length}<br />
+      Current filters → Trainer: "{trainerFilter}", Quarter: "{quarterFilter}", FY: "{fyFilter}", Archived: "{archivedFilter}"
+    </div>
 
-                        return (
-                          <tr key={t._id} className="hover:bg-gray-50/50 transition group">
-                            <td className="p-4 text-gray-400">{i + 1}</td>
-                            <td className="p-4">
-                              {isEditing ? (
-                                <input
-                                  className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                                  value={editData.topic ?? t.topic}
-                                  onChange={e => setEditData(prev => ({ ...prev, topic: e.target.value }))}
-                                />
-                              ) : (
-                                <span className="font-bold text-gray-800">{t.topic}</span>
-                              )}
-                            </td>
-                            <td className="p-4">
-                              {isEditing ? (
-                                <textarea
-                                  className="w-full border rounded px-2 py-1 text-sm h-20 resize-none focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                                  value={editData.description ?? t.description}
-                                  onChange={e => setEditData(prev => ({ ...prev, description: e.target.value }))}
-                                />
-                              ) : (
-                                <span className="text-gray-500 block max-w-[180px] truncate">{t.description}</span>
-                              )}
-                            </td>
-                            <td className="p-4">
+    {/* Filters */}
+    <div className="bg-white p-6 rounded-xl shadow border border-gray-200">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        {/* Trainer Name */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Trainer Name</label>
+          <select
+            value={trainerFilter}
+            onChange={(e) => setTrainerFilter(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+          >
+            <option value="">All Trainers</option>
+            {employees.map((emp) => (
+              <option key={emp.email} value={emp.name}>
+                {emp.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Quarter (Indian FY) */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Quarter</label>
+          <select
+            value={quarterFilter}
+            onChange={(e) => setQuarterFilter(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+          >
+            <option value="">All Quarters</option>
+            <option value="Q1">Q1 (Apr–Jun)</option>
+            <option value="Q2">Q2 (Jul–Sep)</option>
+            <option value="Q3">Q3 (Oct–Dec)</option>
+            <option value="Q4">Q4 (Jan–Mar)</option>
+          </select>
+        </div>
+
+        {/* Financial Year */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Financial Year</label>
+          <select
+            value={fyFilter}
+            onChange={(e) => setFyFilter(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+          >
+            <option value="">All FY</option>
+            <option value="FY 2025-2026">FY 2025-2026</option>
+            <option value="FY 2024-2025">FY 2024-2025</option>
+            <option value="FY 2023-2024">FY 2023-2024</option>
+          </select>
+        </div>
+
+        {/* Archived */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Archived</label>
+          <select
+            value={archivedFilter}
+            onChange={(e) => setArchivedFilter(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+          >
+            <option value="">All</option>
+            <option value="no">No</option>
+            <option value="yes">Yes</option>
+          </select>
+        </div>
+
+        {/* Clear Filters */}
+        <div className="flex items-end">
+          <button
+            onClick={() => {
+              setTrainerFilter('');
+              setQuarterFilter('');
+              setFyFilter('');
+              setArchivedFilter('');
+            }}
+            className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium transition"
+          >
+            Clear Filters
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {/* Editable Table */}
+    <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="p-6 bg-gray-50 border-b">
+        <h3 className="font-bold text-gray-700 uppercase text-xs tracking-widest">
+          Training Inventory Control Panel
+        </h3>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead className="bg-white text-[10px] font-black text-gray-400 uppercase tracking-tighter border-b">
+            <tr>
+              <th className="p-4">SNO.</th>
+              <th className="p-4">TRAINING TOPIC</th>
+              <th className="p-4">DESCRIPTION</th>
+              <th className="p-4">TRAINER NAME</th>
+              <th className="p-4">STATUS</th>
+              <th className="p-4">REASON</th>
+              <th className="p-4">DATE</th>
+              <th className="p-4">PRIORITY</th>
+              <th className="p-4 text-center">REMARK</th>
+              <th className="p-4 text-center">ACTION</th>
+            </tr>
+          </thead>
+          <tbody className="text-xs divide-y divide-gray-100">
+            {filteredTrainings.length === 0 ? (
+              <tr>
+                <td colSpan={10} className="p-8 text-center text-gray-500 italic">
+                  No trainings found matching the filters
+                </td>
+              </tr>
+            ) : (
+              filteredTrainings.map((t, i) => {
+                const isEditing = editingId === t._id;
+
+                return (
+                  <tr key={t._id || i} className="hover:bg-gray-50/50 transition group">
+                    <td className="p-4 text-gray-400">{i + 1}</td>
+
+                    {/* Topic */}
+                    <td className="p-4">
+                      {isEditing ? (
+                        <input
+                          className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                          value={editData.topic ?? t.topic ?? ''}
+                          onChange={e => setEditData(prev => ({ ...prev, topic: e.target.value }))}
+                        />
+                      ) : (
+                        <span className="font-bold text-gray-800">{t.topic || '—'}</span>
+                      )}
+                    </td>
+
+                    {/* Description */}
+                    <td className="p-4">
+                      {isEditing ? (
+                        <textarea
+                          className="w-full border rounded px-2 py-1 text-sm h-20 resize-none focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                          value={editData.description ?? t.description ?? ''}
+                          onChange={e => setEditData(prev => ({ ...prev, description: e.target.value }))}
+                        />
+                      ) : (
+                        <span className="text-gray-500 block max-w-[180px] truncate">{t.description || '—'}</span>
+                      )}
+                    </td>
+
+                    {/* Trainer Name */}
+                    <td className="p-4">
                               {isEditing ? (
                                 <input
                                   className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
@@ -546,118 +731,128 @@ const getStatusColor = (status: string) => {
                                 <span className="font-medium text-blue-600">{t.trainer.name}</span>
                               )}
                             </td>
-                            <td className="p-4">
-                              {isEditing ? (
-                                <select
-                                  className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                                  value={editData.status ?? t.status}
-                                  onChange={(e) =>
-                                    setEditData((prev) => ({
-                                      ...prev,
-                                      status: e.target.value,
-                                    }))
-                                  }
-                                >
-                                  <option value="Proposed">Proposed</option>
-                                  <option value="Under Review">Under Review</option>
-                                  <option value="Approved">Approved</option>
-                                  <option value="Scheduled">Scheduled</option>
-                                  <option value="Completed">Completed</option>
-                                  <option value="Rejected">Rejected</option>
-                                </select>
-                              ) : (
-                                <span className={`status-pill ${t.status.toLowerCase().replace(' ', '-')}`}>
-                                  {t.status}
-                                </span>
-                              )}
-                            </td>
-                            <td className="p-4 text-center text-gray-700 font-medium">
-                              {t.status === 'Rejected' ? (
-                                <span className="text-red-600 italic">
-                                  {t.reason || 'No reason provided'}
-                                </span>
-                              ) : (
-                                '—'
-                              )}
-                            </td>
-                            <td className="p-4 text-gray-600 font-mono italic">
-                              {isEditing ? (
-                                <input
-                                  className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                                  type="date"
-                                  value={editData.trainingDate ? new Date(editData.trainingDate).toISOString().split('T')[0] : ''}
-                                  onChange={e => setEditData(prev => ({ ...prev, trainingDate: e.target.value }))}
-                                />
-                              ) : (
-                                <span className="text-gray-500">{t.trainingDate ? new Date(t.trainingDate).toLocaleDateString() : 'TBD'}</span>
-                              )}
-                            </td>
-                            <td className="p-4">
-                              {isEditing ? (
-                                <select
-                                  className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                                  value={editData.priority ?? t.priority}
-                                  onChange={e => setEditData(prev => ({ ...prev, priority: e.target.value as any }))}
-                                >
-                                  <option value="P3">P3</option>
-                                  <option value="P2">P2</option>
-                                  <option value="P1">P1</option>
-                                </select>
-                              ) : (
-                                <span className={`priority-text ${t.priority.toLowerCase()}`}>{t.priority}</span>
-                              )}
-                            </td>
-                            <td className="p-4 text-center text-gray-400 italic font-medium">
-                              {t.remark || '--'}
-                            </td>
-                            <td className="p-4 text-center">
-                              <div className="flex justify-center gap-3">
-                                {isEditing ? (
-                                  <>
-                                    <button
-                                      onClick={saveEdit}
-                                      className="p-2 bg-green-600 text-white rounded hover:bg-green-700 transition"
-                                      title="Save changes"
-                                    >
-                                      <Save size={16} />
-                                    </button>
-                                    <button
-                                      onClick={cancelEditing}
-                                      className="p-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition"
-                                      title="Cancel"
-                                    >
-                                      <X size={16} />
-                                    </button>
-                                  </>
-                                ) : (
-                                  <>
-                                    <button
-                                      onClick={() => startEditing(t)}
-                                      className="p-2 hover:bg-blue-50 text-blue-600 rounded transition"
-                                      title="Edit row"
-                                    >
-                                      <Edit size={16} />
-                                    </button>
-                                    <button
-                                      onClick={() => deleteTraining(t._id!)}
-                                      className="p-2 hover:bg-red-50 text-red-600 rounded transition"
-                                      title="Delete row"
-                                    >
-                                      <Trash2 size={16} />
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            </div>
-          )}
+
+                    {/* Status */}
+                    <td className="p-4">
+                      {isEditing ? (
+                        <select
+                          className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                          value={editData.status ?? t.status ?? 'Proposed'}
+                          onChange={e => setEditData(prev => ({ ...prev, status: e.target.value }))}
+                        >
+                          <option value="Proposed">Proposed</option>
+                          <option value="Under Review">Under Review</option>
+                          <option value="Approved">Approved</option>
+                          <option value="Scheduled">Scheduled</option>
+                          <option value="Completed">Completed</option>
+                          <option value="Rejected">Rejected</option>
+                        </select>
+                      ) : (
+                        <span className={`status-pill ${t.status?.toLowerCase().replace(' ', '-') || ''}`}>
+                          {t.status || '—'}
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Reason */}
+                    <td className="p-4 text-center text-gray-700 font-medium">
+                      {t.status === 'Rejected' ? (
+                        <span className="text-red-600 italic">
+                          {t.reason || 'No reason'}
+                        </span>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+
+                    {/* Date */}
+                    <td className="p-4 text-gray-600 font-mono italic">
+                      {isEditing ? (
+                        <input
+                          className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                          type="date"
+                          value={editData.trainingDate ? new Date(editData.trainingDate).toISOString().split('T')[0] : ''}
+                          onChange={e => setEditData(prev => ({ ...prev, trainingDate: e.target.value }))}
+                        />
+                      ) : (
+                        formatDate(t.trainingDate)
+                      )}
+                    </td>
+
+                    {/* Priority */}
+                    <td className="p-4">
+                      {isEditing ? (
+                        <select
+                          className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                          value={editData.priority ?? t.priority ?? 'P3'}
+                          onChange={e => setEditData(prev => ({ ...prev, priority: e.target.value as 'P1' | 'P2' | 'P3' }))}
+                        >
+                          <option value="P3">P3</option>
+                          <option value="P2">P2</option>
+                          <option value="P1">P1</option>
+                        </select>
+                      ) : (
+                        <span className={`priority-text ${t.priority?.toLowerCase() || 'p3'}`}>
+                          {t.priority || 'P3'}
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Remark */}
+                    <td className="p-4 text-center text-gray-400 italic font-medium">
+                      {t.remark || '--'}
+                    </td>
+
+                    {/* Action */}
+                    <td className="p-4 text-center">
+                      <div className="flex justify-center gap-3">
+                        {isEditing ? (
+                          <>
+                            <button
+                              onClick={saveEdit}
+                              className="p-2 bg-green-600 text-white rounded hover:bg-green-700 transition"
+                              title="Save changes"
+                            >
+                              <Save size={16} />
+                            </button>
+                            <button
+                              onClick={cancelEditing}
+                              className="p-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition"
+                              title="Cancel"
+                            >
+                              <X size={16} />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => startEditing(t)}
+                              className="p-2 hover:bg-blue-50 text-blue-600 rounded transition"
+                              title="Edit row"
+                            >
+                              <Edit size={16} />
+                            </button>
+                            <button
+                              onClick={() => deleteTraining(t._id!)}
+                              className="p-2 hover:bg-red-50 text-red-600 rounded transition"
+                              title="Delete row"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+)}
 
           {/* ─── MANAGEMENT TAB ─── */}
           {currentTab === 'management' && (
@@ -690,9 +885,7 @@ const getStatusColor = (status: string) => {
                           <td className="p-4 text-gray-500 max-w-[180px] truncate">{t.description}</td>
                           <td className="p-4 font-medium text-blue-600">{t.trainer.name}</td>
                           <td className="p-4">
-                            <span className={`priority-text ${t.priority.toLowerCase()}`}>
-                              {t.priority}
-                            </span>
+                            <span className={`priority-text ${t.priority?.toLowerCase() || 'p3'}`}>{t.priority || 'P3'}</span>
                           </td>
                           <td className="p-4 text-gray-600">
                             {t.proposedByName || 'Unknown'} ({t.proposedByRole || '—'})
@@ -1177,9 +1370,9 @@ const getStatusColor = (status: string) => {
           )}
 
           {/* ─── CREATE MODAL (HR) ─── */}
-          {currentTab === 'hr' && isCreateModalOpen && (
+          {currentTab === 'HR' && isCreateModalOpen && (
             <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+              <div className="bg-white shadow-2xl w-half max-w-3xl max-h-[75vh] overflow-y-auto">
                 <div className="sticky top-0 bg-white p-6 border-b flex justify-between items-center z-10">
                   <h3 className="text-xl font-bold text-gray-800">Create New Training Proposal</h3>
                   <button onClick={() => setIsCreateModalOpen(false)} className="p-2 hover:bg-gray-200 rounded-full">
@@ -1484,3 +1677,4 @@ const getStatusColor = (status: string) => {
     </div>
   );
 }
+

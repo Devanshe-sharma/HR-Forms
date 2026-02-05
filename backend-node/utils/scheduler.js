@@ -9,100 +9,98 @@ const { send1WeekMaterialUploadReminder } = require('./email1WeekMaterialUpload'
 const { sendOnDayFeedbackReminder } = require('./emailOnDayFeedback');
 
 function startEmailScheduler() {
-  // 1. Quarterly approval request (daily check 9:00–9:59 AM IST)
-  cron.schedule('*/1 9 * * *', async () => {
-    const now = moment().tz('Asia/Kolkata');
-    if (now.minutes() >= 0 && now.minutes() <= 59) {
-      console.log(`[${now.format('YYYY-MM-DD HH:mm:ss z')}] Checking quarterly approval send...`);
-      const result = await sendQuarterlyApprovalRequest();
-      console.log('Quarterly approval result:', result);
-    }
-  }, {
-    timezone: 'Asia/Kolkata'
-  });
+  const tz = 'Asia/Kolkata';
 
-  // 2. 2-week training reminder (daily check 9:00–9:59 AM IST)
-  cron.schedule('*/1 9 * * *', async () => {
-    const now = moment().tz('Asia/Kolkata');
-    if (now.minutes() >= 0 && now.minutes() <= 59) {
-      console.log(`[${now.format('YYYY-MM-DD HH:mm:ss z')}] Checking 2-week training reminders...`);
-      const result = await sendUpcomingTrainingReminder();
-      console.log('2-week reminder result:', result);
+  // 1. Daily at 9:00 AM – Quarterly approval request (once per day)
+  cron.schedule('0 9 * * *', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending quarterly approval requests`);
+    try {
+      await sendQuarterlyApprovalRequest();
+    } catch (err) {
+      console.error('Quarterly approval email failed:', err);
     }
-  }, {
-    timezone: 'Asia/Kolkata'
-  });
+  }, { timezone: tz });
 
-  // 3. All other training reminders (1-week invitation, material upload, on-day feedback)
-  // Run at fixed 9:30 AM IST
+  // 2. Daily at 9:15 AM – 2-week upcoming training reminder
   cron.schedule('15 9 * * *', async () => {
-    console.log(`[${moment().tz('Asia/Kolkata').format('YYYY-MM-DD HH:mm:ss z')}] Checking 1-week training invitations...`);
-    const result = await send1WeekInvitation();
-    console.log('1-week invitation result:', result);
-  }, {
-    timezone: 'Asia/Kolkata'
-  });
-
-  cron.schedule('45 9 * * *', async () => {
-  const now = moment().tz('Asia/Kolkata');
-  console.log(`[${now.format('YYYY-MM-DD HH:mm:ss z')}] Checking 1-week material upload reminders...`);
-  const result = await send1WeekMaterialUploadReminder();
-  console.log('1-week material upload result:', result);
-}, {
-  timezone: 'Asia/Kolkata'
-});
-
-cron.schedule('0 10 * * *', async () => {
-  const now = moment().tz('Asia/Kolkata');
-  console.log(`[${now.format('YYYY-MM-DD HH:mm:ss z')}] Checking on-day feedback reminders...`);
-  const result = await sendOnDayFeedbackReminder();
-  console.log('On-day feedback result:', result);
-}, {
-  timezone: 'Asia/Kolkata'
-});
-
-
-//outingss -------------------------------------
-
-cron.schedule('0 0 * * *', async () => {
-  const now = new Date();
-  const threeMonthsAgo = new Date(now);
-  threeMonthsAgo.setMonth(now.getMonth() - 3);
-
-  await Outing.updateMany(
-    { tentativeDate: { $lt: threeMonthsAgo }, status: { $ne: 'Archived' } },
-    { $set: { status: 'Archived', archivedAt: now } }
-  );
-  console.log('Old outings archived');
-}, { timezone: 'Asia/Kolkata' });
-
-cron.schedule('0 0 * * *', async () => {
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-
-  const completedYesterday = await Outing.find({
-    tentativeDate: { $gte: yesterday, $lt: new Date() },
-    status: 'Completed'
-  });
-
-  for (const outing of completedYesterday) {
-    const attendees = outing.feedbacks?.filter(f => f.attended) || [];
-    const feedbackGiven = attendees.filter(f => f.submittedAt);
-
-    const missing = attendees.filter(a => !feedbackGiven.some(f => f.employeeName === a.employeeName));
-
-    for (const miss of missing) {
-      outing.discrepancies.push({
-        employeeName: miss.employeeName,
-        reason: 'No feedback submitted after attending',
-        createdAt: new Date(),
-      });
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending 2-week training reminders`);
+    try {
+      await sendUpcomingTrainingReminder();
+    } catch (err) {
+      console.error('2-week reminder failed:', err);
     }
+  }, { timezone: tz });
 
-    await outing.save();
-  }
-});
+  // 3. Daily at 9:30 AM – 1-week invitation
+  cron.schedule('30 9 * * *', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending 1-week invitations`);
+    try {
+      await send1WeekInvitation();
+    } catch (err) {
+      console.error('1-week invitation failed:', err);
+    }
+  }, { timezone: tz });
 
+  // 4. Daily at 9:45 AM – 1-week material upload reminder
+  cron.schedule('45 9 * * *', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending material upload reminders`);
+    try {
+      await send1WeekMaterialUploadReminder();
+    } catch (err) {
+      console.error('Material upload reminder failed:', err);
+    }
+  }, { timezone: tz });
+
+  // 5. Daily at 10:00 AM – On-day feedback reminder
+  cron.schedule('0 10 * * *', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending on-day feedback reminders`);
+    try {
+      await sendOnDayFeedbackReminder();
+    } catch (err) {
+      console.error('On-day feedback reminder failed:', err);
+    }
+  }, { timezone: tz });
+
+  // ─── Outing Auto-Archive (daily at midnight) ───
+  cron.schedule('0 0 * * *', async () => {
+    const now = new Date();
+    const threeMonthsAgo = new Date(now);
+    threeMonthsAgo.setMonth(now.getMonth() - 3);
+
+    try {
+      const result = await Outing.updateMany(
+        {
+          tentativeDate: { $lt: threeMonthsAgo },
+          status: { $nin: ['Archived', 'Rejected'] }
+        },
+        { $set: { status: 'Archived', archivedAt: now } }
+      );
+      console.log(`Archived ${result.modifiedCount} old outings`);
+    } catch (err) {
+      console.error('Outing auto-archive failed:', err);
+    }
+  }, { timezone: tz });
+
+  // ─── Auto-Complete Past Outings (daily at 00:05) ───
+  cron.schedule('5 0 * * *', async () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    try {
+      const completed = await Outing.updateMany(
+        {
+          tentativeDate: { $lte: today },
+          status: 'Scheduled'
+        },
+        { $set: { status: 'Completed' } }
+      );
+      console.log(`Auto-completed ${completed.modifiedCount} past outings`);
+    } catch (err) {
+      console.error('Auto-complete failed:', err);
+    }
+  }, { timezone: tz });
+
+  console.log('Email & auto-archive scheduler started');
 }
 
 module.exports = { startEmailScheduler };

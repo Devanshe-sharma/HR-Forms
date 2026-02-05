@@ -2,81 +2,42 @@
 
 import { useState } from 'react';
 import {
-  Drawer,
-  List,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-  Box,
-  Divider,
-  Collapse,
-  Avatar,
-  Typography,
+  Drawer, List, ListItemButton, ListItemIcon, ListItemText,
+  Box, Divider, Collapse, Avatar, Typography,
 } from '@mui/material';
-import DashboardIcon from '@mui/icons-material/Dashboard';
-import PeopleIcon from '@mui/icons-material/People';
-import PersonSearchIcon from '@mui/icons-material/PersonSearch';
-import BusinessCenterIcon from '@mui/icons-material/BusinessCenter';
-import GroupAddIcon from '@mui/icons-material/GroupAdd';
-import ExitToAppIcon from '@mui/icons-material/ExitToApp';
-import AccountCircleIcon from '@mui/icons-material/AccountCircle';
-import SettingsIcon from '@mui/icons-material/Settings';
-import ListAltIcon from '@mui/icons-material/ListAlt';
-import AssignmentIcon from '@mui/icons-material/Assignment';
-import ScoreIcon from '@mui/icons-material/Score';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ChecklistIcon from '@mui/icons-material/Checklist';
-import SchoolIcon from '@mui/icons-material/School';
-import EventIcon from '@mui/icons-material/Event'; // ← new icon for Outing
+import {
+  Dashboard as DashboardIcon, People as PeopleIcon, PersonSearch as PersonSearchIcon,
+  BusinessCenter as BusinessCenterIcon, GroupAdd as GroupAddIcon, ExitToApp as ExitToAppIcon,
+  AccountCircle as AccountCircleIcon, Settings as SettingsIcon, ListAlt as ListAltIcon,
+  Assignment as AssignmentIcon, Score as ScoreIcon, ExpandLess as ExpandLessIcon,
+  ExpandMore as ExpandMoreIcon, Checklist as ChecklistIcon, School as SchoolIcon,
+  Event as EventIcon
+} from '@mui/icons-material';
 import { NavLink, useLocation } from 'react-router-dom';
 
-const drawerWidth = 240;
-
-type MenuItem = {
-  to?: string;
-  text: string;
-  icon: React.ReactNode;
-  onClick?: () => void;
-  open?: boolean;
-  subItems?: MenuItem[];
-};
+const drawerWidth = 260;
+const BRAND_BLUE = '#3B82F6';
 
 export default function Sidebar() {
   const location = useLocation();
-
-  // State for collapsible menus
   const [openRecruitment, setOpenRecruitment] = useState(false);
   const [openTrainings, setOpenTrainings] = useState(false);
-  const [openOuting, setOpenOuting] = useState(false); // ← new state for Outing
+  const [openOuting, setOpenOuting] = useState(false);
 
-  const handleRecruitmentClick = () => setOpenRecruitment((prev) => !prev);
-  const handleTrainingsClick = () => setOpenTrainings((prev) => !prev);
-  const handleOutingClick = () => setOpenOuting((prev) => !prev); // ← new handler
-  // Helper to check if a path is active
   const isActive = (path: string) => {
-    if (!path) return false;
     const currentPath = location.pathname + location.search;
-    return currentPath === path || currentPath.startsWith(path);
+    return currentPath === path;
   };
 
-  // Check if any training tab is active (for parent highlight)
-  const isTrainingActive = location.pathname === '/training-page';
-
-  // Check if any outing tab is active
-  const isOutingActive = location.pathname === '/outing';
-
-  // Menu items
-  const menuItems: MenuItem[] = [
+  const menuItems = [
     { to: '/hr-dashboard', text: 'HR Dashboard', icon: <DashboardIcon /> },
     { to: '/employees', text: 'Employees', icon: <PeopleIcon /> },
     { to: '/candidates', text: 'Candidates', icon: <PersonSearchIcon /> },
     { to: '/salary-revision', text: 'Employee Letters', icon: <ExitToAppIcon /> },
-
     {
       text: 'Recruitment',
       icon: <GroupAddIcon />,
-      onClick: handleRecruitmentClick,
+      onClick: () => setOpenRecruitment(!openRecruitment),
       open: openRecruitment,
       subItems: [
         { to: '/recruitment', text: 'All Requisitions', icon: <ListAltIcon /> },
@@ -84,42 +45,32 @@ export default function Sidebar() {
         { to: '/scoring', text: 'Recruitment Scoring', icon: <ScoreIcon /> },
       ],
     },
-
     { to: '/onboarding', text: 'Onboardings', icon: <BusinessCenterIcon /> },
     { to: '/exits', text: 'Exits', icon: <ExitToAppIcon /> },
-
-    // ────────────────────────────────────────────────
-    // TRAINING SUBMENU – 4 tabs
-    // ────────────────────────────────────────────────
     {
       text: 'Trainings',
       icon: <SchoolIcon />,
-      onClick: handleTrainingsClick,
+      onClick: () => setOpenTrainings(!openTrainings),
       open: openTrainings,
       subItems: [
-        { to: '/training-page?tab=hr', text: 'HR', icon: <PeopleIcon /> },
-        { to: '/training-page?tab=management', text: 'Management', icon: <BusinessCenterIcon /> },
+        { to: '/training-page?tab=HR', text: 'HR Training', icon: <PeopleIcon /> },
+        { to: '/training-page?tab=management', text: 'Management Training', icon: <BusinessCenterIcon /> },
         { to: '/training-page?tab=employee-feedback', text: 'Employee Feedback', icon: <AssignmentIcon /> },
         { to: '/training-page?tab=scorecard', text: 'Scorecard', icon: <ScoreIcon /> },
       ],
     },
-
-    // ────────────────────────────────────────────────
-    // OUTING / EVENT SUBMENU – same 4 tabs as Training
-    // ────────────────────────────────────────────────
     {
       text: 'Outings / Events',
       icon: <EventIcon />,
-      onClick: handleOutingClick,
+      onClick: () => setOpenOuting(!openOuting),
       open: openOuting,
       subItems: [
-        { to: '/outing?tab=hr', text: 'HR', icon: <PeopleIcon /> },
-        { to: '/outing?tab=management', text: 'Management', icon: <BusinessCenterIcon /> },
-        { to: '/outing?tab=employee-feedback', text: 'Employee Feedback', icon: <AssignmentIcon /> },
-        { to: '/outing?tab=scorecard', text: 'Scorecard', icon: <ScoreIcon /> },
+        { to: '/outing?tab=HR', text: 'HR Outing', icon: <PeopleIcon /> },
+        { to: '/outing?tab=management', text: 'Management Outing', icon: <BusinessCenterIcon /> },
+        { to: '/outing?tab=employee-feedback', text: 'Outing Feedback', icon: <AssignmentIcon /> },
+        { to: '/outing?tab=scorecard', text: 'Outing Scorecard', icon: <ScoreIcon /> },
       ],
     },
-
     { to: '/confirmations', text: 'Confirmations', icon: <ChecklistIcon /> },
     { to: '/profile', text: 'Profile', icon: <AccountCircleIcon /> },
     { to: '/settings', text: 'Settings', icon: <SettingsIcon /> },
@@ -134,121 +85,80 @@ export default function Sidebar() {
         [`& .MuiDrawer-paper`]: {
           width: drawerWidth,
           boxSizing: 'border-box',
-          backgroundColor: '#ffffff',
+          height: '100vh',
           borderRight: '1px solid #e0e0e0',
-          overflowX: 'hidden',
-          mt: 8, // space below app bar
         },
       }}
     >
-      {/* Profile / Header Section */}
-      <Box sx={{ px: 3, py: 2, display: 'flex', backgroundColor: '#3B82F6', alignItems: 'center' }}>
-        <NavLink to="/profile">
-          <Avatar sx={{ width: 56, height: 56, mr: 2 }} src="/avatar.png" />
-        </NavLink>
-        <Box>
-          <Typography variant="subtitle1" fontWeight={600} color="white">
-            HR Portal
-          </Typography>
-        </Box>
+      <Box sx={{ bgcolor: BRAND_BLUE, color: 'white', p: 3, textAlign: 'center' }}>
+        <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', width: 50, height: 50, mx: 'auto', mb: 1.5 }}>
+          <DashboardIcon sx={{ fontSize: 30 }} />
+        </Avatar>
+        <Typography variant="h6" fontWeight={700}>HR Portal</Typography>
+        {/* <Typography variant="caption" sx={{ opacity: 0.8 }}>Lead to Revenue</Typography> */}
       </Box>
 
-      <Divider sx={{ mx: 2 }} />
-
-      {/* Main Menu */}
-      <List sx={{ px: 1 }}>
+      <List sx={{ px: 2, mt: 2 }}>
         {menuItems.map((item) => {
-          if (item.subItems && item.subItems.length > 0) {
-            // Parent menu item (collapsible)
+          const isParentActive = item.subItems?.some(sub => isActive(sub.to));
+          const active = isActive(item.to || '');
+
+          if (item.subItems) {
             return (
-              <div key={item.text}>
+              <Box key={item.text} sx={{ mb: 0.5 }}>
                 <ListItemButton
                   onClick={item.onClick}
                   sx={{
-                    borderRadius: 2,
-                    my: 0.5,
-                    bgcolor:
-                      (item.text === 'Recruitment' && location.pathname.startsWith('/recruitment')) ||
-                      (item.text === 'Trainings' && isTrainingActive) ||
-                      (item.text === 'Outings / Events' && isOutingActive)
-                        ? '#f3e8ff'
-                        : 'transparent',
-                    '&:hover': { bgcolor: '#ede7f6' },
+                    borderRadius: '8px',
+                    bgcolor: isParentActive ? BRAND_BLUE : 'transparent',
+                    color: isParentActive ? 'white' : '#212121',
+                    '&:hover': { bgcolor: isParentActive ? BRAND_BLUE : '#f5f5f5' },
                   }}
                 >
-                  <ListItemIcon sx={{ minWidth: 40, color: 'text.primary' }}>{item.icon}</ListItemIcon>
-                  <ListItemText primary={item.text} primaryTypographyProps={{ fontSize: '0.95rem', fontWeight: 600 }} />
+                  <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>{item.icon}</ListItemIcon>
+                  <ListItemText primary={item.text} primaryTypographyProps={{ fontSize: '0.875rem' }} />
                   {item.open ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                 </ListItemButton>
-
                 <Collapse in={item.open} timeout="auto" unmountOnExit>
-                  <List component="div" disablePadding>
-                    {item.subItems.map((sub) => (
-                      <ListItemButton
-                        key={sub.to}
-                        component={NavLink}
-                        to={sub.to!}
-                        sx={{
-                          pl: 7,
-                          borderRadius: 2,
-                          my: 0.3,
-                          bgcolor: isActive(sub.to!) ? '#e8f5e9' : 'transparent',
-                          '&:hover': { bgcolor: '#f1f8e9' },
-                        }}
-                      >
-                        <ListItemIcon
+                  <List disablePadding>
+                    {item.subItems.map((sub) => {
+                      const subActive = isActive(sub.to);
+                      return (
+                        <ListItemButton
+                          key={sub.to}
+                          component={NavLink}
+                          to={sub.to}
                           sx={{
-                            minWidth: 36,
-                            color: isActive(sub.to!) ? '#2e7d32' : 'text.secondary',
+                            pl: 6, borderRadius: '8px', mt: 0.5,
+                            bgcolor: subActive ? BRAND_BLUE : 'transparent',
+                            color: subActive ? 'white' : '#212121',
+                            '&:hover': { bgcolor: subActive ? BRAND_BLUE : '#f8fafc' }
                           }}
                         >
-                          {sub.icon}
-                        </ListItemIcon>
-                        <ListItemText
-                          primary={sub.text}
-                          primaryTypographyProps={{
-                            fontSize: '0.9rem',
-                            color: isActive(sub.to!) ? '#2e7d32' : 'text.primary',
-                            fontWeight: isActive(sub.to!) ? 600 : 400,
-                          }}
-                        />
-                      </ListItemButton>
-                    ))}
+                          <ListItemText primary={sub.text} primaryTypographyProps={{ fontSize: '0.85rem' }} />
+                        </ListItemButton>
+                      );
+                    })}
                   </List>
                 </Collapse>
-              </div>
+              </Box>
             );
           }
 
-          // Regular menu item
           return (
             <ListItemButton
-              key={item.to}
+              key={item.text}
               component={NavLink}
               to={item.to!}
               sx={{
-                borderRadius: 2,
-                my: 0.5,
-                bgcolor: isActive(item.to!) ? '#f3e8ff' : 'transparent',
-                '&:hover': { bgcolor: '#ede7f6' },
+                mb: 0.5, borderRadius: '8px',
+                bgcolor: active ? BRAND_BLUE : 'transparent',
+                color: active ? 'white' : '#212121',
+                '&:hover': { bgcolor: active ? BRAND_BLUE : '#f5f5f5' },
               }}
             >
-              <ListItemIcon
-                sx={{
-                  minWidth: 40,
-                  color: isActive(item.to!) ? '#673ab7' : 'text.secondary',
-                }}
-              >
-                {item.icon}
-              </ListItemIcon>
-              <ListItemText
-                primary={item.text}
-                primaryTypographyProps={{
-                  fontSize: '0.95rem',
-                  fontWeight: isActive(item.to!) ? 600 : 500,
-                  color: isActive(item.to!) ? '#673ab7' : 'text.primary',
-                }}
-              />
+              <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>{item.icon}</ListItemIcon>
+              <ListItemText primary={item.text} primaryTypographyProps={{fontSize: '0.875rem' }} />
             </ListItemButton>
           );
         })}

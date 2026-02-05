@@ -69,7 +69,7 @@ async function send1WeekMaterialUploadReminder() {
           <p>Regards,<br>
           <strong>HR Team</strong></p>
           
-          <hr style="border:none; border-top:1px solid #eee; margin:20px 0;">
+          <HR style="border:none; border-top:1px solid #eee; margin:20px 0;">
           <small style="color:#777; font-size:12px;">
             This is an automated reminder from the HR Training System.<br>
             Training ID: ${training._id}

@@ -38,20 +38,18 @@ const OutingSchema = new Schema(
     // Status & Priority (similar to training)
     // ───────────────────────────────────────────────
     status: {
-      type: String,
-      enum: [
-        'Proposed',       // Management / Employee suggestion
-        'Under Review',   // HR checking
-        'Approved',       // Management approved
-        'Scheduled',      // Date & details finalized
-        'Completed',      // Outing done
-        'Cancelled',
-        'Archived',       // Auto after quarter ends
-        'Rejected'
-      ],
-      default: 'Proposed',
-      index: true,
-    },
+        type: String,
+        enum: [
+          'Proposed',    // HR proposed
+          'Suggested',   // ← add this line
+          'Scheduled',
+          'Rejected',
+          'Completed',
+          'Archived'
+        ],
+        default: 'Proposed',
+        index: true,
+      },
     priority: {
       type: String,
       enum: ['P1', 'P2', 'P3'],
@@ -165,7 +163,7 @@ const OutingSchema = new Schema(
 );
 
 // Auto-calculate quarter & financial year
-OutingSchema.pre('save', function (next) {
+OutingSchema.pre('save', async function () {
   if (this.tentativeDate && (this.isNew || this.isModified('tentativeDate'))) {
     const date = new Date(this.tentativeDate);
     const month = date.getMonth() + 1;
@@ -175,7 +173,6 @@ OutingSchema.pre('save', function (next) {
     const fyStart = month >= 4 ? year : year - 1;
     this.financialYear = `FY ${fyStart}-${fyStart + 1}`;
   }
-  next();
 });
 
 // Auto-archive after quarter ends (optional middleware or cron later)

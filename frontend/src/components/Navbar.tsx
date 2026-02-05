@@ -1,68 +1,51 @@
-import { AppBar, Toolbar, Box, Typography } from "@mui/material";
-import { Link, useLocation } from "react-router-dom";
+import { AppBar, Toolbar, Typography } from "@mui/material";
+import { useLocation } from "react-router-dom";
+
+const drawerWidth = 250; 
 
 const routeTitles: Record<string, string> = {
-  '/home': 'Home',
-  '/hr-dashboard': 'HR Dashboard',
+  '/hr-dashboard': 'Dashboard',
   '/employees': 'Employees',
   '/candidates': 'Candidates',
   '/salary-revision': 'Employee Letters',
   '/recruitment': 'All Requisitions',
   '/applicants': 'All Applicants',
-  '/scoring': 'Recruitment Scoring',
   '/onboarding': 'Onboardings',
-  '/exits': 'Exits',
-  '/trainings': 'Trainings',
-  '/outings-events': 'Outings & Events',
-  '/confirmations': 'Confirmations',
+  '/training-page?tab=HR': 'HR Training',
+  '/training-page?tab=management': 'Management Training',
+  '/outing?tab=HR': 'HR Outing',
+  '/outing?tab=management': 'Management Outing',
   '/profile': 'Profile',
   '/settings': 'Settings',
 };
 
-
 export default function Navbar() {
   const location = useLocation();
-  const SIDEBAR_WIDTH = 10;
+  
+  // FIX: Define the missing variable here
+  const currentFullRoute = location.pathname + location.search;
 
-  const pageTitle =
-    routeTitles[location.pathname] || "HR Portal";
+  const pageTitle = 
+    routeTitles[currentFullRoute] || 
+    routeTitles[location.pathname] || 
+    "HR Portal";
 
   return (
     <AppBar
       position="fixed"
       sx={{
-        zIndex: 1400,
-        backgroundColor: "#3B82F6",
-        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
+        // Standardizes width: Subtracts sidebar width from 100%
+        width: `calc(100% - ${drawerWidth}px)`,
+        ml: `${drawerWidth}px`,
+        backgroundColor: "#3B82F6", 
+        boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
       }}
     >
-      <Toolbar sx={{ pl: `${SIDEBAR_WIDTH + 20}px` }}>
-
-        {/* Logo stays visually aligned */}
-        <Link to="/" style={{ textDecoration: "none" }}>
-          <Box
-            component="img"
-            src="https://ik.imagekit.io/wovz8p4ck/Logo%20and%20navbar/image%201.png"
-            alt="Company Logo"
-            sx={{ height: 40 }}
-          />
-        </Link>
-
-        {/* PAGE HEADING */}
-        <Typography
-          variant="h6"
-          sx={{
-            paddingLeft: 15,
-            fontWeight: 600,
-            letterSpacing: 0.5,
-          }}
-        >
+      <Toolbar sx={{ px: 4 }}>
+        <Typography variant="h6" fontWeight={700} color="white">
           {pageTitle}
         </Typography>
-
-        <Box />
       </Toolbar>
     </AppBar>
   );
 }
-

@@ -67,6 +67,13 @@ router.get('/', async (req, res) => {
       .skip(skip)
       .limit(parseInt(limit));
 
+      console.log('Sample quarter values:', trainings.map(t => ({
+      topic: t.topic,
+      date: t.trainingDate,
+      quarter: t.quarter,
+      fy: t.financialYear
+    })));
+
     const total = await Training.countDocuments(filter);
 
     res.json({
@@ -157,29 +164,26 @@ router.patch('/:id/archive', async (req, res) => {
 // 7. SUBMIT FEEDBACK
 // routes/training.js
 // routes/training.js → post /:id/feedback
+// routes/training.js
 router.post('/:id/feedback', async (req, res) => {
   try {
     const training = await Training.findById(req.params.id);
-    if (!training) {
-      return res.status(404).json({ success: false, error: 'Training not found' });
-    }
+    if (!training) return res.status(404).json({ error: 'Training not found' });
 
     training.feedbacks.push({
-      employeeName: req.body.employeeName || 'Anonymous',
-      attended: req.body.attended ?? false,
-      overallRating: req.body.overallRating ? Number(req.body.overallRating) : undefined,
-      contentQuality: req.body.contentQuality ? Number(req.body.contentQuality) : undefined,
-      whatWasMissing: req.body.whatWasMissing?.trim(),
-      howHelpful: req.body.howHelpful?.trim(),
-      suggestedTopics: req.body.suggestedTopics?.trim(),
-      submittedAt: new Date()
+      employeeName: req.body.employeeName,
+      attended: req.body.attended,
+      overallRating: req.body.overallRating,
+      contentQuality: req.body.contentQuality,
+      whatWasMissing: req.body.whatWasMissing,
+      howHelpful: req.body.howHelpful,
+      submittedAt: new Date(),
     });
 
     await training.save();
-
     res.json({ success: true, message: 'Feedback submitted' });
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
 

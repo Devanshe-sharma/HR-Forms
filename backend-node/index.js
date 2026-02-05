@@ -8,6 +8,8 @@ console.log(
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const cron = require('node-cron');
+// const Outing = require('./models/Outing');
 
 
 const app = express();
@@ -52,6 +54,41 @@ app.post('/sync-sheet', async (req, res) => {
     res.send({ success: true });
   } catch (err) {
     res.status(500).send(err.message);
+  }
+});
+
+cron.schedule('30 0 * * *', async () => {
+  console.log('Running daily completion & archive job...');
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // 1. Mark Scheduled → Completed if date is today or earlier
+  const toComplete = await Outing.find({
+    status: 'Scheduled',
+    tentativeDate: { $lte: today }
+  });
+
+  for (const o of toComplete) {
+    o.status = 'Completed';
+    await o.save();
+    console.log(`Completed: ${o.topic}`);
+  }
+
+  // 2. Archive Completed ones after 3 days
+  const threeDaysAgo = new Date(today);
+  threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+
+  const toArchive = await Outing.find({
+    status: 'Completed',
+    tentativeDate: { $lte: threeDaysAgo }
+  });
+
+  for (const o of toArchive) {
+    o.status = 'Archived';
+    o.archivedAt = new Date();
+    await o.save();
+    console.log(`Archived: ${o.topic}`);
   }
 });
 

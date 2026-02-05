@@ -110,36 +110,24 @@ router.delete('/:id', async (req, res) => {
 router.post('/:id/feedback', async (req, res) => {
   try {
     const outing = await Outing.findById(req.params.id);
-    if (!outing) return res.status(404).json({ success: false, error: 'Outing not found' });
-
-    // Check if feedback window is open (24 hours after start)
-    const startTime = outing.tentativeDate;
-    if (!startTime) return res.status(400).json({ success: false, error: 'No start date set' });
-
-    const now = new Date();
-    const hoursSinceStart = (now - startTime) / (1000 * 60 * 60);
-
-    if (hoursSinceStart > 24) {
-      return res.status(403).json({ success: false, error: 'Feedback window closed (24 hours only)' });
-    }
+    if (!outing) return res.status(404).json({ error: 'Outing not found' });
 
     outing.feedbacks.push({
       employeeName: req.body.employeeName,
       department: req.body.department,
       designation: req.body.designation,
-      attended: req.body.attended ?? false,
-      overallRating: Number(req.body.overallRating),
-      contentQuality: Number(req.body.contentQuality),
-      whatWasMissing: req.body.whatWasMissing?.trim(),
-      howHelpful: req.body.howHelpful?.trim(),
-      submittedAt: now,
+      attended: req.body.attended,
+      overallRating: req.body.overallRating,
+      contentQuality: req.body.contentQuality,
+      whatWasMissing: req.body.whatWasMissing,
+      howHelpful: req.body.howHelpful,
+      submittedAt: new Date(),
     });
 
     await outing.save();
-
     res.json({ success: true, message: 'Feedback submitted' });
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
 
