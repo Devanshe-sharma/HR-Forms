@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const Training = require('../models/Training');
-const sendEmail = require('../utils/sendEmail'); // adjust path if needed
+const sendEmail = require('../emails/sendEmail'); // adjust path if needed
 
 
 // 1. CREATE new training / proposal / suggestion

@@ -24,7 +24,7 @@ const sendEmail = async ({ to, subject, text, html }) => {
     const transporter = createTransporter();
 
     const mailOptions = {
-      from: process.env.EMAIL_FROM || `"HR Training System" <${process.env.EMAIL_USER}>`,
+      from: process.env.EMAIL_FROM || `"HR System" <${process.env.EMAIL_USER}>`,
       to,
       subject,
       text: text || 'No plain text version available',

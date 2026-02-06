@@ -1,23 +1,22 @@
 require('dotenv').config();
-// require('dotenv').config({ path: './backend-node/.env' });
-console.log(
-  "ENV LOADED:",
-  !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON
-);
 
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const cron = require('node-cron');
-// const Outing = require('./models/Outing');
-
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+console.log(
+  "ENV LOADED:",
+  !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON
+);
+
+// ─── ROUTES ───────────────────────────────────────────────
 app.get('/', (req, res) => {
-    res.send('Backend server is alive!');
+  res.send('Backend server is alive!');
 });
 
 app.use('/api/employees', require('./routes/employees'));
@@ -31,37 +30,23 @@ app.use('/api/onboarding', require('./routes/onboarding'));
 app.use('/api/exit', require('./routes/exit'));
 app.use('/api/outing', require('./routes/outing'));
 
-
+// ─── DATABASE CONNECTION ──────────────────────────────────
 mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log('Mongo connected'))
-    .catch(err => console.error(err));
+  .then(() => console.log('MongoDB connected successfully'))
+  .catch(err => console.error('MongoDB connection error:', err));
 
-const { startEmailScheduler } = require('./utils/scheduler');
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`Node running on ${PORT}`);
-});
+// ─── EMAIL & AUTO-ARCHIVE SCHEDULER ───────────────────────
+const { startEmailScheduler } = require('./emails/scheduler');
+startEmailScheduler();
 
-// server.js
-app.post('/sync-sheet', async (req, res) => {
-  try {
-    const data = req.body; // row or full sheet
-    await Employee.updateOne(
-      { sheetRowId: data.sheetRowId },
-      { $set: data },
-      { upsert: true }
-    );
-    res.send({ success: true });
-  } catch (err) {
-    res.status(500).send(err.message);
-  }
-});
-
+// ─── DAILY OUTING COMPLETION & ARCHIVE JOB ────────────────
 cron.schedule('30 0 * * *', async () => {
-  console.log('Running daily completion & archive job...');
+  console.log('Running daily outing completion & archive job...');
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+
+  const Outing = require('./models/Outing');
 
   // 1. Mark Scheduled → Completed if date is today or earlier
   const toComplete = await Outing.find({
@@ -72,7 +57,7 @@ cron.schedule('30 0 * * *', async () => {
   for (const o of toComplete) {
     o.status = 'Completed';
     await o.save();
-    console.log(`Completed: ${o.topic}`);
+    console.log(`Auto-completed: ${o.topic}`);
   }
 
   // 2. Archive Completed ones after 3 days
@@ -88,8 +73,40 @@ cron.schedule('30 0 * * *', async () => {
     o.status = 'Archived';
     o.archivedAt = new Date();
     await o.save();
-    console.log(`Archived: ${o.topic}`);
+    console.log(`Auto-archived: ${o.topic}`);
+  }
+}, {
+  timezone: 'Asia/Kolkata'
+});
+
+// ─── GOOGLE SHEET SYNC ENDPOINT (optional) ────────────────
+app.post('/sync-sheet', async (req, res) => {
+  try {
+    const data = req.body;
+    const Employee = require('./models/Employee');
+    await Employee.updateOne(
+      { sheetRowId: data.sheetRowId },
+      { $set: data },
+      { upsert: true }
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
-startEmailScheduler();
+// ─── START SERVER ─────────────────────────────────────────
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+
+console.log('=== FORCING 2-WEEK OUTING REMINDER TEST ===');
+(async () => {
+  try {
+    const result = await require('./emails/emailUpcomingOutingReminder').sendUpcomingOutingReminder();
+    console.log('Test result:', result);
+  } catch (err) {
+    console.error('Test failed:', err);
+  }
+})();

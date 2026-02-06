@@ -2,43 +2,41 @@ const sendEmail = require('./sendEmail');
 const Training = require('../models/Training');
 const moment = require('moment-timezone');
 
-/**
- * Sends 2-week prior reminder for upcoming trainings
- * - Checks daily for trainings exactly 14 days away
- * - Sends to Trainer + CC: HR, Management, Reporting Head, Buddy
- */
 async function sendUpcomingTrainingReminder() {
   try {
     const now = moment().tz('Asia/Kolkata').startOf('day');
-    const targetDate = now.clone().add(1, 'days'); // exactly 14 days from today
+    const targetDate = now.clone().add(14, 'days');
 
-    // Find trainings scheduled exactly 14 days from now
+    // Find trainings exactly 14 days away, Scheduled, and reminder NOT yet sent
     const upcomingTrainings = await Training.find({
-      // trainingDate: {
-      //   $gte: targetDate.toDate(),
-      //   $lt: targetDate.clone().add(1, 'day').toDate()
-      // },
-      status: 'Scheduled' // only for confirmed/scheduled trainings
+      status: 'Scheduled',
+      trainingDate: {
+        $gte: targetDate.toDate(),
+        $lt: targetDate.clone().add(1, 'day').toDate()
+      },
+      reminder2WeeksSent: false  // ← key: only send if not already sent
     }).lean();
 
     if (upcomingTrainings.length === 0) {
-      console.log(`[${now.format('YYYY-MM-DD')}] No trainings scheduled exactly 14 days away. Skipping.`);
-      return { success: false, reason: 'No upcoming trainings' };
+      console.log(`[${now.format('YYYY-MM-DD')}] No new 2-week reminders to send.`);
+      return { success: true, sentCount: 0 };
     }
 
-    for (const training of upcomingTrainings) {
-      const trainerEmail = training.trainer?.email || 'trainer-fallback@company.com'; // ← must exist or fallback
+    let sentCount = 0;
 
-      // CC lists (static for now – can be dynamic later)
+    for (const training of upcomingTrainings) {
+      const trainerEmail = training.trainer?.email;
+      if (!trainerEmail) {
+        console.warn(`No trainer email for training: ${training.topic}`);
+        continue;
+      }
+
       const ccList = [
         process.env.EMAIL_HR || '',
-        process.env.EMAIL_MANAGEMENT || '',        // ← placeholder
+        process.env.EMAIL_MANAGEMENT || '',
       ].filter(Boolean).join(',');
 
-      const dateTimeStr = training.trainingDate
-        ? moment(training.trainingDate).tz('Asia/Kolkata').format('dddd, MMMM Do YYYY [at] hh:mm A z')
-        : 'TBD';
-
+      const dateTimeStr = moment(training.trainingDate).tz('Asia/Kolkata').format('dddd, MMMM Do YYYY [at] hh:mm A z');
       const venueOrLink = training.mode === 'Online'
         ? training.meetingLink || 'Online link will be shared soon'
         : training.venue || 'Venue details will be shared soon';
@@ -48,7 +46,7 @@ async function sendUpcomingTrainingReminder() {
           <h2 style="color: #7a8b2e;">Upcoming Training Scheduled – ${training.topic}</h2>
           
           <p>Dear Team,</p>
-          <p>This is to inform you that the following training session has been scheduled as per the approved quarterly plan:</p>
+          <p>This is to inform you that the following training session has been scheduled:</p>
           
           <ul style="list-style:none; padding-left:0;">
             <li><strong>Training Topic:</strong> ${training.topic}</li>
@@ -59,16 +57,15 @@ async function sendUpcomingTrainingReminder() {
             <li><strong>Venue / Link:</strong> ${venueOrLink}</li>
           </ul>
           
-          <p>This email serves as a two-week prior intimation to ensure adequate preparation and alignment.</p>
-          <p>Further reminders and calendar blocks will follow closer to the session date.</p>
+          <p>This is a two-week prior intimation. Further reminders will follow closer to the date.</p>
           
           <p>Warm regards,<br>
           <strong>HR Team</strong></p>
 
           <hr style="border:none; border-top:1px solid #eee; margin:20px 0;">
           <small style="color:#777; font-size:12px;">
-            This is an automated reminder from the HR Training System.<br>
-            Training ID: ${training._id}
+            Training ID: ${training._id}<br>
+            Sent on ${now.format('MMMM DD, YYYY [at] hh:mm A z')}
           </small>
         </div>
       `;
@@ -81,22 +78,23 @@ async function sendUpcomingTrainingReminder() {
       });
 
       if (result.success) {
-        console.log(`2-week reminder sent for training: ${training.topic} (ID: ${training._id})`);
+        // Mark as sent to prevent re-sending
+        await Training.updateOne(
+          { _id: training._id },
+          { $set: { reminder2WeeksSent: true } }
+        );
+        console.log(`2-week reminder sent & marked for: ${training.topic} (ID: ${training._id})`);
+        sentCount++;
       } else {
-        console.error(`Failed to send reminder for ${training.topic}:`, result.error);
+        console.error(`Failed to send 2-week reminder for ${training.topic}:`, result.error);
       }
     }
 
-    return { success: true, sentCount: upcomingTrainings.length };
+    return { success: true, sentCount };
   } catch (err) {
     console.error('2-week training reminder error:', err.message);
     return { success: false, error: err.message };
   }
 }
-// (async () => {
-//   console.log('=== FORCING 2-WEEK TRAINING REMINDER TEST ===');
-//   const result = await sendUpcomingTrainingReminder();
-//   console.log('Test result:', result);
-// })();
 
 module.exports = { sendUpcomingTrainingReminder };

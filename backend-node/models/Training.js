@@ -209,61 +209,6 @@ TrainingSchema.index({ status: 1, trainingDate: -1 });
 TrainingSchema.index({ financialYear: 1, quarter: 1 });
 TrainingSchema.index({ 'trainer.name': 1 });
 
-// ───────────────────────────────────────────────
-// Middleware: Pre-save logic
-// ───────────────────────────────────────────────
-TrainingSchema.pre('save', function (next) {
-  console.log('===== TRAINING PRE-SAVE HOOK IS NOW RUNNING ====='); // <--- MUST SEE THIS
 
-  const doc = this;
-
-  if (doc.trainingDate && (doc.isNew || doc.isModified('trainingDate'))) {
-    const date = new Date(doc.trainingDate);
-    const month = date.getMonth() + 1;
-    const year = date.getFullYear();
-    doc.trainingDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-
-    console.log('Month detected:', month, 'for date:', doc.trainingDate); // <--- DEBUG
-
-    let quarter;
-    if (month >= 4 && month <= 6) quarter = 'Q1';
-    else if (month >= 7 && month <= 9) quarter = 'Q2';
-    else if (month >= 10 && month <= 12) quarter = 'Q3';
-    else quarter = 'Q4';
-
-    doc.quarter = quarter;
-
-    const fyStart = month >= 4 ? year : year - 1;
-    doc.financialYear = `FY ${fyStart}-${fyStart + 1}`;
-
-    console.log(`Assigned: quarter=${doc.quarter}, fy=${doc.financialYear}`); // <--- DEBUG
-  } else {
-    console.log('No trainingDate change or missing – skipping quarter calc');
-  }
-
-  // 2. Auto-calculate Scorecard stats if feedbacks are updated
-  if (doc.isModified('feedbacks')) {
-    const total = doc.feedbacks.length;
-    const attended = doc.feedbacks.filter(f => f.attended).length;
-    
-    const validRatings = doc.feedbacks
-      .filter(f => f.overallRating != null)
-      .map(f => f.overallRating);
-
-    const avgRating = validRatings.length > 0 
-      ? Number((validRatings.reduce((a, b) => a + b, 0) / validRatings.length).toFixed(1))
-      : 0;
-
-    doc.scorecard = {
-      trainerAvgRating: avgRating,
-      totalAttendees: total,
-      attendedCount: attended,
-      noShowCount: total - attended,
-      lastCalculated: new Date(),
-    };
-  }
-
-  next();
-});
 
 module.exports = mongoose.model('Training', TrainingSchema);

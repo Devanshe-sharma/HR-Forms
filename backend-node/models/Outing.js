@@ -89,6 +89,10 @@ const OutingSchema = new Schema(
       type: Date,
       default: Date.now,
     },
+    reminder2WeeksSent: {
+      type: Boolean,
+      default: false,
+    },
 
     // ───────────────────────────────────────────────
     // Metadata (same as training)
@@ -174,6 +178,7 @@ OutingSchema.pre('save', async function () {
     this.financialYear = `FY ${fyStart}-${fyStart + 1}`;
   }
 });
+
 
 // Auto-archive after quarter ends (optional middleware or cron later)
 module.exports = mongoose.model('Outing', OutingSchema);

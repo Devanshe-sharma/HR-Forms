@@ -14,7 +14,7 @@ const MATERIAL_UPLOAD_LINK = 'https://your-company.com/upload-training-materials
 async function send1WeekMaterialUploadReminder() {
   try {
     const now = moment().tz('Asia/Kolkata').startOf('day');
-    const targetDate = now.clone().add(7, 'days'); // exactly 7 days from today
+    const targetDate = now.clone().add(7, 'days'); 
 
     // Find Scheduled trainings exactly 7 days away
     const upcomingTrainings = await Training.find({
@@ -32,7 +32,7 @@ async function send1WeekMaterialUploadReminder() {
 
     for (const training of upcomingTrainings) {
       const trainerName = training.trainer?.name || 'Trainer';
-      const trainerEmail = training.trainer?.email || 'trainer-fallback@company.com';
+      const trainerEmail = training.trainer?.email || 'software.developer@briskolive.com';
 
       const dateTimeStr = training.trainingDate
         ? moment(training.trainingDate).tz('Asia/Kolkata').format('dddd, MMMM Do YYYY [at] hh:mm A z')

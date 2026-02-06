@@ -224,33 +224,42 @@ const [suggestForm, setSuggestForm] = useState({
 
   // ─── HR: CREATE PROPOSAL ─────────────────────────────────
   const submitProposal = async (e: React.FormEvent) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    const payload = {
-    topic: suggestForm.topic.trim(),
-    description: suggestForm.description.trim(),
-    tentativePlace: suggestForm.tentativePlace.trim() || undefined,
-    tentativeBudget: Number(suggestForm.tentativeBudget) || undefined,
-    tentativeDate: suggestForm.tentativeDate ? new Date(suggestForm.tentativeDate).toISOString() : undefined,
-    reason: suggestForm.reason.trim() || undefined,
-    priority: suggestForm.priority,
-    proposedByRole: 'Management',
-    proposedByName: 'Management User',
-    status: 'Suggested',           // ← this is the key change
+  // Ensure priority is never empty
+  const priority = formData.priority || 'P3';
+
+  const payload = {
+    topic: formData.topic.trim(),
+    description: formData.description.trim(),
+    tentativePlace: formData.tentativePlace.trim() || undefined,
+    tentativeBudget: Number(formData.tentativeBudget) || undefined,
+    tentativeDate: formData.tentativeDate ? new Date(formData.tentativeDate).toISOString() : undefined,
+    proposedByRole: 'HR',
+    proposedByName: 'HR Admin',
+    status: 'Proposed',
+    priority,  // ← only one priority key, safe value
   };
 
-    try {
-      const res = await axios.post(`${API_BASE}/outing`, payload);
-      if (res.data.success) {
-        alert('Outing proposal submitted!');
-        setIsCreateModalOpen(false);
-        setFormData({ topic: '', description: '', tentativePlace: '', tentativeBudget: '', tentativeDate: '', priority: 'P3' });
-        refreshData();
-      }
-    } catch (err: any) {
-      alert('Error: ' + (err.response?.data?.error || 'Server error'));
+  try {
+    const res = await axios.post(`${API_BASE}/outing`, payload);
+    if (res.data.success) {
+      alert('Outing proposal submitted!');
+      setIsCreateModalOpen(false);
+      setFormData({
+        topic: '',
+        description: '',
+        tentativePlace: '',
+        tentativeBudget: '',
+        tentativeDate: '',
+        priority: 'P3',
+      });
+      refreshData();
     }
-  };
+  } catch (err: any) {
+    alert('Error: ' + (err.response?.data?.error || 'Server error'));
+  }
+};
   const approveOuting = async (id: string) => {
   if (!window.confirm('Approve this outing proposal?')) return;
 
@@ -345,6 +354,9 @@ useEffect(() => {
     return alert('Topic and Description are required');
   }
 
+  // Ensure priority is never empty
+  const priority = suggestForm.priority || 'P3';
+
   const payload = {
     topic: suggestForm.topic.trim(),
     description: suggestForm.description.trim(),
@@ -352,10 +364,10 @@ useEffect(() => {
     tentativeBudget: Number(suggestForm.tentativeBudget) || undefined,
     tentativeDate: suggestForm.tentativeDate ? new Date(suggestForm.tentativeDate).toISOString() : undefined,
     reason: suggestForm.reason.trim() || undefined,
-    priority: suggestForm.priority,
+    priority,  // ← safe value
     proposedByRole: 'Management',
     proposedByName: 'Management User',
-    status: 'Suggested',  // ← Management suggestion → directly "Suggested"
+    status: 'Suggested',
   };
 
   try {

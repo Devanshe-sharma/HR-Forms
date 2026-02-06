@@ -5,7 +5,7 @@ import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
-import { Plus, X, CheckCircle, XCircle, Edit, Trash2, Save, Globe, UserCheck } from 'lucide-react';
+import { Plus, X, CheckCircle, XCircle, Edit, Trash2, Save, Globe, UserCheck, Calendar, Archive } from 'lucide-react';
 
 // ─── TYPES ────────────────────────────────────────────────
 type Employee = {
@@ -57,6 +57,11 @@ type Training = {
     noShowCount: number;
     lastCalculated?: Date;
   };
+
+  // ─── Add these fields ───────────────────────────────────────
+  approved?: boolean;           // ← main one we need
+  approvedAt?: string;          // optional – ISO string
+  approvedBy?: string;          // optional – e.g. "Management"
 };
 const formatDate = (date?: string | Date | null): string => {
   if (!date) return '—';
@@ -157,12 +162,17 @@ export default function TrainingPage() {
     extName: '',
     org: '',
     mobile: '',
-    email: ''
+    email: '',
+    
   });
 
   // ─── HR: INLINE EDITING ──────────────────────────────────
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<Training>>({});
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [schedulingTrainingId, setSchedulingTrainingId] = useState<string | null>(null);
+  const [scheduleDate, setScheduleDate] = useState('');
+
 
   // ─── MANAGEMENT: REJECT MODAL ────────────────────────────
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
@@ -229,17 +239,34 @@ export default function TrainingPage() {
 
   // ─── MANAGEMENT ACTIONS ──────────────────────────────────
   const approveTraining = async (id: string) => {
-    if (!window.confirm('Approve this training proposal?')) return;
+  if (!window.confirm('Approve this training proposal?')) return;
+  try {
+    await axios.patch(`${API_BASE}/training/${id}`, {
+      approved: true,
+      approvedAt: new Date().toISOString(),
+      approvedBy: 'Management',     // optional
+      // do NOT change status here
+    });
+    alert('Training proposal approved. HR can now schedule it.');
+    refreshData();
+  } catch (err: any) {
+    alert('Approval failed: ' + (err.response?.data?.error || err.message));
+  }
+};
 
-    try {
-      await axios.patch(`${API_BASE}/training/${id}`, { status: 'Approved' });
-      alert('Training approved!');
-      refreshData();
-    } catch (err: any) {
-      alert('Approve failed: ' + (err.response?.data?.error || err.message));
-    }
-  };
-
+const handleArchive = async (id: string) => {
+  if (!window.confirm('Archive this training?')) return;
+  try {
+    await axios.patch(`${API_BASE}/training/${id}`, {
+      status: 'Archived',
+      archivedAt: new Date().toISOString(),
+    });
+    alert('Training archived');
+    refreshData();
+  } catch (err: any) {
+    alert('Archive failed: ' + (err.response?.data?.error || err.message));
+  }
+};
   const openRejectModal = (id: string) => {
     setRejectTrainingId(id);
     setRejectReason('');
@@ -282,23 +309,22 @@ export default function TrainingPage() {
     const trainerName = trainerType === 'internal' ? formData.internalTrainer : formData.extName;
     if (!trainerName) return alert('Trainer Name is required');
 
-    const payload = {
-      topic: formData.topic.trim(),
-      description: formData.description.trim(),
-      trainingDate: new Date().toISOString(),
-      proposedByRole: 'HR',
-      proposedByName: 'HR Admin',
-      status: 'Under Review',
-      priority: formData.priority,
-      trainer: {
-        name: trainerName,
-        isExternal: trainerType === 'external',
-        department: trainerType === 'internal' ? formData.dept : undefined,
-        designation: trainerType === 'internal' ? formData.desig : undefined,
-        externalOrg: trainerType === 'external' ? formData.org : undefined,
-        externalContact: trainerType === 'external' ? (formData.mobile || formData.email) : undefined
-      }
-    };
+      const payload = {
+    topic: formData.topic.trim(),
+    description: formData.description.trim(),         
+    proposedByRole: 'HR',
+    proposedByName: 'HR Admin',
+    status: 'Proposed',
+    priority: formData.priority,
+    trainer: {
+      name: trainerName,
+      isExternal: trainerType === 'external',
+      department: trainerType === 'internal' ? formData.dept : undefined,
+      designation: trainerType === 'internal' ? formData.desig : undefined,
+      externalOrg: trainerType === 'external' ? formData.org : undefined,
+      externalContact: trainerType === 'external' ? (formData.mobile || formData.email) : undefined
+    }
+  };
 
     try {
       const res = await axios.post(`${API_BASE}/training`, payload);
@@ -503,16 +529,15 @@ export default function TrainingPage() {
 
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
-      Approved: 'text-green-600',
+      Proposed: 'text-amber-600',
+      Suggested: 'text-indigo-600',
       Scheduled: 'text-blue-600',
       Completed: 'text-purple-600',
       Rejected: 'text-red-600',
-      Cancelled: 'text-gray-600',
-      'Under Review': 'text-amber-600',
-      Proposed: 'text-amber-600',
+      Archived: 'text-gray-600',
     };
     return colors[status] || 'text-gray-600';
-  };
+};
 
   // ─── RENDER ────────────────────────────────────────────────
   return (
@@ -552,307 +577,336 @@ export default function TrainingPage() {
 
           {/* ─── HR TAB ─── */}
           {currentTab === 'HR' && (
-  <div className="space-y-8">
-    {/* Debug Info – helps see what's happening */}
-    <div className="bg-yellow-100 p-4 rounded border border-yellow-400 text-sm">
-      <strong>Debug Info:</strong><br />
-      Total trainings loaded: {trainingList.length}<br />
-      Filtered trainings: {filteredTrainings.length}<br />
-      Current filters → Trainer: "{trainerFilter}", Quarter: "{quarterFilter}", FY: "{fyFilter}", Archived: "{archivedFilter}"
-    </div>
+          <div className="space-y-8">
+            {/* Debug Info – helps see what's happening */}
+            <div className="bg-yellow-100 p-4 rounded border border-yellow-400 text-sm">
+              <strong>Debug Info:</strong><br />
+              Total trainings loaded: {trainingList.length}<br />
+              Filtered trainings: {filteredTrainings.length}<br />
+              Current filters → Trainer: "{trainerFilter}", Quarter: "{quarterFilter}", FY: "{fyFilter}", Archived: "{archivedFilter}"
+            </div>
 
-    {/* Filters */}
-    <div className="bg-white p-6 rounded-xl shadow border border-gray-200">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        {/* Trainer Name */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Trainer Name</label>
-          <select
-            value={trainerFilter}
-            onChange={(e) => setTrainerFilter(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-          >
-            <option value="">All Trainers</option>
-            {employees.map((emp) => (
-              <option key={emp.email} value={emp.name}>
-                {emp.name}
-              </option>
-            ))}
-          </select>
-        </div>
+            {/* Filters */}
+            <div className="bg-white p-6 rounded-xl shadow border border-gray-200">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                {/* Trainer Name */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Trainer Name</label>
+                  <select
+                    value={trainerFilter}
+                    onChange={(e) => setTrainerFilter(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                  >
+                    <option value="">All Trainers</option>
+                    {employees.map((emp) => (
+                      <option key={emp.email} value={emp.name}>
+                        {emp.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-        {/* Quarter (Indian FY) */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Quarter</label>
-          <select
-            value={quarterFilter}
-            onChange={(e) => setQuarterFilter(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-          >
-            <option value="">All Quarters</option>
-            <option value="Q1">Q1 (Apr–Jun)</option>
-            <option value="Q2">Q2 (Jul–Sep)</option>
-            <option value="Q3">Q3 (Oct–Dec)</option>
-            <option value="Q4">Q4 (Jan–Mar)</option>
-          </select>
-        </div>
+                {/* Quarter (Indian FY) */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Quarter</label>
+                  <select
+                    value={quarterFilter}
+                    onChange={(e) => setQuarterFilter(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                  >
+                    <option value="">All Quarters</option>
+                    <option value="Q1">Q1 (Apr–Jun)</option>
+                    <option value="Q2">Q2 (Jul–Sep)</option>
+                    <option value="Q3">Q3 (Oct–Dec)</option>
+                    <option value="Q4">Q4 (Jan–Mar)</option>
+                  </select>
+                </div>
 
-        {/* Financial Year */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Financial Year</label>
-          <select
-            value={fyFilter}
-            onChange={(e) => setFyFilter(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-          >
-            <option value="">All FY</option>
-            <option value="FY 2025-2026">FY 2025-2026</option>
-            <option value="FY 2024-2025">FY 2024-2025</option>
-            <option value="FY 2023-2024">FY 2023-2024</option>
-          </select>
-        </div>
+                {/* Financial Year */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Financial Year</label>
+                  <select
+                    value={fyFilter}
+                    onChange={(e) => setFyFilter(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                  >
+                    <option value="">All FY</option>
+                    <option value="FY 2025-2026">FY 2025-2026</option>
+                    <option value="FY 2024-2025">FY 2024-2025</option>
+                    <option value="FY 2023-2024">FY 2023-2024</option>
+                  </select>
+                </div>
 
-        {/* Archived */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Archived</label>
-          <select
-            value={archivedFilter}
-            onChange={(e) => setArchivedFilter(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-          >
-            <option value="">All</option>
-            <option value="no">No</option>
-            <option value="yes">Yes</option>
-          </select>
-        </div>
+                {/* Archived */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Archived</label>
+                  <select
+                    value={archivedFilter}
+                    onChange={(e) => setArchivedFilter(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                  >
+                    <option value="">All</option>
+                    <option value="no">No</option>
+                    <option value="yes">Yes</option>
+                  </select>
+                </div>
 
-        {/* Clear Filters */}
-        <div className="flex items-end">
-          <button
-            onClick={() => {
-              setTrainerFilter('');
-              setQuarterFilter('');
-              setFyFilter('');
-              setArchivedFilter('');
-            }}
-            className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium transition"
-          >
-            Clear Filters
-          </button>
-        </div>
-      </div>
-    </div>
+                {/* Clear Filters */}
+                <div className="flex items-end">
+                  <button
+                    onClick={() => {
+                      setTrainerFilter('');
+                      setQuarterFilter('');
+                      setFyFilter('');
+                      setArchivedFilter('');
+                    }}
+                    className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium transition"
+                  >
+                    Clear Filters
+                  </button>
+                </div>
+              </div>
+            </div>
 
-    {/* Editable Table */}
-    <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-      <div className="p-6 bg-gray-50 border-b">
-        <h3 className="font-bold text-gray-700 uppercase text-xs tracking-widest">
-          Training Inventory Control Panel
-        </h3>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-          <thead className="bg-white text-[10px] font-black text-gray-400 uppercase tracking-tighter border-b">
-            <tr>
-              <th className="p-4">SNO.</th>
-              <th className="p-4">TRAINING TOPIC</th>
-              <th className="p-4">DESCRIPTION</th>
-              <th className="p-4">TRAINER NAME</th>
-              <th className="p-4">STATUS</th>
-              <th className="p-4">REASON</th>
-              <th className="p-4">DATE</th>
-              <th className="p-4">PRIORITY</th>
-              <th className="p-4 text-center">REMARK</th>
-              <th className="p-4 text-center">ACTION</th>
-            </tr>
-          </thead>
-          <tbody className="text-xs divide-y divide-gray-100">
-            {filteredTrainings.length === 0 ? (
-              <tr>
-                <td colSpan={10} className="p-8 text-center text-gray-500 italic">
-                  No trainings found matching the filters
-                </td>
-              </tr>
-            ) : (
-              filteredTrainings.map((t, i) => {
-                const isEditing = editingId === t._id;
+            {/* Editable Table */}
+            <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="p-6 bg-gray-50 border-b">
+                <h3 className="font-bold text-gray-700 uppercase text-xs tracking-widest">
+                  Training Inventory Control Panel
+                </h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-white text-[10px] font-black text-gray-400 uppercase tracking-tighter border-b">
+                    <tr>
+                      <th className="p-4">SNO.</th>
+                      <th className="p-4">TRAINING TOPIC</th>
+                      <th className="p-4">DESCRIPTION</th>
+                      <th className="p-4">TRAINER NAME</th>
+                      <th className="p-4">STATUS</th>
+                      <th className="p-4">REASON</th>
+                      <th className="p-4">DATE</th>
+                      <th className="p-4">PRIORITY</th>
+                      <th className="p-4 text-center">ACTION</th>
+                      <th className="p-4 text-center">REMARK</th>
+                      
+                    </tr>
+                  </thead>
+                  <tbody className="text-xs divide-y divide-gray-100">
+                    {filteredTrainings.length === 0 ? (
+                      <tr>
+                        <td colSpan={10} className="p-8 text-center text-gray-500 italic">
+                          No trainings found matching the filters
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredTrainings.map((t, i) => {
+                        const isEditing = editingId === t._id;
 
-                return (
-                  <tr key={t._id || i} className="hover:bg-gray-50/50 transition group">
-                    <td className="p-4 text-gray-400">{i + 1}</td>
+                        return (
+                          <tr key={t._id || i} className="hover:bg-gray-50/50 transition group">
+                            <td className="p-4 text-gray-400">{i + 1}</td>
 
-                    {/* Topic */}
-                    <td className="p-4">
-                      {isEditing ? (
-                        <input
-                          className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                          value={editData.topic ?? t.topic ?? ''}
-                          onChange={e => setEditData(prev => ({ ...prev, topic: e.target.value }))}
-                        />
-                      ) : (
-                        <span className="font-bold text-gray-800">{t.topic || '—'}</span>
-                      )}
-                    </td>
-
-                    {/* Description */}
-                    <td className="p-4">
-                      {isEditing ? (
-                        <textarea
-                          className="w-full border rounded px-2 py-1 text-sm h-20 resize-none focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                          value={editData.description ?? t.description ?? ''}
-                          onChange={e => setEditData(prev => ({ ...prev, description: e.target.value }))}
-                        />
-                      ) : (
-                        <span className="text-gray-500 block max-w-[180px] truncate">{t.description || '—'}</span>
-                      )}
-                    </td>
-
-                    {/* Trainer Name */}
-                    <td className="p-4">
+                            {/* Topic */}
+                            <td className="p-4">
                               {isEditing ? (
                                 <input
                                   className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                                  value={editData.trainer?.name ?? t.trainer.name}
-                                  onChange={e => setEditData(prev => ({
-                                    ...prev,
-                                    trainer: {
-                                      name: e.target.value,
-                                      isExternal: prev.trainer?.isExternal ?? t.trainer.isExternal,
-                                      department: prev.trainer?.department ?? t.trainer.department,
-                                      designation: prev.trainer?.designation ?? t.trainer.designation,
-                                      source: prev.trainer?.source ?? t.trainer.source,
-                                      organisation: prev.trainer?.organisation ?? t.trainer.organisation,
-                                      mobile: prev.trainer?.mobile ?? t.trainer.mobile,
-                                      email: prev.trainer?.email ?? t.trainer.email
-                                    }
-                                  }))}
+                                  value={editData.topic ?? t.topic ?? ''}
+                                  onChange={e => setEditData(prev => ({ ...prev, topic: e.target.value }))}
                                 />
                               ) : (
-                                <span className="font-medium text-blue-600">{t.trainer.name}</span>
+                                <span className="font-bold text-gray-800">{t.topic || '—'}</span>
                               )}
                             </td>
 
-                    {/* Status */}
-                    <td className="p-4">
-                      {isEditing ? (
-                        <select
-                          className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                          value={editData.status ?? t.status ?? 'Proposed'}
-                          onChange={e => setEditData(prev => ({ ...prev, status: e.target.value }))}
-                        >
-                          <option value="Proposed">Proposed</option>
-                          <option value="Under Review">Under Review</option>
-                          <option value="Approved">Approved</option>
-                          <option value="Scheduled">Scheduled</option>
-                          <option value="Completed">Completed</option>
-                          <option value="Rejected">Rejected</option>
-                        </select>
-                      ) : (
-                        <span className={`status-pill ${t.status?.toLowerCase().replace(' ', '-') || ''}`}>
-                          {t.status || '—'}
-                        </span>
-                      )}
-                    </td>
+                            {/* Description */}
+                            <td className="p-4">
+                              {isEditing ? (
+                                <textarea
+                                  className="w-full border rounded px-2 py-1 text-sm h-20 resize-none focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                                  value={editData.description ?? t.description ?? ''}
+                                  onChange={e => setEditData(prev => ({ ...prev, description: e.target.value }))}
+                                />
+                              ) : (
+                                <span className="text-gray-500 block max-w-[180px] truncate">{t.description || '—'}</span>
+                              )}
+                            </td>
 
-                    {/* Reason */}
-                    <td className="p-4 text-center text-gray-700 font-medium">
-                      {t.status === 'Rejected' ? (
-                        <span className="text-red-600 italic">
-                          {t.reason || 'No reason'}
-                        </span>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
+                            {/* Trainer Name */}
+                            <td className="p-4">
+                                      {isEditing ? (
+                                        <input
+                                          className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                                          value={editData.trainer?.name ?? t.trainer.name}
+                                          onChange={e => setEditData(prev => ({
+                                            ...prev,
+                                            trainer: {
+                                              name: e.target.value,
+                                              isExternal: prev.trainer?.isExternal ?? t.trainer.isExternal,
+                                              department: prev.trainer?.department ?? t.trainer.department,
+                                              designation: prev.trainer?.designation ?? t.trainer.designation,
+                                              source: prev.trainer?.source ?? t.trainer.source,
+                                              organisation: prev.trainer?.organisation ?? t.trainer.organisation,
+                                              mobile: prev.trainer?.mobile ?? t.trainer.mobile,
+                                              email: prev.trainer?.email ?? t.trainer.email
+                                            }
+                                          }))}
+                                        />
+                                      ) : (
+                                        <span className="font-medium text-blue-600">{t.trainer.name}</span>
+                                      )}
+                                    </td>
 
-                    {/* Date */}
-                    <td className="p-4 text-gray-600 font-mono italic">
-                      {isEditing ? (
-                        <input
-                          className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                          type="date"
-                          value={editData.trainingDate ? new Date(editData.trainingDate).toISOString().split('T')[0] : ''}
-                          onChange={e => setEditData(prev => ({ ...prev, trainingDate: e.target.value }))}
-                        />
-                      ) : (
-                        formatDate(t.trainingDate)
-                      )}
-                    </td>
+                            {/* Status */}
+                            <td className="p-4">
+                              {isEditing ? (
+                                <select
+                                  className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                                  value={editData.status ?? t.status ?? 'Proposed'}
+                                  onChange={e => setEditData(prev => ({ ...prev, status: e.target.value }))}
+                                >
+                                  <option value="Proposed">Proposed</option>
+                                  <option value="Suggested">Suggested</option> 
+                                  <option value="Scheduled">Scheduled</option>
+                                  <option value="Completed">Completed</option>
+                                  <option value="Rejected">Rejected</option>
+                                  <option value="Archived">Archived</option>
+                                </select>
+                              ) : (
+                                <span className={`status-pill ${t.status?.toLowerCase().replace(' ', '-') || ''}`}>
+                                  {t.status || '—'}
+                                </span>
+                              )}
+                            </td>
 
-                    {/* Priority */}
-                    <td className="p-4">
-                      {isEditing ? (
-                        <select
-                          className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                          value={editData.priority ?? t.priority ?? 'P3'}
-                          onChange={e => setEditData(prev => ({ ...prev, priority: e.target.value as 'P1' | 'P2' | 'P3' }))}
-                        >
-                          <option value="P3">P3</option>
-                          <option value="P2">P2</option>
-                          <option value="P1">P1</option>
-                        </select>
-                      ) : (
-                        <span className={`priority-text ${t.priority?.toLowerCase() || 'p3'}`}>
-                          {t.priority || 'P3'}
-                        </span>
-                      )}
-                    </td>
+                            {/* Reason */}
+                            <td className="p-4 text-center text-gray-700 font-medium">
+                              {t.status === 'Rejected' ? (
+                                <span className="text-red-600 italic">
+                                  {t.reason || 'No reason'}
+                                </span>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
 
-                    {/* Remark */}
-                    <td className="p-4 text-center text-gray-400 italic font-medium">
-                      {t.remark || '--'}
-                    </td>
+                            {/* Date */}
+                            <td className="p-4 text-gray-600 font-mono italic">
+                              {isEditing ? (
+                                <input
+                                  className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                                  type="date"
+                                  value={editData.trainingDate ? new Date(editData.trainingDate).toISOString().split('T')[0] : ''}
+                                  onChange={e => setEditData(prev => ({ ...prev, trainingDate: e.target.value }))}
+                                />
+                              ) : (
+                                formatDate(t.trainingDate)
+                              )}
+                            </td>
 
-                    {/* Action */}
-                    <td className="p-4 text-center">
-                      <div className="flex justify-center gap-3">
-                        {isEditing ? (
-                          <>
-                            <button
-                              onClick={saveEdit}
-                              className="p-2 bg-green-600 text-white rounded hover:bg-green-700 transition"
-                              title="Save changes"
-                            >
-                              <Save size={16} />
-                            </button>
-                            <button
-                              onClick={cancelEditing}
-                              className="p-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition"
-                              title="Cancel"
-                            >
-                              <X size={16} />
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              onClick={() => startEditing(t)}
-                              className="p-2 hover:bg-blue-50 text-blue-600 rounded transition"
-                              title="Edit row"
-                            >
-                              <Edit size={16} />
-                            </button>
-                            <button
-                              onClick={() => deleteTraining(t._id!)}
-                              className="p-2 hover:bg-red-50 text-red-600 rounded transition"
-                              title="Delete row"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  </div>
-)}
+                            {/* Priority */}
+                            <td className="p-4">
+                              {isEditing ? (
+                                <select
+                                  className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                                  value={editData.priority ?? t.priority ?? 'P3'}
+                                  onChange={e => setEditData(prev => ({ ...prev, priority: e.target.value as 'P1' | 'P2' | 'P3' }))}
+                                >
+                                  <option value="P3">P3</option>
+                                  <option value="P2">P2</option>
+                                  <option value="P1">P1</option>
+                                </select>
+                              ) : (
+                                <span className={`priority-text ${t.priority?.toLowerCase() || 'p3'}`}>
+                                  {t.priority || 'P3'}
+                                </span>
+                              )}
+                            </td>
+
+
+                            {/* Action */}
+                            <td className="p-4 text-center">
+                              <div className="flex justify-center gap-3 flex-wrap">
+                                {isEditing ? (
+                                  <>
+                                    <button
+                                      onClick={saveEdit}
+                                      className="p-2 bg-green-600 text-white rounded hover:bg-green-700 transition"
+                                      title="Save changes"
+                                    >
+                                      <Save size={16} />
+                                    </button>
+                                    <button
+                                      onClick={cancelEditing}
+                                      className="p-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition"
+                                      title="Cancel"
+                                    >
+                                      <X size={16} />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => startEditing(t)}
+                                      className="p-2 hover:bg-blue-50 text-blue-600 rounded transition"
+                                      title="Edit row"
+                                    >
+                                      <Edit size={16} />
+                                    </button>
+
+                                    {/* Schedule button – only when Proposed + approved */}
+                                    {t.status === 'Proposed' && t.approved === true && (
+                                      <button
+                                        onClick={() => {
+                                          setSchedulingTrainingId(t._id!);
+                                          setScheduleDate('');
+                                          setIsScheduleModalOpen(true);
+                                        }}
+                                        className="p-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition"
+                                        title="Schedule training date"
+                                      >
+                                        <Calendar size={16} />
+                                      </button>
+                                    )}
+
+                                    {/* Archive button – always visible (or add condition if you want) */}
+                                    <button
+                                      onClick={() => handleArchive(t._id!)}   // you need to implement handleArchive similar to outing
+                                      className="p-2 bg-amber-600 text-white rounded hover:bg-amber-700 transition"
+                                      title="Archive this training"
+                                    >
+                                      <Archive size={16} />
+                                    </button>
+
+                                    <button
+                                      onClick={() => deleteTraining(t._id!)}
+                                      className="p-2 hover:bg-red-50 text-red-600 rounded transition"
+                                      title="Delete row"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+
+
+                            {/* Remark */}
+                            <td className="p-4 text-center text-gray-400 italic font-medium">
+                              {t.remark || '--'}
+                            </td>
+
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+          )}
 
           {/* ─── MANAGEMENT TAB ─── */}
           {currentTab === 'management' && (
@@ -877,7 +931,7 @@ export default function TrainingPage() {
                   </thead>
                   <tbody className="text-xs divide-y divide-gray-100">
                     {trainingList
-                      .filter(t => t.status === 'Proposed' || t.status === 'Under Review')
+                      .filter(t => t.status === 'Proposed' && !t.approved) 
                       .map((t, i) => (
                         <tr key={t._id} className="hover:bg-gray-50/50 transition group">
                           <td className="p-4 text-gray-400">{i + 1}</td>
@@ -1126,7 +1180,7 @@ export default function TrainingPage() {
                   >
                     <option value="">-- Select Training --</option>
                     {trainingList
-                      .filter((t) => ['Approved', 'Scheduled', 'Completed'].includes(t.status))
+                      .filter((t) => ['Completed'].includes(t.status))
                       .map((t) => (
                         <option key={t._id} value={t._id}>
                           {t.topic} 
@@ -1306,6 +1360,67 @@ export default function TrainingPage() {
               </div>
             </div>
           )}
+          {isScheduleModalOpen && (
+              <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+                  <div className="p-6 border-b flex justify-between items-center bg-purple-50">
+                    <h3 className="text-xl font-bold text-purple-800">Schedule Training Date</h3>
+                    <button
+                      onClick={() => {
+                        setIsScheduleModalOpen(false);
+                        setSchedulingTrainingId(null);
+                        setScheduleDate('');
+                      }}
+                      className="p-2 hover:bg-gray-200 rounded-full"
+                    >
+                      <X size={24} />
+                    </button>
+                  </div>
+                  <div className="p-6">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Select Date
+                    </label>
+                    <input
+                      type="date"
+                      value={scheduleDate}
+                      min={new Date().toISOString().split('T')[0]}
+                      onChange={e => setScheduleDate(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      required
+                    />
+                  </div>
+                  <div className="p-6 border-t bg-gray-50 flex justify-end gap-4">
+                    <button
+                      onClick={() => setIsScheduleModalOpen(false)}
+                      className="px-6 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!scheduleDate) return alert('Please select date');
+                        try {
+                          await axios.patch(`${API_BASE}/training/${schedulingTrainingId}`, {
+                            trainingDate: new Date(scheduleDate).toISOString(),
+                            status: 'Scheduled'
+                          });
+                          alert('Training scheduled!');
+                          setIsScheduleModalOpen(false);
+                          setSchedulingTrainingId(null);
+                          setScheduleDate('');
+                          refreshData();
+                        } catch (err: any) {
+                          alert('Failed: ' + (err?.response?.data?.error || err.message));
+                        }
+                      }}
+                      className="px-8 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                    >
+                      Confirm
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
           {/* ─── REJECTION MODAL ─── */}
           {isRejectModalOpen && (
@@ -1660,6 +1775,8 @@ export default function TrainingPage() {
         .status-pill.under-review { background: #fef3c7; color: #92400e; }
         .status-pill.approved { background: #dcfce7; color: #166534; }
         .status-pill.rejected { background: #fee2e2; color: #b91c1c; }
+        .status-pill.suggested   { background: #e0e7ff; color: #4338ca; }
+        .status-pill.archived    { background: #f3f4f6; color: #4b5563; }
 
         .priority-text { font-weight: 900; }
         .priority-text.p1 { color: #ef4444; }
