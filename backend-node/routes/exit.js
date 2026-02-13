@@ -11,9 +11,9 @@ const spreadsheetId = "19xZwCcBoTepR64kKoj_Gum29cX3MF9rcYhl0dVXjTuM";
 const sheetName = "Exit FMS";
 function getAccessToken() {
   const serviceAccountPath = path.join(__dirname, "../service-account.json");
-  if (!fs.existsSync(serviceAccountPath)) {
-    throw new Error("Service account file not found");
-  }
+  // if (!fs.existsSync(serviceAccountPath)) {
+  //   throw new Error("Service account file not found");
+  // }
   const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf8"));
   const jwtToken = jwt.sign(
     {

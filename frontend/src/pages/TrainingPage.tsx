@@ -910,71 +910,308 @@ const handleArchive = async (id: string) => {
 
           {/* ─── MANAGEMENT TAB ─── */}
           {currentTab === 'management' && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="p-6 bg-gray-50 border-b">
-                <h3 className="font-bold text-gray-700 uppercase text-xs tracking-widest">
-                  Management Review – Pending Proposals
-                </h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead className="bg-white text-[10px] font-black text-gray-400 uppercase tracking-tighter border-b">
-                    <tr>
-                      <th className="p-4">Sno.</th>
-                      <th className="p-4">Topic</th>
-                      <th className="p-4">Description</th>
-                      <th className="p-4">Trainer</th>
-                      <th className="p-4">Priority</th>
-                      <th className="p-4">Proposed By</th>
-                      <th className="p-4 text-center">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-xs divide-y divide-gray-100">
-                    {trainingList
-                      .filter(t => t.status === 'Proposed' && !t.approved) 
-                      .map((t, i) => (
-                        <tr key={t._id} className="hover:bg-gray-50/50 transition group">
-                          <td className="p-4 text-gray-400">{i + 1}</td>
-                          <td className="p-4 font-bold text-gray-800">{t.topic}</td>
-                          <td className="p-4 text-gray-500 max-w-[180px] truncate">{t.description}</td>
-                          <td className="p-4 font-medium text-blue-600">{t.trainer.name}</td>
-                          <td className="p-4">
-                            <span className={`priority-text ${t.priority?.toLowerCase() || 'p3'}`}>{t.priority || 'P3'}</span>
-                          </td>
-                          <td className="p-4 text-gray-600">
-                            {t.proposedByName || 'Unknown'} ({t.proposedByRole || '—'})
-                          </td>
-                          <td className="p-4 text-center">
-                            <div className="flex justify-center gap-3">
-                              <button
-                                onClick={() => approveTraining(t._id!)}
-                                className="flex items-center gap-1 bg-green-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-green-700 transition"
-                              >
-                                <CheckCircle size={14} /> Approve
-                              </button>
-                              <button
-                                onClick={() => openRejectModal(t._id!)}
-                                className="flex items-center gap-1 bg-red-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-red-700 transition"
-                              >
-                                <XCircle size={14} /> Reject
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+  <>
+                  {/* ── Pending Proposals Section ── */}
+                  <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-6">
+                    <div className="p-6 bg-gray-50 border-b">
+                      <h3 className="font-bold text-gray-700 uppercase text-xs tracking-widest">
+                        Management Review – Pending Proposals
+                      </h3>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead className="bg-white text-[10px] font-black text-gray-400 uppercase tracking-tighter border-b">
+                          <tr>
+                            <th className="p-4">Sno.</th>
+                            <th className="p-4">Topic</th>
+                            <th className="p-4">Description</th>
+                            <th className="p-4">Trainer</th>
+                            <th className="p-4">Priority</th>
+                            <th className="p-4">Proposed By</th>
+                            <th className="p-4 text-center">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="text-xs divide-y divide-gray-100">
+                          {trainingList
+                            .filter(t => t.status === 'Proposed' && !t.approved)
+                            .map((t, i) => (
+                              <tr key={t._id} className="hover:bg-gray-50/50 transition group">
+                                <td className="p-4 text-gray-400">{i + 1}</td>
+                                <td className="p-4 font-bold text-gray-800">{t.topic}</td>
+                                <td className="p-4 text-gray-500 max-w-[180px] truncate">{t.description}</td>
+                                <td className="p-4 font-medium text-blue-600">{t.trainer.name}</td>
+                                <td className="p-4">
+                                  <span className={`priority-text ${t.priority?.toLowerCase() || 'p3'}`}>
+                                    {t.priority || 'P3'}
+                                  </span>
+                                </td>
+                                <td className="p-4 text-gray-600">
+                                  {t.proposedByName || 'Unknown'} ({t.proposedByRole || '—'})
+                                </td>
+                                <td className="p-4 text-center">
+                                  <div className="flex justify-center gap-3">
+                                    <button
+                                      onClick={() => approveTraining(t._id!)}
+                                      className="flex items-center gap-1 bg-green-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-green-700 transition"
+                                    >
+                                      <CheckCircle size={14} /> Approve
+                                    </button>
+                                    <button
+                                      onClick={() => openRejectModal(t._id!)}
+                                      className="flex items-center gap-1 bg-red-600 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-red-700 transition"
+                                    >
+                                      <XCircle size={14} /> Reject
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
 
-                    {trainingList.filter(t => t.status === 'Proposed' || t.status === 'Under Review').length === 0 && (
-                      <tr>
-                        <td colSpan={7} className="p-12 text-center text-gray-500 italic text-base">
-                          No pending proposals to review at the moment.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+                          {trainingList.filter(t => t.status === 'Proposed' || t.status === 'Under Review').length === 0 && (
+                            <tr>
+                              <td colSpan={7} className="p-12 text-center text-gray-500 italic text-base">
+                                No pending proposals to review at the moment.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* ── Training Inventory Control Panel ── */}
+                  <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="p-6 bg-gray-50 border-b">
+                      <h3 className="font-bold text-gray-700 uppercase text-xs tracking-widest">
+                        Training Inventory Control Panel
+                      </h3>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead className="bg-white text-[10px] font-black text-gray-400 uppercase tracking-tighter border-b">
+                          <tr>
+                            <th className="p-4">SNO.</th>
+                            <th className="p-4">TRAINING TOPIC</th>
+                            <th className="p-4">DESCRIPTION</th>
+                            <th className="p-4">TRAINER NAME</th>
+                            <th className="p-4">STATUS</th>
+                            <th className="p-4">REASON</th>
+                            <th className="p-4">DATE</th>
+                            <th className="p-4">PRIORITY</th>
+                            <th className="p-4 text-center">ACTION</th>
+                            <th className="p-4 text-center">REMARK</th>
+                          </tr>
+                        </thead>
+                        <tbody className="text-xs divide-y divide-gray-100">
+                          {filteredTrainings.length === 0 ? (
+                            <tr>
+                              <td colSpan={10} className="p-8 text-center text-gray-500 italic">
+                                No trainings found matching the filters
+                              </td>
+                            </tr>
+                          ) : (
+                            filteredTrainings.map((t, i) => {
+                              const isEditing = editingId === t._id;
+
+                              return (
+                                <tr key={t._id || i} className="hover:bg-gray-50/50 transition group">
+                                  <td className="p-4 text-gray-400">{i + 1}</td>
+
+                                  {/* Topic */}
+                                  <td className="p-4">
+                                    {isEditing ? (
+                                      <input
+                                        className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                                        value={editData.topic ?? t.topic ?? ''}
+                                        onChange={e => setEditData(prev => ({ ...prev, topic: e.target.value }))}
+                                      />
+                                    ) : (
+                                      <span className="font-bold text-gray-800">{t.topic || '—'}</span>
+                                    )}
+                                  </td>
+
+                                  {/* Description */}
+                                  <td className="p-4">
+                                    {isEditing ? (
+                                      <textarea
+                                        className="w-full border rounded px-2 py-1 text-sm h-20 resize-none focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                                        value={editData.description ?? t.description ?? ''}
+                                        onChange={e => setEditData(prev => ({ ...prev, description: e.target.value }))}
+                                      />
+                                    ) : (
+                                      <span className="text-gray-500 block max-w-[180px] truncate">{t.description || '—'}</span>
+                                    )}
+                                  </td>
+
+                                  {/* Trainer Name */}
+                                  <td className="p-4">
+                                    {isEditing ? (
+                                      <input
+                                        className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                                        value={editData.trainer?.name ?? t.trainer.name}
+                                        onChange={e =>
+                                          setEditData(prev => ({
+                                            ...prev,
+                                            trainer: {
+                                              name: e.target.value,
+                                              isExternal: prev.trainer?.isExternal ?? t.trainer.isExternal,
+                                              department: prev.trainer?.department ?? t.trainer.department,
+                                              designation: prev.trainer?.designation ?? t.trainer.designation,
+                                              source: prev.trainer?.source ?? t.trainer.source,
+                                              organisation: prev.trainer?.organisation ?? t.trainer.organisation,
+                                              mobile: prev.trainer?.mobile ?? t.trainer.mobile,
+                                              email: prev.trainer?.email ?? t.trainer.email
+                                            }
+                                          }))
+                                        }
+                                      />
+                                    ) : (
+                                      <span className="font-medium text-blue-600">{t.trainer.name}</span>
+                                    )}
+                                  </td>
+
+                                  {/* Status */}
+                                  <td className="p-4">
+                                    {isEditing ? (
+                                      <select
+                                        className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                                        value={editData.status ?? t.status ?? 'Proposed'}
+                                        onChange={e => setEditData(prev => ({ ...prev, status: e.target.value }))}
+                                      >
+                                        <option value="Proposed">Proposed</option>
+                                        <option value="Suggested">Suggested</option>
+                                        <option value="Scheduled">Scheduled</option>
+                                        <option value="Completed">Completed</option>
+                                        <option value="Rejected">Rejected</option>
+                                        <option value="Archived">Archived</option>
+                                      </select>
+                                    ) : (
+                                      <span className={`status-pill ${t.status?.toLowerCase().replace(' ', '-') || ''}`}>
+                                        {t.status || '—'}
+                                      </span>
+                                    )}
+                                  </td>
+
+                                  {/* Reason */}
+                                  <td className="p-4 text-center text-gray-700 font-medium">
+                                    {t.status === 'Rejected' ? (
+                                      <span className="text-red-600 italic">{t.reason || 'No reason'}</span>
+                                    ) : (
+                                      '—'
+                                    )}
+                                  </td>
+
+                                  {/* Date */}
+                                  <td className="p-4 text-gray-600 font-mono italic">
+                                    {isEditing ? (
+                                      <input
+                                        className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                                        type="date"
+                                        value={editData.trainingDate ? new Date(editData.trainingDate).toISOString().split('T')[0] : ''}
+                                        onChange={e => setEditData(prev => ({ ...prev, trainingDate: e.target.value }))}
+                                      />
+                                    ) : (
+                                      formatDate(t.trainingDate)
+                                    )}
+                                  </td>
+
+                                  {/* Priority */}
+                                  <td className="p-4">
+                                    {isEditing ? (
+                                      <select
+                                        className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
+                                        value={editData.priority ?? t.priority ?? 'P3'}
+                                        onChange={e => setEditData(prev => ({ ...prev, priority: e.target.value as 'P1' | 'P2' | 'P3' }))}
+                                      >
+                                        <option value="P3">P3</option>
+                                        <option value="P2">P2</option>
+                                        <option value="P1">P1</option>
+                                      </select>
+                                    ) : (
+                                      <span className={`priority-text ${t.priority?.toLowerCase() || 'p3'}`}>
+                                        {t.priority || 'P3'}
+                                      </span>
+                                    )}
+                                  </td>
+
+                                  {/* Action */}
+                                  <td className="p-4 text-center">
+                                    <div className="flex justify-center gap-3 flex-wrap">
+                                      {isEditing ? (
+                                        <>
+                                          <button
+                                            onClick={saveEdit}
+                                            className="p-2 bg-green-600 text-white rounded hover:bg-green-700 transition"
+                                            title="Save changes"
+                                          >
+                                            <Save size={16} />
+                                          </button>
+                                          <button
+                                            onClick={cancelEditing}
+                                            className="p-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition"
+                                            title="Cancel"
+                                          >
+                                            <X size={16} />
+                                          </button>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <button
+                                            onClick={() => startEditing(t)}
+                                            className="p-2 hover:bg-blue-50 text-blue-600 rounded transition"
+                                            title="Edit row"
+                                          >
+                                            <Edit size={16} />
+                                          </button>
+
+                                          {t.status === 'Proposed' && t.approved === true && (
+                                            <button
+                                              onClick={() => {
+                                                setSchedulingTrainingId(t._id!);
+                                                setScheduleDate('');
+                                                setIsScheduleModalOpen(true);
+                                              }}
+                                              className="p-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition"
+                                              title="Schedule training date"
+                                            >
+                                              <Calendar size={16} />
+                                            </button>
+                                          )}
+
+                                          <button
+                                            onClick={() => handleArchive(t._id!)}
+                                            className="p-2 bg-amber-600 text-white rounded hover:bg-amber-700 transition"
+                                            title="Archive this training"
+                                          >
+                                            <Archive size={16} />
+                                          </button>
+
+                                          <button
+                                            onClick={() => deleteTraining(t._id!)}
+                                            className="p-2 hover:bg-red-50 text-red-600 rounded transition"
+                                            title="Delete row"
+                                          >
+                                            <Trash2 size={16} />
+                                          </button>
+                                        </>
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  {/* Remark */}
+                                  <td className="p-4 text-center text-gray-400 italic font-medium">
+                                    {t.remark || '--'}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                </>
+              )}
 
           {/* Scorecard */}
           {currentTab === 'scorecard' && (
