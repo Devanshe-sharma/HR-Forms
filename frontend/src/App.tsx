@@ -11,7 +11,7 @@ import LetterTemplate from "./pages/LetterTemplate";
 import ComingSoon from "./pages/ComingSoon";
 import AllApplicants from "./pages/AllApplicants";
 import NewRequisitionForm from "./pages/new-requisition-form";
-import TrainingPage from "./pages/TrainingPage";
+import TrainingPage from "./pages/TrainingPageImpl";
 import Outing from "./pages/Outing";
 import Requisition from "./pages/Requisition";
 import Onboarding from "./pages/Onboarding";

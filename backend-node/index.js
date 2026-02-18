@@ -1,9 +1,11 @@
 require('dotenv').config();
 
 const express = require('express');
+
 const mongoose = require('mongoose');
 const cors = require('cors');
 const cron = require('node-cron');
+const trainingRoutes = require('./routes/training');
 
 const app = express();
 
@@ -13,28 +15,26 @@ app.use(express.json());
 
 /* ─────────────────── ENV CHECK ─────────────────── */
 console.log("ENV CHECK:", {
-  mongo: !!process.env.MONGO_URI,
+  mongo:             !!process.env.MONGO_URI,
   googleClientEmail: !!process.env.GOOGLE_CLIENT_EMAIL,
-  googlePrivateKey: !!process.env.GOOGLE_PRIVATE_KEY,
+  googlePrivateKey:  !!process.env.GOOGLE_PRIVATE_KEY,
 });
 
 /* ─────────────────── ROUTES ─────────────────── */
-app.get('/', (req, res) => {
-  res.send('Backend server is alive!');
-});
+app.get('/', (req, res) => res.send('Backend server is alive!'));
 
-app.use('/api/employees', require('./routes/employees'));
-app.use('/api/departments', require('./routes/departments'));
-app.use('/api/designations', require('./routes/designations'));
+app.use('/api/employees',          require('./routes/employees'));
+app.use('/api/departments',        require('./routes/departments'));
+app.use('/api/designations',       require('./routes/designations'));
 app.use('/api/hiringrequisitions', require('./routes/hiringRequisitions'));
-app.use('/api/ctc-components', require('./routes/ctcComponents'));
-app.use('/api/training', require('./routes/training'));
-app.use("/api/requisition", require("./routes/requisition"));
-app.use('/api/onboarding', require('./routes/onboarding'));
-app.use('/api/exit', require('./routes/exit'));
-app.use('/api/outing', require('./routes/outing'));
-app.use('/api', require('./routes/sheetWebhook'));
-app.use("/api/sync", require("./routes/syncFms"));
+app.use('/api/ctc-components',     require('./routes/ctcComponents'));
+app.use('/api/trainings',          require('./routes/training'));   // ✅ single mount — removed duplicate /api mount
+app.use('/api/requisition',        require('./routes/requisition'));
+app.use('/api/onboarding',         require('./routes/onboarding'));
+app.use('/api/exit',               require('./routes/exit'));
+app.use('/api/outing',             require('./routes/outing'));
+app.use('/api',                    require('./routes/sheetWebhook'));
+app.use('/api/sync',               require('./routes/syncFms'));
 
 /* ─────────────────── DATABASE ─────────────────── */
 mongoose
@@ -90,12 +90,10 @@ cron.schedule(
 
 /* ─────────────────── SERVER START ─────────────────── */
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
 /* ─────────────────── DEV TEST (Optional) ─────────────────── */
-// Comment this out in production if needed
+// Comment this out in production
 (async () => {
   try {
     console.log('🧪 Testing upcoming outing reminder...');

@@ -1,214 +1,98 @@
+// models/Training.js
 const mongoose = require('mongoose');
-const Schema = mongoose.Schema;
+const { Schema } = mongoose;
 
-/**
- * Training Schema
- * Handles the lifecycle of a training session from Management suggestion
- * to HR scheduling and final employee feedback.
- */
-const TrainingSchema = new Schema(
-  {
-    // ───────────────────────────────────────────────
-    // Core training details
-    // ───────────────────────────────────────────────
-    // ───────────────────────────────────────────────
-// Core training details
-// ───────────────────────────────────────────────
-topic: {
-  type: String,
-  required: [true, 'Training topic is required'],
-  trim: true,
-  minlength: 3,
-},
-description: {
-  type: String,
-  required: [true, 'Description is required'],
-  trim: true,
-  minlength: 10,
-},
-trainingDate: {
-  type: Date,
-  required: [false, 'Training date is required'],
-  default: null,
-},
-durationHours: {
-  type: Number,
-  min: 0.5,
-  default: 2,
-},
-location: {
-  type: String,
-  trim: true,
-  default: 'Online / Conference Room',
-},
-mode: {
-  type: String,
-  enum: ['Online', 'In-Person', 'Hybrid'],
-  default: 'Online',
-  trim: true,
-},
-venue: {
-  type: String,
-  trim: true,
-  default: '',
-},
-meetingLink: {
-  type: String,
-  trim: true,
-  default: '',
-},
+const trainingSchema = new Schema({
+  // Short display ID e.g. TRN-000001 (set in pre-save)
+  trainingId: { type: String, trim: true, default: '' },
 
-    // ───────────────────────────────────────────────
-    // Status & Priority
-    // ───────────────────────────────────────────────
-    status: {
+  // ── Phase 1: assign capabilities & suggest topic(s) ────────────────────────
+  phase1: {
+    departments: { type: [String], default: [] }, // empty for Generic
+    designation: { type: String, trim: true, default: '' },
+    category: { type: String, trim: true, default: '' },
+    trainingType: {
       type: String,
-      enum: [
-        'Proposed',       // Management suggestion
-        'Under Review',   // HR is checking
-        'Approved',       // Ready to be scheduled
-        'Scheduled',      // Date finalized
-        'Completed',      // Training over
-        'Cancelled',
-        'Archived',       // Past date auto-archive
-        'Rejected'        // Management/HR rejected
-      ],
-      default: 'Proposed',
-      index: true,
+      enum: ['Generic', 'Dept Specific', 'Level Specific', 'Multi Dept'],
+      default: 'Dept Specific',
     },
-    reason: {
-        type: String,
-        trim: true,
-        default: '',
-      },
-    priority: {
-      type: String,
-      enum: ['P1', 'P2', 'P3'],
-      default: 'P3',
-      index: true,
-    },
-
-    // ───────────────────────────────────────────────
-    // Origin Information
-    // ───────────────────────────────────────────────
-    proposedBy: {
-      type: Schema.Types.ObjectId,
-      ref: 'Employee',
-      required: false, 
-    },
-    proposedByName: {
-      type: String,
-      required: true,
-      default: 'System',
-    },
-    proposedByRole: {
-      type: String,
-      enum: ['Management', 'HR', 'Employee'],
-      required: true,
-      default: 'HR',
-    },
-    proposedAt: {
-      type: Date,
-      default: Date.now,
-    },
-    managementReason: {
-      type: String,
-      trim: true,
-      default: '',
-    },
-
-    // ───────────────────────────────────────────────
-    // Trainer Details
-    // ───────────────────────────────────────────────
-    trainer: {
-      employee: {
-        type: Schema.Types.ObjectId,
-        ref: 'Employee',
-      }, 
-      name: {
-        type: String,
-        required: [true, 'Trainer name is required'],
-        trim: true,
-      },
-      department: String,
-      designation: String,
-      isExternal: {
-        type: Boolean,
-        default: false,
-      },
-      externalOrg: String,
-      externalContact: String, // Mobile or Email
-    },
-
-    // ───────────────────────────────────────────────
-    // Feedback & Attendance Log
-    // ───────────────────────────────────────────────
-    feedbacks: [
-      {
-        employee: {
-          type: Schema.Types.ObjectId,
-          ref: 'Employee',
-          // required: true,
-        },
-        employeeName: {
-          type: String,
-          required: true,
-        },
-        attended: {
-          type: Boolean,
-          default: false,
-        },
-        overallRating: {
-          type: Number,
-          min: 1,
-          max: 5,
-        },
-        contentQuality: {
-          type: Number,
-          min: 1,
-          max: 5,
-        },
-        whatWasMissing: String,
-        howHelpful: String,
-        suggestedTopics: String,
-        submittedAt: {
-          type: Date,
-          default: Date.now,
-        },
-      },
-    ],
-
-    // ───────────────────────────────────────────────
-    // Automated Stats (Scorecard)
-    // ───────────────────────────────────────────────
-    scorecard: {
-      trainerAvgRating: { type: Number, default: 0 },
-      totalAttendees: { type: Number, default: 0 },
-      attendedCount: { type: Number, default: 0 },
-      noShowCount: { type: Number, default: 0 },
-      lastCalculated: Date,
-    },
-
-    // ───────────────────────────────────────────────
-    // Metadata for Filtering
-    // ───────────────────────────────────────────────
-    quarter: { type: String, index: true },
-    financialYear: { type: String, index: true },
-    archivedAt: Date,
+    level: { type: Number, enum: [1, 2, 3], default: null }, // for Level Specific
+    capabilities: { type: [String], default: [] },
+    topicSuggestions: { type: [String], default: [] },
+    selectedTopic: { type: String, trim: true, default: '' }, // what HR submits for approval
   },
-  {
-    timestamps: true,
-    collection: 'training',
+
+  // ── Phase 2: training details (linked by training_id) ─────────────────────
+  phase2: {
+    trainingTopic: { type: String, trim: true, default: '' }, // dropdown selection
+    type: {
+      type: String,
+      enum: ['Generic', 'Dept Specific', 'Level Specific', 'Multi Dept'],
+      default: 'Dept Specific',
+    },
+    capabilitiesCovered: { type: [String], default: [] },
+    description: { type: String, trim: true, default: '' },
+    priority: { type: String, enum: ['P1', 'P2', 'P3'], default: 'P3' },
+    trainerType: { type: String, enum: ['Internal Trainer', 'External Consultant'], default: 'Internal Trainer' },
+    internalTrainer: {
+      employeeId: { type: String, default: '' },
+      name: { type: String, default: '' },
+      department: { type: String, default: '' },
+      designation: { type: String, default: '' },
+    },
+    externalTrainer: {
+      source: { type: String, default: '' },
+      trainerName: { type: String, default: '' },
+      organisation: { type: String, default: '' },
+      mobile: { type: String, default: '' },
+      email: { type: String, default: '' },
+    },
+    status: { type: String, trim: true, default: 'Draft' },
+    contentPdfLink: { type: String, trim: true, default: '' },
+    videoLink: { type: String, trim: true, default: '' },
+    assessmentLink: { type: String, trim: true, default: '' },
+  },
+
+  // Scheduling — set by management after approval (Generic trainings only)
+  scheduledDate: { type: Date, default: null },
+
+  approval: {
+    status:     { type: String, enum: ['Pending', 'Approved', 'Rejected'], default: 'Pending' },
+    approvedBy: { type: String, default: '' },
+    remarks:    { type: String, default: '' },
+    approvedAt: { type: Date, default: null },
+  },
+
+  feedback: [{
+    participant: { type: String },
+    rating:      { type: Number, min: 1, max: 5 },
+    comments:    { type: String, default: '' },
+  }],
+
+  scoring: {
+    averageScore:    { type: Number, default: 0 },
+    finalEvaluation: { type: String, default: '' },
+  },
+
+  workflowStatus: {
+    type: String,
+    enum: ['Draft', 'Pending Approval', 'Approved', 'Scheduled', 'Rejected', 'Completed', 'Closed'],
+    default: 'Draft',
+  },
+}, { timestamps: true });
+
+trainingSchema.index({ workflowStatus: 1 });
+trainingSchema.index({ 'phase1.designation': 1 });
+trainingSchema.index({ 'phase1.trainingType': 1 });
+trainingSchema.index({ 'approval.status': 1 });
+
+// Auto-generate a short trainingId on first save
+trainingSchema.pre('save', async function () {
+  if (!this.trainingId) {
+    const count = await mongoose.model('Training').countDocuments();
+    this.trainingId = `TRN-${String(count + 1).padStart(6, '0')}`;
   }
-);
+});
 
-// ───────────────────────────────────────────────
-// Indexes
-// ───────────────────────────────────────────────
-TrainingSchema.index({ status: 1, trainingDate: -1 });
-TrainingSchema.index({ financialYear: 1, quarter: 1 });
-TrainingSchema.index({ 'trainer.name': 1 });
-
-
-
-module.exports = mongoose.model('Training', TrainingSchema);
+const Training = mongoose.models.Training || mongoose.model('Training', trainingSchema);
+module.exports = Training;

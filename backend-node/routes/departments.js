@@ -1,13 +1,16 @@
+// routes/departments.js
 const express = require('express');
 const router = express.Router();
-const department = require('../models/Department');
+const Department = require('../models/Department');
 
 router.get('/', async (req, res) => {
-    const departments = await department.find();
-
-    res.json(departments.map(d => ({
-        data: departments
-    })));
+    try {
+        const departments = await Department.find().sort({ department: 1 });
+        // Return flat array with { success, data } wrapper so frontend handles it uniformly
+        res.json({ success: true, data: departments });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 module.exports = router;

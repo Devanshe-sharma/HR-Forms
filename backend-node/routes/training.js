@@ -1,229 +1,365 @@
-// routes/training.js
+// routes/training.js  —  mounted at /api/trainings
+
 const express = require('express');
 const router = express.Router();
 const Training = require('../models/Training');
-const sendEmail = require('../emails/sendEmail'); // adjust path if needed
+const Employee = require('../models/Employee');
 
+// Async wrapper
+const asyncHandler = fn => (req, res, next) =>
+  Promise.resolve(fn(req, res, next)).catch(next);
 
-// 1. CREATE new training / proposal / suggestion
-router.post('/', async (req, res) => {
-  try {
-    console.log('[POST /training] Payload received:', req.body);
+const normalizeTrainingType = (t) => {
+  if (!t) return undefined;
+  const v = String(t).trim();
+  // allow nicer labels from UI
+  if (v === 'Department specific' || v === 'Department Specific') return 'Dept Specific';
+  if (v === 'Level specific' || v === 'Level Specific') return 'Level Specific';
+  if (v === 'Multi department' || v === 'Multi Department') return 'Multi Dept';
+  return v;
+};
 
-    const data = req.body;
+// ─────────────────────────────────────────────────────────────
+// GET ALL
+// ─────────────────────────────────────────────────────────────
+router.get('/', asyncHandler(async (req, res) => {
+  const trainings = await Training.find().sort({ createdAt: -1 });
+  res.json({ success: true, data: trainings });
+}));
 
-    // Fallbacks for required fields (prevents validation crash during dev)
-    if (!data.topic) data.topic = 'Untitled Training';
-    if (!data.description) data.description = 'No description provided';
-    if (!data.trainer?.name) {
-      data.trainer = { ...data.trainer, name: 'To be assigned' };
+// ─────────────────────────────────────────────────────────────
+// CREATE PHASE 1 (HR → capability assignment + topic suggestion)
+// ─────────────────────────────────────────────────────────────
+router.post('/phase1', asyncHandler(async (req, res) => {
+  const {
+    departments = [],
+    designation = '',
+    category = '',
+    trainingType,
+    level = null,
+    capabilities = [],
+    topicSuggestions = [],
+    selectedTopic = '',
+  } = req.body || {};
+
+  const normalizedType = normalizeTrainingType(trainingType) || 'Dept Specific';
+
+  if (normalizedType !== 'Generic' && (!Array.isArray(departments) || departments.length === 0)) {
+    return res.status(400).json({ success: false, error: 'Please select department(s)' });
+  }
+  if (normalizedType !== 'Generic' && !String(designation).trim()) {
+    return res.status(400).json({ success: false, error: 'Please select designation' });
+  }
+  if (normalizedType === 'Level Specific' && ![1, 2, 3].includes(Number(level))) {
+    return res.status(400).json({ success: false, error: 'Please select level 1, 2, or 3' });
+  }
+  if (!String(selectedTopic).trim()) {
+    return res.status(400).json({ success: false, error: 'Please select/provide a training topic' });
+  }
+
+  const training = await Training.create({
+    phase1: {
+      departments: Array.isArray(departments) ? departments : [],
+      designation: String(designation || '').trim(),
+      category: String(category || '').trim(),
+      trainingType: normalizedType,
+      level: normalizedType === 'Level Specific' ? Number(level) : null,
+      capabilities: Array.isArray(capabilities) ? capabilities : [],
+      topicSuggestions: Array.isArray(topicSuggestions) ? topicSuggestions : [],
+      selectedTopic: String(selectedTopic || '').trim(),
+    },
+    approval: { status: 'Pending' },
+    workflowStatus: 'Pending Approval',
+  });
+
+  res.status(201).json({ success: true, data: training });
+}));
+
+// Backward-compatible alias (older UI used /schedule)
+router.post('/schedule', asyncHandler(async (req, res) => {
+  req.url = '/phase1';
+  return router.handle(req, res);
+}));
+
+// ─────────────────────────────────────────────────────────────
+// CREATE/UPDATE PHASE 2 (HR → training details by training_id)
+// ─────────────────────────────────────────────────────────────
+router.post('/:id/phase2', asyncHandler(async (req, res) => {
+  const training = await Training.findById(req.params.id);
+  if (!training) return res.status(404).json({ success: false, error: 'Training not found' });
+
+  const {
+    trainingTopic = '',
+    description = '',
+    priority = 'P3',
+    trainerType = 'Internal Trainer',
+    internalTrainer = null,
+    externalTrainer = null,
+    status = 'Draft',
+    contentPdfLink = '',
+    videoLink = '',
+    assessmentLink = '',
+  } = req.body || {};
+
+  if (!String(trainingTopic).trim()) {
+    return res.status(400).json({ success: false, error: 'Training topic is required' });
+  }
+  if (!String(description).trim()) {
+    return res.status(400).json({ success: false, error: 'Description is required' });
+  }
+  if (!['P1', 'P2', 'P3'].includes(priority)) {
+    return res.status(400).json({ success: false, error: 'Invalid priority' });
+  }
+  if (!['Internal Trainer', 'External Consultant'].includes(trainerType)) {
+    return res.status(400).json({ success: false, error: 'Invalid trainer type' });
+  }
+
+  // Resolve internal trainer (denormalization)
+  let resolvedInternal = training.phase2?.internalTrainer || {};
+  let resolvedExternal = training.phase2?.externalTrainer || {};
+
+  if (trainerType === 'Internal Trainer') {
+    const employeeId = internalTrainer?.employeeId;
+    if (!employeeId) {
+      return res.status(400).json({ success: false, error: 'Please select internal trainer' });
+    }
+    const emp = await Employee.findById(employeeId).lean();
+    if (!emp) return res.status(400).json({ success: false, error: 'Invalid internal trainer' });
+    resolvedInternal = {
+      employeeId: String(emp._id),
+      name: emp.full_name || '',
+      department: emp.department || '',
+      designation: emp.designation || '',
+    };
+    resolvedExternal = {
+      source: '',
+      trainerName: '',
+      organisation: '',
+      mobile: '',
+      email: '',
+    };
+  } else {
+    if (!externalTrainer?.trainerName) {
+      return res.status(400).json({ success: false, error: 'External trainer name is required' });
+    }
+    resolvedExternal = {
+      source: externalTrainer?.source || '',
+      trainerName: externalTrainer?.trainerName || '',
+      organisation: externalTrainer?.organisation || '',
+      mobile: externalTrainer?.mobile || '',
+      email: externalTrainer?.email || '',
+    };
+    resolvedInternal = {
+      employeeId: '',
+      name: '',
+      department: '',
+      designation: '',
+    };
+  }
+
+  training.phase2 = {
+    ...training.phase2?.toObject?.(),
+    trainingTopic: String(trainingTopic).trim(),
+    type: training.phase1?.trainingType || training.phase2?.type || 'Dept Specific',
+    capabilitiesCovered: training.phase1?.capabilities || training.phase2?.capabilitiesCovered || [],
+    description: String(description).trim(),
+    priority,
+    trainerType,
+    internalTrainer: resolvedInternal,
+    externalTrainer: resolvedExternal,
+    status: String(status || 'Draft').trim(),
+    contentPdfLink: String(contentPdfLink || '').trim(),
+    videoLink: String(videoLink || '').trim(),
+    assessmentLink: String(assessmentLink || '').trim(),
+  };
+
+  await training.save();
+  res.json({ success: true, data: training });
+}));
+
+// ─────────────────────────────────────────────────────────────
+// UPDATE (Edit / Schedule Date)
+// ─────────────────────────────────────────────────────────────
+router.patch('/:id', asyncHandler(async (req, res) => {
+
+  const training = await Training.findById(req.params.id);
+  if (!training)
+    return res.status(404).json({ success: false, error: 'Training not found' });
+
+  const {
+    phase1,
+    phase2,
+    scheduledDate
+  } = req.body;
+
+  if (phase1) {
+    const normalizedType = normalizeTrainingType(phase1.trainingType) || training.phase1?.trainingType;
+    training.phase1 = {
+      ...training.phase1?.toObject?.(),
+      ...phase1,
+      trainingType: normalizedType,
+    };
+    if (normalizedType !== 'Level Specific') training.phase1.level = null;
+  }
+  if (phase2) {
+    training.phase2 = {
+      ...training.phase2?.toObject?.(),
+      ...phase2,
+    };
+  }
+
+  // Only allow scheduling if Approved
+  if (scheduledDate) {
+    if (training.workflowStatus !== 'Approved') {
+      return res.status(400).json({
+        success: false,
+        error: 'Training must be Approved before scheduling'
+      });
     }
 
-    // Auto-set defaults
-    data.proposedByRole = data.proposedByRole || 'HR';
-    data.proposedByName = data.proposedByName || 'System / Anonymous';
-    data.proposedAt = new Date();
+    training.scheduledDate = new Date(scheduledDate);
+    training.workflowStatus = 'Scheduled';
+  }
 
-    if (!data.status) {
-      data.status = data.proposedByRole === 'Management' ? 'Proposed' : 'Under Review';
-    }
+  await training.save();
 
-    const training = new Training(data);
-    const saved = await training.save();
+  res.json({ success: true, data: training });
+}));
 
-    res.status(201).json({
-      success: true,
-      data: saved
-    });
-  } catch (err) {
-    console.error('[POST /training] ERROR:', err.message, err.stack);
-    res.status(400).json({
+// ─────────────────────────────────────────────────────────────
+// FEEDBACK (Phase 3)
+// ─────────────────────────────────────────────────────────────
+router.post('/:id/feedback', asyncHandler(async (req, res) => {
+  const training = await Training.findById(req.params.id);
+  if (!training) return res.status(404).json({ success: false, error: 'Training not found' });
+
+  const { participant, rating, comments = '' } = req.body || {};
+  if (!participant) return res.status(400).json({ success: false, error: 'Participant is required' });
+  if (!rating) return res.status(400).json({ success: false, error: 'Rating is required' });
+
+  training.feedback = training.feedback || [];
+  training.feedback.push({
+    participant: String(participant),
+    rating: Number(rating),
+    comments: String(comments || ''),
+  });
+
+  await training.save();
+  res.json({ success: true, data: training });
+}));
+
+// ─────────────────────────────────────────────────────────────
+// DELETE
+// ─────────────────────────────────────────────────────────────
+router.delete('/:id', asyncHandler(async (req, res) => {
+  const training = await Training.findByIdAndDelete(req.params.id);
+  if (!training)
+    return res.status(404).json({ success: false, error: 'Training not found' });
+
+  res.json({ success: true });
+}));
+
+
+// ─────────────────────────────────────────────────────────────
+// APPROVE (Management)
+// ─────────────────────────────────────────────────────────────
+router.post('/:id/approve', asyncHandler(async (req, res) => {
+
+  const training = await Training.findById(req.params.id);
+  if (!training)
+    return res.status(404).json({ success: false, error: 'Training not found' });
+
+  if (training.workflowStatus !== 'Pending Approval') {
+    return res.status(400).json({
       success: false,
-      error: err.message || 'Validation or save failed',
-      details: err.errors ? Object.keys(err.errors) : null
+      error: 'Training is not pending approval'
     });
   }
-});
 
-// 2. GET all trainings (with filters for tabs)
-router.get('/', async (req, res) => {
-  try {
-    const { status, proposedByRole, priority, quarter, financialYear, limit = 20, page = 1 } = req.query;
+  training.approval = {
+    status: 'Approved',
+    remarks: req.body.remarks || '',
+    approvedBy: 'Management',
+    approvedAt: new Date()
+  };
 
-    const filter = {};
+  training.workflowStatus = 'Approved';
 
-    if (status) {
-      filter.status = { $in: status.split(',').map(s => s.trim()) };
-    }
-    if (proposedByRole) filter.proposedByRole = proposedByRole;
-    if (priority) filter.priority = priority;
-    if (quarter) filter.quarter = quarter;
-    if (financialYear) filter.financialYear = financialYear;
+  await training.save();
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+  res.json({ success: true, data: training });
+}));
 
-    const trainings = await Training.find(filter)
-      .sort({ trainingDate: -1, createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
 
-      console.log('Sample quarter values:', trainings.map(t => ({
-      topic: t.topic,
-      date: t.trainingDate,
-      quarter: t.quarter,
-      fy: t.financialYear
-    })));
+// ─────────────────────────────────────────────────────────────
+// REJECT (Management)
+// ─────────────────────────────────────────────────────────────
+router.post('/:id/reject', asyncHandler(async (req, res) => {
 
-    const total = await Training.countDocuments(filter);
+  const training = await Training.findById(req.params.id);
+  if (!training)
+    return res.status(404).json({ success: false, error: 'Training not found' });
 
-    res.json({
-      success: true,
-      count: trainings.length,
-      total,
-      page: parseInt(page),
-      totalPages: Math.ceil(total / limit),
-      data: trainings
-    });
-  } catch (err) {
-    console.error('[GET /training] ERROR:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// 3. GET single training
-router.get('/:id', async (req, res) => {
-  try {
-    const training = await Training.findById(req.params.id);
-    if (!training) {
-      return res.status(404).json({ success: false, error: 'Training not found' });
-    }
-    res.json({ success: true, data: training });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// 4. UPDATE training (used for inline editing)
-router.patch('/:id', async (req, res) => {
-  try {
-    console.log(`[PATCH /training/${req.params.id}] Updates:`, req.body);
-
-    const updated = await Training.findByIdAndUpdate(
-      req.params.id,
-      { $set: req.body }, // only update sent fields
-      { new: true, runValidators: true }
-    );
-
-    if (!updated) {
-      return res.status(404).json({ success: false, error: 'Training not found' });
-    }
-
-    res.json({ success: true, data: updated });
-  } catch (err) {
-    console.error(`[PATCH /training/${req.params.id}] ERROR:`, err);
-    res.status(400).json({
+  if (!req.body.remarks) {
+    return res.status(400).json({
       success: false,
-      error: err.message || 'Update failed',
-      details: err.errors ? Object.keys(err.errors) : null
+      error: 'Remarks required for rejection'
     });
   }
-});
 
-// 5. DELETE training (hard delete)
-router.delete('/:id', async (req, res) => {
-  try {
-    const deleted = await Training.findByIdAndDelete(req.params.id);
-    if (!deleted) {
-      return res.status(404).json({ success: false, error: 'Training not found' });
-    }
-    res.json({ success: true, message: 'Training deleted permanently' });
-  } catch (err) {
-    console.error('[DELETE /training] ERROR:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
+  training.approval = {
+    status: 'Rejected',
+    remarks: req.body.remarks,
+    approvedBy: 'Management',
+    approvedAt: new Date()
+  };
 
-// 6. ARCHIVE training (soft delete - preferred for audit trail)
-router.patch('/:id/archive', async (req, res) => {
-  try {
-    const training = await Training.findById(req.params.id);
-    if (!training) {
-      return res.status(404).json({ success: false, error: 'Training not found' });
-    }
+  training.workflowStatus = 'Rejected';
 
-    training.status = 'Archived';
-    training.archivedAt = new Date();
-    await training.save();
+  await training.save();
 
-    res.json({ success: true, data: training });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
+  res.json({ success: true, data: training });
+}));
 
-// 7. SUBMIT FEEDBACK
-// routes/training.js
-// routes/training.js → post /:id/feedback
-// routes/training.js
-router.post('/:id/feedback', async (req, res) => {
-  try {
-    const training = await Training.findById(req.params.id);
-    if (!training) return res.status(404).json({ error: 'Training not found' });
 
-    training.feedbacks.push({
-      employeeName: req.body.employeeName,
-      attended: req.body.attended,
-      overallRating: req.body.overallRating,
-      contentQuality: req.body.contentQuality,
-      whatWasMissing: req.body.whatWasMissing,
-      howHelpful: req.body.howHelpful,
-      submittedAt: new Date(),
+// ─────────────────────────────────────────────────────────────
+// GET BY ID
+// ─────────────────────────────────────────────────────────────
+router.get('/:id', asyncHandler(async (req, res) => {
+  const training = await Training.findById(req.params.id);
+  if (!training)
+    return res.status(404).json({ success: false, error: 'Training not found' });
+
+  res.json({ success: true, data: training });
+}));
+
+
+// ─────────────────────────────────────────────────────────────
+// ERROR HANDLER
+// ─────────────────────────────────────────────────────────────
+router.use((err, req, res, next) => {
+  console.error('❌ Training route error:', err);
+
+  if (err.name === 'ValidationError') {
+    return res.status(400).json({
+      success: false,
+      error: Object.values(err.errors)
+        .map(e => e.message)
+        .join(', ')
     });
-
-    await training.save();
-    res.json({ success: true, message: 'Feedback submitted' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
   }
-});
 
-// routes/training.js or new suggestions.js
-router.post('/suggestions', async (req, res) => {
-  try {
-    // Save suggestion (e.g., to a new Suggestion model or append to training)
-    // For simplicity, just log or save somewhere
-    console.log('New suggestion:', req.body.suggestion);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
-  }
-});
-
-
-router.get('/test-email', async (req, res) => {
-  try {
-    const result = await sendEmail({
-      to: 'Software.developer@briskolive.com',           // ← change to your email for testing
-      subject: 'Test Email from HR Training System',
-      html: `
-        <h2>Hello from your app!</h2>
-        <p>This is a test email sent using Nodemailer.</p>
-        <p>Time: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</p>
-        <hr>
-        <small>If you received this → Nodemailer is working!</small>
-      `,
+  if (err.name === 'CastError') {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid ID format'
     });
-
-    if (result.success) {
-      res.json({ success: true, message: 'Test email sent!' });
-    } else {
-      res.status(500).json({ success: false, error: result.error.message });
-    }
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
   }
-});
 
-module.exports = router;
+  res.status(500).json({
+    success: false,
+    error: err.message || 'Internal server error'
+  });
+});
 
 module.exports = router;
