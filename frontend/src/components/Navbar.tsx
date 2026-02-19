@@ -13,6 +13,7 @@ const routeTitles: Record<string, string> = {
   '/onboarding': 'Onboardings',
   '/training-page?tab=HR': 'HR Training',
   '/training-page?tab=management': 'Management Training',
+  '/training-page?tab=employee': 'Employee',
   '/outing?tab=HR': 'HR Outing',
   '/outing?tab=management': 'Management Outing',
   '/profile': 'Profile',

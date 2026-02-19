@@ -69,7 +69,7 @@ router.post('/phase1', asyncHandler(async (req, res) => {
       selectedTopic: String(selectedTopic || '').trim(),
     },
     approval: { status: 'Pending' },
-    workflowStatus: 'Pending Approval',
+    workflowStatus: 'Proposed',
   });
 
   res.status(201).json({ success: true, data: training });
@@ -233,15 +233,32 @@ router.post('/:id/feedback', asyncHandler(async (req, res) => {
   const training = await Training.findById(req.params.id);
   if (!training) return res.status(404).json({ success: false, error: 'Training not found' });
 
-  const { participant, rating, comments = '' } = req.body || {};
-  if (!participant) return res.status(400).json({ success: false, error: 'Participant is required' });
-  if (!rating) return res.status(400).json({ success: false, error: 'Rating is required' });
+  const {
+    name,
+    department,
+    level,
+    overallRating,
+    contentQuality,
+    missing = '',
+    helpful = '',
+  } = req.body || {};
+
+  if (!name) return res.status(400).json({ success: false, error: 'Your name is required' });
+  if (!overallRating) return res.status(400).json({ success: false, error: 'Overall rating is required' });
+  if (!contentQuality) return res.status(400).json({ success: false, error: 'Content quality rating is required' });
 
   training.feedback = training.feedback || [];
   training.feedback.push({
-    participant: String(participant),
-    rating: Number(rating),
-    comments: String(comments || ''),
+    participant: String(name),
+    rating: Number(overallRating),
+    comments: String(helpful || ''),
+    attendeeName: String(name),
+    department: String(department || ''),
+    level: String(level || ''),
+    overallRating: Number(overallRating),
+    contentQuality: Number(contentQuality),
+    missing: String(missing || ''),
+    helpful: String(helpful || ''),
   });
 
   await training.save();
@@ -269,7 +286,7 @@ router.post('/:id/approve', asyncHandler(async (req, res) => {
   if (!training)
     return res.status(404).json({ success: false, error: 'Training not found' });
 
-  if (training.workflowStatus !== 'Pending Approval') {
+  if (training.workflowStatus !== 'Proposed') {
     return res.status(400).json({
       success: false,
       error: 'Training is not pending approval'
@@ -316,6 +333,21 @@ router.post('/:id/reject', asyncHandler(async (req, res) => {
 
   training.workflowStatus = 'Rejected';
 
+  await training.save();
+
+  res.json({ success: true, data: training });
+}));
+
+
+// ─────────────────────────────────────────────────────────────
+// ARCHIVE (Management)
+// ─────────────────────────────────────────────────────────────
+router.post('/:id/archive', asyncHandler(async (req, res) => {
+  const training = await Training.findById(req.params.id);
+  if (!training)
+    return res.status(404).json({ success: false, error: 'Training not found' });
+
+  training.workflowStatus = 'Archived';
   await training.save();
 
   res.json({ success: true, data: training });

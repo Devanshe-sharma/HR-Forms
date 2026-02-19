@@ -64,9 +64,20 @@ const trainingSchema = new Schema({
   },
 
   feedback: [{
-    participant: { type: String },
-    rating:      { type: Number, min: 1, max: 5 },
-    comments:    { type: String, default: '' },
+    // Legacy fields
+    participant:    { type: String },
+    rating:         { type: Number, min: 1, max: 5 },
+    comments:       { type: String, default: '' },
+
+    // Extended feedback (Phase 3)
+    attendeeName:   { type: String, trim: true, default: '' },
+    department:     { type: String, trim: true, default: '' },
+    level:          { type: String, trim: true, default: '' },
+    overallRating:  { type: Number, min: 1, max: 5 },
+    contentQuality: { type: Number, min: 1, max: 5 },
+    missing:        { type: String, default: '' },
+    helpful:        { type: String, default: '' },
+    respondedAt:    { type: Date, default: Date.now },
   }],
 
   scoring: {
@@ -76,8 +87,9 @@ const trainingSchema = new Schema({
 
   workflowStatus: {
     type: String,
-    enum: ['Draft', 'Pending Approval', 'Approved', 'Scheduled', 'Rejected', 'Completed', 'Closed'],
-    default: 'Draft',
+    // Business-facing statuses
+    enum: ['Proposed', 'Approved', 'Scheduled', 'Completed', 'Rejected', 'Archived'],
+    default: 'Proposed',
   },
 }, { timestamps: true });
 

@@ -55,7 +55,7 @@ export default function Sidebar() {
       subItems: [
         { to: '/training-page?tab=HR', text: 'HR Training', icon: <PeopleIcon /> },
         { to: '/training-page?tab=management', text: 'Management Training', icon: <BusinessCenterIcon /> },
-        { to: '/training-page?tab=employee-feedback', text: 'Employee Feedback', icon: <AssignmentIcon /> },
+        { to: '/training-page?tab=employee', text: 'Employee', icon: <AssignmentIcon /> },
         { to: '/training-page?tab=scorecard', text: 'Scorecard', icon: <ScoreIcon /> },
       ],
     },
