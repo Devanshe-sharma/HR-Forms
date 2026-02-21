@@ -17,6 +17,14 @@ export default {
 
         // If you want your own blue shade (otherwise just use blue-600 etc.)
         'brand-blue': '#3B82F6',
+
+        // HR layout: top navbar dark theme
+        'navy': {
+          900: '#0f172a',
+          800: '#1e293b',
+          700: '#334155',
+          600: '#475569',
+        },
       },
 
       animation: {
@@ -34,6 +42,7 @@ export default {
       // Optional: custom shadows, spacing, etc.
       boxShadow: {
         'soft': '0 2px 8px rgba(0, 0, 0, 0.08)',
+        'nav': '0 2px 10px rgba(0, 0, 0, 0.15)',
       },
     },
   },
