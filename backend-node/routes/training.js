@@ -4,6 +4,8 @@ const express = require('express');
 const router = express.Router();
 const Training = require('../models/Training');
 const Employee = require('../models/Employee');
+const TrainingAttempt = require('../models/TrainingAttempt');
+const RequiredScoreByLevel = require('../models/RequiredScoreByLevel');
 
 // Async wrapper
 const asyncHandler = fn => (req, res, next) =>
@@ -25,6 +27,152 @@ const normalizeTrainingType = (t) => {
 router.get('/', asyncHandler(async (req, res) => {
   const trainings = await Training.find().sort({ createdAt: -1 });
   res.json({ success: true, data: trainings });
+}));
+
+// ─────────────────────────────────────────────────────────────
+// SCORECARD — list employees, then employee drill-down
+// ─────────────────────────────────────────────────────────────
+router.get('/scorecard/employees', asyncHandler(async (req, res) => {
+  const employees = await Employee.find()
+    .select('_id employee_id full_name department designation level')
+    .sort({ full_name: 1 })
+    .lean();
+  res.json({ success: true, data: employees });
+}));
+
+router.get('/scorecard/employee/:employeeId', asyncHandler(async (req, res) => {
+  const { employeeId } = req.params;
+  const emp = await Employee.findById(employeeId).lean();
+  if (!emp) return res.status(404).json({ success: false, error: 'Employee not found' });
+
+  const attempts = await TrainingAttempt.find({ employeeId })
+    .sort({ trainingId: 1, attemptNo: 1 })
+    .lean();
+  const trainingIds = [...new Set(attempts.map(a => a.trainingId.toString()))];
+  const trainings = await Training.find({ _id: { $in: trainingIds } })
+    .select('trainingId phase2 phase1 scheduledDate feedback')
+    .lean();
+
+  const byTraining = {};
+  for (const t of trainings) {
+    byTraining[t._id.toString()] = t;
+  }
+
+  const rows = [];
+  for (const tid of trainingIds) {
+    const t = byTraining[tid];
+    if (!t) continue;
+    const trainingAttempts = attempts.filter(a => a.trainingId.toString() === tid).sort((a, b) => a.attemptNo - b.attemptNo);
+    const attempt1 = trainingAttempts[0];
+    const attempt2 = trainingAttempts[1] || null;
+    const latest = attempt2 || attempt1;
+    // Get required score: check matrix first, then override, then level-based
+    let requiredScore = 70;
+    if (t.phase2?.requiredScoreMatrix && Array.isArray(t.phase2.requiredScoreMatrix) && t.phase2.requiredScoreMatrix.length > 0) {
+      const empDept = emp.department || '';
+      const empLevel = emp.level || 1;
+      const matrixMatch = t.phase2.requiredScoreMatrix.find(
+        m => m.department === empDept && m.level === empLevel
+      );
+      if (matrixMatch) {
+        requiredScore = matrixMatch.requiredScore;
+      } else {
+        const levelScore = await RequiredScoreByLevel.findOne({ level: empLevel }).lean();
+        requiredScore = levelScore?.requiredScore ?? 70;
+      }
+    } else if (t.phase2?.requiredScore != null) {
+      requiredScore = t.phase2.requiredScore;
+    } else {
+      const levelScore = await RequiredScoreByLevel.findOne({ level: emp.level || 1 }).lean();
+      requiredScore = levelScore?.requiredScore ?? 70;
+    }
+
+    rows.push({
+      emp_id: emp.employee_id || emp._id.toString(),
+      employee_name: emp.full_name || '',
+      training_name: t.phase2?.trainingTopic || t.phase1?.selectedTopic || t.trainingId || '',
+      attempt_no: latest?.attemptNo ?? 0,
+      score_achieved: attempt1?.scoreAchieved ?? null,
+      required_score: requiredScore,
+      status: attempt1?.status ?? null,
+      assessment_date: attempt1?.attemptedAt ?? null,
+      retake: attempt2 ? 'Y' : 'N',
+      retake_score: attempt2?.scoreAchieved ?? null,
+      retake_date: attempt2?.attemptedAt ?? null,
+      retake_status: attempt2?.status ?? null,
+      final_status: latest?.status ?? null,
+      feedback_given: (t.feedback || []).some(f => String(f.attendeeName || f.participant || '').trim() && String(emp.full_name || '').trim() && (String(f.attendeeName || f.participant).toLowerCase() === String(emp.full_name).toLowerCase())),
+      feedback_due_at: t.scheduledDate ? new Date(new Date(t.scheduledDate).getTime() + 5 * 60 * 60 * 1000) : null,
+    });
+  }
+
+  res.json({ success: true, data: { employee: emp, rows } });
+}));
+
+// ─────────────────────────────────────────────────────────────
+// ASSESSMENT ATTEMPT (Phase 3) — max 2 attempts per employee per training
+// ─────────────────────────────────────────────────────────────
+router.post('/:id/assessment-attempt', asyncHandler(async (req, res) => {
+  const training = await Training.findById(req.params.id).lean();
+  if (!training) return res.status(404).json({ success: false, error: 'Training not found' });
+
+  const { employeeId, scoreAchieved } = req.body || {};
+  if (!employeeId) return res.status(400).json({ success: false, error: 'employeeId is required' });
+  const score = Math.min(100, Math.max(0, Number(scoreAchieved) ?? 0));
+
+  const emp = await Employee.findById(employeeId).lean();
+  if (!emp) return res.status(404).json({ success: false, error: 'Employee not found' });
+
+  const existing = await TrainingAttempt.find({ employeeId, trainingId: training._id }).sort({ attemptNo: 1 });
+  if (existing.length >= 2) {
+    return res.status(400).json({ success: false, error: 'Maximum 2 attempts allowed. No third attempt.' });
+  }
+
+  // Get required score: check matrix first (for multi-dept/level), then override, then level-based
+  let requiredScore = 70;
+  if (training.phase2?.requiredScoreMatrix && Array.isArray(training.phase2.requiredScoreMatrix) && training.phase2.requiredScoreMatrix.length > 0) {
+    const empDept = emp.department || '';
+    const empLevel = emp.level || 1;
+    const matrixMatch = training.phase2.requiredScoreMatrix.find(
+      m => m.department === empDept && m.level === empLevel
+    );
+    if (matrixMatch) {
+      requiredScore = matrixMatch.requiredScore;
+    } else {
+      // Fallback to level-based if no matrix match
+      const levelScore = await RequiredScoreByLevel.findOne({ level: empLevel }).lean();
+      requiredScore = levelScore?.requiredScore ?? 70;
+    }
+  } else if (training.phase2?.requiredScore != null) {
+    requiredScore = training.phase2.requiredScore;
+  } else {
+    const levelScore = await RequiredScoreByLevel.findOne({ level: emp.level || 1 }).lean();
+    requiredScore = levelScore?.requiredScore ?? 70;
+  }
+  const status = score >= requiredScore ? 'Pass' : 'Fail';
+  const attemptNo = existing.length + 1;
+
+  const attempt = await TrainingAttempt.create({
+    employeeId,
+    trainingId: training._id,
+    attemptNo,
+    scoreAchieved: score,
+    requiredScore,
+    status,
+    attemptedAt: new Date(),
+  });
+
+  const allAttempts = await TrainingAttempt.find({ employeeId, trainingId: training._id }).sort({ attemptNo: 1 }).lean();
+  const latestAttempt = allAttempts[allAttempts.length - 1];
+
+  res.json({
+    success: true,
+    data: {
+      attempt,
+      finalStatus: latestAttempt?.status ?? status,
+      attemptsRemaining: Math.max(0, 2 - allAttempts.length),
+    },
+  });
 }));
 
 // ─────────────────────────────────────────────────────────────
@@ -99,6 +247,8 @@ router.post('/:id/phase2', asyncHandler(async (req, res) => {
     contentPdfLink = '',
     videoLink = '',
     assessmentLink = '',
+    assessmentFields = [],
+    requiredScore = null,
   } = req.body || {};
 
   if (!String(trainingTopic).trim()) {
@@ -171,6 +321,17 @@ router.post('/:id/phase2', asyncHandler(async (req, res) => {
     contentPdfLink: String(contentPdfLink || '').trim(),
     videoLink: String(videoLink || '').trim(),
     assessmentLink: String(assessmentLink || '').trim(),
+    assessmentFields: Array.isArray(assessmentFields) ? assessmentFields : [],
+    requiredScore: requiredScore != null ? Math.min(100, Math.max(0, Number(requiredScore))) : null,
+    requiredScoreMatrix: Array.isArray(req.body.requiredScoreMatrix) 
+      ? req.body.requiredScoreMatrix
+          .filter(m => m.department && m.level != null && m.requiredScore != null)
+          .map(m => ({
+            department: String(m.department).trim(),
+            level: Number(m.level),
+            requiredScore: Math.min(100, Math.max(0, Number(m.requiredScore))),
+          }))
+      : [],
   };
 
   await training.save();
@@ -353,6 +514,24 @@ router.post('/:id/archive', asyncHandler(async (req, res) => {
   res.json({ success: true, data: training });
 }));
 
+
+// ─────────────────────────────────────────────────────────────
+// GET ATTEMPTS for a training + employee (must be before GET /:id)
+// ─────────────────────────────────────────────────────────────
+router.get('/:id/attempts', asyncHandler(async (req, res) => {
+  const { employeeId } = req.query;
+  if (!employeeId) return res.status(400).json({ success: false, error: 'employeeId query param required' });
+  const attempts = await TrainingAttempt.find({ trainingId: req.params.id, employeeId })
+    .sort({ attemptNo: 1 })
+    .lean();
+  const formatted = attempts.map(a => ({
+    attemptNo: a.attemptNo,
+    score: a.scoreAchieved,
+    status: a.status,
+    date: a.attemptedAt,
+  }));
+  res.json({ success: true, data: formatted });
+}));
 
 // ─────────────────────────────────────────────────────────────
 // GET BY ID

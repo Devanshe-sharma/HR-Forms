@@ -51,6 +51,21 @@ const trainingSchema = new Schema({
     contentPdfLink: { type: String, trim: true, default: '' },
     videoLink: { type: String, trim: true, default: '' },
     assessmentLink: { type: String, trim: true, default: '' },
+    // Assessment setup (Phase 2) — dynamic fields, correct answers, keyword evaluation
+    assessmentFields: [{
+      type: { type: String, enum: ['text', 'mcq', 'checkbox', 'paragraph'], default: 'text' },
+      question: { type: String, trim: true, default: '' },
+      options: [String],
+      correctAnswer: { type: String, trim: true, default: '' },
+      keywords: [String], // for paragraph: if answer contains any → mark correct
+    }],
+    requiredScore: { type: Number, min: 0, max: 100, default: null }, // override; if null, use level-based from DB
+    // For multi-dept/level: required score per department/level combination
+    requiredScoreMatrix: [{
+      department: { type: String, trim: true, default: '' },
+      level: { type: Number, enum: [1, 2, 3], default: null },
+      requiredScore: { type: Number, min: 0, max: 100, required: true },
+    }],
   },
 
   // Scheduling — set by management after approval (Generic trainings only)

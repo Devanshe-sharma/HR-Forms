@@ -12,6 +12,7 @@ const EmployeeSchema = new mongoose.Schema(
         personal_email: String,
         mobile: String,
         employee_category: String,
+        level: { type: Number, enum: [1, 2, 3], default: 1 }, // for required score fetch (Level 1/2/3)
         name_of_buddy: String,
 
         offer_accepted_date: String,

@@ -13,6 +13,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// RBAC: set role from header for API routes (frontend sends x-user-role)
+app.use('/api', (req, res, next) => {
+  req.role = req.headers['x-user-role'] || req.user?.role || '';
+  next();
+});
+
 /* ─────────────────── ENV CHECK ─────────────────── */
 console.log("ENV CHECK:", {
   mongo:             !!process.env.MONGO_URI,
@@ -28,7 +34,16 @@ app.use('/api/departments',        require('./routes/departments'));
 app.use('/api/designations',       require('./routes/designations'));
 app.use('/api/hiringrequisitions', require('./routes/hiringRequisitions'));
 app.use('/api/ctc-components',     require('./routes/ctcComponents'));
-app.use('/api/trainings',          require('./routes/training'));   // ✅ single mount — removed duplicate /api mount
+app.use('/api/trainings',          require('./routes/training'));
+app.use('/api/required-score-by-level', require('./routes/requiredScoreByLevel'));
+app.use('/api/capabilities',       require('./routes/capabilities'));
+app.use('/api/capability-assessment', require('./routes/capabilityAssessment'));
+app.use('/api/capability-role-map', require('./routes/capabilityRoleMap'));
+app.use('/api/training-suggestions', require('./routes/trainingSuggestions'));
+app.use('/api/training-schedule',  require('./routes/trainingSchedule'));
+app.use('/api/training-materials', require('./routes/trainingMaterials'));
+app.use('/api/training-feedback',  require('./routes/trainingFeedback'));
+app.use('/api/employee-scores',    require('./routes/employeeScores'));
 app.use('/api/requisition',        require('./routes/requisition'));
 app.use('/api/onboarding',         require('./routes/onboarding'));
 app.use('/api/exit',               require('./routes/exit'));
