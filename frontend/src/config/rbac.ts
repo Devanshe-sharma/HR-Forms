@@ -17,7 +17,6 @@ export type Role = (typeof ROLES)[number];
 /** Map legacy localStorage role values to RBAC role */
 const LEGACY_ROLE_MAP: Record<string, Role> = {
   'HR Department': 'HR',
-  'Management': 'Management',
   'DAA Department': 'Admin',
   'Employees and outsiders': 'Employee',
   Admin: 'Admin',
@@ -30,6 +29,8 @@ const LEGACY_ROLE_MAP: Record<string, Role> = {
 
 const ROLE_PERMISSIONS: Record<Role, Record<string, string[]>> = {
   Admin: {
+    capability: ['create', 'read', 'update', 'delete'],
+    training: ['create', 'read', 'update', 'delete'],
     capabilities: ['create', 'read', 'update', 'delete'],
     capabilityAssessment: ['create', 'read', 'update', 'delete'],
     capabilityRoleMap: ['read'],
@@ -41,6 +42,8 @@ const ROLE_PERMISSIONS: Record<Role, Record<string, string[]>> = {
     managementPending: ['read', 'approve', 'reject'],
   },
   HR: {
+    capability: ['create', 'read', 'update', 'delete'],
+    training: ['create', 'read', 'update', 'delete'],
     capabilities: ['create', 'read', 'update', 'delete'],
     capabilityAssessment: [],
     capabilityRoleMap: ['read'],
@@ -52,6 +55,8 @@ const ROLE_PERMISSIONS: Record<Role, Record<string, string[]>> = {
     managementPending: [],
   },
   HeadOfDepartment: {
+    capability: [],
+    training: ['create', 'read', 'update', 'delete'],
     capabilities: [],
     capabilityAssessment: ['create', 'read', 'update', 'delete'],
     capabilityRoleMap: ['read'],
@@ -63,6 +68,8 @@ const ROLE_PERMISSIONS: Record<Role, Record<string, string[]>> = {
     managementPending: [],
   },
   Trainer: {
+    capability: [],
+    training: [],
     capabilities: [],
     capabilityAssessment: [],
     capabilityRoleMap: ['read'],
@@ -74,6 +81,8 @@ const ROLE_PERMISSIONS: Record<Role, Record<string, string[]>> = {
     managementPending: [],
   },
   Employee: {
+    capability: [],
+    training: [],
     capabilities: [],
     capabilityAssessment: [],
     capabilityRoleMap: ['read'],
@@ -85,6 +94,8 @@ const ROLE_PERMISSIONS: Record<Role, Record<string, string[]>> = {
     managementPending: [],
   },
   Management: {
+    capability: ['read'],
+    training: ['read', 'approve', 'reject'],
     capabilities: [],
     capabilityAssessment: [],
     capabilityRoleMap: ['read'],
@@ -122,15 +133,14 @@ export function can(resource: string, action: string): boolean {
   return perms[resource].includes(action);
 }
 
-/** Which main tabs to show in Training */
-export function trainingTabVisibility(): Record<'HR' | 'management' | 'trainer' | 'employee' | 'scorecard', boolean> {
+/** Which main tabs to show in Training - 4 Model Structure */
+export function trainingTabVisibility(): Record<'capability' | 'topics' | 'approval' | 'scheduling', boolean> {
   const role = getRole();
   return {
-    HR: role === 'Admin' || role === 'HR' || role === 'HeadOfDepartment',
-    management: role === 'Admin' || role === 'Management',
-    trainer: role === 'Admin' || role === 'Trainer',
-    employee: role === 'Admin' || role === 'Employee' || role === 'HR' || role === 'HeadOfDepartment' || role === 'Management' || role === 'Trainer',
-    scorecard: role === 'Admin' || role === 'Management',
+    capability: role === 'Admin' || role === 'HR' || role === 'Management',
+    topics: role === 'Admin' || role === 'HR' || role === 'HeadOfDepartment',
+    approval: role === 'Admin' || role === 'Management',
+    scheduling: role === 'Admin' || role === 'HR',
   };
 }
 

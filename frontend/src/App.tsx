@@ -11,12 +11,13 @@ import LetterTemplate from "./pages/LetterTemplate";
 import ComingSoon from "./pages/ComingSoon";
 import AllApplicants from "./pages/AllApplicants";
 import NewRequisitionForm from "./pages/new-requisition-form";
-import TrainingPage from "./pages/TrainingPageImpl";
+import TrainingPage from "./pages/TrainingPageNew";
 import Outing from "./pages/Outing";
 import Requisition from "./pages/Requisition";
 import Onboarding from "./pages/Onboarding";
 import Exit from "./pages/Exit";
-
+import DeptOrientationPage from "./pages/Deptorientationpage";
+import Companyorientationpage from "./pages/Companyorientationpage";
 
 export default function App() {
   return (
@@ -119,12 +120,111 @@ export default function App() {
         }
       />
 
-  
       <Route
         path="/outing"
         element={
           <ProtectedRoute>
             <Outing />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/requisition"
+        element={
+          <ProtectedRoute>
+            <Requisition />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/onboarding"
+        element={
+          <ProtectedRoute>
+            <Onboarding />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/exits"
+        element={
+          <ProtectedRoute>
+            <Exit />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* New routes */}
+      <Route
+        path="/company-orientation"
+        element={
+          <ProtectedRoute>
+            <Companyorientationpage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/dept-orientation"
+        element={
+          <ProtectedRoute>
+            <DeptOrientationPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/attendance"
+        element={
+          <ProtectedRoute>
+            <ComingSoon />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/checklist-delegation"
+        element={
+          <ProtectedRoute>
+            <ComingSoon />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/confirmations"
+        element={
+          <ProtectedRoute>
+            <ComingSoon />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/employee-letters"
+        element={
+          <ProtectedRoute>
+            <ComingSoon />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/salary-sheet"
+        element={
+          <ProtectedRoute>
+            <ComingSoon />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/pms"
+        element={
+          <ProtectedRoute>
+            <ComingSoon />
           </ProtectedRoute>
         }
       />
@@ -138,31 +238,6 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-       <Route
-        path="/requisition"
-        element={
-          <ProtectedRoute>
-            <Requisition />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/onboarding"
-        element={
-          <ProtectedRoute>
-            <Onboarding />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/exit"
-        element={
-          <ProtectedRoute>
-            <Exit />
-          </ProtectedRoute>
-        }
-      />
-
     </Routes>
   );
 }

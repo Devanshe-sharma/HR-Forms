@@ -3,15 +3,35 @@
 import { useState } from 'react';
 import {
   Drawer, List, ListItemButton, ListItemIcon, ListItemText,
-  Box, Divider, Collapse, Avatar, Typography,
+  Box, Collapse, Avatar, Typography,
 } from '@mui/material';
 import {
-  Dashboard as DashboardIcon, People as PeopleIcon, PersonSearch as PersonSearchIcon,
-  BusinessCenter as BusinessCenterIcon, GroupAdd as GroupAddIcon, ExitToApp as ExitToAppIcon,
-  AccountCircle as AccountCircleIcon, Settings as SettingsIcon, ListAlt as ListAltIcon,
-  Assignment as AssignmentIcon, Score as ScoreIcon, ExpandLess as ExpandLessIcon,
-  ExpandMore as ExpandMoreIcon, Checklist as ChecklistIcon, School as SchoolIcon,
-  Event as EventIcon
+  Dashboard as DashboardIcon,
+  People as PeopleIcon,
+  BusinessCenter as BusinessCenterIcon,
+  ExitToApp as ExitToAppIcon,
+  AccountCircle as AccountCircleIcon,
+  Settings as SettingsIcon,
+  Assignment as AssignmentIcon,
+  Score as ScoreIcon,
+  ExpandLess as ExpandLessIcon,
+  ExpandMore as ExpandMoreIcon,
+  Checklist as ChecklistIcon,
+  School as SchoolIcon,
+  Event as EventIcon,
+  Domain as CorporateFareIcon,
+  Apartment as ApartmentIcon,
+  AccessTime as AccessTimeIcon,
+  AssignmentTurnedIn as AssignmentTurnedInIcon,
+  RequestPage as RequestPageIcon,
+  Payments as PaymentsIcon,
+  TrendingUp as TrendingUpIcon,
+  CheckCircle as CheckCircleIcon,
+  Mail as MailIcon,
+  TableChart as TableChartIcon,
+  BeachAccess as BeachAccessIcon,
+  WorkOff as WorkOffIcon,
+  Today as TodayIcon,
 } from '@mui/icons-material';
 import { NavLink, useLocation } from 'react-router-dom';
 
@@ -20,7 +40,7 @@ const BRAND_BLUE = '#3B82F6';
 
 export default function Sidebar() {
   const location = useLocation();
-  const [openRecruitment, setOpenRecruitment] = useState(false);
+  const [openAttendance, setOpenAttendance] = useState(false);
   const [openTrainings, setOpenTrainings] = useState(false);
   const [openOuting, setOpenOuting] = useState(false);
 
@@ -30,23 +50,24 @@ export default function Sidebar() {
   };
 
   const menuItems = [
-    { to: '/hr-dashboard', text: 'HR Dashboard', icon: <DashboardIcon /> },
+    { to: '/company-orientation', text: 'Company Orientation', icon: <CorporateFareIcon /> },
+    { to: '/dept-orientation', text: 'Dept Orientation', icon: <ApartmentIcon /> },
+    { to: '/hr-dashboard', text: 'Dashboard', icon: <DashboardIcon /> },
     { to: '/employees', text: 'Employees', icon: <PeopleIcon /> },
-    { to: '/candidates', text: 'Candidates', icon: <PersonSearchIcon /> },
-    { to: '/salary-revision', text: 'Employee Letters', icon: <ExitToAppIcon /> },
     {
-      text: 'Recruitment',
-      icon: <GroupAddIcon />,
-      onClick: () => setOpenRecruitment(!openRecruitment),
-      open: openRecruitment,
+      text: 'Attendance',
+      icon: <AccessTimeIcon />,
+      onClick: () => setOpenAttendance(!openAttendance),
+      open: openAttendance,
       subItems: [
-        { to: '/recruitment', text: 'All Requisitions', icon: <ListAltIcon /> },
-        { to: '/applicants', text: 'All Applicants', icon: <AssignmentIcon /> },
-        { to: '/scoring', text: 'Recruitment Scoring', icon: <ScoreIcon /> },
+        { to: '/attendance?tab=attendance', text: 'Attendance', icon: <TodayIcon /> },
+        { to: '/attendance?tab=leaves', text: 'Leaves', icon: <BeachAccessIcon /> },
+        { to: '/attendance?tab=out-of-office', text: 'Out of Office', icon: <WorkOffIcon /> },
       ],
     },
-    { to: '/onboarding', text: 'Onboardings', icon: <BusinessCenterIcon /> },
-    { to: '/exits', text: 'Exits', icon: <ExitToAppIcon /> },
+    { to: '/checklist-delegation', text: 'Check List & Delegation', icon: <AssignmentTurnedInIcon /> },
+    { to: '/requisition', text: 'Requisition', icon: <RequestPageIcon /> },
+    { to: '/onboarding', text: 'Onboarding', icon: <BusinessCenterIcon /> },
     {
       text: 'Trainings',
       icon: <SchoolIcon />,
@@ -71,7 +92,12 @@ export default function Sidebar() {
         { to: '/outing?tab=scorecard', text: 'Outing Scorecard', icon: <ScoreIcon /> },
       ],
     },
-    { to: '/confirmations', text: 'Confirmations', icon: <ChecklistIcon /> },
+    { to: '/confirmations', text: 'Confirmation', icon: <CheckCircleIcon /> },
+    { to: '/salary-revision', text: 'Salary Revision', icon: <TableChartIcon /> },
+    { to: '/employee-letters', text: 'Employee Letters', icon: <MailIcon /> },
+    { to: '/salary-sheet', text: 'Salary Sheet', icon: <PaymentsIcon /> },
+    { to: '/pms', text: 'PMS', icon: <TrendingUpIcon /> },
+    { to: '/exits', text: 'Exit', icon: <ExitToAppIcon /> },
     { to: '/profile', text: 'Profile', icon: <AccountCircleIcon /> },
     { to: '/settings', text: 'Settings', icon: <SettingsIcon /> },
   ];
@@ -87,6 +113,9 @@ export default function Sidebar() {
           boxSizing: 'border-box',
           height: '100vh',
           borderRight: '1px solid #e0e0e0',
+          overflowY: 'auto',
+          '&::-webkit-scrollbar': { width: '4px' },
+          '&::-webkit-scrollbar-thumb': { bgcolor: '#e0e0e0', borderRadius: '4px' },
         },
       }}
     >
@@ -95,7 +124,6 @@ export default function Sidebar() {
           <DashboardIcon sx={{ fontSize: 30 }} />
         </Avatar>
         <Typography variant="h6" fontWeight={700}>HR Portal</Typography>
-        {/* <Typography variant="caption" sx={{ opacity: 0.8 }}>Lead to Revenue</Typography> */}
       </Box>
 
       <List sx={{ px: 2, mt: 2 }}>
@@ -158,7 +186,7 @@ export default function Sidebar() {
               }}
             >
               <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>{item.icon}</ListItemIcon>
-              <ListItemText primary={item.text} primaryTypographyProps={{fontSize: '0.875rem' }} />
+              <ListItemText primary={item.text} primaryTypographyProps={{ fontSize: '0.875rem' }} />
             </ListItemButton>
           );
         })}
