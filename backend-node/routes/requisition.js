@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const Requisition = require("../models/requisition");
+const Requisition = require("../models/Requisition");
 
 // GET all
 router.get("/", async (req, res) => {
