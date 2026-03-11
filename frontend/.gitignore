@@ -1,4 +1,20 @@
-# Logs
+# dependencies
+node_modules/
+
+# parcel
+.parcel-cache/
+frontend/.parcel-cache/
+
+# builds
+dist/
+dist-ssr/
+build/
+
+# env files
+.env
+*.local
+
+# logs
 logs
 *.log
 npm-debug.log*
@@ -7,12 +23,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
+# editor
 .vscode/*
 !.vscode/extensions.json
 .idea
