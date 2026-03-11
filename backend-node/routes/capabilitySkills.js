@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { requireRole } = require('../config/roles');
-const CapabilitySkill = require('../models/capabilitySkill');
+const CapabilitySkill = require('../models/CapabilitySkill');
 
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
