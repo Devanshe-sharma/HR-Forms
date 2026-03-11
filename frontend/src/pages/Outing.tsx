@@ -1,14 +1,9 @@
-'use client';
-
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
-import { Plus, X, CheckCircle, XCircle, Edit, Trash2, Save, Archive, Calendar } from 'lucide-react';
-// import { formatDate } from 'date-fns';
-
-
+import { Plus, X, CheckCircle, XCircle, Edit, Trash2, Save, Archive, Calendar, MapPin, IndianRupee, AlignLeft, Tag, Eye, Star } from 'lucide-react';
 
 const formatDate = (date?: string | Date | null): string => {
   if (!date) return 'TBD';
@@ -23,6 +18,7 @@ const formatDate = (date?: string | Date | null): string => {
 
   return `${day}-${month}-${year}`;
 };
+
 // ─── TYPES ────────────────────────────────────────────────
 type Employee = {
   name: string;
@@ -75,7 +71,7 @@ type Outing = {
 };
 
 // ─── MAIN COMPONENT ───────────────────────────────────────
-export default function Outing() {
+const Outing: React.FC = () => {
   const [searchParams] = useSearchParams();
   const currentTab = searchParams.get('tab') || 'HR';
 
@@ -97,41 +93,39 @@ export default function Outing() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<Outing>>({});
 
-const [outingNameFilter, setOutingNameFilter] = useState('');
-const [quarterFilter, setQuarterFilter] = useState('');
-const [fyFilter, setFyFilter] = useState('');
-const [archivedFilter, setArchivedFilter] = useState('');
+  const [outingNameFilter, setOutingNameFilter] = useState('');
+  const [quarterFilter, setQuarterFilter] = useState('');
+  const [fyFilter, setFyFilter] = useState('');
+  const [archivedFilter, setArchivedFilter] = useState('');
 
-
+  // NEW: Global + Details Modal
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [selectedOuting, setSelectedOuting] = useState<Outing | null>(null);
 
   const filteredOutings = useMemo(() => {
-  let list = [...outingList];
+    let list = [...outingList];
 
-  // Outing Name filter
-  if (outingNameFilter.trim()) {
-    const lower = outingNameFilter.trim().toLowerCase();
-    list = list.filter(o => o.topic?.toLowerCase().includes(lower));
-  }
+    if (outingNameFilter.trim()) {
+      const lower = outingNameFilter.trim().toLowerCase();
+      list = list.filter(o => o.topic?.toLowerCase().includes(lower));
+    }
 
-  // Quarter
-  if (quarterFilter) {
-    list = list.filter(o => o.quarter === quarterFilter);
-  }
+    if (quarterFilter) {
+      list = list.filter(o => o.quarter === quarterFilter);
+    }
 
-  // Financial Year
-  if (fyFilter) {
-    list = list.filter(o => o.financialYear === fyFilter);
-  }
+    if (fyFilter) {
+      list = list.filter(o => o.financialYear === fyFilter);
+    }
 
-  // Archived
-  if (archivedFilter === 'yes') {
-    list = list.filter(o => o.status === 'Archived');
-  } else if (archivedFilter === 'no') {
-    list = list.filter(o => o.status !== 'Archived');
-  }
+    if (archivedFilter === 'yes') {
+      list = list.filter(o => o.status === 'Archived');
+    } else if (archivedFilter === 'no') {
+      list = list.filter(o => o.status !== 'Archived');
+    }
 
-  return list;
-}, [outingList, outingNameFilter, quarterFilter, fyFilter, archivedFilter]);
+    return list;
+  }, [outingList, outingNameFilter, quarterFilter, fyFilter, archivedFilter]);
 
   // Management: Reject Modal
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
@@ -140,32 +134,31 @@ const [archivedFilter, setArchivedFilter] = useState('');
 
   // Management: Suggest New Outing
   const [isSuggestModalOpen, setIsSuggestModalOpen] = useState(false);
-const [suggestForm, setSuggestForm] = useState({
-  topic: '',
-  description: '',
-  tentativePlace: '',
-  tentativeBudget: '',
-  tentativeDate: '',
-  reason: '',
-  priority: '' as 'P1' | 'P2' | 'P3',
-});
-
+  const [suggestForm, setSuggestForm] = useState({
+    topic: '',
+    description: '',
+    tentativePlace: '',
+    tentativeBudget: '',
+    tentativeDate: '',
+    reason: '',
+    priority: '' as 'P1' | 'P2' | 'P3',
+  });
 
   const handleArchive = async (id: string) => {
-  if (!window.confirm('Are you sure you want to archive this outing?')) return;
+    if (!window.confirm('Are you sure you want to archive this outing?')) return;
 
-  try {
-    await axios.patch(`${API_BASE}/outing/${id}`, {
-      status: 'Archived',
-      archivedAt: new Date().toISOString(),
-    });
-    alert('Outing archived successfully!');
-    refreshData(); // Refresh the table to reflect the change
-  } catch (err: any) {
-    console.error('Archive failed:', err);
-    alert('Failed to archive: ' + (err.response?.data?.error || err.message));
-  }
-};
+    try {
+      await axios.patch(`${API_BASE}/outing/${id}`, {
+        status: 'Archived',
+        archivedAt: new Date().toISOString(),
+      });
+      alert('Outing archived successfully!');
+      refreshData();
+    } catch (err: any) {
+      console.error('Archive failed:', err);
+      alert('Failed to archive: ' + (err.response?.data?.error || err.message));
+    }
+  };
 
   const API_BASE = process.env.NODE_ENV === 'development' ? 'http://localhost:5000/api' : '/api';
 
@@ -187,8 +180,19 @@ const [suggestForm, setSuggestForm] = useState({
     refreshData();
   }, []);
 
+  // ─── NEW HELPERS: Feedback & Details ──────────────────────
+  const calculateAvgRating = (feedbacks?: Outing['feedbacks']) => {
+    if (!feedbacks || feedbacks.length === 0) return 0;
+    const sum = feedbacks.reduce((acc, f) => acc + (f.overallRating || 0), 0);
+    return Number((sum / feedbacks.length).toFixed(1));
+  };
+
+  const openDetails = (outing: Outing) => {
+    setSelectedOuting(outing);
+    setIsDetailsModalOpen(true);
+  };
+
   // ─── MANAGEMENT ACTIONS ───────────────────────────────────
-  
   const openRejectModal = (id: string) => {
     setRejectOutingId(id);
     setRejectReason('');
@@ -213,109 +217,105 @@ const [suggestForm, setSuggestForm] = useState({
       alert('Reject failed: ' + (err.response?.data?.error || err.message));
     }
   };
+
   const getPriorityColor = (priority?: string) => {
-  switch (priority) {
-    case 'P1': return 'text-red-600';
-    case 'P2': return 'text-orange-600';
-    case 'P3': return 'text-green-600';
-    default: return 'text-gray-500';
-  }
-};
+    switch (priority) {
+      case 'P1': return 'text-red-600';
+      case 'P2': return 'text-orange-600';
+      case 'P3': return 'text-green-600';
+      default: return 'text-gray-500';
+    }
+  };
 
   // ─── HR: CREATE PROPOSAL ─────────────────────────────────
   const submitProposal = async (e: React.FormEvent) => {
-  e.preventDefault();
+    e.preventDefault();
 
-  // Ensure priority is never empty
-  const priority = formData.priority || 'P3';
+    const priority = formData.priority || 'P3';
 
-  const payload = {
-    topic: formData.topic.trim(),
-    description: formData.description.trim(),
-    tentativePlace: formData.tentativePlace.trim() || undefined,
-    tentativeBudget: Number(formData.tentativeBudget) || undefined,
-    tentativeDate: formData.tentativeDate ? new Date(formData.tentativeDate).toISOString() : undefined,
-    proposedByRole: 'HR',
-    proposedByName: 'HR Admin',
-    status: 'Proposed',
-    priority,  // ← only one priority key, safe value
+    const payload = {
+      topic: formData.topic.trim(),
+      description: formData.description.trim(),
+      tentativePlace: formData.tentativePlace.trim() || undefined,
+      tentativeBudget: Number(formData.tentativeBudget) || undefined,
+      tentativeDate: formData.tentativeDate ? new Date(formData.tentativeDate).toISOString() : undefined,
+      proposedByRole: 'HR',
+      proposedByName: 'HR Admin',
+      status: 'Proposed',
+      priority,
+    };
+
+    try {
+      const res = await axios.post(`${API_BASE}/outing`, payload);
+      if (res.data.success) {
+        alert('Outing proposal submitted!');
+        setIsCreateModalOpen(false);
+        setFormData({
+          topic: '',
+          description: '',
+          tentativePlace: '',
+          tentativeBudget: '',
+          tentativeDate: '',
+          priority: 'P3',
+        });
+        refreshData();
+      }
+    } catch (err: any) {
+      alert('Error: ' + (err.response?.data?.error || 'Server error'));
+    }
   };
 
-  try {
-    const res = await axios.post(`${API_BASE}/outing`, payload);
-    if (res.data.success) {
-      alert('Outing proposal submitted!');
-      setIsCreateModalOpen(false);
-      setFormData({
-        topic: '',
-        description: '',
-        tentativePlace: '',
-        tentativeBudget: '',
-        tentativeDate: '',
-        priority: 'P3',
-      });
-      refreshData();
-    }
-  } catch (err: any) {
-    alert('Error: ' + (err.response?.data?.error || 'Server error'));
-  }
-};
   const approveOuting = async (id: string) => {
-  if (!window.confirm('Approve this outing proposal?')) return;
+    if (!window.confirm('Approve this outing proposal?')) return;
 
-  try {
-    await axios.patch(`${API_BASE}/outing/${id}`, { 
-      status: 'Scheduled'          // ← changed from 'Approved' to 'Scheduled'
+    try {
+      await axios.patch(`${API_BASE}/outing/${id}`, {
+        status: 'Scheduled'
+      });
+      alert('Outing approved and scheduled!');
+      refreshData();
+    } catch (err: any) {
+      alert('Approve failed: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  // Auto status (Completed / Archived) – kept but improved with try/catch per item
+  useEffect(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    outingList.forEach(async (o) => {
+      if (!o.tentativeDate || o.status === 'Completed' || o.status === 'Archived' || !o._id) return;
+
+      const trainingDate = new Date(o.tentativeDate);
+      trainingDate.setHours(0, 0, 0, 0);
+
+      if (today >= trainingDate) {
+        try {
+          await axios.patch(`${API_BASE}/outing/${o._id}`, { status: 'Completed' });
+          console.log(`Auto-marked Completed: ${o.topic}`);
+        } catch (err) {
+          console.error('Auto-complete failed:', err);
+        }
+      }
+
+      const threeDaysAfter = new Date(trainingDate);
+      threeDaysAfter.setDate(threeDaysAfter.getDate() + 3);
+
+      if (o.status === 'Completed' && today >= threeDaysAfter) {
+        try {
+          await axios.patch(`${API_BASE}/outing/${o._id}`, {
+            status: 'Archived',
+            archivedAt: new Date().toISOString()
+          });
+          console.log(`Auto-archived: ${o.topic}`);
+        } catch (err) {
+          console.error('Auto-archive failed:', err);
+        }
+      }
     });
-    alert('Outing approved and scheduled!');
-    refreshData();
-  } catch (err: any) {
-    alert('Approve failed: ' + (err.response?.data?.error || err.message));
-  }
-};
+  }, [outingList]);
 
-useEffect(() => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0); // Normalize to midnight
-
-  outingList.forEach(async (o) => {
-    if (!o.tentativeDate || o.status === 'Completed' || o.status === 'Archived') return;
-
-    const trainingDate = new Date(o.tentativeDate);
-    trainingDate.setHours(0, 0, 0, 0);
-
-    // 1. Mark as Completed if date is today or earlier
-    if (today >= trainingDate) {
-      try {
-        await axios.patch(`${API_BASE}/outing/${o._id}`, {
-          status: 'Completed',
-          // Optional: completionDate: new Date().toISOString()
-        });
-        console.log(`Marked as Completed: ${o.topic}`);
-      } catch (err) {
-        console.error('Auto-complete failed:', err);
-      }
-    }
-
-    // 2. Auto-archive if Completed and 3+ days passed
-    // (you can store completionDate, or just use tentativeDate + 3 days)
-    const threeDaysAfter = new Date(trainingDate);
-    threeDaysAfter.setDate(threeDaysAfter.getDate() + 3);
-
-    if (o.status === 'Completed' && today >= threeDaysAfter) {
-      try {
-        await axios.patch(`${API_BASE}/outing/${o._id}`, {
-          status: 'Archived',
-          archivedAt: new Date().toISOString()
-        });
-        console.log(`Archived: ${o.topic}`);
-      } catch (err) {
-        console.error('Auto-archive failed:', err);
-      }
-    }
-  });
-
-}, [outingList, refreshData]);
   // ─── HR: INLINE EDITING ───────────────────────────────────
   const startEditing = (outing: Outing) => {
     setEditingId(outing._id || null);
@@ -328,151 +328,289 @@ useEffect(() => {
   };
 
   const saveEdit = async () => {
-  if (!editingId || !editData) return;
+    if (!editingId || !editData) return;
 
-  try {
-    // Optional: auto-set Scheduled from Suggested when date is added
-    const updated = { ...editData };
-    if (updated.tentativeDate && editData.status === 'Suggested') {
-      updated.status = 'Scheduled';
+    try {
+      const updated = { ...editData };
+      if (updated.tentativeDate && editData.status === 'Suggested') {
+        updated.status = 'Scheduled';
+      }
+
+      await axios.patch(`${API_BASE}/outing/${editingId}`, updated);
+      alert('Outing updated!');
+      setEditingId(null);
+      setEditData({});
+      refreshData();
+    } catch (err: any) {
+      alert('Update failed: ' + (err.response?.data?.error || err.message));
     }
-
-    await axios.patch(`${API_BASE}/outing/${editingId}`, updated);
-    alert('Outing updated!');
-    setEditingId(null);
-    setEditData({});
-    refreshData();
-  } catch (err: any) {
-    alert('Update failed: ' + (err.response?.data?.error || err.message));
-  }
-};
-  // ─── MANAGEMENT: SUGGEST NEW OUTING ───────────────────────
-  const submitSuggestion = async (e: React.FormEvent) => {
-  e.preventDefault();
-
-  if (!suggestForm.topic.trim() || !suggestForm.description.trim()) {
-    return alert('Topic and Description are required');
-  }
-
-  // Ensure priority is never empty
-  const priority = suggestForm.priority || 'P3';
-
-  const payload = {
-    topic: suggestForm.topic.trim(),
-    description: suggestForm.description.trim(),
-    tentativePlace: suggestForm.tentativePlace.trim() || undefined,
-    tentativeBudget: Number(suggestForm.tentativeBudget) || undefined,
-    tentativeDate: suggestForm.tentativeDate ? new Date(suggestForm.tentativeDate).toISOString() : undefined,
-    reason: suggestForm.reason.trim() || undefined,
-    priority,  // ← safe value
-    proposedByRole: 'Management',
-    proposedByName: 'Management User',
-    status: 'Suggested',
   };
 
-  try {
-    const res = await axios.post(`${API_BASE}/outing`, payload);
-    if (res.data.success) {
-      alert('Your suggestion has been submitted to HR!');
-      setIsSuggestModalOpen(false);
-      setSuggestForm({
-        topic: '',
-        description: '',
-        tentativePlace: '',
-        tentativeBudget: '',
-        tentativeDate: '',
-        reason: '',
-        priority: 'P3',
+  // ─── MANAGEMENT: SUGGEST NEW OUTING ───────────────────────
+  const submitSuggestion = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!suggestForm.topic.trim() || !suggestForm.description.trim()) {
+      return alert('Topic and Description are required');
+    }
+
+    const priority = suggestForm.priority || 'P3';
+
+    const payload = {
+      topic: suggestForm.topic.trim(),
+      description: suggestForm.description.trim(),
+      tentativePlace: suggestForm.tentativePlace.trim() || undefined,
+      tentativeBudget: Number(suggestForm.tentativeBudget) || undefined,
+      tentativeDate: suggestForm.tentativeDate ? new Date(suggestForm.tentativeDate).toISOString() : undefined,
+      reason: suggestForm.reason.trim() || undefined,
+      priority,
+      proposedByRole: 'Management',
+      proposedByName: 'Management User',
+      status: 'Suggested',
+    };
+
+    try {
+      const res = await axios.post(`${API_BASE}/outing`, payload);
+      if (res.data.success) {
+        alert('Your suggestion has been submitted to HR!');
+        setIsSuggestModalOpen(false);
+        setSuggestForm({
+          topic: '',
+          description: '',
+          tentativePlace: '',
+          tentativeBudget: '',
+          tentativeDate: '',
+          reason: '',
+          priority: 'P3',
+        });
+        refreshData();
+      }
+    } catch (err: any) {
+      alert('Failed to submit: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  // Feedback form state
+  const [feedbackForm, setFeedbackForm] = useState({
+    employeeName: '',
+    department: '',
+    designation: '',
+    outingId: '',
+    attended: false,
+    overallRating: '',
+    contentQuality: '',
+    whatWasMissing: '',
+    howHelpful: '',
+  });
+  const [loadingFeedback, setLoadingFeedback] = useState(false);
+
+  const handleOutingFeedbackSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!feedbackForm.employeeName || !feedbackForm.outingId) {
+      return alert('Please select your name and an outing');
+    }
+
+    if (!feedbackForm.attended) {
+      return alert('Please confirm attendance');
+    }
+
+    if (!feedbackForm.overallRating || !feedbackForm.contentQuality) {
+      return alert('Please provide both ratings');
+    }
+
+    setLoadingFeedback(true);
+
+    try {
+      await axios.post(`${API_BASE}/outing/${feedbackForm.outingId}/feedback`, {
+        employeeName: feedbackForm.employeeName,
+        department: feedbackForm.department,
+        designation: feedbackForm.designation,
+        attended: feedbackForm.attended,
+        overallRating: Number(feedbackForm.overallRating),
+        contentQuality: Number(feedbackForm.contentQuality),
+        whatWasMissing: feedbackForm.whatWasMissing?.trim() || undefined,
+        howHelpful: feedbackForm.howHelpful?.trim() || undefined,
+        submittedAt: new Date().toISOString(),
+      });
+
+      alert('Feedback submitted successfully!');
+
+      setFeedbackForm({
+        employeeName: '',
+        department: '',
+        designation: '',
+        outingId: '',
+        attended: false,
+        overallRating: '',
+        contentQuality: '',
+        whatWasMissing: '',
+        howHelpful: '',
       });
       refreshData();
+    } catch (err: any) {
+      alert('Failed to submit feedback: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setLoadingFeedback(false);
     }
-  } catch (err: any) {
-    alert('Failed to submit: ' + (err.response?.data?.error || err.message));
-  }
-};
+  };
 
-// Feedback form state
-const [feedbackForm, setFeedbackForm] = useState({
-  employeeName: '',
-  department: '',
-  designation: '',
-  outingId: '',
-  attended: false,
-  overallRating: '',
-  contentQuality: '',
-  whatWasMissing: '',
-  howHelpful: '',
-});
-const [loadingFeedback, setLoadingFeedback] = useState(false);
+  // ─── ENHANCED CARD RENDERER (used in Global + future views) ───
+  const renderOutingCards = (outingsToRender: Outing[], isProposalView: boolean = false, isReadOnly: boolean = false) => {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {outingsToRender.length === 0 ? (
+          <div className="col-span-full bg-white rounded-2xl p-12 text-center text-gray-500 italic shadow-sm border border-gray-200 mt-4">
+            No outings found matching the filters
+          </div>
+        ) : (
+          outingsToRender.map((o) => {
+            const isEditing = editingId === o._id;
 
-// Submit handler
-const handleOutingFeedbackSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
+            return (
+              <div key={o._id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow flex flex-col relative group mt-4">
+                <div className={`h-1.5 ${o.priority === 'P1' ? 'bg-red-500' : o.priority === 'P2' ? 'bg-orange-500' : 'bg-[#7a8b2e]'}`} />
+                <div className="p-5 flex-1 flex flex-col">
+                  <div className="flex justify-between items-start mb-3">
+                    {isEditing ? (
+                      <input
+                        className="w-full font-bold text-gray-800 border rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e] mb-1"
+                        value={editData.topic ?? o.topic ?? ''}
+                        onChange={e => setEditData(prev => ({ ...prev, topic: e.target.value }))}
+                      />
+                    ) : (
+                      <h4 className="font-bold text-lg text-gray-800 leading-tight pr-4">{o.topic || 'Unnamed Outing'}</h4>
+                    )}
+                    <span className={`status-pill self-start shrink-0 text-[10px] ${o.status?.toLowerCase().replace(' ', '-') || ''}`}>
+                      {o.status || '—'}
+                    </span>
+                  </div>
 
-  if (!feedbackForm.employeeName || !feedbackForm.outingId) {
-    return alert('Please select your name and an outing');
-  }
+                  {isEditing ? (
+                    <textarea
+                      className="w-full border rounded-lg px-2 py-1 text-sm h-16 resize-none focus:outline-none focus:ring-2 focus:ring-[#7a8b2e] text-gray-600 mb-3"
+                      value={editData.description ?? o.description ?? ''}
+                      onChange={e => setEditData(prev => ({ ...prev, description: e.target.value }))}
+                    />
+                  ) : (
+                    <p className="text-gray-500 text-sm mb-4 line-clamp-2" title={o.description}>{o.description || 'No description provided'}</p>
+                  )}
 
-  if (!feedbackForm.attended) {
-    return alert('Please confirm attendance');
-  }
+                  <div className="grid grid-cols-2 gap-y-3 gap-x-2 text-sm text-gray-600 mb-4 mt-auto bg-gray-50/50 p-3 rounded-xl border border-transparent hover:border-gray-200 transition">
+                    <div className="flex items-center gap-2">
+                      <Calendar size={14} className="text-[#7a8b2e] shrink-0" />
+                      {isEditing ? (
+                        <input type="date" className="w-full bg-white border rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-[#7a8b2e]" value={editData.tentativeDate ? new Date(editData.tentativeDate).toISOString().split('T')[0] : ''} onChange={e => setEditData(prev => ({ ...prev, tentativeDate: e.target.value || undefined }))} />
+                      ) : (
+                        <span className="truncate">{o.tentativeDate ? formatDate(o.tentativeDate) : 'TBD'}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <MapPin size={14} className="text-[#7a8b2e] shrink-0" />
+                      {isEditing ? (
+                        <input className="w-full bg-white border rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-[#7a8b2e]" value={editData.tentativePlace ?? o.tentativePlace ?? ''} onChange={e => setEditData(prev => ({ ...prev, tentativePlace: e.target.value }))} placeholder="Place" />
+                      ) : (
+                        <span className="truncate" title={o.tentativePlace}>{o.tentativePlace || 'TBD'}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <IndianRupee size={14} className="text-[#7a8b2e] shrink-0" />
+                      {isEditing ? (
+                        <input type="number" className="w-full bg-white border rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-[#7a8b2e]" value={editData.tentativeBudget ?? o.tentativeBudget ?? ''} onChange={e => setEditData(prev => ({ ...prev, tentativeBudget: Number(e.target.value) || 0 }))} placeholder="Budget" />
+                      ) : (
+                        <span className="truncate">{o.tentativeBudget ? `₹${o.tentativeBudget.toLocaleString()}` : 'TBD'}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Tag size={14} className="text-[#7a8b2e] shrink-0" />
+                      {isEditing ? (
+                        <select className="w-full bg-white border rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-[#7a8b2e]" value={editData.priority ?? o.priority ?? 'P3'} onChange={e => setEditData(prev => ({ ...prev, priority: e.target.value as 'P1' | 'P2' | 'P3' }))}>
+                          <option value="P1">P1 - Urgent</option>
+                          <option value="P2">P2 - High</option>
+                          <option value="P3">P3 - Med</option>
+                        </select>
+                      ) : (
+                        <span className={`font-medium truncate ${getPriorityColor(o.priority)}`}>
+                          {o.priority || 'P3'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
 
-  if (!feedbackForm.overallRating || !feedbackForm.contentQuality) {
-    return alert('Please provide both ratings');
-  }
+                  {/* Feedback summary in card */}
+                  {!isEditing && o.feedbacks && o.feedbacks.length > 0 && (
+                    <div className="text-xs bg-emerald-50 text-[#7a8b2e] px-3 py-1.5 rounded-lg mb-4 flex items-center gap-1.5">
+                      <Star size={14} />
+                      {o.feedbacks.length} feedback{ o.feedbacks.length > 1 ? 's' : '' } • Avg {calculateAvgRating(o.feedbacks)} ⭐
+                    </div>
+                  )}
 
-  setLoadingFeedback(true);
+                  {(o.remark || (currentTab === 'management' && o.reason)) && !isEditing && (
+                    <div className="text-xs text-gray-500 italic mb-4 bg-gray-50 p-2 rounded-lg border border-gray-100 flex items-start gap-2">
+                      <AlignLeft size={12} className="mt-0.5 shrink-0" />
+                      <span className="line-clamp-2" title={o.remark || o.reason}>{o.remark || o.reason}</span>
+                    </div>
+                  )}
 
-  try {
-    await axios.post(`${API_BASE}/outing/${feedbackForm.outingId}/feedback`, {
-      employeeName: feedbackForm.employeeName,
-      department: feedbackForm.department,
-      designation: feedbackForm.designation,
-      attended: feedbackForm.attended,
-      overallRating: Number(feedbackForm.overallRating),
-      contentQuality: Number(feedbackForm.contentQuality),
-      whatWasMissing: feedbackForm.whatWasMissing?.trim() || undefined,
-      howHelpful: feedbackForm.howHelpful?.trim() || undefined,
-      submittedAt: new Date().toISOString(),
-    });
-
-    alert('Feedback submitted successfully!');
-    
-    // Reset form
-    setFeedbackForm({
-      employeeName: '',
-      department: '',
-      designation: '',
-      outingId: '',
-      attended: false,
-      overallRating: '',
-      contentQuality: '',
-      whatWasMissing: '',
-      howHelpful: '',
-    });
-  } catch (err: any) {
-    alert('Failed to submit feedback: ' + (err.response?.data?.error || err.message));
-  } finally {
-    setLoadingFeedback(false);
-  }
-};
+                  <div className="pt-4 mt-auto border-t border-gray-100 flex justify-between items-center bg-white z-10">
+                    <div className="text-[10px] text-gray-400 font-mono">ID: {o._id?.slice(-5)}</div>
+                    <div className="flex gap-2">
+                      {isProposalView ? (
+                        <>
+                          <button onClick={() => approveOuting(o._id!)} className="px-3 py-1 bg-green-50 text-green-700 hover:bg-green-600 hover:text-white rounded-md text-xs font-bold transition">Approve</button>
+                          <button onClick={() => openRejectModal(o._id!)} className="px-3 py-1 bg-red-50 text-red-700 hover:bg-red-600 hover:text-white rounded-md text-xs font-bold transition">Reject</button>
+                        </>
+                      ) : isEditing ? (
+                        <>
+                          <button onClick={saveEdit} className="p-1.5 bg-green-50 text-green-600 hover:bg-green-600 hover:text-white rounded-md transition" title="Save"><Save size={16} /></button>
+                          <button onClick={cancelEditing} className="p-1.5 bg-gray-50 text-gray-600 hover:bg-gray-600 hover:text-white rounded-md transition" title="Cancel"><X size={16} /></button>
+                        </>
+                      ) : isReadOnly ? (
+                        <button onClick={() => openDetails(o)} className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-md transition" title="View Details & Feedbacks">
+                          <Eye size={16} />
+                        </button>
+                      ) : (
+                        <>
+                          <button onClick={() => startEditing(o)} className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-md transition" title="Edit"><Edit size={16} /></button>
+                          {o.status === 'Suggested' && (
+                            <button onClick={() => startEditing(o)} className="p-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-md transition" title="Schedule">
+                              <Calendar size={16} />
+                            </button>
+                          )}
+                          <button onClick={() => handleArchive(o._id!)} className="p-1.5 bg-amber-50 text-amber-600 hover:bg-amber-600 hover:text-white rounded-md transition" title="Archive"><Archive size={16} /></button>
+                          <button onClick={() => openDetails(o)} className="p-1.5 bg-purple-50 text-purple-600 hover:bg-purple-600 hover:text-white rounded-md transition" title="View Details & Feedbacks">
+                            <Eye size={16} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    );
+  };
 
   // ─── RENDER ────────────────────────────────────────────────
-return (
+  return (
     <div className="flex min-h-screen bg-[#f4f6f2]">
       <Sidebar />
       <div className="flex-1 flex flex-col">
         <Navbar />
 
-        <main className="p-4 mt-20 max-w-7xl mx-auto w-full relative">
+        <main className="p-3 sm:p-4 mt-16 sm:mt-20 max-w-7xl mx-auto w-full relative">
           {/* Floating + Button - HR tab */}
           {currentTab === 'HR' && (
             <button
               onClick={() => setIsCreateModalOpen(true)}
-              className="fixed top-24 right-8 z-40 bg-[#7a8b2e] text-white rounded-full p-5 shadow-2xl hover:bg-[#5e6c24]"
+              className="fixed top-20 sm:top-24 right-4 sm:right-8 z-40 bg-[#7a8b2e] text-white rounded-full p-3 sm:p-5 shadow-2xl hover:bg-[#5e6c24] transition-transform hover:scale-105"
               title="Propose New Outing"
             >
-              <Plus size={32} />
+              <Plus size={20} className="sm:hidden" />
+              <Plus size={32} className="hidden sm:block" />
             </button>
           )}
 
@@ -480,1051 +618,756 @@ return (
           {currentTab === 'management' && (
             <button
               onClick={() => setIsSuggestModalOpen(true)}
-              className="fixed top-24 right-8 z-40 bg-indigo-600 text-white rounded-full p-5 shadow-2xl hover:bg-indigo-700 transition transform hover:scale-110 active:scale-95"
+              className="fixed top-20 sm:top-24 right-4 sm:right-8 z-40 bg-indigo-600 text-white rounded-full p-3 sm:p-5 shadow-2xl hover:bg-indigo-700 transition transform hover:scale-110 active:scale-95"
               title="Suggest New Outing / Event"
             >
-              <Plus size={32} />
+              <Plus size={20} className="sm:hidden" />
+              <Plus size={32} className="hidden sm:block" />
             </button>
           )}
 
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-gray-800 capitalize">
+          <div className="mb-4 sm:mb-6">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-800 capitalize">
               Outing / Event Module - {currentTab.replace('-', ' ')}
             </h2>
           </div>
 
-          {/* ─── HR TAB ─── */}
+          {/* ─── HR TAB (detailed control) ─── */}
           {currentTab === 'HR' && (
-              <div className="space-y-8">
-                {/* Debug Info */}
-                <div className="bg-yellow-100 p-4 rounded border border-yellow-400 text-sm">
-                  <strong>Debug Info:</strong><br />
-                  Total outings loaded: {outingList.length}<br />
-                  Filtered outings: {filteredOutings.length}<br />
-                  Current filters → Outing: "{outingNameFilter}", Quarter: "{quarterFilter}", FY: "{fyFilter}", Archived: "{archivedFilter}"
-                </div>
-
-                {/* Filters */}
-                <div className="bg-white p-6 rounded-xl shadow border border-gray-200">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Outing Name</label>
-                      <input
-                        placeholder="Search outing topics..."
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                        value={outingNameFilter}
-                        onChange={(e) => setOutingNameFilter(e.target.value)}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Quarter</label>
-                      <select
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                        value={quarterFilter}
-                        onChange={(e) => setQuarterFilter(e.target.value)}
-                      >
-                        <option value="">All Quarters</option>
-                        <option value="Q1">Q1 (Apr–Jun)</option>
-                        <option value="Q2">Q2 (Jul–Sep)</option>
-                        <option value="Q3">Q3 (Oct–Dec)</option>
-                        <option value="Q4">Q4 (Jan–Mar)</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Financial Year</label>
-                      <select
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                        value={fyFilter}
-                        onChange={(e) => setFyFilter(e.target.value)}
-                      >
-                        <option value="">All FY</option>
-                        <option value="FY 2025-2026">FY 2025-2026</option>
-                        <option value="FY 2024-2025">FY 2024-2025</option>
-                        <option value="FY 2023-2024">FY 2023-2024</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Archived</label>
-                      <select
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                        value={archivedFilter}
-                        onChange={(e) => setArchivedFilter(e.target.value)}
-                      >
-                        <option value="">All</option>
-                        <option value="no">No</option>
-                        <option value="yes">Yes</option>
-                      </select>
-                    </div>
-
-                    <div className="flex items-end">
-                      <button
-                        onClick={() => {
-                          setOutingNameFilter('');
-                          setQuarterFilter('');
-                          setFyFilter('');
-                          setArchivedFilter('');
-                        }}
-                        className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium transition"
-                      >
-                        Clear Filters
-                      </button>
-                    </div>
+            <div className="space-y-8">
+              {/* Filters */}
+              <div className="bg-white p-4 sm:p-6 rounded-xl shadow border border-gray-200">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Outing Name</label>
+                    <input placeholder="Search outing topics..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={outingNameFilter} onChange={(e) => setOutingNameFilter(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Quarter</label>
+                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={quarterFilter} onChange={(e) => setQuarterFilter(e.target.value)}>
+                      <option value="">All Quarters</option>
+                      <option value="Q1">Q1 (Apr–Jun)</option>
+                      <option value="Q2">Q2 (Jul–Sep)</option>
+                      <option value="Q3">Q3 (Oct–Dec)</option>
+                      <option value="Q4">Q4 (Jan–Mar)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Financial Year</label>
+                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={fyFilter} onChange={(e) => setFyFilter(e.target.value)}>
+                      <option value="">All FY</option>
+                      <option value="FY 2025-2026">FY 2025-2026</option>
+                      <option value="FY 2024-2025">FY 2024-2025</option>
+                      <option value="FY 2023-2024">FY 2023-2024</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Archived</label>
+                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={archivedFilter} onChange={(e) => setArchivedFilter(e.target.value)}>
+                      <option value="">All</option>
+                      <option value="no">No</option>
+                      <option value="yes">Yes</option>
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    <button onClick={() => { setOutingNameFilter(''); setQuarterFilter(''); setFyFilter(''); setArchivedFilter(''); }} className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium transition">Clear Filters</button>
                   </div>
                 </div>
-
-                {/* Editable Table */}
-                <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                  <div className="p-6 bg-gray-50 border-b">
-                    <h3 className="font-bold text-gray-700 uppercase text-xs tracking-widest">
-                      Outing / Event Control Panel
-                    </h3>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                      <thead className="bg-white text-[10px] font-black text-gray-400 uppercase tracking-tighter border-b">
-                        <tr>
-                          <th className="p-4">Sno.</th>
-                          <th className="p-4">Outing Topic</th>
-                          <th className="p-4">Description</th>
-                          <th className="p-4">Tentative Place</th>
-                          <th className="p-4">Tentative Budget</th>
-                          <th className="p-4">Status</th>
-                          <th className="p-4">Date</th>
-                          <th className="p-4">Priority</th>
-                          <th className="p-4 text-center">Action</th>
-                          <th className="p-4 text-center">Remark</th>
-                        </tr>
-                      </thead>
-                      <tbody className="text-xs divide-y divide-gray-100">
-                          {filteredOutings.length === 0 ? (
-                            <tr>
-                              <td colSpan={10} className="p-8 text-center text-gray-500 italic">
-                                No outings found matching the filters
-                              </td>
-                            </tr>
-                          ) : (
-                            filteredOutings.map((o, i) => {
-                              const isEditing = editingId === o._id;
-                              const isApproved = o.status === 'Approved';
-                              const isSuggested = o.status === 'Suggested';
-
-                            return (
-                              <tr key={o._id} className="hover:bg-gray-50/50 transition group">
-                                <td className="p-4 text-gray-400">{i + 1}</td>
-
-                                <td className="p-4">
-                                  {isEditing ? (
-                                    <input
-                                      className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                                      value={editData.topic ?? o.topic ?? ''}
-                                      onChange={e => setEditData(prev => ({ ...prev, topic: e.target.value }))}
-                                    />
-                                  ) : (
-                                    <span className="font-bold text-gray-800">{o.topic || '—'}</span>
-                                  )}
-                                </td>
-
-                                <td className="p-4">
-                                  {isEditing ? (
-                                    <textarea
-                                      className="w-full border rounded px-2 py-1 text-sm h-20 resize-none focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                                      value={editData.description ?? o.description ?? ''}
-                                      onChange={e => setEditData(prev => ({ ...prev, description: e.target.value }))}
-                                    />
-                                  ) : (
-                                    <span className="text-gray-500 block max-w-[180px] truncate">{o.description || '—'}</span>
-                                  )}
-                                </td>
-
-                                <td className="p-4">
-                                  {isEditing ? (
-                                    <input
-                                      className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                                      value={editData.tentativePlace ?? o.tentativePlace ?? ''}
-                                      onChange={e => setEditData(prev => ({ ...prev, tentativePlace: e.target.value }))}
-                                    />
-                                  ) : (
-                                    o.tentativePlace || '—'
-                                  )}
-                                </td>
-
-                                <td className="p-4">
-                                  {isEditing ? (
-                                    <input
-                                      type="number"
-                                      className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                                      value={editData.tentativeBudget ?? o.tentativeBudget ?? ''}
-                                      onChange={e => setEditData(prev => ({ ...prev, tentativeBudget: Number(e.target.value) || 0 }))}
-                                    />
-                                  ) : (
-                                    o.tentativeBudget ? `₹${o.tentativeBudget}` : '—'
-                                  )}
-                                </td>
-
-                                <td className="p-4">
-                                    <span className={`status-pill ${o.status?.toLowerCase().replace(' ', '-') || ''}`}>
-                                      {o.status || '—'}
-                                    </span>
-                                  </td>
-
-                                <td className="p-4 text-gray-600 font-mono italic">
-                                {isEditing ? (
-                                  <input
-                                    type="date"
-                                    className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                                    value={
-                                      editData.tentativeDate
-                                        ? new Date(editData.tentativeDate).toISOString().split('T')[0]
-                                        : ''
-                                    }
-                                    onChange={e =>
-                                      setEditData(prev => ({
-                                        ...prev,
-                                        tentativeDate: e.target.value || undefined,
-                                      }))
-                                    }
-                                  />
-                                ) : (
-                                  o.tentativeDate ? formatDate(o.tentativeDate) : 'TBD'
-                                )}
-                              </td>
-
-                                {/* Priority */}
-                                <td className="p-4">
-                                  {isEditing ? (
-                                    <select
-                                      className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                                      value={editData.priority ?? o.priority ?? 'P3'}
-                                      onChange={e =>
-                                        setEditData(prev => ({
-                                          ...prev,
-                                          priority: e.target.value as 'P1' | 'P2' | 'P3'
-                                        }))
-                                      }
-                                    >
-                                      <option value="P1">P1</option>
-                                      <option value="P2">P2</option>
-                                      <option value="P3">P3</option>
-                                    </select>
-                                  ) : (
-                                    <span className={`priority-text ${o.priority?.toLowerCase() || 'p3'}`}>
-                                      {o.priority || 'P3'}
-                                    </span>
-                                  )}
-                                </td>
-
-                                {/* Action */}
-                                {/* Action */}
-                                <td className="p-4 text-center">
-                                  <div className="flex justify-center gap-3 flex-wrap">
-                                    {isEditing ? (
-                                      <>
-                                        <button
-                                          onClick={saveEdit}
-                                          className="p-2 bg-green-600 text-white rounded hover:bg-green-700 transition"
-                                          title="Save changes"
-                                        >
-                                          <Save size={16} />
-                                        </button>
-                                        <button
-                                          onClick={cancelEditing}
-                                          className="p-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition"
-                                          title="Cancel"
-                                        >
-                                          <X size={16} />
-                                        </button>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <button
-                                          onClick={() => startEditing(o)}
-                                          className="p-2 hover:bg-blue-50 text-blue-600 rounded transition"
-                                          title="Edit"
-                                        >
-                                          <Edit size={16} />
-                                        </button>
-
-                                        {/* Show Schedule button for Suggested items */}
-                                        {isSuggested && (
-                                          <button
-                                            onClick={() => startEditing(o)}
-                                            className="p-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition"
-                                            title="Schedule this suggested outing"
-                                          >
-                                            <Calendar size={16} />
-                                          </button>
-                                        )}
-
-                                        {/* Archive button */}
-                                        <button
-                                          onClick={() => handleArchive(o._id!)}
-                                          className="p-2 bg-amber-600 text-white rounded hover:bg-amber-700 transition"
-                                          title="Archive"
-                                        >
-                                          <Archive size={16} />
-                                        </button>
-                                      </>
-                                    )}
-                                  </div>
-                                </td>
-
-                                {/* Remark */}
-                                <td className="p-4 text-center text-gray-400 italic font-medium">
-                                  {o.remark || '--'}
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
               </div>
-            )}
+
+              {/* Editable Table (HR Control Panel) */}
+              <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="p-4 sm:p-6 bg-gray-50 border-b">
+                  <h3 className="font-bold text-gray-700 uppercase text-xs tracking-widest">Outing / Event Control Panel (HR)</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[800px]">
+                    <thead className="bg-white text-[10px] font-black text-gray-400 uppercase tracking-tighter border-b">
+                      <tr>
+                        <th className="p-2 sm:p-4">Sno.</th>
+                        <th className="p-2 sm:p-4">Topic</th>
+                        <th className="p-2 sm:p-4 hidden sm:table-cell">Description</th>
+                        <th className="p-2 sm:p-4 hidden md:table-cell">Place</th>
+                        <th className="p-2 sm:p-4 hidden lg:table-cell">Budget</th>
+                        <th className="p-2 sm:p-4 hidden sm:table-cell">Status</th>
+                        <th className="p-2 sm:p-4 hidden md:table-cell">Date</th>
+                        <th className="p-2 sm:p-4">Priority</th>
+                        <th className="p-2 sm:p-4 text-center">Action</th>
+                        <th className="p-2 sm:p-4 hidden lg:table-cell text-center">Remark</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-xs divide-y divide-gray-100">
+                      {filteredOutings.length === 0 ? (
+                        <tr><td colSpan={10} className="p-8 text-center text-gray-500 italic">No outings found</td></tr>
+                      ) : (
+                        filteredOutings.map((o, i) => {
+                          const isEditing = editingId === o._id;
+                          return (
+                            <tr key={o._id} className="hover:bg-gray-50/50 transition group">
+                              <td className="p-2 sm:p-4 text-gray-400">{i + 1}</td>
+                              <td className="p-2 sm:p-4">
+                                {isEditing ?
+                                  <input className="w-full border rounded px-2 py-1 text-sm" value={editData.topic ?? o.topic ?? ''} onChange={e => setEditData(prev => ({ ...prev, topic: e.target.value }))} /> :
+                                  <span className="font-bold text-gray-800 text-xs sm:text-sm">{o.topic}</span>
+                                }
+                              </td>
+                              <td className="p-2 sm:p-4 hidden sm:table-cell">
+                                {isEditing ?
+                                  <textarea className="w-full border rounded px-2 py-1 text-sm h-20" value={editData.description ?? o.description ?? ''} onChange={e => setEditData(prev => ({ ...prev, description: e.target.value }))} /> :
+                                  <span className="text-gray-500 block max-w-[180px] truncate text-xs sm:text-sm">{o.description}</span>
+                                }
+                              </td>
+                              <td className="p-2 sm:p-4 hidden md:table-cell">
+                                {isEditing ?
+                                  <input className="w-full border rounded px-2 py-1 text-sm" value={editData.tentativePlace ?? o.tentativePlace ?? ''} onChange={e => setEditData(prev => ({ ...prev, tentativePlace: e.target.value }))} /> :
+                                  o.tentativePlace || '—'
+                                }
+                              </td>
+                              <td className="p-2 sm:p-4 hidden lg:table-cell">
+                                {isEditing ?
+                                  <input
+                                    type="number"
+                                    className="w-full border rounded px-2 py-1 text-sm"
+                                    value={editData.tentativeBudget ?? o.tentativeBudget ?? ''}
+                                    onChange={e => setEditData(prev => ({ ...prev, tentativeBudget: Number(e.target.value) || 0 }))}
+                                  /> :
+                                  o.tentativeBudget ? `₹${o.tentativeBudget}` : '—'
+                                }
+                              </td>
+                              <td className="p-2 sm:p-4 hidden sm:table-cell">
+                                <span className={`status-pill ${o.status?.toLowerCase().replace(' ', '-') || ''}`}>{o.status}</span>
+                              </td>
+                              <td className="p-2 sm:p-4 hidden md:table-cell text-gray-600 font-mono italic">
+                                {isEditing ?
+                                  <input type="date" className="w-full border rounded px-2 py-1 text-sm" value={editData.tentativeDate ? new Date(editData.tentativeDate).toISOString().split('T')[0] : ''} onChange={e => setEditData(prev => ({ ...prev, tentativeDate: e.target.value || undefined }))} /> :
+                                  o.tentativeDate ? formatDate(o.tentativeDate) : 'TBD'
+                                }
+                              </td>
+                              <td className="p-2 sm:p-4">
+                                {isEditing ?
+                                  <select className="border rounded px-2 py-1 text-sm" value={editData.priority ?? o.priority ?? 'P3'} onChange={e => setEditData(prev => ({ ...prev, priority: e.target.value as 'P1' | 'P2' | 'P3' }))}>
+                                    <option value="P1">P1</option><option value="P2">P2</option><option value="P3">P3</option>
+                                  </select> :
+                                  <span className={`priority-text ${o.priority?.toLowerCase() || 'p3'}`}>{o.priority || 'P3'}</span>
+                                }
+                              </td>
+                              <td className="p-2 sm:p-4 text-center">
+                                <div className="flex justify-center gap-1 sm:gap-3 flex-wrap">
+                                  {isEditing ? (
+                                    <>
+                                      <button onClick={saveEdit} className="p-1 sm:p-2 bg-green-600 text-white rounded hover:bg-green-700" title="Save"><Save size={12} className="sm:hidden" /><Save size={16} className="hidden sm:block" /></button>
+                                      <button onClick={cancelEditing} className="p-1 sm:p-2 bg-gray-600 text-white rounded hover:bg-gray-700" title="Cancel"><X size={12} className="sm:hidden" /><X size={16} className="hidden sm:block" /></button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <button onClick={() => startEditing(o)} className="p-1 sm:p-2 hover:bg-blue-50 text-blue-600 rounded" title="Edit"><Edit size={12} className="sm:hidden" /><Edit size={16} className="hidden sm:block" /></button>
+                                      {o.status === 'Suggested' && <button onClick={() => startEditing(o)} className="p-1 sm:p-2 bg-indigo-600 text-white rounded hover:bg-indigo-700" title="Schedule"><Calendar size={12} className="sm:hidden" /><Calendar size={16} className="hidden sm:block" /></button>}
+                                      <button onClick={() => handleArchive(o._id!)} className="p-1 sm:p-2 bg-amber-600 text-white rounded hover:bg-amber-700" title="Archive"><Archive size={12} className="sm:hidden" /><Archive size={16} className="hidden sm:block" /></button>
+                                      <button onClick={() => openDetails(o)} className="p-1 sm:p-2 hover:bg-purple-50 text-purple-600 rounded" title="View Details & Feedbacks"><Eye size={12} className="sm:hidden" /><Eye size={16} className="hidden sm:block" /></button>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-2 sm:p-4 hidden lg:table-cell text-center text-gray-400 italic font-medium">{o.remark || '--'}</td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          )}
 
           {/* ─── MANAGEMENT TAB ─── */}
           {currentTab === 'management' && (
-  <div className="space-y-8">
-    <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-      <div className="p-6 bg-gray-50 border-b">
-        <h3 className="font-bold text-gray-700 uppercase text-xs tracking-widest">
-          Management Review – Pending HR Proposals
-        </h3>
-      </div>
+            <div className="space-y-8">
+              {/* Pending Proposals Review */}
+              <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="p-4 sm:p-6 bg-gray-50 border-b">
+                  <h3 className="font-bold text-gray-700 uppercase text-xs tracking-widest">Management Review – Pending HR Proposals</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[800px]">
+                    <thead className="bg-white text-[10px] font-black text-gray-400 uppercase tracking-tighter border-b">
+                      <tr>
+                        <th className="p-2 sm:p-4">Sno.</th>
+                        <th className="p-2 sm:p-4">Topic</th>
+                        <th className="p-2 sm:p-4 hidden sm:table-cell">Description</th>
+                        <th className="p-2 sm:p-4 hidden md:table-cell">Place</th>
+                        <th className="p-2 sm:p-4 hidden lg:table-cell">Budget</th>
+                        <th className="p-2 sm:p-4 text-center">Action</th>
+                        <th className="p-2 sm:p-4 text-center">Priority</th>
+                        <th className="p-2 sm:p-4 hidden md:table-cell">Suggestions</th>
+                        <th className="p-2 sm:p-4 hidden sm:table-cell">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-xs divide-y divide-gray-100">
+                      {outingList.filter(o => o.status === 'Proposed').length === 0 ? (
+                        <tr><td colSpan={9} className="p-8 sm:p-12 text-center text-gray-500 italic">No pending proposals from HR</td></tr>
+                      ) : (
+                        outingList.filter(o => o.status === 'Proposed').map((o, i) => (
+                          <tr key={o._id} className="hover:bg-gray-50/50 transition group">
+                            <td className="p-2 sm:p-4 text-gray-400">{i + 1}</td>
+                            <td className="p-2 sm:p-4 font-bold text-gray-800 text-xs sm:text-sm">{o.topic}</td>
+                            <td className="p-2 sm:p-4 text-gray-600 max-w-[200px] truncate hidden sm:table-cell text-xs sm:text-sm">{o.description}</td>
+                            <td className="p-2 sm:p-4 hidden md:table-cell">{o.tentativePlace || '—'}</td>
+                            <td className="p-2 sm:p-4 hidden lg:table-cell">{o.tentativeBudget ? `₹${o.tentativeBudget.toLocaleString()}` : '—'}</td>
+                            <td className="p-2 sm:p-4 text-center">
+                              <div className="flex justify-center gap-1 sm:gap-3 flex-wrap">
+                                <button onClick={() => approveOuting(o._id!)} className="bg-green-600 hover:bg-green-700 text-white px-2 sm:px-4 py-1.5 rounded text-xs font-medium">Approve</button>
+                                <button onClick={() => openRejectModal(o._id!)} className="bg-red-600 hover:bg-red-700 text-white px-2 sm:px-4 py-1.5 rounded text-xs font-medium">Reject</button>
+                                <button onClick={() => openDetails(o)} className="p-1 sm:p-2 text-purple-600 hover:bg-purple-50 rounded" title="View Details"><Eye size={12} className="sm:hidden" /><Eye size={16} className="hidden sm:block" /></button>
+                              </div>
+                            </td>
+                            <td className="p-2 sm:p-4 text-center"><span className={`font-medium ${getPriorityColor(o.priority)}`}>{o.priority || '—'}</span></td>
+                            <td className="p-2 sm:p-4 hidden md:table-cell text-gray-600 text-xs sm:text-sm">{o.reason || '—'}</td>
+                            <td className="p-2 sm:p-4 hidden sm:table-cell text-gray-600 font-mono italic text-xs sm:text-sm">{o.tentativeDate ? formatDate(o.tentativeDate) : 'TBD'}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-          <thead className="bg-white text-[10px] font-black text-gray-400 uppercase tracking-tighter border-b">
-            <tr>
-              <th className="p-4">Sno.</th>
-              <th className="p-4">Outing Topic</th>
-              <th className="p-4">Topic Description</th>
-              <th className="p-4">Tentative place</th>
-              <th className="p-4">Tentative Budget</th>
-              <th className="p-4 text-center">Action</th>
-              <th className="p-4 text-center">Priority</th>
-              <th className="p-4">Suggestions (if any)</th>
-              <th className="p-4">Date of the Outing (tentative)</th>
-            </tr>
-          </thead>
-
-          <tbody className="text-xs divide-y divide-gray-100">
-            {outingList
-              .filter(o => o.status === 'Proposed')  // ← Only show Proposed (from HR)
-              .length === 0 ? (
-              <tr>
-                <td colSpan={9} className="p-12 text-center text-gray-500 italic">
-                  No pending proposals from HR at the moment
-                </td>
-              </tr>
-            ) : (
-              outingList
-                .filter(o => o.status === 'Proposed')
-                .map((o, i) => (
-                  <tr key={o._id} className="hover:bg-gray-50/50 transition group">
-                    <td className="p-4 text-gray-400">{i + 1}</td>
-                    <td className="p-4 font-bold text-gray-800">{o.topic || '—'}</td>
-                    <td className="p-4 text-gray-600 max-w-[200px] truncate">{o.description || '—'}</td>
-                    <td className="p-4">{o.tentativePlace || '—'}</td>
-                    <td className="p-4">{o.tentativeBudget ? `₹${o.tentativeBudget.toLocaleString()}` : '—'}</td>
-
-                    {/* Action - Approve/Reject only for Proposed */}
-                    <td className="p-4 text-center">
-                      <div className="flex justify-center gap-3">
-                        <button
-                          onClick={() => approveOuting(o._id!)}
-                          className="bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded text-xs font-medium transition"
-                        >
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => openRejectModal(o._id!)}
-                          className="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded text-xs font-medium transition"
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    </td>
-
-                    <td className="p-4 text-center">
-                      <span className={`font-medium ${getPriorityColor(o.priority)}`}>
-                        {o.priority || '—'}
-                      </span>
-                    </td>
-
-                    <td className="p-4 text-gray-600">{o.reason || '—'}</td>
-                    <td className="p-4 text-gray-600 font-mono italic">
-                      {o.tentativeDate ? formatDate(o.tentativeDate) : 'TBD'}
-                    </td>
-                  </tr>
-                ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
-    {/* Editable Table */}
-                <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                  <div className="p-6 bg-gray-50 border-b">
-                    <h3 className="font-bold text-gray-700 uppercase text-xs tracking-widest">
-                      Outing / Event Control Panel
-                    </h3>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                      <thead className="bg-white text-[10px] font-black text-gray-400 uppercase tracking-tighter border-b">
-                        <tr>
-                          <th className="p-4">Sno.</th>
-                          <th className="p-4">Outing Topic</th>
-                          <th className="p-4">Description</th>
-                          <th className="p-4">Tentative Place</th>
-                          <th className="p-4">Tentative Budget</th>
-                          <th className="p-4">Status</th>
-                          <th className="p-4">Date</th>
-                          <th className="p-4">Priority</th>
-                          <th className="p-4 text-center">Action</th>
-                          <th className="p-4 text-center">Remark</th>
-                        </tr>
-                      </thead>
-                      <tbody className="text-xs divide-y divide-gray-100">
-                          {filteredOutings.length === 0 ? (
-                            <tr>
-                              <td colSpan={10} className="p-8 text-center text-gray-500 italic">
-                                No outings found matching the filters
+              {/* Management Control Panel */}
+              <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="p-4 sm:p-6 bg-gray-50 border-b">
+                  <h3 className="font-bold text-gray-700 uppercase text-xs tracking-widest">Outing / Event Control Panel (Management)</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[800px]">
+                    <thead className="bg-white text-[10px] font-black text-gray-400 uppercase tracking-tighter border-b">
+                      <tr>
+                        <th className="p-2 sm:p-4">Sno.</th>
+                        <th className="p-2 sm:p-4">Topic</th>
+                        <th className="p-2 sm:p-4 hidden sm:table-cell">Description</th>
+                        <th className="p-2 sm:p-4 hidden md:table-cell">Place</th>
+                        <th className="p-2 sm:p-4 hidden lg:table-cell">Budget</th>
+                        <th className="p-2 sm:p-4 hidden sm:table-cell">Status</th>
+                        <th className="p-2 sm:p-4 hidden md:table-cell">Date</th>
+                        <th className="p-2 sm:p-4">Priority</th>
+                        <th className="p-2 sm:p-4 text-center">Action</th>
+                        <th className="p-2 sm:p-4 hidden lg:table-cell text-center">Remark</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-xs divide-y divide-gray-100">
+                      {filteredOutings.length === 0 ? (
+                        <tr><td colSpan={10} className="p-8 text-center text-gray-500 italic">No outings found</td></tr>
+                      ) : (
+                        filteredOutings.map((o, i) => {
+                          const isEditing = editingId === o._id;
+                          return (
+                            <tr key={o._id} className="hover:bg-gray-50/50 transition group">
+                              <td className="p-2 sm:p-4 text-gray-400">{i + 1}</td>
+                              <td className="p-2 sm:p-4">
+                                {isEditing ?
+                                  <input className="w-full border rounded px-2 py-1 text-sm" value={editData.topic ?? o.topic ?? ''} onChange={e => setEditData(prev => ({ ...prev, topic: e.target.value }))} /> :
+                                  <span className="font-bold text-gray-800 text-xs sm:text-sm">{o.topic}</span>
+                                }
                               </td>
-                            </tr>
-                          ) : (
-                            filteredOutings.map((o, i) => {
-                              const isEditing = editingId === o._id;
-                              const isApproved = o.status === 'Approved';
-                              const isSuggested = o.status === 'Suggested';
-
-                            return (
-                              <tr key={o._id} className="hover:bg-gray-50/50 transition group">
-                                <td className="p-4 text-gray-400">{i + 1}</td>
-
-                                <td className="p-4">
-                                  {isEditing ? (
-                                    <input
-                                      className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                                      value={editData.topic ?? o.topic ?? ''}
-                                      onChange={e => setEditData(prev => ({ ...prev, topic: e.target.value }))}
-                                    />
-                                  ) : (
-                                    <span className="font-bold text-gray-800">{o.topic || '—'}</span>
-                                  )}
-                                </td>
-
-                                <td className="p-4">
-                                  {isEditing ? (
-                                    <textarea
-                                      className="w-full border rounded px-2 py-1 text-sm h-20 resize-none focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                                      value={editData.description ?? o.description ?? ''}
-                                      onChange={e => setEditData(prev => ({ ...prev, description: e.target.value }))}
-                                    />
-                                  ) : (
-                                    <span className="text-gray-500 block max-w-[180px] truncate">{o.description || '—'}</span>
-                                  )}
-                                </td>
-
-                                <td className="p-4">
-                                  {isEditing ? (
-                                    <input
-                                      className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                                      value={editData.tentativePlace ?? o.tentativePlace ?? ''}
-                                      onChange={e => setEditData(prev => ({ ...prev, tentativePlace: e.target.value }))}
-                                    />
-                                  ) : (
-                                    o.tentativePlace || '—'
-                                  )}
-                                </td>
-
-                                <td className="p-4">
-                                  {isEditing ? (
-                                    <input
-                                      type="number"
-                                      className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                                      value={editData.tentativeBudget ?? o.tentativeBudget ?? ''}
-                                      onChange={e => setEditData(prev => ({ ...prev, tentativeBudget: Number(e.target.value) || 0 }))}
-                                    />
-                                  ) : (
-                                    o.tentativeBudget ? `₹${o.tentativeBudget}` : '—'
-                                  )}
-                                </td>
-
-                                <td className="p-4">
-                                    <span className={`status-pill ${o.status?.toLowerCase().replace(' ', '-') || ''}`}>
-                                      {o.status || '—'}
-                                    </span>
-                                  </td>
-
-                                <td className="p-4 text-gray-600 font-mono italic">
-                                {isEditing ? (
+                              <td className="p-2 sm:p-4 hidden sm:table-cell">
+                                {isEditing ?
+                                  <textarea className="w-full border rounded px-2 py-1 text-sm h-20" value={editData.description ?? o.description ?? ''} onChange={e => setEditData(prev => ({ ...prev, description: e.target.value }))} /> :
+                                  <span className="text-gray-500 block max-w-[180px] truncate text-xs sm:text-sm">{o.description}</span>
+                                }
+                              </td>
+                              <td className="p-2 sm:p-4 hidden md:table-cell">
+                                {isEditing ?
+                                  <input className="w-full border rounded px-2 py-1 text-sm" value={editData.tentativePlace ?? o.tentativePlace ?? ''} onChange={e => setEditData(prev => ({ ...prev, tentativePlace: e.target.value }))} /> :
+                                  o.tentativePlace || '—'
+                                }
+                              </td>
+                              <td className="p-2 sm:p-4 hidden lg:table-cell">
+                                {isEditing ?
                                   <input
-                                    type="date"
-                                    className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                                    value={
-                                      editData.tentativeDate
-                                        ? new Date(editData.tentativeDate).toISOString().split('T')[0]
-                                        : ''
-                                    }
-                                    onChange={e =>
-                                      setEditData(prev => ({
-                                        ...prev,
-                                        tentativeDate: e.target.value || undefined,
-                                      }))
-                                    }
-                                  />
-                                ) : (
-                                  o.tentativeDate ? formatDate(o.tentativeDate) : 'TBD'
-                                )}
+                                    type="number"
+                                    className="w-full border rounded px-2 py-1 text-sm"
+                                    value={editData.tentativeBudget ?? o.tentativeBudget ?? ''}
+                                    onChange={e => setEditData(prev => ({ ...prev, tentativeBudget: Number(e.target.value) || 0 }))}
+                                  /> :
+                                  o.tentativeBudget ? `₹${o.tentativeBudget}` : '—'
+                                }
                               </td>
-
-                                {/* Priority */}
-                                <td className="p-4">
+                              <td className="p-2 sm:p-4 hidden sm:table-cell">
+                                <span className={`status-pill ${o.status?.toLowerCase().replace(' ', '-') || ''}`}>{o.status}</span>
+                              </td>
+                              <td className="p-2 sm:p-4 hidden md:table-cell text-gray-600 font-mono italic">
+                                {isEditing ?
+                                  <input type="date" className="w-full border rounded px-2 py-1 text-sm" value={editData.tentativeDate ? new Date(editData.tentativeDate).toISOString().split('T')[0] : ''} onChange={e => setEditData(prev => ({ ...prev, tentativeDate: e.target.value || undefined }))} /> :
+                                  o.tentativeDate ? formatDate(o.tentativeDate) : 'TBD'
+                                }
+                              </td>
+                              <td className="p-2 sm:p-4">
+                                {isEditing ?
+                                  <select className="border rounded px-2 py-1 text-sm" value={editData.priority ?? o.priority ?? 'P3'} onChange={e => setEditData(prev => ({ ...prev, priority: e.target.value as 'P1' | 'P2' | 'P3' }))}>
+                                    <option value="P1">P1</option><option value="P2">P2</option><option value="P3">P3</option>
+                                  </select> :
+                                  <span className={`priority-text ${o.priority?.toLowerCase() || 'p3'}`}>{o.priority || 'P3'}</span>
+                                }
+                              </td>
+                              <td className="p-2 sm:p-4 text-center">
+                                <div className="flex justify-center gap-1 sm:gap-3 flex-wrap">
                                   {isEditing ? (
-                                    <select
-                                      className="border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]"
-                                      value={editData.priority ?? o.priority ?? 'P3'}
-                                      onChange={e =>
-                                        setEditData(prev => ({
-                                          ...prev,
-                                          priority: e.target.value as 'P1' | 'P2' | 'P3'
-                                        }))
-                                      }
-                                    >
-                                      <option value="P1">P1</option>
-                                      <option value="P2">P2</option>
-                                      <option value="P3">P3</option>
-                                    </select>
+                                    <>
+                                      <button onClick={saveEdit} className="p-1 sm:p-2 bg-green-600 text-white rounded hover:bg-green-700" title="Save"><Save size={12} className="sm:hidden" /><Save size={16} className="hidden sm:block" /></button>
+                                      <button onClick={cancelEditing} className="p-1 sm:p-2 bg-gray-600 text-white rounded hover:bg-gray-700" title="Cancel"><X size={12} className="sm:hidden" /><X size={16} className="hidden sm:block" /></button>
+                                    </>
                                   ) : (
-                                    <span className={`priority-text ${o.priority?.toLowerCase() || 'p3'}`}>
-                                      {o.priority || 'P3'}
-                                    </span>
+                                    <>
+                                      <button onClick={() => startEditing(o)} className="p-1 sm:p-2 hover:bg-blue-50 text-blue-600 rounded" title="Edit"><Edit size={12} className="sm:hidden" /><Edit size={16} className="hidden sm:block" /></button>
+                                      {o.status === 'Suggested' && <button onClick={() => startEditing(o)} className="p-1 sm:p-2 bg-indigo-600 text-white rounded hover:bg-indigo-700" title="Schedule"><Calendar size={12} className="sm:hidden" /><Calendar size={16} className="hidden sm:block" /></button>}
+                                      <button onClick={() => handleArchive(o._id!)} className="p-1 sm:p-2 bg-amber-600 text-white rounded hover:bg-amber-700" title="Archive"><Archive size={12} className="sm:hidden" /><Archive size={16} className="hidden sm:block" /></button>
+                                      <button onClick={() => openDetails(o)} className="p-1 sm:p-2 hover:bg-purple-50 text-purple-600 rounded" title="View Details & Feedbacks"><Eye size={12} className="sm:hidden" /><Eye size={16} className="hidden sm:block" /></button>
+                                    </>
                                   )}
-                                </td>
+                                </div>
+                              </td>
+                              <td className="p-2 sm:p-4 hidden lg:table-cell text-center text-gray-400 italic font-medium">{o.remark || '--'}</td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          )}
 
-                                {/* Action */}
-                                {/* Action */}
-                                <td className="p-4 text-center">
-                                  <div className="flex justify-center gap-3 flex-wrap">
-                                    {isEditing ? (
-                                      <>
-                                        <button
-                                          onClick={saveEdit}
-                                          className="p-2 bg-green-600 text-white rounded hover:bg-green-700 transition"
-                                          title="Save changes"
-                                        >
-                                          <Save size={16} />
-                                        </button>
-                                        <button
-                                          onClick={cancelEditing}
-                                          className="p-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition"
-                                          title="Cancel"
-                                        >
-                                          <X size={16} />
-                                        </button>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <button
-                                          onClick={() => startEditing(o)}
-                                          className="p-2 hover:bg-blue-50 text-blue-600 rounded transition"
-                                          title="Edit"
-                                        >
-                                          <Edit size={16} />
-                                        </button>
-
-                                        {/* Show Schedule button for Suggested items */}
-                                        {isSuggested && (
-                                          <button
-                                            onClick={() => startEditing(o)}
-                                            className="p-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition"
-                                            title="Schedule this suggested outing"
-                                          >
-                                            <Calendar size={16} />
-                                          </button>
-                                        )}
-
-                                        {/* Archive button */}
-                                        <button
-                                          onClick={() => handleArchive(o._id!)}
-                                          className="p-2 bg-amber-600 text-white rounded hover:bg-amber-700 transition"
-                                          title="Archive"
-                                        >
-                                          <Archive size={16} />
-                                        </button>
-                                      </>
-                                    )}
-                                  </div>
-                                </td>
-
-                                {/* Remark */}
-                                <td className="p-4 text-center text-gray-400 italic font-medium">
-                                  {o.remark || '--'}
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
+          {/* ─── GLOBAL TAB ─── */}
+          {currentTab === 'global' && (
+            <div className="space-y-8">
+              <div className="bg-white p-6 rounded-xl shadow border border-gray-200">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Outing Name</label>
+                    <input placeholder="Search outing topics..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={outingNameFilter} onChange={(e) => setOutingNameFilter(e.target.value)} />
                   </div>
-                </section>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Quarter</label>
+                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={quarterFilter} onChange={(e) => setQuarterFilter(e.target.value)}>
+                      <option value="">All Quarters</option>
+                      <option value="Q1">Q1 (Apr–Jun)</option>
+                      <option value="Q2">Q2 (Jul–Sep)</option>
+                      <option value="Q3">Q3 (Oct–Dec)</option>
+                      <option value="Q4">Q4 (Jan–Mar)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Financial Year</label>
+                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={fyFilter} onChange={(e) => setFyFilter(e.target.value)}>
+                      <option value="">All FY</option>
+                      <option value="FY 2025-2026">FY 2025-2026</option>
+                      <option value="FY 2024-2025">FY 2024-2025</option>
+                      <option value="FY 2023-2024">FY 2023-2024</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Archived</label>
+                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={archivedFilter} onChange={(e) => setArchivedFilter(e.target.value)}>
+                      <option value="">All</option>
+                      <option value="no">No</option>
+                      <option value="yes">Yes</option>
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    <button onClick={() => { setOutingNameFilter(''); setQuarterFilter(''); setFyFilter(''); setArchivedFilter(''); }} className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium transition">Clear Filters</button>
+                  </div>
+                </div>
               </div>
-            )}
-  
+
+              <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="p-6 bg-gray-50 border-b">
+                  <h3 className="font-bold text-gray-700 uppercase text-xs tracking-widest flex items-center gap-2">
+                    Global Outing / Event Overview
+                    <span className="bg-[#7a8b2e] text-white text-[10px] px-3 py-0.5 rounded-full font-mono">({filteredOutings.length} total)</span>
+                  </h3>
+                </div>
+                {renderOutingCards(filteredOutings, false, true)}
+              </section>
+            </div>
+          )}
+
+          {/* ─── EMPLOYEE FEEDBACK TAB ─── */}
+          {currentTab === 'employee-feedback' && (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-8 max-w-3xl mx-auto">
+              <h3 className="text-xl sm:text-2xl font-bold text-gray-800 mb-6 sm:mb-8 text-center">Outing / Event Feedback</h3>
+
+              <form onSubmit={handleOutingFeedbackSubmit} className="space-y-4 sm:space-y-6">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Your Name *</label>
+                  <select required value={feedbackForm.employeeName} onChange={(e) => {
+                    const emp = employees.find(em => em.name === e.target.value);
+                    setFeedbackForm({ ...feedbackForm, employeeName: e.target.value, department: emp?.dept || '', designation: emp?.desig || '' });
+                  }} className="w-full border border-gray-300 rounded-xl px-3 sm:px-4 py-2 sm:py-3 text-sm">
+                    <option value="">Select your name</option>
+                    {employees.map(emp => <option key={emp.email} value={emp.name}>{emp.name}</option>)}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Department</label>
+                    <input value={feedbackForm.department} readOnly className="w-full border border-gray-300 rounded-xl px-3 sm:px-4 py-2 sm:py-3 bg-gray-100 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Designation</label>
+                    <input value={feedbackForm.designation} readOnly className="w-full border border-gray-300 rounded-xl px-3 sm:px-4 py-2 sm:py-3 bg-gray-100 text-sm" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Outing / Event *</label>
+                  <select required value={feedbackForm.outingId} onChange={e => setFeedbackForm({ ...feedbackForm, outingId: e.target.value })} className="w-full border border-gray-300 rounded-xl px-3 sm:px-4 py-2 sm:py-3 text-sm">
+                    <option value="">-- Select Outing --</option>
+                    {outingList.filter(o => o.status === 'Completed').map(o => (
+                      <option key={o._id} value={o._id}>
+                        {o.topic} ({o.tentativeDate ? formatDate(o.tentativeDate) : 'TBD'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center space-x-3">
+                  <input type="checkbox" id="attended" checked={feedbackForm.attended} onChange={e => setFeedbackForm({ ...feedbackForm, attended: e.target.checked })} className="h-4 w-4 sm:h-5 sm:w-5 text-[#7a8b2e]" />
+                  <label htmlFor="attended" className="text-sm font-medium text-gray-700">I attended this outing/event *</label>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Overall Rating *</label>
+                    <select required value={feedbackForm.overallRating} onChange={e => setFeedbackForm({ ...feedbackForm, overallRating: e.target.value })} className="w-full border border-gray-300 rounded-xl px-3 sm:px-4 py-2 sm:py-3 text-sm">
+                      <option value="">--Select--</option>
+                      {[1,2,3,4,5].map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Content Quality *</label>
+                    <select required value={feedbackForm.contentQuality} onChange={e => setFeedbackForm({ ...feedbackForm, contentQuality: e.target.value })} className="w-full border border-gray-300 rounded-xl px-3 sm:px-4 py-2 sm:py-3 text-sm">
+                      <option value="">--Select--</option>
+                      {[1,2,3,4,5].map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">What was missing?</label>
+                  <textarea value={feedbackForm.whatWasMissing} onChange={e => setFeedbackForm({ ...feedbackForm, whatWasMissing: e.target.value })} className="w-full border border-gray-300 rounded-xl px-3 sm:px-4 py-2 sm:py-3 h-20 sm:h-24 text-sm" placeholder="Topics, activities, arrangements..." />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">How was it helpful?</label>
+                  <textarea value={feedbackForm.howHelpful} onChange={e => setFeedbackForm({ ...feedbackForm, howHelpful: e.target.value })} className="w-full border border-gray-300 rounded-xl px-3 sm:px-4 py-2 sm:py-3 h-20 sm:h-24 text-sm" placeholder="How this outing helped you..." />
+                </div>
+
+                <div className="flex justify-end">
+                  <button type="submit" disabled={loadingFeedback || !feedbackForm.attended} className={`px-6 sm:px-10 py-3 rounded-xl font-bold text-white transition text-sm ${loadingFeedback || !feedbackForm.attended ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#7a8b2e] hover:bg-[#5e6c24]'}`}>
+                    {loadingFeedback ? 'Submitting...' : 'Submit Feedback'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
 
           {/* ─── REJECT MODAL ─── */}
           {isRejectModalOpen && (
             <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-                <div className="p-6 border-b flex justify-between items-center bg-red-50">
-                  <h3 className="text-xl font-bold text-red-800">Reject Outing Proposal</h3>
-                  <button
-                    onClick={() => {
-                      setIsRejectModalOpen(false);
-                      setRejectOutingId(null);
-                      setRejectReason('');
-                    }}
-                    className="p-2 hover:bg-gray-200 rounded-full transition"
-                  >
-                    <X size={24} className="text-gray-600" />
-                  </button>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-auto">
+                <div className="p-4 sm:p-6 border-b flex justify-between items-center bg-red-50">
+                  <h3 className="text-lg sm:text-xl font-bold text-red-800">Reject Outing Proposal</h3>
+                  <button onClick={() => { setIsRejectModalOpen(false); setRejectOutingId(null); setRejectReason(''); }} className="p-2 hover:bg-gray-200 rounded-full transition"><X size={20} className="text-gray-600" /></button>
                 </div>
-
-                <div className="p-6">
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">
-                    Reason for Rejection *
-                  </label>
-                  <textarea
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3 h-32 resize-none focus:outline-none focus:ring-2 focus:ring-red-500"
-                    placeholder="Enter detailed reason why this proposal is being rejected..."
-                    value={rejectReason}
-                    onChange={(e) => setRejectReason(e.target.value)}
-                  />
-                  {!rejectReason.trim() && (
-                    <p className="text-red-600 text-sm mt-2 font-medium">
-                      Reason is required
-                    </p>
-                  )}
+                <div className="p-4 sm:p-6">
+                  <label className="block text-sm font-semibold text-gray-700 mb-3">Reason for Rejection *</label>
+                  <textarea className="w-full border border-gray-300 rounded-xl px-3 sm:px-4 py-2 sm:py-3 h-24 sm:h-32 resize-none focus:outline-none focus:ring-2 focus:ring-red-500 text-sm" placeholder="Enter detailed reason..." value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
+                  {!rejectReason.trim() && <p className="text-red-600 text-sm mt-2 font-medium">Reason is required</p>}
                 </div>
-
-                <div className="p-6 border-t bg-gray-50 flex justify-end gap-4">
-                  <button
-                    onClick={() => {
-                      setIsRejectModalOpen(false);
-                      setRejectOutingId(null);
-                      setRejectReason('');
-                    }}
-                    className="px-6 py-3 text-gray-700 font-medium hover:bg-gray-200 rounded-xl transition"
-                  >
-                    Cancel
-                  </button>
-
-                  <button
-                    onClick={submitReject}
-                    disabled={!rejectReason.trim()}
-                    className={`px-8 py-3 rounded-xl font-bold transition ${
-                      rejectReason.trim()
-                        ? 'bg-red-600 text-white hover:bg-red-700'
-                        : 'bg-red-300 text-white cursor-not-allowed'
-                    }`}
-                  >
-                    Confirm Reject
-                  </button>
+                <div className="p-4 sm:p-6 border-t bg-gray-50 flex justify-end gap-3 sm:gap-4">
+                  <button onClick={() => { setIsRejectModalOpen(false); setRejectOutingId(null); setRejectReason(''); }} className="px-4 sm:px-6 py-2 sm:py-3 text-gray-700 font-medium hover:bg-gray-200 rounded-xl transition text-sm">Cancel</button>
+                  <button onClick={submitReject} disabled={!rejectReason.trim()} className={`px-4 sm:px-8 py-2 sm:py-3 rounded-xl font-bold transition text-sm ${rejectReason.trim() ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-red-300 text-white cursor-not-allowed'}`}>Confirm Reject</button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* ─── MANAGEMENT SUGGESTION MODAL ─── */}
+          {/* ─── MANAGEMENT SUGGESTION MODAL (compact, navbar-aware) ─── */}
           {isSuggestModalOpen && (
-            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-                <div className="sticky top-0 bg-white p-6 border-b flex justify-between items-center z-10">
-                  <h3 className="text-xl font-bold text-gray-800">
-                    Suggest New Outing / Event
-                  </h3>
+            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+              <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-2xl flex flex-col"
+                   style={{ maxHeight: 'calc(100vh - 64px)', marginTop: '64px' }}>
+                {/* Header */}
+                <div className="flex justify-between items-center px-4 py-3 border-b bg-white rounded-t-2xl sm:rounded-t-2xl shrink-0">
+                  <h3 className="text-base font-bold text-gray-800">Suggest New Outing / Event</h3>
                   <button
-                    onClick={() => {
-                      setIsSuggestModalOpen(false);
-                      setSuggestForm({
-                        topic: '',
-                        description: '',
-                        tentativePlace: '',
-                        tentativeBudget: '',
-                        tentativeDate: '',
-                        reason: '',
-                        priority: 'P3',
-                      });
-                    }}
-                    className="p-2 hover:bg-gray-200 rounded-full transition"
+                    onClick={() => { setIsSuggestModalOpen(false); setSuggestForm({ topic: '', description: '', tentativePlace: '', tentativeBudget: '', tentativeDate: '', reason: '', priority: 'P3' }); }}
+                    className="p-1.5 hover:bg-gray-100 rounded-full transition"
                   >
-                    <X size={24} className="text-gray-600" />
+                    <X size={18} className="text-gray-600" />
                   </button>
                 </div>
 
-                <form onSubmit={submitSuggestion} className="p-8 space-y-6">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Outing / Event Name *
-                    </label>
-                    <input
-                      required
-                      className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      placeholder="e.g. Team Picnic, CSR Activity, Annual Offsite"
-                      value={suggestForm.topic}
-                      onChange={(e) => setSuggestForm({ ...suggestForm, topic: e.target.value })}
-                    />
-                  </div>
+                {/* Scrollable body */}
+                <div className="overflow-y-auto flex-1">
+                  <form onSubmit={submitSuggestion} className="p-4 space-y-3">
+                    {/* Row 1: Name + Description side by side on md+ */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Event Name *</label>
+                        <input
+                          required
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                          placeholder="e.g. Team Picnic..."
+                          value={suggestForm.topic}
+                          onChange={(e) => setSuggestForm({ ...suggestForm, topic: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Priority</label>
+                        <select
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                          value={suggestForm.priority}
+                          onChange={(e) => setSuggestForm({ ...suggestForm, priority: e.target.value as 'P1' | 'P2' | 'P3' })}
+                        >
+                          <option value="P3">P3 - Medium</option>
+                          <option value="P2">P2 - High</option>
+                          <option value="P1">P1 - Urgent</option>
+                        </select>
+                      </div>
+                    </div>
 
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Description *
-                    </label>
-                    <textarea
-                      required
-                      className="w-full border border-gray-300 rounded-xl px-4 py-3 h-32 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      placeholder="What is the purpose? Expected outcomes? Target group?..."
-                      value={suggestForm.description}
-                      onChange={(e) => setSuggestForm({ ...suggestForm, description: e.target.value })}
-                    />
-                  </div>
+                    {/* Description */}
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Description *</label>
+                      <textarea
+                        required
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm h-16 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        placeholder="Purpose and expected outcomes..."
+                        value={suggestForm.description}
+                        onChange={(e) => setSuggestForm({ ...suggestForm, description: e.target.value })}
+                      />
+                    </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Tentative Place
-                    </label>
-                    <input
-                      className="w-full border border-gray-300 rounded-xl px-4 py-3"
-                      placeholder="e.g. Adventure Park, Resort, Office Terrace..."
-                      value={suggestForm.tentativePlace}
-                      onChange={(e) => setSuggestForm({ ...suggestForm, tentativePlace: e.target.value })}
-                    />
-                  </div>
+                    {/* Row 2: Place + Budget + Date */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Place</label>
+                        <input
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                          placeholder="e.g. Adventure Park"
+                          value={suggestForm.tentativePlace}
+                          onChange={(e) => setSuggestForm({ ...suggestForm, tentativePlace: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Budget (₹)</label>
+                        <input
+                          type="number"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                          placeholder="Approx. cost"
+                          value={suggestForm.tentativeBudget}
+                          onChange={(e) => setSuggestForm({ ...suggestForm, tentativeBudget: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Date</label>
+                        <input
+                          type="date"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                          value={suggestForm.tentativeDate}
+                          onChange={(e) => setSuggestForm({ ...suggestForm, tentativeDate: e.target.value })}
+                        />
+                      </div>
+                    </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Tentative Budget (₹)
-                    </label>
-                    <input
-                      type="number"
-                      className="w-full border border-gray-300 rounded-xl px-4 py-3"
-                      placeholder="Approximate cost"
-                      value={suggestForm.tentativeBudget}
-                      onChange={(e) => setSuggestForm({ ...suggestForm, tentativeBudget: e.target.value })}
-                    />
-                  </div>
+                    {/* Reason */}
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Why are you suggesting this?</label>
+                      <textarea
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm h-14 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        placeholder="Team building need, morale boost..."
+                        value={suggestForm.reason}
+                        onChange={(e) => setSuggestForm({ ...suggestForm, reason: e.target.value })}
+                      />
+                    </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Tentative Date
-                    </label>
-                    <input
-                      type="date"
-                      className="w-full border border-gray-300 rounded-xl px-4 py-3"
-                      value={suggestForm.tentativeDate}
-                      onChange={(e) => setSuggestForm({ ...suggestForm, tentativeDate: e.target.value })}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Why are you suggesting this?
-                    </label>
-                    <textarea
-                      className="w-full border border-gray-300 rounded-xl px-4 py-3 h-24"
-                      placeholder="Team building need, celebration, morale booster, etc..."
-                      value={suggestForm.reason}
-                      onChange={(e) => setSuggestForm({ ...suggestForm, reason: e.target.value })}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Priority
-                    </label>
-                    <select
-                      className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      value={suggestForm.priority}
-                      onChange={(e) =>
-                        setSuggestForm({ ...suggestForm, priority: e.target.value as 'P1' | 'P2' | 'P3' })
-                      }
-                    >
-                      <option value="P3">P3 - Medium</option>
-                      <option value="P2">P2 - High</option>
-                      <option value="P1">P1 - Urgent</option>
-                    </select>
-                  </div>
-
-                  <div className="flex justify-end gap-4 pt-6 border-t">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsSuggestModalOpen(false);
-                        setSuggestForm({
-                          topic: '',
-                          description: '',
-                          tentativePlace: '',
-                          tentativeBudget: '',
-                          tentativeDate: '',
-                          reason: '',
-                          priority: 'P3',
-                        });
-                      }}
-                      className="px-8 py-3 text-gray-600 font-medium hover:bg-gray-100 rounded-xl transition"
-                    >
-                      Cancel
-                    </button>
-
-                    <button
-                      type="submit"
-                      className="bg-indigo-600 text-white px-10 py-3 rounded-xl font-bold shadow-lg hover:bg-indigo-700 transition"
-                    >
-                      Submit Suggestion
-                    </button>
-                  </div>
-                </form>
+                    {/* Footer buttons inside form scroll area */}
+                    <div className="flex justify-end gap-3 pt-2 border-t">
+                      <button
+                        type="button"
+                        onClick={() => { setIsSuggestModalOpen(false); setSuggestForm({ topic: '', description: '', tentativePlace: '', tentativeBudget: '', tentativeDate: '', reason: '', priority: 'P3' }); }}
+                        className="px-5 py-2 text-gray-600 text-sm font-medium hover:bg-gray-100 rounded-lg transition"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold text-sm shadow hover:bg-indigo-700 transition"
+                      >
+                        Submit
+                      </button>
+                    </div>
+                  </form>
+                </div>
               </div>
             </div>
           )}
 
           {/* ─── CREATE MODAL (HR) ─── */}
           {currentTab === 'HR' && isCreateModalOpen && (
-            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-                <div className="sticky top-0 bg-white p-6 border-b flex justify-between items-center">
-                  <h3 className="text-xl font-bold text-gray-800">Propose New Outing / Event</h3>
-                  <button onClick={() => setIsCreateModalOpen(false)}>
-                    <X size={24} />
-                  </button>
+            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+              <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-2xl flex flex-col"
+                   style={{ maxHeight: 'calc(100vh - 64px)', marginTop: '64px' }}>
+                <div className="flex justify-between items-center px-4 py-3 border-b shrink-0">
+                  <h3 className="text-base font-bold text-gray-800">Propose New Outing / Event</h3>
+                  <button onClick={() => setIsCreateModalOpen(false)} className="p-1.5 hover:bg-gray-200 rounded-full transition"><X size={18} className="text-gray-600" /></button>
                 </div>
-
-                <form onSubmit={submitProposal} className="p-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-semibold mb-2">Outing / Event Name *</label>
-                    <input
-                      required
-                      className="w-full border rounded-xl px-4 py-3"
-                      value={formData.topic}
-                      onChange={e => setFormData({ ...formData, topic: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-semibold mb-2">Description *</label>
-                    <textarea
-                      required
-                      className="w-full border rounded-xl px-4 py-3 h-32"
-                      value={formData.description}
-                      onChange={e => setFormData({ ...formData, description: e.target.value })}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold mb-2">Tentative Place</label>
-                    <input
-                      className="w-full border rounded-xl px-4 py-3"
-                      value={formData.tentativePlace}
-                      onChange={e => setFormData({ ...formData, tentativePlace: e.target.value })}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold mb-2">Tentative Budget (₹)</label>
-                    <input
-                      type="number"
-                      className="w-full border rounded-xl px-4 py-3"
-                      value={formData.tentativeBudget}
-                      onChange={e => setFormData({ ...formData, tentativeBudget: e.target.value })}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold mb-2">Tentative Date</label>
-                    <input
-                      type="date"
-                      className="w-full border rounded-xl px-4 py-3"
-                      value={formData.tentativeDate}
-                      onChange={e => setFormData({ ...formData, tentativeDate: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="md:col-span-2 flex justify-end gap-4 pt-6 border-t">
-                    <button type="button" onClick={() => setIsCreateModalOpen(false)} className="px-8 py-3 text-gray-600">
-                      Cancel
-                    </button>
-                    <button type="submit" className="bg-[#7a8b2e] text-white px-10 py-3 rounded-xl font-bold">
-                      Submit Proposal
-                    </button>
-                  </div>
-                </form>
+                <div className="overflow-y-auto flex-1">
+                  <form onSubmit={submitProposal} className="p-4 space-y-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Event Name *</label>
+                      <input required className="w-full border rounded-lg px-3 py-2 text-sm" value={formData.topic} onChange={e => setFormData({ ...formData, topic: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Description *</label>
+                      <textarea required className="w-full border rounded-lg px-3 py-2 text-sm h-16 resize-none" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Place</label>
+                        <input className="w-full border rounded-lg px-3 py-2 text-sm" value={formData.tentativePlace} onChange={e => setFormData({ ...formData, tentativePlace: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Budget (₹)</label>
+                        <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm" value={formData.tentativeBudget} onChange={e => setFormData({ ...formData, tentativeBudget: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Date</label>
+                        <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm" value={formData.tentativeDate} onChange={e => setFormData({ ...formData, tentativeDate: e.target.value })} />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-3 pt-2 border-t">
+                      <button type="button" onClick={() => setIsCreateModalOpen(false)} className="px-5 py-2 text-gray-600 text-sm font-medium hover:bg-gray-100 rounded-lg transition">Cancel</button>
+                      <button type="submit" className="bg-[#7a8b2e] text-white px-6 py-2 rounded-lg font-bold text-sm hover:bg-[#5e6c24] transition">Submit Proposal</button>
+                    </div>
+                  </form>
+                </div>
               </div>
             </div>
           )}
 
-            {/* ─── EMPLOYEE FEEDBACK TAB ─── */}
-          {currentTab === 'employee-feedback' && (
-  <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 max-w-3xl mx-auto">
-    <h3 className="text-2xl font-bold text-gray-800 mb-8 text-center">
-      Outing / Event Feedback
-    </h3>
+          {/* ─── FULL OUTING DETAILS MODAL ─── */}
+          {isDetailsModalOpen && selectedOuting && (
+            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto mx-auto">
+                <div className="sticky top-0 bg-white p-4 sm:p-6 border-b flex justify-between items-center z-10">
+                  <div>
+                    <h3 className="text-lg sm:text-2xl font-bold text-gray-800">{selectedOuting.topic}</h3>
+                    <p className="text-xs sm:text-sm text-gray-500 mt-1">ID: {selectedOuting._id?.slice(-8)} • {selectedOuting.proposedByRole} Proposal</p>
+                  </div>
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <span className={`status-pill ${selectedOuting.status?.toLowerCase().replace(' ', '-') || ''}`}>{selectedOuting.status}</span>
+                    <span className={`font-medium px-2 sm:px-3 py-1 rounded-full text-xs ${getPriorityColor(selectedOuting.priority)}`}>{selectedOuting.priority}</span>
+                    <button onClick={() => { setIsDetailsModalOpen(false); setSelectedOuting(null); }} className="p-2 hover:bg-gray-200 rounded-full transition"><X size={20} className="text-gray-600" /></button>
+                  </div>
+                </div>
 
-    <form onSubmit={handleOutingFeedbackSubmit} className="space-y-6">
-      {/* Your Name */}
-      <div>
-        <label className="block text-sm font-semibold text-gray-700 mb-2">
-          Your Name *
-        </label>
-        <select
-          required
-          value={feedbackForm.employeeName}
-          onChange={(e) => {
-            const emp = employees.find(em => em.name === e.target.value);
-            setFeedbackForm({
-              ...feedbackForm,
-              employeeName: e.target.value,
-              department: emp?.dept || '',
-              designation: emp?.desig || '',
-            });
-          }}
-          className="w-full border border-gray-300 rounded-xl px-4 py-3"
-        >
-          <option value="">Select your name</option>
-          {employees.map(emp => (
-            <option key={emp.email} value={emp.name}>{emp.name}</option>
-          ))}
-        </select>
-      </div>
+                <div className="p-4 sm:p-8 space-y-6 sm:space-y-10">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+                    <div className="bg-gray-50 p-4 sm:p-6 rounded-2xl">
+                      <div className="text-xs uppercase tracking-widest text-gray-500 mb-2">Tentative Date</div>
+                      <div className="text-lg sm:text-2xl font-semibold text-gray-800">{formatDate(selectedOuting.tentativeDate)}</div>
+                    </div>
+                    <div className="bg-gray-50 p-4 sm:p-6 rounded-2xl">
+                      <div className="text-xs uppercase tracking-widest text-gray-500 mb-2">Place</div>
+                      <div className="text-base sm:text-xl font-medium">{selectedOuting.tentativePlace || 'Not decided'}</div>
+                    </div>
+                    <div className="bg-gray-50 p-4 sm:p-6 rounded-2xl">
+                      <div className="text-xs uppercase tracking-widest text-gray-500 mb-2">Budget</div>
+                      <div className="text-lg sm:text-2xl font-semibold text-[#7a8b2e]">₹{selectedOuting.tentativeBudget?.toLocaleString() || 'TBD'}</div>
+                    </div>
+                  </div>
 
-      {/* Department & Designation - Auto-filled */}
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Department</label>
-          <input
-            value={feedbackForm.department}
-            readOnly
-            className="w-full border border-gray-300 rounded-xl px-4 py-3 bg-gray-100"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Designation</label>
-          <input
-            value={feedbackForm.designation}
-            readOnly
-            className="w-full border border-gray-300 rounded-xl px-4 py-3 bg-gray-100"
-          />
-        </div>
-      </div>
+                  <div>
+                    <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2"><AlignLeft size={18} /> Description</h4>
+                    <p className="text-gray-600 leading-relaxed bg-gray-50 p-4 sm:p-6 rounded-2xl border text-sm">{selectedOuting.description}</p>
+                  </div>
 
-      {/* Outing / Event – only Completed ones */}
-      <div>
-        <label className="block text-sm font-semibold text-gray-700 mb-2">
-          Outing / Event *
-        </label>
-        <select
-          required
-          value={feedbackForm.outingId}
-          onChange={e => setFeedbackForm({ ...feedbackForm, outingId: e.target.value })}
-          className="w-full border border-gray-300 rounded-xl px-4 py-3"
-        >
-          <option value="">-- Select Outing --</option>
-          {outingList
-            .filter(o => o.status === 'Completed')
-            .map(o => (
-              <option key={o._id} value={o._id}>
-                {o.topic} ({o.tentativeDate ? formatDate(o.tentativeDate) : 'TBD'})
-              </option>
-            ))}
-        </select>
-      </div>
+                  {(selectedOuting.remark || selectedOuting.reason) && (
+                    <div className="bg-amber-50 border border-amber-200 p-4 sm:p-6 rounded-2xl">
+                      <h4 className="font-semibold mb-2 text-sm">Remark / Reason</h4>
+                      <p className="text-gray-700 text-sm">{selectedOuting.remark || selectedOuting.reason}</p>
+                    </div>
+                  )}
 
-      {/* Attendance */}
-      <div className="flex items-center space-x-3">
-        <input
-          type="checkbox"
-          id="attended"
-          checked={feedbackForm.attended}
-          onChange={e => setFeedbackForm({ ...feedbackForm, attended: e.target.checked })}
-          className="h-5 w-5 text-[#7a8b2e]"
-        />
-        <label htmlFor="attended" className="text-sm font-medium text-gray-700">
-          I attended this outing/event *
-        </label>
-      </div>
+                  <div>
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end mb-4 gap-2">
+                      <h4 className="text-base sm:text-lg font-semibold">Employee Feedbacks ({selectedOuting.feedbacks?.length || 0})</h4>
+                      {selectedOuting.feedbacks && selectedOuting.feedbacks.length > 0 && (
+                        <div className="text-[#7a8b2e] font-medium text-sm sm:text-base">Average Overall Rating: <span className="text-2xl sm:text-3xl">{calculateAvgRating(selectedOuting.feedbacks)}</span> ⭐</div>
+                      )}
+                    </div>
 
-      {/* Ratings */}
-      <div>
-        <label className="block text-sm font-semibold text-gray-700 mb-2">Overall Rating *</label>
-        <select
-          required
-          value={feedbackForm.overallRating}
-          onChange={e => setFeedbackForm({ ...feedbackForm, overallRating: e.target.value })}
-          className="w-full border border-gray-300 rounded-xl px-4 py-3"
-        >
-          <option value="">--Select--</option>
-          {[1, 2, 3, 4, 5].map(v => <option key={v} value={v.toString()}>{v}</option>)}
-        </select>
-      </div>
+                    {selectedOuting.feedbacks && selectedOuting.feedbacks.length > 0 ? (
+                      <div className="space-y-4 sm:space-y-6">
+                        {selectedOuting.feedbacks.map((fb, idx) => (
+                          <div key={idx} className="border border-gray-200 rounded-2xl p-4 sm:p-6">
+                            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                              <div>
+                                <div className="font-semibold text-sm">{fb.employeeName}</div>
+                                <div className="text-xs text-gray-500">{fb.department} • {fb.designation}</div>
+                              </div>
+                              <div className="text-right">
+                                <div className="flex gap-1 justify-end">
+                                  {Array.from({ length: 5 }).map((_, i) => (
+                                    <Star key={i} size={14} className={i < (fb.overallRating || 0) ? 'text-yellow-400 fill-current' : 'text-gray-300'} />
+                                  ))}
+                                </div>
+                                <div className="text-xs text-gray-500 mt-1">Content: {fb.contentQuality}</div>
+                              </div>
+                            </div>
+                            {fb.attended && <div className="mt-3 inline-flex items-center gap-1 text-green-600 text-xs"><CheckCircle size={14} /> Attended</div>}
+                            {(fb.whatWasMissing || fb.howHelpful) && (
+                              <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 text-sm">
+                                {fb.whatWasMissing && <div><strong className="block text-gray-500 mb-1">What was missing?</strong> {fb.whatWasMissing}</div>}
+                                {fb.howHelpful && <div><strong className="block text-gray-500 mb-1">How was it helpful?</strong> {fb.howHelpful}</div>}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 sm:py-12 bg-gray-50 rounded-2xl text-gray-500 text-sm">No feedback submitted yet.</div>
+                    )}
+                  </div>
 
-      <div>
-        <label className="block text-sm font-semibold text-gray-700 mb-2">Content Quality *</label>
-        <select
-          required
-          value={feedbackForm.contentQuality}
-          onChange={e => setFeedbackForm({ ...feedbackForm, contentQuality: e.target.value })}
-          className="w-full border border-gray-300 rounded-xl px-4 py-3"
-        >
-          <option value="">--Select--</option>
-          {[1, 2, 3, 4, 5].map(v => <option key={v} value={v.toString()}>{v}</option>)}
-        </select>
-      </div>
+                  {selectedOuting.discrepancies && selectedOuting.discrepancies.length > 0 && (
+                    <div>
+                      <h4 className="text-base sm:text-lg font-semibold mb-4 text-red-700">Discrepancies Reported ({selectedOuting.discrepancies.length})</h4>
+                      <div className="space-y-4">
+                        {selectedOuting.discrepancies.map((d, idx) => (
+                          <div key={idx} className="bg-red-50 border border-red-200 p-4 sm:p-5 rounded-2xl">
+                            <div className="font-medium text-red-800 text-sm">{d.employeeName}</div>
+                            <div className="text-red-700 mt-1 text-sm">{d.reason}</div>
+                            <div className="text-xs text-gray-500 mt-3">Reported on {formatDate(d.createdAt)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
-      {/* Feedback Text */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">What was missing?</label>
-        <textarea
-          value={feedbackForm.whatWasMissing}
-          onChange={e => setFeedbackForm({ ...feedbackForm, whatWasMissing: e.target.value })}
-          className="w-full border border-gray-300 rounded-xl px-4 py-3 h-24"
-          placeholder="Topics, activities, arrangements, food, etc. not covered..."
-        />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">How was it helpful?</label>
-        <textarea
-          value={feedbackForm.howHelpful}
-          onChange={e => setFeedbackForm({ ...feedbackForm, howHelpful: e.target.value })}
-          className="w-full border border-gray-300 rounded-xl px-4 py-3 h-24"
-          placeholder="How this outing helped you personally or professionally..."
-        />
-      </div>
-
-      {/* Submit */}
-      <div className="flex justify-end">
-        <button
-          type="submit"
-          disabled={loadingFeedback || !feedbackForm.attended}
-          className={`px-10 py-3 rounded-xl font-bold text-white transition ${
-            loadingFeedback || !feedbackForm.attended
-              ? 'bg-gray-400 cursor-not-allowed'
-              : 'bg-[#7a8b2e] hover:bg-[#5e6c24]'
-          }`}
-        >
-          {loadingFeedback ? 'Submitting...' : 'Submit Feedback'}
-        </button>
-      </div>
-    </form>
-  </div>
-)}
+                <div className="sticky bottom-0 bg-white border-t p-4 sm:p-6 flex justify-end">
+                  <button onClick={() => { setIsDetailsModalOpen(false); setSelectedOuting(null); }} className="px-6 sm:px-10 py-2 sm:py-3 bg-gray-800 text-white rounded-2xl font-medium hover:bg-black transition text-sm">Close Details</button>
+                </div>
+              </div>
+            </div>
+          )}
         </main>
       </div>
     </div>
   );
-}
+};
+
+export default Outing;

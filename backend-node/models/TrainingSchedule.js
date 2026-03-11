@@ -1,22 +1,30 @@
 const mongoose = require('mongoose');
-const { Schema } = mongoose;
 
-const trainingScheduleSchema = new Schema({
-  trainingSuggestionId: { type: Schema.Types.ObjectId, ref: 'TrainingSuggestion', required: true },
-  // selected topics for this schedule (multi)
-  topics: { type: [String], default: [] },
-  startDate: { type: Date, required: true },
-  endDate: { type: Date, required: true },
-  trainerId: { type: Schema.Types.ObjectId, ref: 'Employee', default: null },
-  assignedEmployees: [{ type: Schema.Types.ObjectId, ref: 'Employee' }],
-  status: { type: String, enum: ['Scheduled', 'Completed', 'Cancelled'], default: 'Scheduled' },
-  approvalStatus: { type: String, enum: ['Pending', 'Approved', 'Rejected'], default: 'Pending' },
-  createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+const trainingScheduleSchema = new mongoose.Schema({
+  trainingId:          { type: String, default: '' },
+  trainingName:        { type: String, required: true, trim: true },
+  capabilityArea:      { type: String, default: '' },
+  capabilitySkill:     { type: String, default: '' },
+  trainerName:         { type: String, default: '' },
+  type:                { type: String, enum: ['Generic', 'Dept Specific', 'Level Specific', 'Role Specific'], default: 'Generic' },
+  trainingDate:        { type: String, required: true },
+  startTime:           { type: String, required: true },
+  endTime:             { type: String, required: true },
+  venue:               { type: String, default: '' },
+  onlineLink:          { type: String, default: '' },
+  targetAudience: {
+    type:        { type: String, enum: ['all', 'departments', 'levels', 'roles'], default: 'all' },
+    departments: [String],
+    levels:      [Number],
+    roles:       [String],
+  },
+  attendanceRequired:  { type: Boolean, default: true },
+  maxAttempts:         { type: Number, default: 2 },
+  feedbackWindow:      { type: Number, default: 5 },
+  status:              { type: String, enum: ['Scheduled', 'Rescheduled', 'Cancelled', 'Completed'], default: 'Scheduled' },
+  approvedBy:          { type: String, default: '' },
+  approvedAt:          { type: Date },
+  createdBy:           { type: String, default: 'System' },
 }, { timestamps: true });
 
-trainingScheduleSchema.index({ approvalStatus: 1 });
-trainingScheduleSchema.index({ trainerId: 1 });
-trainingScheduleSchema.index({ assignedEmployees: 1 });
-
-const TrainingSchedule = mongoose.models.TrainingSchedule || mongoose.model('TrainingSchedule', trainingScheduleSchema);
-module.exports = TrainingSchedule;
+module.exports = mongoose.model('TrainingSchedule', trainingScheduleSchema);

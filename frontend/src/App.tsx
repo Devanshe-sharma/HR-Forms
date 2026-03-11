@@ -2,7 +2,7 @@ import { Routes, Route } from "react-router-dom";
 import Home from "./pages/Home";
 import HRDashboard from "./pages/HRDashboard";
 import OutsiderDashboard from "./pages/OutsiderDashboard";
-import CandidateApplicationPage from "./Candidate/page";
+import CandidateApplicationPage from "./pages/CandidateApplication";
 import SalaryRevision from "./pages/SalaryRevision";
 import ProtectedRoute from './components/ProtectedRoute';
 import Recruitment from "./pages/RequisitionDashboard";
@@ -121,7 +121,7 @@ export default function App() {
       />
 
       <Route
-        path="/outing"
+        path="/Outing"
         element={
           <ProtectedRoute>
             <Outing />

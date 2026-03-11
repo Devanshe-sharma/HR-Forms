@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
+import Select from 'react-select';
 import { Plus, X, Edit, Trash2, Save, Eye, Calendar, FileText, Video, FileCheck } from 'lucide-react';
 import { getRole, can } from '../../config/rbac';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 const api = axios.create({ baseURL: API_BASE });
+
 api.interceptors.request.use((config) => {
   const role = getRole();
   if (role) config.headers['x-user-role'] = role;
@@ -43,6 +45,14 @@ interface TrainingTopic {
   createdBy: string;
 }
 
+interface Employee {
+  name: string;
+  dept: string;
+  desig: string;
+  email: string;
+  score: number;
+}
+
 type TrainingTopicForm = {
   trainingId: string;
   trainingName: string;
@@ -77,16 +87,15 @@ export default function TrainingTopicManagement() {
   const [trainingTopics, setTrainingTopics] = useState<TrainingTopic[]>([]);
   const [capabilityAreas, setCapabilityAreas] = useState<CapabilityArea[]>([]);
   const [capabilitySkills, setCapabilitySkills] = useState<CapabilitySkill[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Form state
   const [trainingTopicForm, setTrainingTopicForm] = useState<TrainingTopicForm>(initialTrainingTopicForm);
-  
-  // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTopic, setEditingTopic] = useState<TrainingTopic | null>(null);
   const [viewingTopic, setViewingTopic] = useState<TrainingTopic | null>(null);
+  const [generatedTrainingId, setGeneratedTrainingId] = useState<string>('');
 
   // Permissions
   const canCreate = can('trainingSuggestions', 'create') || can('training', 'create');
@@ -120,19 +129,35 @@ export default function TrainingTopicManagement() {
     }
   };
 
+  const loadEmployees = async () => {
+    try {
+      const res = await api.get('/employees?lightweight=true');
+      if (res.data?.success) {
+        setEmployees(res.data.data || []);
+      }
+    } catch (err: any) {
+      console.error('Failed to load employees for trainer dropdown:', err);
+    }
+  };
+
   useEffect(() => {
     loadTrainingTopics();
     loadCapabilityAreas();
     loadCapabilitySkills();
+    loadEmployees();
   }, []);
 
   const generateTrainingId = (): string => {
-    return 'TR' + Date.now().toString().slice(-8);
+    const nextNumber = trainingTopics.length + 1;
+    return String(nextNumber).padStart(3, '0'); // "001", "002", "003", ...
   };
 
   const openModal = (topic?: TrainingTopic) => {
     if (topic) {
+      // Edit mode
       setEditingTopic(topic);
+      setGeneratedTrainingId(topic.trainingId);
+
       setTrainingTopicForm({
         trainingId: topic.trainingId,
         trainingName: topic.trainingName,
@@ -148,8 +173,15 @@ export default function TrainingTopicManagement() {
         status: topic.status,
       });
     } else {
+      // Create mode
       setEditingTopic(null);
-      setTrainingTopicForm(initialTrainingTopicForm);
+      const newId = generateTrainingId();
+      setGeneratedTrainingId(newId);
+
+      setTrainingTopicForm({
+        ...initialTrainingTopicForm,
+        trainingId: newId,
+      });
     }
     setIsModalOpen(true);
     setError('');
@@ -182,7 +214,7 @@ export default function TrainingTopicManagement() {
       const selectedSkill = capabilitySkills.find(cs => cs._id === trainingTopicForm.capabilitySkillId);
 
       const payload = {
-        trainingId: trainingTopicForm.trainingId || generateTrainingId(),
+        trainingId: trainingTopicForm.trainingId || generatedTrainingId,
         trainingName: trainingTopicForm.trainingName.trim(),
         trainerName: trainingTopicForm.trainerName.trim(),
         capabilityArea: selectedArea?.capabilityArea || '',
@@ -214,9 +246,7 @@ export default function TrainingTopicManagement() {
   };
 
   const deleteTrainingTopic = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this training topic?')) {
-      return;
-    }
+    if (!confirm('Are you sure you want to delete this training topic?')) return;
 
     try {
       await api.delete(`/training-topics/${id}`);
@@ -227,9 +257,7 @@ export default function TrainingTopicManagement() {
   };
 
   const submitForApproval = async (id: string) => {
-    if (!confirm('Are you sure you want to submit this training topic for approval?')) {
-      return;
-    }
+    if (!confirm('Are you sure you want to submit this training topic for approval?')) return;
 
     try {
       await api.patch(`/training-topics/${id}/submit-for-approval`);
@@ -245,29 +273,29 @@ export default function TrainingTopicManagement() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'Draft':
-        return 'bg-gray-100 text-gray-800';
-      case 'Pending Approval':
-        return 'bg-yellow-100 text-yellow-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+      case 'Draft': return 'bg-gray-100 text-gray-800';
+      case 'Pending Approval': return 'bg-yellow-100 text-yellow-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
   };
 
   const getTypeColor = (type: string) => {
     switch (type) {
-      case 'Generic':
-        return 'bg-green-100 text-green-800';
-      case 'Dept Specific':
-        return 'bg-blue-100 text-blue-800';
-      case 'Level Specific':
-        return 'bg-purple-100 text-purple-800';
-      case 'Role Specific':
-        return 'bg-orange-100 text-orange-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+      case 'Generic': return 'bg-green-100 text-green-800';
+      case 'Dept Specific': return 'bg-blue-100 text-blue-800';
+      case 'Level Specific': return 'bg-purple-100 text-purple-800';
+      case 'Role Specific': return 'bg-orange-100 text-orange-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
   };
+
+  // Prepare options for react-select
+  const trainerOptions = employees.map(emp => ({
+    value: emp.name,
+    label: `${emp.name}${emp.desig ? ` — ${emp.desig}` : ''}${emp.dept ? ` (${emp.dept})` : ''}`
+  }));
+
+  const selectedTrainer = trainerOptions.find(opt => opt.value === trainingTopicForm.trainerName) || null;
 
   return (
     <div className="p-6">
@@ -298,87 +326,47 @@ export default function TrainingTopicManagement() {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Training ID
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Training Name
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Capability Skill
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Type
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Proposed Date
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Actions
-              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Training ID</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Training Name</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Capability Skill</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Proposed Date</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {trainingTopics.map((topic) => (
               <tr key={topic._id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {topic.trainingId}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {topic.trainingName}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {topic.capabilitySkill}
-                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{topic.trainingId}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{topic.trainingName}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{topic.capabilitySkill}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  <span className={`px-2 py-1 text-xs rounded-full ${getTypeColor(topic.type)}`}>
-                    {topic.type}
-                  </span>
+                  <span className={`px-2 py-1 text-xs rounded-full ${getTypeColor(topic.type)}`}>{topic.type}</span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {new Date(topic.proposedScheduleDate).toLocaleDateString()}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(topic.status)}`}>
-                    {topic.status}
-                  </span>
+                  <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(topic.status)}`}>{topic.status}</span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => openViewModal(topic)}
-                      className="text-blue-600 hover:text-blue-800"
-                      title="View"
-                    >
+                    <button onClick={() => openViewModal(topic)} className="text-blue-600 hover:text-blue-800" title="View">
                       <Eye className="w-4 h-4" />
                     </button>
                     {canEdit && topic.status === 'Draft' && (
-                      <button
-                        onClick={() => openModal(topic)}
-                        className="text-green-600 hover:text-green-800"
-                        title="Edit"
-                      >
+                      <button onClick={() => openModal(topic)} className="text-green-600 hover:text-green-800" title="Edit">
                         <Edit className="w-4 h-4" />
                       </button>
                     )}
                     {canDelete && topic.status === 'Draft' && (
-                      <button
-                        onClick={() => deleteTrainingTopic(topic._id)}
-                        className="text-red-600 hover:text-red-800"
-                        title="Delete"
-                      >
+                      <button onClick={() => deleteTrainingTopic(topic._id)} className="text-red-600 hover:text-red-800" title="Delete">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     )}
                     {canCreate && topic.status === 'Draft' && (
-                      <button
-                        onClick={() => submitForApproval(topic._id)}
-                        className="text-purple-600 hover:text-purple-800"
-                        title="Submit for Approval"
-                      >
+                      <button onClick={() => submitForApproval(topic._id)} className="text-purple-600 hover:text-purple-800" title="Submit for Approval">
                         <Calendar className="w-4 h-4" />
                       </button>
                     )}
@@ -390,7 +378,7 @@ export default function TrainingTopicManagement() {
         </table>
       </div>
 
-      {/* Create/Edit Modal */}
+      {/* Create / Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -398,27 +386,41 @@ export default function TrainingTopicManagement() {
               <h3 className="text-lg font-semibold">
                 {editingTopic ? 'Edit Training Topic' : 'Create Training Topic'}
               </h3>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
+              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Training ID */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Training ID
-                </label>
-                <input
-                  type="text"
-                  value={trainingTopicForm.trainingId}
-                  onChange={(e) => setTrainingTopicForm(prev => ({ ...prev, trainingId: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Auto-generated if empty"
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-1">Training ID</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={generatedTrainingId}
+                    readOnly
+                    className={`
+                      w-full px-3 py-2 border border-gray-300 rounded-md
+                      bg-gray-50 text-gray-700 cursor-not-allowed font-mono
+                      ${editingTopic ? 'border-gray-300' : 'border-indigo-200 bg-indigo-50/30'}
+                    `}
+                    title={editingTopic ? "Training ID is fixed once created" : "Auto-generated ID"}
+                  />
+                  {!editingTopic && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-indigo-600 font-medium">
+                      auto-generated
+                    </span>
+                  )}
+                </div>
+                {!editingTopic && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    This ID will be used when the topic is saved.
+                  </p>
+                )}
               </div>
+
+              {/* Training Name */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Training Name *
@@ -431,18 +433,25 @@ export default function TrainingTopicManagement() {
                   placeholder="e.g., Advanced Leadership Skills"
                 />
               </div>
+
+              {/* Trainer */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Trainer Name *
+                  Trainer *
                 </label>
-                <input
-                  type="text"
-                  value={trainingTopicForm.trainerName}
-                  onChange={(e) => setTrainingTopicForm(prev => ({ ...prev, trainerName: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g., John Smith"
+                <Select
+                  options={trainerOptions}
+                  value={selectedTrainer}
+                  onChange={(option) => setTrainingTopicForm(prev => ({ ...prev, trainerName: option?.value || '' }))}
+                  placeholder="Search or select trainer..."
+                  isSearchable
+                  isClearable
+                  className="react-select-container"
+                  classNamePrefix="react-select"
                 />
               </div>
+
+              {/* Capability Area */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Capability Area *
@@ -453,13 +462,13 @@ export default function TrainingTopicManagement() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select a capability area</option>
-                  {capabilityAreas.map((area) => (
-                    <option key={area._id} value={area._id}>
-                      {area.capabilityArea}
-                    </option>
+                  {capabilityAreas.map(area => (
+                    <option key={area._id} value={area._id}>{area.capabilityArea}</option>
                   ))}
                 </select>
               </div>
+
+              {/* Capability Skill */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Capability Skill *
@@ -467,25 +476,25 @@ export default function TrainingTopicManagement() {
                 <select
                   value={trainingTopicForm.capabilitySkillId}
                   onChange={(e) => setTrainingTopicForm(prev => ({ ...prev, capabilitySkillId: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={!trainingTopicForm.capabilityAreaId}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select a capability skill</option>
-                  {filteredSkills.map((skill) => (
-                    <option key={skill._id} value={skill._id}>
-                      {skill.capabilitySkill}
-                    </option>
+                  {filteredSkills.map(skill => (
+                    <option key={skill._id} value={skill._id}>{skill.capabilitySkill}</option>
                   ))}
                 </select>
               </div>
+
+              {/* Type */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Type *
                 </label>
                 <select
                   value={trainingTopicForm.type}
-                  onChange={(e) => setTrainingTopicForm(prev => ({ 
-                    ...prev, 
+                  onChange={(e) => setTrainingTopicForm(prev => ({
+                    ...prev,
                     type: e.target.value as any,
                     isGeneric: e.target.value === 'Generic'
                   }))}
@@ -497,6 +506,8 @@ export default function TrainingTopicManagement() {
                   <option value="Role Specific">Role Specific</option>
                 </select>
               </div>
+
+              {/* Proposed Schedule Date */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Proposed Schedule Date *
@@ -508,6 +519,8 @@ export default function TrainingTopicManagement() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
+
+              {/* Content PDF Link */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Content PDF Link
@@ -520,6 +533,8 @@ export default function TrainingTopicManagement() {
                   placeholder="https://example.com/content.pdf"
                 />
               </div>
+
+              {/* Video Link */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Video Link
@@ -532,6 +547,8 @@ export default function TrainingTopicManagement() {
                   placeholder="https://example.com/video"
                 />
               </div>
+
+              {/* Assessment Link */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Assessment Link
@@ -544,6 +561,8 @@ export default function TrainingTopicManagement() {
                   placeholder="https://example.com/assessment"
                 />
               </div>
+
+              {/* Status */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Status
@@ -585,10 +604,7 @@ export default function TrainingTopicManagement() {
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold">Training Topic Details</h3>
-              <button
-                onClick={() => setViewingTopic(null)}
-                className="text-gray-400 hover:text-gray-600"
-              >
+              <button onClick={() => setViewingTopic(null)} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
             </div>

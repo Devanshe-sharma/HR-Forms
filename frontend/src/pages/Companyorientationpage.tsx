@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box, Typography, Avatar, Chip, Collapse, IconButton,
   Stack, Button, Tooltip, TextField, Dialog, DialogTitle,
   DialogContent, DialogActions, CircularProgress, Snackbar, Alert,
+  Tabs, Tab, Divider,
 } from '@mui/material';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
@@ -33,9 +34,11 @@ import {
   Delete as DeleteIcon,
   PictureAsPdf as PdfIcon,
   CheckCircle as CheckCircleIcon,
+  UploadFile as UploadFileIcon,
+  TableChart as TableChartIcon,
 } from '@mui/icons-material';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 const currentUserRole: 'hr' | 'management' | 'employee' = 'hr';
 const isHR = currentUserRole === 'hr';
 const isHRorMgmt = currentUserRole === 'hr' || currentUserRole === 'management';
@@ -60,14 +63,49 @@ interface OrientationData {
   insurance: Insurance;
 }
 
+// ── API helper — x-user-role header added to ALL requests ─────────────────────
 const api = {
-  get:  (path: string) => fetch(`${API_BASE}/orientation${path}`, { headers: { Authorization: `Bearer ${getToken()}` } }).then(r => r.json()),
-  put:  (path: string, body: object) => fetch(`${API_BASE}/orientation${path}`, { method: 'PUT',    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` }, body: JSON.stringify(body) }).then(r => r.json()),
-  post: (path: string, body: object) => fetch(`${API_BASE}/orientation${path}`, { method: 'POST',   headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` }, body: JSON.stringify(body) }).then(r => r.json()),
-  del:  (path: string) =>              fetch(`${API_BASE}/orientation${path}`, { method: 'DELETE', headers: { Authorization: `Bearer ${getToken()}` } }).then(r => r.json()),
+  get: (path: string) =>
+    fetch(`${API_BASE}/orientation${path}`, {
+      headers: {
+        Authorization: `Bearer ${getToken()}`,
+        'x-user-role': currentUserRole,
+      },
+    }).then(r => r.json()),
+
+  put: (path: string, body: object) =>
+    fetch(`${API_BASE}/orientation${path}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${getToken()}`,
+        'x-user-role': currentUserRole,
+      },
+      body: JSON.stringify(body),
+    }).then(r => r.json()),
+
+  post: (path: string, body: object) =>
+    fetch(`${API_BASE}/orientation${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${getToken()}`,
+        'x-user-role': currentUserRole,
+      },
+      body: JSON.stringify(body),
+    }).then(r => r.json()),
+
+  del: (path: string) =>
+    fetch(`${API_BASE}/orientation${path}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${getToken()}`,
+        'x-user-role': currentUserRole,
+      },
+    }).then(r => r.json()),
 };
 
-// ── Card configs ──────────────────────────────────────────────────────────────
+// ── Card configs ───────────────────────────────────────────────────────────────
 const CARD_CONFIGS = [
   { gradient: 'linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%)', border: '#BFDBFE', accent: '#3B82F6', headerBg: '#3B82F6' },
   { gradient: 'linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%)', border: '#DDD6FE', accent: '#8B5CF6', headerBg: '#8B5CF6' },
@@ -77,7 +115,7 @@ const CARD_CONFIGS = [
   { gradient: 'linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%)', border: '#BAE6FD', accent: '#0EA5E9', headerBg: '#0EA5E9' },
 ];
 
-// ── Shared components ─────────────────────────────────────────────────────────
+// ── Shared components ──────────────────────────────────────────────────────────
 function FileRow({ file, accentColor, onDelete }: { file: FileItem; accentColor: string; onDelete?: () => void }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1, px: 1.5, borderRadius: '10px', bgcolor: 'rgba(255,255,255,0.7)', border: '1px solid rgba(0,0,0,0.06)', mb: 0.8, '&:hover': { bgcolor: 'rgba(255,255,255,0.95)', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }, transition: 'all 0.15s' }}>
@@ -87,11 +125,28 @@ function FileRow({ file, accentColor, onDelete }: { file: FileItem; accentColor:
       <Typography fontSize="0.875rem" fontWeight={500} flex={1} color="#1F2937" noWrap>{file.name}</Typography>
       {file.url && file.url !== '#' && (
         <Stack direction="row" spacing={0.5}>
-          <Tooltip title="Open"><IconButton size="small" href={file.url} target="_blank" rel="noreferrer" sx={{ color: accentColor, bgcolor: `${accentColor}15`, borderRadius: '7px', width: 30, height: 30, '&:hover': { bgcolor: `${accentColor}25` } }}><OpenInNewIcon sx={{ fontSize: 15 }} /></IconButton></Tooltip>
-          <Tooltip title="Download"><IconButton size="small" href={file.url} download sx={{ color: '#6B7280', bgcolor: '#F3F4F6', borderRadius: '7px', width: 30, height: 30, '&:hover': { bgcolor: '#E5E7EB' } }}><DownloadIcon sx={{ fontSize: 15 }} /></IconButton></Tooltip>
+          <Tooltip title="Open">
+            <IconButton size="small" href={file.url} target="_blank" rel="noreferrer"
+              sx={{ color: accentColor, bgcolor: `${accentColor}15`, borderRadius: '7px', width: 30, height: 30, '&:hover': { bgcolor: `${accentColor}25` } }}>
+              <OpenInNewIcon sx={{ fontSize: 15 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Download">
+            <IconButton size="small" href={file.url} download
+              sx={{ color: '#6B7280', bgcolor: '#F3F4F6', borderRadius: '7px', width: 30, height: 30, '&:hover': { bgcolor: '#E5E7EB' } }}>
+              <DownloadIcon sx={{ fontSize: 15 }} />
+            </IconButton>
+          </Tooltip>
         </Stack>
       )}
-      {isHR && onDelete && <Tooltip title="Remove"><IconButton size="small" onClick={onDelete} sx={{ color: '#EF4444', bgcolor: '#FEF2F2', borderRadius: '7px', width: 28, height: 28, '&:hover': { bgcolor: '#FEE2E2' } }}><DeleteIcon sx={{ fontSize: 14 }} /></IconButton></Tooltip>}
+      {isHR && onDelete && (
+        <Tooltip title="Remove">
+          <IconButton size="small" onClick={onDelete}
+            sx={{ color: '#EF4444', bgcolor: '#FEF2F2', borderRadius: '7px', width: 28, height: 28, '&:hover': { bgcolor: '#FEE2E2' } }}>
+            <DeleteIcon sx={{ fontSize: 14 }} />
+          </IconButton>
+        </Tooltip>
+      )}
     </Box>
   );
 }
@@ -113,6 +168,7 @@ function LinkEditor({ currentUrl, currentName, accentColor, onSave, label = 'Goo
   const [url, setUrl]   = useState(currentUrl);
   const [name, setName] = useState(currentName);
   const [saving, setSaving] = useState(false);
+
   useEffect(() => { setUrl(currentUrl); setName(currentName); }, [currentUrl, currentName]);
 
   const handleSave = async () => {
@@ -132,15 +188,21 @@ function LinkEditor({ currentUrl, currentName, accentColor, onSave, label = 'Goo
 
   return (
     <Stack spacing={1} mt={1} sx={{ p: 1.5, bgcolor: 'rgba(255,255,255,0.8)', borderRadius: '10px', border: '1px solid rgba(0,0,0,0.08)' }}>
-      <TextField size="small" placeholder="Display name" value={name} onChange={e => setName(e.target.value)} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.82rem', bgcolor: 'white' } }} />
-      <TextField size="small" placeholder={label} value={url} onChange={e => setUrl(e.target.value)} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.82rem', bgcolor: 'white' } }} />
+      <TextField size="small" placeholder="Display name" value={name} onChange={e => setName(e.target.value)}
+        sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.82rem', bgcolor: 'white' } }} />
+      <TextField size="small" placeholder={label} value={url} onChange={e => setUrl(e.target.value)}
+        sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.82rem', bgcolor: 'white' } }} />
       <Stack direction="row" spacing={1}>
-        <Button size="small" variant="contained" startIcon={saving ? <CircularProgress size={12} color="inherit" /> : <SaveIcon sx={{ fontSize: 14 }} />}
+        <Button size="small" variant="contained"
+          startIcon={saving ? <CircularProgress size={12} color="inherit" /> : <SaveIcon sx={{ fontSize: 14 }} />}
           onClick={handleSave} disabled={saving || !url.trim()}
           sx={{ bgcolor: accentColor, borderRadius: '8px', textTransform: 'none', fontSize: '0.8rem', px: 2 }}>
           Save
         </Button>
-        <Button size="small" onClick={() => setEditing(false)} sx={{ textTransform: 'none', fontSize: '0.8rem', color: '#6B7280', borderRadius: '8px' }}>Cancel</Button>
+        <Button size="small" onClick={() => setEditing(false)}
+          sx={{ textTransform: 'none', fontSize: '0.8rem', color: '#6B7280', borderRadius: '8px' }}>
+          Cancel
+        </Button>
       </Stack>
     </Stack>
   );
@@ -169,22 +231,29 @@ function AddLinkRow({ color, label, onAdd }: { color: string; label: string; onA
 
   return (
     <Stack spacing={1} mt={1} sx={{ p: 1.5, bgcolor: 'rgba(255,255,255,0.8)', borderRadius: '10px', border: '1px solid rgba(0,0,0,0.08)' }}>
-      <TextField size="small" placeholder="Name (e.g. Leave Policy)" value={name} onChange={e => setName(e.target.value)} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.82rem', bgcolor: 'white' } }} />
-      <TextField size="small" placeholder="Google Drive / PDF URL" value={url} onChange={e => setUrl(e.target.value)} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.82rem', bgcolor: 'white' } }} />
+      <TextField size="small" placeholder="Name (e.g. Leave Policy)" value={name} onChange={e => setName(e.target.value)}
+        sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.82rem', bgcolor: 'white' } }} />
+      <TextField size="small" placeholder="Google Drive / PDF URL" value={url} onChange={e => setUrl(e.target.value)}
+        sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.82rem', bgcolor: 'white' } }} />
       <Stack direction="row" spacing={0.8} alignItems="center">
         <Button size="small" variant="contained" onClick={handleAdd} disabled={saving || !name.trim() || !url.trim()}
           sx={{ bgcolor: color, borderRadius: '8px', textTransform: 'none', fontSize: '0.8rem', px: 2 }}>
           {saving ? <CircularProgress size={12} color="inherit" /> : 'Add'}
         </Button>
-        <IconButton size="small" onClick={() => { setOpen(false); setName(''); setUrl(''); }} sx={{ color: '#9CA3AF' }}><CloseIcon sx={{ fontSize: 16 }} /></IconButton>
+        <IconButton size="small" onClick={() => { setOpen(false); setName(''); setUrl(''); }} sx={{ color: '#9CA3AF' }}>
+          <CloseIcon sx={{ fontSize: 16 }} />
+        </IconButton>
       </Stack>
     </Stack>
   );
 }
 
-// ── Section content components ────────────────────────────────────────────────
+// ── Section content components ─────────────────────────────────────────────────
 function OnboardingPPT({ data, onUpdate }: { data: OrientationData['onboardingPPT']; onUpdate: (d: Partial<OrientationData>) => void }) {
-  const save = async (name: string, url: string) => { const res = await api.put('/ppt', { name, url }); if (res.success) onUpdate({ onboardingPPT: res.data }); };
+  const save = async (name: string, url: string) => {
+    const res = await api.put('/ppt', { name, url });
+    if (res.success) onUpdate({ onboardingPPT: res.data });
+  };
   return (
     <Stack spacing={1}>
       {data.url ? (
@@ -196,17 +265,33 @@ function OnboardingPPT({ data, onUpdate }: { data: OrientationData['onboardingPP
             <Typography fontSize="0.875rem" fontWeight={600} color="#1F2937">{data.name}</Typography>
             <Typography fontSize="0.75rem" color="#6B7280">Onboarding Presentation</Typography>
           </Box>
-          <Tooltip title="Download"><IconButton size="small" href={data.url} download sx={{ color: '#3B82F6', bgcolor: '#EFF6FF', borderRadius: '8px', width: 32, height: 32 }}><DownloadIcon sx={{ fontSize: 16 }} /></IconButton></Tooltip>
-          <Tooltip title="Open"><IconButton size="small" href={data.url} target="_blank" sx={{ color: '#6B7280', bgcolor: '#F3F4F6', borderRadius: '8px', width: 32, height: 32 }}><OpenInNewIcon sx={{ fontSize: 16 }} /></IconButton></Tooltip>
+          <Tooltip title="Download">
+            <IconButton size="small" href={data.url} download sx={{ color: '#3B82F6', bgcolor: '#EFF6FF', borderRadius: '8px', width: 32, height: 32 }}>
+              <DownloadIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Open">
+            <IconButton size="small" href={data.url} target="_blank" sx={{ color: '#6B7280', bgcolor: '#F3F4F6', borderRadius: '8px', width: 32, height: 32 }}>
+              <OpenInNewIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
         </Box>
-      ) : <Typography fontSize="0.85rem" color="#9CA3AF" sx={{ py: 1 }}>No link added yet.</Typography>}
-      {isHR ? <LinkEditor currentUrl={data.url} currentName={data.name} accentColor="#3B82F6" onSave={save} label="Google Drive PPT link" /> : !data.url && <Locked />}
+      ) : (
+        <Typography fontSize="0.85rem" color="#9CA3AF" sx={{ py: 1 }}>No link added yet.</Typography>
+      )}
+      {isHR
+        ? <LinkEditor currentUrl={data.url} currentName={data.name} accentColor="#3B82F6" onSave={save} label="Google Drive PPT link" />
+        : !data.url && <Locked />
+      }
     </Stack>
   );
 }
 
 function OnboardingTest({ data, onUpdate }: { data: OrientationData['onboardingTest']; onUpdate: (d: Partial<OrientationData>) => void }) {
-  const save = async (name: string, url: string) => { const res = await api.put('/test', { name, url }); if (res.success) onUpdate({ onboardingTest: res.data }); };
+  const save = async (name: string, url: string) => {
+    const res = await api.put('/test', { name, url });
+    if (res.success) onUpdate({ onboardingTest: res.data });
+  };
   return (
     <Stack spacing={1}>
       {data.url ? (
@@ -218,30 +303,203 @@ function OnboardingTest({ data, onUpdate }: { data: OrientationData['onboardingT
             <Typography fontSize="0.875rem" fontWeight={600} color="#1F2937">{data.name}</Typography>
             <Typography fontSize="0.75rem" color="#6B7280">Assessment Document</Typography>
           </Box>
-          <Tooltip title="Download"><IconButton size="small" href={data.url} download sx={{ color: '#8B5CF6', bgcolor: '#F5F3FF', borderRadius: '8px', width: 32, height: 32 }}><DownloadIcon sx={{ fontSize: 16 }} /></IconButton></Tooltip>
-          <Tooltip title="Open"><IconButton size="small" href={data.url} target="_blank" sx={{ color: '#6B7280', bgcolor: '#F3F4F6', borderRadius: '8px', width: 32, height: 32 }}><OpenInNewIcon sx={{ fontSize: 16 }} /></IconButton></Tooltip>
+          <Tooltip title="Download">
+            <IconButton size="small" href={data.url} download sx={{ color: '#8B5CF6', bgcolor: '#F5F3FF', borderRadius: '8px', width: 32, height: 32 }}>
+              <DownloadIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Open">
+            <IconButton size="small" href={data.url} target="_blank" sx={{ color: '#6B7280', bgcolor: '#F3F4F6', borderRadius: '8px', width: 32, height: 32 }}>
+              <OpenInNewIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
         </Box>
-      ) : <Typography fontSize="0.85rem" color="#9CA3AF" sx={{ py: 1 }}>No link added yet.</Typography>}
-      {isHR ? <LinkEditor currentUrl={data.url} currentName={data.name} accentColor="#8B5CF6" onSave={save} label="Google Drive / PDF test link" /> : !data.url && <Locked />}
+      ) : (
+        <Typography fontSize="0.85rem" color="#9CA3AF" sx={{ py: 1 }}>No link added yet.</Typography>
+      )}
+      {isHR
+        ? <LinkEditor currentUrl={data.url} currentName={data.name} accentColor="#8B5CF6" onSave={save} label="Google Drive / PDF test link" />
+        : !data.url && <Locked />
+      }
     </Stack>
   );
 }
 
 function PoliciesContent({ data, onUpdate }: { data: FileItem[]; onUpdate: (d: Partial<OrientationData>) => void }) {
-  const add    = async (name: string, url: string) => { const res = await api.post('/policies', { name, url }); if (res.success) onUpdate({ policies: [...data, res.data] }); };
-  const remove = async (id: string) => { const res = await api.del(`/policies/${id}`); if (res.success) onUpdate({ policies: data.filter(p => p.id !== id) }); };
+  const [importing, setImporting]       = useState(false);
+  const [importResult, setImportResult] = useState<{ success: number; failed: number } | null>(null);
+  const [importDlg, setImportDlg]       = useState(false);
+  const [importTab, setImportTab]       = useState<'csv' | 'paste'>('csv');
+  const [pasteText, setPasteText]       = useState('');
+
+  const add = async (name: string, url: string) => {
+    const res = await api.post('/policies', { name, url });
+    if (res.success) onUpdate({ policies: [...data, res.data] });
+  };
+  const remove = async (id: string) => {
+    const res = await api.del(`/policies/${id}`);
+    if (res.success) onUpdate({ policies: data.filter(p => p.id !== id) });
+  };
+
+  const downloadTemplate = () => {
+    const csv = `Name,URL\nLeave Policy,https://drive.google.com/file/...\nCode of Conduct,https://drive.google.com/file/...`;
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'policies_template.csv'; a.click();
+  };
+
+  const postRows = async (rows: Array<{ name: string; url: string }>, currentData: FileItem[]) => {
+    setImporting(true); setImportResult(null);
+    let success = 0, failed = 0;
+    const added: FileItem[] = [];
+    for (const { name, url } of rows) {
+      try {
+        const res = await api.post('/policies', { name, url });
+        if (res.success) { added.push(res.data as FileItem); success++; }
+        else { failed++; }
+      } catch (_e) { failed++; }
+    }
+    if (added.length > 0) onUpdate({ policies: [...currentData, ...added] });
+    setImporting(false);
+    setImportResult({ success, failed });
+    setImportDlg(false);
+  };
+
+  const handleCSVFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const snapshot = data;
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      const text = evt.target?.result as string;
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean).slice(1);
+      const rows = lines.map(row => {
+        const cols = row.match(/(".*?"|[^,]+)/g)?.map(c => c.replace(/^"|"$/g, '').trim()) ?? [];
+        return { name: cols[0] ?? '', url: cols[1] ?? '' };
+      }).filter(r => r.name && r.url);
+      await postRows(rows, snapshot);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handlePasteImport = async () => {
+    const lines = pasteText.split('\n').map(l => l.trim()).filter(Boolean);
+    const firstLower = lines[0]?.toLowerCase() ?? '';
+    const dataLines = firstLower.startsWith('name') ? lines.slice(1) : lines;
+    const rows = dataLines.map(row => {
+      const sep = row.includes('\t') ? '\t' : ',';
+      const cols = row.split(sep).map(c => c.replace(/^"|"$/g, '').trim());
+      return { name: cols[0] ?? '', url: cols[1] ?? '' };
+    }).filter(r => r.name && r.url);
+    if (rows.length === 0) return;
+    await postRows(rows, data);
+    setPasteText('');
+  };
+
   return (
-    <Stack>
+    <Stack spacing={0.5}>
       {data.length === 0 && <Typography fontSize="0.85rem" color="#9CA3AF" sx={{ py: 1 }}>No policies added yet.</Typography>}
       {data.map(p => <FileRow key={p.id} file={p} accentColor="#10B981" onDelete={isHR ? () => remove(p.id) : undefined} />)}
       {isHR && <AddLinkRow color="#10B981" label="Add Policy Link" onAdd={add} />}
+
+      {isHR && (
+        <Stack direction="row" spacing={1} mt={0.5} flexWrap="wrap" gap={0.5}>
+          <Button size="small" startIcon={<UploadFileIcon sx={{ fontSize: 14 }} />} onClick={() => setImportDlg(true)}
+            sx={{ textTransform: 'none', fontSize: '0.8rem', color: '#8B5CF6', bgcolor: '#F5F3FF', borderRadius: '8px', px: 1.5, '&:hover': { bgcolor: '#EDE9FE' } }}>
+            Bulk Import
+          </Button>
+          <Tooltip title="Download CSV template (Name, URL)">
+            <Button size="small" startIcon={<TableChartIcon sx={{ fontSize: 14 }} />} onClick={downloadTemplate}
+              sx={{ textTransform: 'none', fontSize: '0.8rem', color: '#0EA5E9', bgcolor: '#F0F9FF', borderRadius: '8px', px: 1.5, '&:hover': { bgcolor: '#E0F2FE' } }}>
+              Template
+            </Button>
+          </Tooltip>
+        </Stack>
+      )}
+
+      {importResult && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 1, borderRadius: '8px',
+          bgcolor: importResult.failed === 0 ? '#F0FDF4' : '#FFFBEB',
+          border: `1px solid ${importResult.failed === 0 ? '#BBF7D0' : '#FDE68A'}` }}>
+          <Typography fontSize="0.78rem" color={importResult.failed === 0 ? '#15803D' : '#92400E'}>
+            ✅ {importResult.success} imported{importResult.failed > 0 && ` • ⚠️ ${importResult.failed} skipped`}
+          </Typography>
+          <IconButton size="small" onClick={() => setImportResult(null)} sx={{ ml: 'auto', p: 0.3 }}>
+            <CloseIcon sx={{ fontSize: 13, color: '#9CA3AF' }} />
+          </IconButton>
+        </Box>
+      )}
+
+      <Dialog open={importDlg} onClose={() => setImportDlg(false)} maxWidth="sm" fullWidth
+        PaperProps={{ sx: { borderRadius: '16px', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' } }}>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 0 }}>Bulk Import Policies</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <Tabs value={importTab} onChange={(_e, v: 'csv' | 'paste') => setImportTab(v)}
+            sx={{ mb: 2, '& .MuiTab-root': { textTransform: 'none', fontSize: '0.85rem', minHeight: 36 }, '& .MuiTabs-indicator': { bgcolor: '#10B981' } }}>
+            <Tab label="📂 Upload CSV" value="csv" />
+            <Tab label="📋 Paste from Excel" value="paste" />
+          </Tabs>
+          {importTab === 'csv' && (
+            <Stack spacing={2}>
+              <Box sx={{ p: 2.5, borderRadius: '10px', bgcolor: '#F0FDF4', border: '1px dashed #86EFAC', textAlign: 'center' }}>
+                <UploadFileIcon sx={{ fontSize: 28, color: '#10B981', mb: 0.5 }} />
+                <Typography fontSize="0.82rem" color="#374151" mb={1.5}>
+                  CSV must have columns: <strong>Name</strong>, <strong>URL</strong>
+                </Typography>
+                <input id="policy-csv-dlg" type="file" accept=".csv" style={{ display: 'none' }} onChange={handleCSVFile} />
+                <Button component="label" htmlFor="policy-csv-dlg" variant="contained" size="small"
+                  sx={{ bgcolor: '#10B981', borderRadius: '8px', textTransform: 'none', '&:hover': { bgcolor: '#059669' } }}>
+                  Choose CSV File
+                </Button>
+              </Box>
+              <Button size="small" startIcon={<TableChartIcon sx={{ fontSize: 14 }} />} onClick={downloadTemplate}
+                sx={{ textTransform: 'none', fontSize: '0.8rem', color: '#6B7280', alignSelf: 'flex-start' }}>
+                Download blank template
+              </Button>
+            </Stack>
+          )}
+          {importTab === 'paste' && (
+            <Stack spacing={1.5}>
+              <Typography fontSize="0.82rem" color="#6B7280">
+                Copy rows from Excel / Google Sheets and paste below.<br />
+                Two columns: <strong>Name</strong> then <strong>URL</strong>. Header row is optional.
+              </Typography>
+              <TextField 
+                multiline 
+                rows={8} 
+                fullWidth
+                placeholder={"Leave Policy\thttps://drive.google.com/...\nCode of Conduct\thttps://drive.google.com/..."}
+                value={pasteText} 
+                onChange={(e) => setPasteText(e.target.value)}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: '10px', fontSize: '0.82rem', fontFamily: 'monospace', bgcolor: '#FAFAFA' } }}
+              />
+              <Typography fontSize="0.75rem" color="#9CA3AF">Supports tab-separated (Excel paste) and comma-separated rows.</Typography>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5, pt: 1 }}>
+          <Button onClick={() => { setImportDlg(false); setPasteText(''); }}
+            sx={{ textTransform: 'none', color: '#6B7280', borderRadius: '8px' }}>Cancel</Button>
+          {importTab === 'paste' && (
+            <Button variant="contained" onClick={handlePasteImport} disabled={importing || !pasteText.trim()}
+              sx={{ bgcolor: '#10B981', borderRadius: '8px', textTransform: 'none', px: 3, '&:hover': { bgcolor: '#059669' } }}>
+              {importing ? <CircularProgress size={14} color="inherit" /> : 'Import'}
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }
 
 function TaxFormsContent({ data, onUpdate }: { data: FileItem[]; onUpdate: (d: Partial<OrientationData>) => void }) {
-  const add    = async (name: string, url: string) => { const res = await api.post('/tax-forms', { name, url }); if (res.success) onUpdate({ taxForms: [...data, res.data] }); };
-  const remove = async (id: string) => { const res = await api.del(`/tax-forms/${id}`); if (res.success) onUpdate({ taxForms: data.filter(f => f.id !== id) }); };
+  const add = async (name: string, url: string) => {
+    const res = await api.post('/tax-forms', { name, url });
+    if (res.success) onUpdate({ taxForms: [...data, res.data] });
+  };
+  const remove = async (id: string) => {
+    const res = await api.del(`/tax-forms/${id}`);
+    if (res.success) onUpdate({ taxForms: data.filter(f => f.id !== id) });
+  };
   return (
     <Stack>
       {data.length === 0 && <Typography fontSize="0.85rem" color="#9CA3AF" sx={{ py: 1 }}>No forms added yet.</Typography>}
@@ -251,24 +509,350 @@ function TaxFormsContent({ data, onUpdate }: { data: FileItem[]; onUpdate: (d: P
   );
 }
 
-function HolidayContent({ data, weekoffs, onUpdate }: { data: Holiday[]; weekoffs: WeekOff[]; onUpdate: (d: Partial<OrientationData>) => void }) {
-  const [tab, setTab]     = useState<'holiday' | 'weekoff'>('holiday');
-  const [dlgOpen, setDlgOpen] = useState(false);
-  const [form, setForm]   = useState({ name: '', date: '', type: 'national' as const });
-  const [saving, setSaving] = useState(false);
+// ── WeekOff tab — full Add / Edit / Delete ────────────────────────────────────
+function WeekOffTab({ weekoffs, onUpdate }: {
+  weekoffs: WeekOff[];
+  onUpdate: (d: Partial<OrientationData>) => void;
+}) {
+  const [dlgOpen, setDlgOpen]         = useState(false);
+  const [importDlg, setImportDlg]     = useState(false);
+  const [importTab, setImportTab]     = useState<'csv' | 'paste'>('csv');
+  const [pasteText, setPasteText]     = useState('');
+  const [editId, setEditId]           = useState<string | null>(null);
+  const [form, setForm]               = useState({ label: '', days: '' });
+  const [saving, setSaving]           = useState(false);
+  const [importing, setImporting]     = useState(false);
+  const [importResult, setImportResult] = useState<{ success: number; failed: number } | null>(null);
+
+  const openAdd  = () => { setEditId(null); setForm({ label: '', days: '' }); setDlgOpen(true); };
+  const openEdit = (w: WeekOff) => { setEditId(w.id); setForm({ label: w.label, days: w.days }); setDlgOpen(true); };
+
+  const handleSave = async () => {
+    if (!form.label.trim() || !form.days.trim()) return;
+    setSaving(true);
+    if (editId) {
+      const res = await api.put(`/weekoffs/${editId}`, form);
+      if (res.success) onUpdate({ weekoffs: weekoffs.map(w => w.id === editId ? { ...w, ...form } : w) });
+    } else {
+      const res = await api.post('/weekoffs', form);
+      if (res.success) onUpdate({ weekoffs: [...weekoffs, res.data as WeekOff] });
+    }
+    setSaving(false);
+    setDlgOpen(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    const res = await api.del(`/weekoffs/${id}`);
+    if (res.success) onUpdate({ weekoffs: weekoffs.filter(w => w.id !== id) });
+  };
+
+  const downloadTemplate = () => {
+    const csv = `Label,Days\nSunday,All Sundays\nSaturday,2nd & 4th Saturday`;
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'weekoffs_template.csv'; a.click();
+  };
+
+  type WeekOffRow = { label: string; days: string };
+
+  const postRows = async (rows: WeekOffRow[], currentData: WeekOff[]) => {
+    setImporting(true); setImportResult(null);
+    let success = 0, failed = 0;
+    const added: WeekOff[] = [];
+    for (const row of rows) {
+      try {
+        const res = await api.post('/weekoffs', row);
+        if (res.success) { added.push(res.data as WeekOff); success++; }
+        else { failed++; }
+      } catch (_e) { failed++; }
+    }
+    if (added.length > 0) onUpdate({ weekoffs: [...currentData, ...added] });
+    setImporting(false);
+    setImportResult({ success, failed });
+    setImportDlg(false);
+  };
+
+  const handleCSVFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const snapshot = weekoffs;
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      const text = evt.target?.result as string;
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean).slice(1);
+      const rows: WeekOffRow[] = lines.map(row => {
+        const cols = row.match(/(".*?"|[^,]+)/g)?.map(c => c.replace(/^"|"$/g, '').trim()) ?? [];
+        return { label: cols[0] ?? '', days: cols[1] ?? '' };
+      }).filter(r => r.label && r.days);
+      await postRows(rows, snapshot);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handlePasteImport = async () => {
+    const lines = pasteText.split('\n').map(l => l.trim()).filter(Boolean);
+    const firstLower = lines[0]?.toLowerCase() ?? '';
+    const dataLines = firstLower.startsWith('label') ? lines.slice(1) : lines;
+    const rows: WeekOffRow[] = dataLines.map(row => {
+      const sep = row.includes('\t') ? '\t' : ',';
+      const cols = row.split(sep).map(c => c.replace(/^"|"$/g, '').trim());
+      return { label: cols[0] ?? '', days: cols[1] ?? '' };
+    }).filter(r => r.label && r.days);
+    if (rows.length === 0) return;
+    await postRows(rows, weekoffs);
+    setPasteText('');
+  };
+
+  return (
+    <Stack spacing={0.8}>
+      {weekoffs.length === 0 && (
+        <Typography fontSize="0.85rem" color="#9CA3AF">No week off rules yet.</Typography>
+      )}
+      {weekoffs.map(w => (
+        <Box key={w.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1, px: 1.5, borderRadius: '10px', bgcolor: 'rgba(255,255,255,0.7)', border: '1px solid rgba(0,0,0,0.06)', '&:hover': { bgcolor: 'rgba(255,255,255,0.95)' } }}>
+          <EventIcon sx={{ fontSize: 18, color: '#EC4899', flexShrink: 0 }} />
+          <Box flex={1}>
+            <Typography fontSize="0.85rem" fontWeight={600} color="#1F2937">{w.label}</Typography>
+            <Typography fontSize="0.75rem" color="#6B7280">{w.days}</Typography>
+          </Box>
+          {isHRorMgmt && (
+            <Stack direction="row" spacing={0.5}>
+              <Tooltip title="Edit">
+                <IconButton size="small" onClick={() => openEdit(w)}
+                  sx={{ color: '#8B5CF6', bgcolor: '#F5F3FF', borderRadius: '7px', width: 28, height: 28, '&:hover': { bgcolor: '#EDE9FE' } }}>
+                  <EditIcon sx={{ fontSize: 14 }} />
+                </IconButton>
+              </Tooltip>
+              {isHR && (
+                <Tooltip title="Delete">
+                  <IconButton size="small" onClick={() => handleDelete(w.id)}
+                    sx={{ color: '#EF4444', bgcolor: '#FEF2F2', borderRadius: '7px', width: 28, height: 28, '&:hover': { bgcolor: '#FEE2E2' } }}>
+                    <DeleteIcon sx={{ fontSize: 14 }} />
+                  </IconButton>
+                </Tooltip>
+              )}
+            </Stack>
+          )}
+        </Box>
+      ))}
+
+      {/* Action buttons */}
+      {isHRorMgmt && (
+        <Stack direction="row" spacing={1} mt={0.5} flexWrap="wrap" gap={0.5}>
+          <Button size="small" startIcon={<AddIcon sx={{ fontSize: 14 }} />} onClick={openAdd}
+            sx={{ textTransform: 'none', fontSize: '0.8rem', color: '#EC4899', bgcolor: '#FFF1F2', borderRadius: '8px', px: 1.5, '&:hover': { bgcolor: '#FFE4E6' } }}>
+            Add Rule
+          </Button>
+          <Button size="small" startIcon={<UploadFileIcon sx={{ fontSize: 14 }} />} onClick={() => setImportDlg(true)}
+            sx={{ textTransform: 'none', fontSize: '0.8rem', color: '#8B5CF6', bgcolor: '#F5F3FF', borderRadius: '8px', px: 1.5, '&:hover': { bgcolor: '#EDE9FE' } }}>
+            Bulk Import
+          </Button>
+          <Tooltip title="Download CSV template (Label, Days)">
+            <Button size="small" startIcon={<TableChartIcon sx={{ fontSize: 14 }} />} onClick={downloadTemplate}
+              sx={{ textTransform: 'none', fontSize: '0.8rem', color: '#0EA5E9', bgcolor: '#F0F9FF', borderRadius: '8px', px: 1.5, '&:hover': { bgcolor: '#E0F2FE' } }}>
+              Template
+            </Button>
+          </Tooltip>
+        </Stack>
+      )}
+
+      {/* Import result banner */}
+      {importResult && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 1, borderRadius: '8px',
+          bgcolor: importResult.failed === 0 ? '#F0FDF4' : '#FFFBEB',
+          border: `1px solid ${importResult.failed === 0 ? '#BBF7D0' : '#FDE68A'}` }}>
+          <Typography fontSize="0.78rem" color={importResult.failed === 0 ? '#15803D' : '#92400E'}>
+            ✅ {importResult.success} imported{importResult.failed > 0 && ` • ⚠️ ${importResult.failed} skipped`}
+          </Typography>
+          <IconButton size="small" onClick={() => setImportResult(null)} sx={{ ml: 'auto', p: 0.3 }}>
+            <CloseIcon sx={{ fontSize: 13, color: '#9CA3AF' }} />
+          </IconButton>
+        </Box>
+      )}
+
+      {/* Add / Edit single rule dialog */}
+      <Dialog open={dlgOpen} onClose={() => setDlgOpen(false)} maxWidth="xs" fullWidth
+        PaperProps={{ sx: { borderRadius: '16px', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' } }}>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 1 }}>
+          {editId ? 'Edit Week Off Rule' : 'Add Week Off Rule'}
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} mt={0.5}>
+            <TextField label="Label (e.g. Sunday)" size="small" fullWidth value={form.label}
+              onChange={e => setForm(p => ({ ...p, label: e.target.value }))}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: '10px' } }} />
+            <TextField label="Days (e.g. 2nd & 4th Saturday, All Sundays)" size="small" fullWidth value={form.days}
+              onChange={e => setForm(p => ({ ...p, days: e.target.value }))}
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: '10px' } }} />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setDlgOpen(false)} sx={{ textTransform: 'none', color: '#6B7280', borderRadius: '8px' }}>Cancel</Button>
+          <Button variant="contained" onClick={handleSave} disabled={saving || !form.label.trim() || !form.days.trim()}
+            sx={{ bgcolor: '#EC4899', borderRadius: '8px', textTransform: 'none', px: 3, '&:hover': { bgcolor: '#DB2777' } }}>
+            {saving ? <CircularProgress size={14} color="inherit" /> : editId ? 'Save' : 'Add'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Bulk import dialog */}
+      <Dialog open={importDlg} onClose={() => setImportDlg(false)} maxWidth="sm" fullWidth
+        PaperProps={{ sx: { borderRadius: '16px', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' } }}>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 0 }}>Bulk Import Week Off Rules</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <Tabs value={importTab} onChange={(_e, v: 'csv' | 'paste') => setImportTab(v)}
+            sx={{ mb: 2, '& .MuiTab-root': { textTransform: 'none', fontSize: '0.85rem', minHeight: 36 }, '& .MuiTabs-indicator': { bgcolor: '#EC4899' } }}>
+            <Tab label="📂 Upload CSV" value="csv" />
+            <Tab label="📋 Paste from Excel" value="paste" />
+          </Tabs>
+
+          {importTab === 'csv' && (
+            <Stack spacing={2}>
+              <Box sx={{ p: 2.5, borderRadius: '10px', bgcolor: '#FFF1F2', border: '1px dashed #FECDD3', textAlign: 'center' }}>
+                <UploadFileIcon sx={{ fontSize: 28, color: '#EC4899', mb: 0.5 }} />
+                <Typography fontSize="0.82rem" color="#374151" mb={0.5}>
+                  CSV columns: <strong>Label</strong>, <strong>Days</strong>
+                </Typography>
+                <Typography fontSize="0.75rem" color="#9CA3AF" mb={1.5}>
+                  e.g. <code>Sunday, All Sundays</code>
+                </Typography>
+                <input id="weekoff-csv-dlg" type="file" accept=".csv" style={{ display: 'none' }} onChange={handleCSVFile} />
+                <Button component="label" htmlFor="weekoff-csv-dlg" variant="contained" size="small"
+                  sx={{ bgcolor: '#EC4899', borderRadius: '8px', textTransform: 'none', '&:hover': { bgcolor: '#DB2777' } }}>
+                  Choose CSV File
+                </Button>
+              </Box>
+              <Button size="small" startIcon={<TableChartIcon sx={{ fontSize: 14 }} />} onClick={downloadTemplate}
+                sx={{ textTransform: 'none', fontSize: '0.8rem', color: '#6B7280', alignSelf: 'flex-start' }}>
+                Download blank template
+              </Button>
+            </Stack>
+          )}
+
+          {importTab === 'paste' && (
+            <Stack spacing={1.5}>
+              <Typography fontSize="0.82rem" color="#6B7280">
+                Copy rows from Excel / Google Sheets and paste below.<br />
+                Two columns: <strong>Label</strong> then <strong>Days</strong>. Header row is optional.
+              </Typography>
+              <TextField multiline rows={6} fullWidth
+                placeholder={""}
+                value={pasteText} onChange={e => setPasteText(e.target.value)}
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: '10px', fontSize: '0.82rem', fontFamily: 'monospace', bgcolor: '#FAFAFA' } }}
+              />
+              <Typography fontSize="0.75rem" color="#9CA3AF">Supports tab-separated (Excel) and comma-separated rows.</Typography>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5, pt: 1 }}>
+          <Button onClick={() => { setImportDlg(false); setPasteText(''); }}
+            sx={{ textTransform: 'none', color: '#6B7280', borderRadius: '8px' }}>Cancel</Button>
+          {importTab === 'paste' && (
+            <Button variant="contained" onClick={handlePasteImport} disabled={importing || !pasteText.trim()}
+              sx={{ bgcolor: '#EC4899', borderRadius: '8px', textTransform: 'none', px: 3, '&:hover': { bgcolor: '#DB2777' } }}>
+              {importing ? <CircularProgress size={14} color="inherit" /> : 'Import'}
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+    </Stack>
+  );
+}
+
+function HolidayContent({ data, weekoffs, onUpdate }: {
+  data: Holiday[];
+  weekoffs: WeekOff[];
+  onUpdate: (d: Partial<OrientationData>) => void;
+}) {
+  const [tab, setTab]               = useState<'holiday' | 'weekoff'>('holiday');
+  const [dlgOpen, setDlgOpen]       = useState(false);
+  const [importDlg, setImportDlg]   = useState(false);
+  const [importTab, setImportTab]   = useState<'csv' | 'paste'>('csv');
+  const [pasteText, setPasteText]   = useState('');
+  const [form, setForm]             = useState({ name: '', date: '', type: 'national' as 'national' | 'optional' });
+  const [saving, setSaving]         = useState(false);
+  const [importing, setImporting]   = useState(false);
+  const [importResult, setImportResult] = useState<{ success: number; failed: number } | null>(null);
+
+  type HolidayRow = { name: string; date: string; type: 'national' | 'optional' };
+
+  const downloadTemplate = () => {
+    const csv = `Name,Date,Type\nRepublic Day,26 Jan 2025,national\nHoli,14 Mar 2025,optional`;
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'holidays_template.csv'; a.click();
+  };
 
   const exportCSV = () => {
-    const blob = new Blob([`Name,Date,Type\n${data.map(h => `${h.name},${h.date},${h.type}`).join('\n')}`], { type: 'text/csv' });
+    const blob = new Blob(
+      [`Name,Date,Type\n${data.map(h => `${h.name},${h.date},${h.type}`).join('\n')}`],
+      { type: 'text/csv' }
+    );
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'holidays.csv'; a.click();
   };
+
+  const postRows = async (rows: HolidayRow[], currentData: Holiday[]) => {
+    setImporting(true); setImportResult(null);
+    let success = 0, failed = 0;
+    const added: Holiday[] = [];
+    for (const row of rows) {
+      try {
+        const res = await api.post('/holidays', row);
+        if (res.success) { added.push(res.data as Holiday); success++; }
+        else { failed++; }
+      } catch (_e) { failed++; }
+    }
+    if (added.length > 0) onUpdate({ holidays: [...currentData, ...added] });
+    setImporting(false);
+    setImportResult({ success, failed });
+    setImportDlg(false);
+  };
+
+  const handleCSVFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const snapshot = data;
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      const text = evt.target?.result as string;
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean).slice(1);
+      const rows: HolidayRow[] = lines.map(row => {
+        const cols = row.match(/(".*?"|[^,]+)/g)?.map(c => c.replace(/^"|"$/g, '').trim()) ?? [];
+        const t: 'national' | 'optional' = cols[2]?.toLowerCase() === 'optional' ? 'optional' : 'national';
+        return { name: cols[0] ?? '', date: cols[1] ?? '', type: t };
+      }).filter(r => r.name && r.date);
+      await postRows(rows, snapshot);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handlePasteImport = async () => {
+    const lines = pasteText.split('\n').map(l => l.trim()).filter(Boolean);
+    const firstLower = lines[0]?.toLowerCase() ?? '';
+    const dataLines = firstLower.startsWith('name') ? lines.slice(1) : lines;
+    const rows: HolidayRow[] = dataLines.map(row => {
+      const sep = row.includes('\t') ? '\t' : ',';
+      const cols = row.split(sep).map(c => c.replace(/^"|"$/g, '').trim());
+      const t: 'national' | 'optional' = cols[2]?.toLowerCase() === 'optional' ? 'optional' : 'national';
+      return { name: cols[0] ?? '', date: cols[1] ?? '', type: t };
+    }).filter(r => r.name && r.date);
+    if (rows.length === 0) return;
+    await postRows(rows, data);
+    setPasteText('');
+  };
+
   const addHoliday = async () => {
     if (!form.name || !form.date) return;
     setSaving(true);
     const res = await api.post('/holidays', form);
-    if (res.success) onUpdate({ holidays: [...data, res.data] });
-    setSaving(false); setForm({ name: '', date: '', type: 'national' }); setDlgOpen(false);
+    if (res.success) onUpdate({ holidays: [...data, res.data as Holiday] });
+    setSaving(false);
+    setForm({ name: '', date: '', type: 'national' });
+    setDlgOpen(false);
   };
-  const removeHoliday = async (id: string) => { const res = await api.del(`/holidays/${id}`); if (res.success) onUpdate({ holidays: data.filter(h => h.id !== id) }); };
+
+  const removeHoliday = async (id: string) => {
+    const res = await api.del(`/holidays/${id}`);
+    if (res.success) onUpdate({ holidays: data.filter(h => h.id !== id) });
+  };
 
   return (
     <Stack spacing={1.5}>
@@ -276,89 +860,207 @@ function HolidayContent({ data, weekoffs, onUpdate }: { data: Holiday[]; weekoff
         {(['holiday', 'weekoff'] as const).map(t => (
           <Button key={t} size="small" onClick={() => setTab(t)}
             variant={tab === t ? 'contained' : 'outlined'}
-            sx={{ textTransform: 'none', fontSize: '0.8rem', borderRadius: '8px', px: 2,
-              ...(tab === t ? { bgcolor: '#EC4899', borderColor: '#EC4899', '&:hover': { bgcolor: '#DB2777' } } : { borderColor: '#FECDD3', color: '#EC4899' }) }}>
+            sx={{
+              textTransform: 'none', fontSize: '0.8rem', borderRadius: '8px', px: 2,
+              ...(tab === t
+                ? { bgcolor: '#EC4899', borderColor: '#EC4899', '&:hover': { bgcolor: '#DB2777' } }
+                : { borderColor: '#FECDD3', color: '#EC4899' }),
+            }}>
             {t === 'holiday' ? '🗓 Holidays' : '📅 Week Off'}
           </Button>
         ))}
       </Stack>
 
-      {tab === 'holiday' && <>
-        <Box sx={{ maxHeight: 220, overflowY: 'auto', pr: 0.5 }}>
-          {data.length === 0 && <Typography fontSize="0.85rem" color="#9CA3AF">No holidays added yet.</Typography>}
-          {data.map(h => (
-            <Box key={h.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.8, px: 1.2, borderRadius: '8px', mb: 0.5, bgcolor: 'rgba(255,255,255,0.7)', border: '1px solid rgba(0,0,0,0.05)', '&:hover': { bgcolor: 'rgba(255,255,255,0.95)' } }}>
-              <CalendarIcon sx={{ fontSize: 14, color: '#EC4899', flexShrink: 0 }} />
-              <Typography fontSize="0.82rem" fontWeight={500} flex={1} color="#374151">{h.name}</Typography>
-              <Typography fontSize="0.75rem" color="#9CA3AF" sx={{ flexShrink: 0, mr: 0.5 }}>{h.date}</Typography>
-              <Chip label={h.type} size="small" sx={{ fontSize: '0.65rem', height: 18, bgcolor: h.type === 'national' ? '#FCE7F3' : '#F0FDF4', color: h.type === 'national' ? '#BE185D' : '#15803D', fontWeight: 600 }} />
-              {isHR && <Tooltip title="Remove"><IconButton size="small" onClick={() => removeHoliday(h.id)} sx={{ color: '#EF4444', p: 0.3, ml: 0.3 }}><DeleteIcon sx={{ fontSize: 13 }} /></IconButton></Tooltip>}
-            </Box>
-          ))}
-        </Box>
-        <Stack direction="row" spacing={1}>
-          <Button size="small" startIcon={<DownloadIcon sx={{ fontSize: 14 }} />} onClick={exportCSV}
-            sx={{ textTransform: 'none', fontSize: '0.8rem', color: '#EC4899', bgcolor: '#FFF1F2', borderRadius: '8px', px: 1.5, '&:hover': { bgcolor: '#FFE4E6' } }}>Export CSV</Button>
-          {isHRorMgmt && <Button size="small" startIcon={<AddIcon sx={{ fontSize: 14 }} />} onClick={() => setDlgOpen(true)}
-            sx={{ textTransform: 'none', fontSize: '0.8rem', color: '#6B7280', bgcolor: '#F3F4F6', borderRadius: '8px', px: 1.5, '&:hover': { bgcolor: '#E5E7EB' } }}>Add Holiday</Button>}
-        </Stack>
-        <Dialog open={dlgOpen} onClose={() => setDlgOpen(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: '16px', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' } }}>
-          <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 1 }}>Add Holiday</DialogTitle>
-          <DialogContent>
-            <Stack spacing={2} mt={0.5}>
-              <TextField label="Holiday Name" size="small" fullWidth value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '10px' } }} />
-              <TextField label="Date (e.g. 15 Aug 2025)" size="small" fullWidth value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '10px' } }} />
-            </Stack>
-          </DialogContent>
-          <DialogActions sx={{ px: 3, pb: 2.5 }}>
-            <Button onClick={() => setDlgOpen(false)} sx={{ textTransform: 'none', color: '#6B7280', borderRadius: '8px' }}>Cancel</Button>
-            <Button variant="contained" onClick={addHoliday} disabled={saving} sx={{ bgcolor: '#EC4899', borderRadius: '8px', textTransform: 'none', px: 3, '&:hover': { bgcolor: '#DB2777' } }}>
-              {saving ? <CircularProgress size={14} color="inherit" /> : 'Add'}
+      {tab === 'holiday' && (
+        <>
+          <Box sx={{ maxHeight: 220, overflowY: 'auto', pr: 0.5 }}>
+            {data.length === 0 && <Typography fontSize="0.85rem" color="#9CA3AF">No holidays added yet.</Typography>}
+            {data.map(h => (
+              <Box key={h.id} sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.8, px: 1.2, borderRadius: '8px', mb: 0.5, bgcolor: 'rgba(255,255,255,0.7)', border: '1px solid rgba(0,0,0,0.05)', '&:hover': { bgcolor: 'rgba(255,255,255,0.95)' } }}>
+                <CalendarIcon sx={{ fontSize: 14, color: '#EC4899', flexShrink: 0 }} />
+                <Typography fontSize="0.82rem" fontWeight={500} flex={1} color="#374151">{h.name}</Typography>
+                <Typography fontSize="0.75rem" color="#9CA3AF" sx={{ flexShrink: 0, mr: 0.5 }}>{h.date}</Typography>
+                <Chip label={h.type} size="small" sx={{ fontSize: '0.65rem', height: 18, bgcolor: h.type === 'national' ? '#FCE7F3' : '#F0FDF4', color: h.type === 'national' ? '#BE185D' : '#15803D', fontWeight: 600 }} />
+                {isHR && (
+                  <Tooltip title="Remove">
+                    <IconButton size="small" onClick={() => removeHoliday(h.id)} sx={{ color: '#EF4444', p: 0.3, ml: 0.3 }}>
+                      <DeleteIcon sx={{ fontSize: 13 }} />
+                    </IconButton>
+                  </Tooltip>
+                )}
+              </Box>
+            ))}
+          </Box>
+
+          <Stack direction="row" spacing={1} flexWrap="wrap" gap={0.5}>
+            <Button size="small" startIcon={<DownloadIcon sx={{ fontSize: 14 }} />} onClick={exportCSV}
+              sx={{ textTransform: 'none', fontSize: '0.8rem', color: '#EC4899', bgcolor: '#FFF1F2', borderRadius: '8px', px: 1.5, '&:hover': { bgcolor: '#FFE4E6' } }}>
+              Export CSV
             </Button>
-          </DialogActions>
-        </Dialog>
-      </>}
+            {isHRorMgmt && (
+              <Button size="small" startIcon={<AddIcon sx={{ fontSize: 14 }} />} onClick={() => setDlgOpen(true)}
+                sx={{ textTransform: 'none', fontSize: '0.8rem', color: '#6B7280', bgcolor: '#F3F4F6', borderRadius: '8px', px: 1.5, '&:hover': { bgcolor: '#E5E7EB' } }}>
+                Add Holiday
+              </Button>
+            )}
+            {isHRorMgmt && (
+              <Button size="small" startIcon={<UploadFileIcon sx={{ fontSize: 14 }} />} onClick={() => setImportDlg(true)}
+                sx={{ textTransform: 'none', fontSize: '0.8rem', color: '#8B5CF6', bgcolor: '#F5F3FF', borderRadius: '8px', px: 1.5, '&:hover': { bgcolor: '#EDE9FE' } }}>
+                Bulk Import
+              </Button>
+            )}
+            {isHRorMgmt && (
+              <Tooltip title="Download CSV template (Name, Date, Type)">
+                <Button size="small" startIcon={<TableChartIcon sx={{ fontSize: 14 }} />} onClick={downloadTemplate}
+                  sx={{ textTransform: 'none', fontSize: '0.8rem', color: '#0EA5E9', bgcolor: '#F0F9FF', borderRadius: '8px', px: 1.5, '&:hover': { bgcolor: '#E0F2FE' } }}>
+                  Template
+                </Button>
+              </Tooltip>
+            )}
+          </Stack>
+
+          {importResult && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 1, borderRadius: '8px',
+              bgcolor: importResult.failed === 0 ? '#F0FDF4' : '#FFFBEB',
+              border: `1px solid ${importResult.failed === 0 ? '#BBF7D0' : '#FDE68A'}` }}>
+              <Typography fontSize="0.78rem" color={importResult.failed === 0 ? '#15803D' : '#92400E'}>
+                ✅ {importResult.success} imported{importResult.failed > 0 && ` • ⚠️ ${importResult.failed} skipped (missing name/date)`}
+              </Typography>
+              <IconButton size="small" onClick={() => setImportResult(null)} sx={{ ml: 'auto', p: 0.3 }}>
+                <CloseIcon sx={{ fontSize: 13, color: '#9CA3AF' }} />
+              </IconButton>
+            </Box>
+          )}
+
+          {/* Add single holiday dialog */}
+          <Dialog open={dlgOpen} onClose={() => setDlgOpen(false)} maxWidth="xs" fullWidth
+            PaperProps={{ sx: { borderRadius: '16px', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' } }}>
+            <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 1 }}>Add Holiday</DialogTitle>
+            <DialogContent>
+              <Stack spacing={2} mt={0.5}>
+                <TextField label="Holiday Name" size="small" fullWidth value={form.name}
+                  onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: '10px' } }} />
+                <TextField label="Date (e.g. 15 Aug 2025)" size="small" fullWidth value={form.date}
+                  onChange={e => setForm(p => ({ ...p, date: e.target.value }))}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: '10px' } }} />
+              </Stack>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2.5 }}>
+              <Button onClick={() => setDlgOpen(false)} sx={{ textTransform: 'none', color: '#6B7280', borderRadius: '8px' }}>Cancel</Button>
+              <Button variant="contained" onClick={addHoliday} disabled={saving}
+                sx={{ bgcolor: '#EC4899', borderRadius: '8px', textTransform: 'none', px: 3, '&:hover': { bgcolor: '#DB2777' } }}>
+                {saving ? <CircularProgress size={14} color="inherit" /> : 'Add'}
+              </Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* Bulk import dialog */}
+          <Dialog open={importDlg} onClose={() => setImportDlg(false)} maxWidth="sm" fullWidth
+            PaperProps={{ sx: { borderRadius: '16px', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' } }}>
+            <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 0 }}>Bulk Import Holidays</DialogTitle>
+            <DialogContent sx={{ pt: 1 }}>
+              <Tabs value={importTab} onChange={(_e, v: 'csv' | 'paste') => setImportTab(v)}
+                sx={{ mb: 2, '& .MuiTab-root': { textTransform: 'none', fontSize: '0.85rem', minHeight: 36 }, '& .MuiTabs-indicator': { bgcolor: '#EC4899' } }}>
+                <Tab label="📂 Upload CSV" value="csv" />
+                <Tab label="📋 Paste from Excel" value="paste" />
+              </Tabs>
+              {importTab === 'csv' && (
+                <Stack spacing={2}>
+                  <Box sx={{ p: 2.5, borderRadius: '10px', bgcolor: '#FFF1F2', border: '1px dashed #FECDD3', textAlign: 'center' }}>
+                    <UploadFileIcon sx={{ fontSize: 28, color: '#EC4899', mb: 0.5 }} />
+                    <Typography fontSize="0.82rem" color="#374151" mb={0.5}>
+                      CSV columns: <strong>Name</strong>, <strong>Date</strong>, <strong>Type</strong>
+                    </Typography>
+                    <Typography fontSize="0.75rem" color="#9CA3AF" mb={1.5}>
+                      Type = <code>national</code> or <code>optional</code> (defaults to national if blank)
+                    </Typography>
+                    <input id="holiday-csv-dlg" type="file" accept=".csv" style={{ display: 'none' }} onChange={handleCSVFile} />
+                    <Button component="label" htmlFor="holiday-csv-dlg" variant="contained" size="small"
+                      sx={{ bgcolor: '#EC4899', borderRadius: '8px', textTransform: 'none', '&:hover': { bgcolor: '#DB2777' } }}>
+                      Choose CSV File
+                    </Button>
+                  </Box>
+                  <Button size="small" startIcon={<TableChartIcon sx={{ fontSize: 14 }} />} onClick={downloadTemplate}
+                    sx={{ textTransform: 'none', fontSize: '0.8rem', color: '#6B7280', alignSelf: 'flex-start' }}>
+                    Download blank template
+                  </Button>
+                </Stack>
+              )}
+              {importTab === 'paste' && (
+                <Stack spacing={1.5}>
+                  <Typography fontSize="0.82rem" color="#6B7280">
+                    Copy rows from Excel / Google Sheets and paste below.<br />
+                    Three columns: <strong>Name</strong>, <strong>Date</strong>, <strong>Type</strong>. Header optional.
+                  </Typography>
+                  <TextField multiline rows={8} fullWidth
+                    placeholder={"Republic Day\t26 Jan 2025\tnational\nHoli\t14 Mar 2025\toptional"}
+                    value={pasteText} onChange={e => setPasteText(e.target.value)}
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: '10px', fontSize: '0.82rem', fontFamily: 'monospace', bgcolor: '#FAFAFA' } }}
+                  />
+                  <Typography fontSize="0.75rem" color="#9CA3AF">Supports tab-separated (Excel) and comma-separated rows.</Typography>
+                </Stack>
+              )}
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2.5, pt: 1 }}>
+              <Button onClick={() => { setImportDlg(false); setPasteText(''); }}
+                sx={{ textTransform: 'none', color: '#6B7280', borderRadius: '8px' }}>Cancel</Button>
+              {importTab === 'paste' && (
+                <Button variant="contained" onClick={handlePasteImport} disabled={importing || !pasteText.trim()}
+                  sx={{ bgcolor: '#EC4899', borderRadius: '8px', textTransform: 'none', px: 3, '&:hover': { bgcolor: '#DB2777' } }}>
+                  {importing ? <CircularProgress size={14} color="inherit" /> : 'Import'}
+                </Button>
+              )}
+            </DialogActions>
+          </Dialog>
+        </>
+      )}
 
       {tab === 'weekoff' && (
-        <Stack spacing={0.8}>
-          {weekoffs.length === 0 && <Typography fontSize="0.85rem" color="#9CA3AF">No week off rules yet.</Typography>}
-          {weekoffs.map(w => (
-            <Box key={w.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1, px: 1.5, borderRadius: '10px', bgcolor: 'rgba(255,255,255,0.7)', border: '1px solid rgba(0,0,0,0.06)' }}>
-              <EventIcon sx={{ fontSize: 18, color: '#EC4899' }} />
-              <Box flex={1}>
-                <Typography fontSize="0.85rem" fontWeight={600} color="#1F2937">{w.label}</Typography>
-                <Typography fontSize="0.75rem" color="#6B7280">{w.days}</Typography>
-              </Box>
-              {isHRorMgmt && <IconButton size="small" sx={{ color: '#D1D5DB', bgcolor: '#F9FAFB', borderRadius: '7px' }}><EditIcon sx={{ fontSize: 14 }} /></IconButton>}
-            </Box>
-          ))}
-        </Stack>
+        <WeekOffTab weekoffs={weekoffs} onUpdate={onUpdate} />
       )}
     </Stack>
   );
 }
 
 function InsuranceContent({ data, onUpdate }: { data: Insurance; onUpdate: (d: Partial<OrientationData>) => void }) {
-  const [active, setActive] = useState<string | null>(null);
-  const toggle = (k: string) => setActive(p => p === k ? null : k);
-  const savePolicy    = async (name: string, url: string) => { const r = await api.put('/insurance/policy', { name, url }); if (r.success) onUpdate({ insurance: r.data }); };
-  const saveClaimForm = async (name: string, url: string) => { const r = await api.put('/insurance/claim-form', { name, url }); if (r.success) onUpdate({ insurance: r.data }); };
-  const saveContact   = async (contact: { name: string; phone: string; email: string }) => { const r = await api.put('/insurance/contact', contact); if (r.success) onUpdate({ insurance: { ...data, representative: r.data } }); };
-  const [contact, setContact] = useState(data.representative);
+  const [active, setActive]           = useState<string | null>(null);
+  const [contact, setContact]         = useState(data.representative);
   const [editContact, setEditContact] = useState(false);
   const [savingContact, setSavingContact] = useState(false);
+
+  const toggle = (k: string) => setActive(p => p === k ? null : k);
+
   useEffect(() => { setContact(data.representative); }, [data.representative]);
 
+  const savePolicy    = async (name: string, url: string) => {
+    const r = await api.put('/insurance/policy', { name, url });
+    if (r.success) onUpdate({ insurance: r.data });
+  };
+  const saveClaimForm = async (name: string, url: string) => {
+    const r = await api.put('/insurance/claim-form', { name, url });
+    if (r.success) onUpdate({ insurance: r.data });
+  };
+  const saveContact   = async (c: { name: string; phone: string; email: string }) => {
+    const r = await api.put('/insurance/contact', c);
+    if (r.success) onUpdate({ insurance: { ...data, representative: r.data } });
+  };
+
   const items = [
-    { key: 'policy', label: 'Insurance Policy PDF', icon: <MedicalIcon sx={{ fontSize: 16 }} />, color: '#0EA5E9',
+    {
+      key: 'policy', label: 'Insurance Policy PDF', icon: <MedicalIcon sx={{ fontSize: 16 }} />, color: '#0EA5E9',
       content: (
         <Stack spacing={0.8}>
-          {data.policyUrl ? <FileRow file={{ id: 'policy', name: data.policyName, url: data.policyUrl }} accentColor="#0EA5E9" /> : <Typography fontSize="0.82rem" color="#9CA3AF">No link yet.</Typography>}
+          {data.policyUrl
+            ? <FileRow file={{ id: 'policy', name: data.policyName, url: data.policyUrl }} accentColor="#0EA5E9" />
+            : <Typography fontSize="0.82rem" color="#9CA3AF">No link yet.</Typography>
+          }
           {isHR && <LinkEditor currentUrl={data.policyUrl} currentName={data.policyName} accentColor="#0EA5E9" onSave={savePolicy} label="Google Drive / PDF link" />}
         </Stack>
       ),
     },
-    { key: 'ecard', label: 'How to Download E-Card', icon: <ECardIcon sx={{ fontSize: 16 }} />, color: '#8B5CF6',
+    {
+      key: 'ecard', label: 'How to Download E-Card', icon: <ECardIcon sx={{ fontSize: 16 }} />, color: '#8B5CF6',
       content: (
         <Stack spacing={0.5} sx={{ bgcolor: 'rgba(255,255,255,0.7)', borderRadius: '10px', p: 1.5, border: '1px solid rgba(139,92,246,0.15)' }}>
           {data.eCardSteps.map((s, i) => (
@@ -370,7 +1072,8 @@ function InsuranceContent({ data, onUpdate }: { data: Insurance; onUpdate: (d: P
         </Stack>
       ),
     },
-    { key: 'claim', label: 'Claim Process', icon: <ClaimIcon sx={{ fontSize: 16 }} />, color: '#10B981',
+    {
+      key: 'claim', label: 'Claim Process', icon: <ClaimIcon sx={{ fontSize: 16 }} />, color: '#10B981',
       content: (
         <Stack spacing={1}>
           <Stack spacing={0.5} sx={{ bgcolor: 'rgba(255,255,255,0.7)', borderRadius: '10px', p: 1.5, border: '1px solid rgba(16,185,129,0.15)' }}>
@@ -381,12 +1084,16 @@ function InsuranceContent({ data, onUpdate }: { data: Insurance; onUpdate: (d: P
               </Box>
             ))}
           </Stack>
-          {data.claimFormUrl ? <FileRow file={{ id: 'claim', name: data.claimFormName, url: data.claimFormUrl }} accentColor="#10B981" /> : <Typography fontSize="0.82rem" color="#9CA3AF">No claim form link yet.</Typography>}
+          {data.claimFormUrl
+            ? <FileRow file={{ id: 'claim', name: data.claimFormName, url: data.claimFormUrl }} accentColor="#10B981" />
+            : <Typography fontSize="0.82rem" color="#9CA3AF">No claim form link yet.</Typography>
+          }
           {isHR && <LinkEditor currentUrl={data.claimFormUrl} currentName={data.claimFormName} accentColor="#10B981" onSave={saveClaimForm} label="Claim form link" />}
         </Stack>
       ),
     },
-    { key: 'contact', label: 'Representative Contact', icon: <ContactIcon sx={{ fontSize: 16 }} />, color: '#F59E0B',
+    {
+      key: 'contact', label: 'Representative Contact', icon: <ContactIcon sx={{ fontSize: 16 }} />, color: '#F59E0B',
       content: (
         <Stack spacing={0.8}>
           {!editContact ? (
@@ -397,22 +1104,43 @@ function InsuranceContent({ data, onUpdate }: { data: Insurance; onUpdate: (d: P
               <Stack direction="row" spacing={1} mt={1}>
                 <Button size="small" startIcon={<DownloadIcon sx={{ fontSize: 13 }} />}
                   sx={{ textTransform: 'none', color: '#F59E0B', bgcolor: '#FFFBEB', borderRadius: '7px', fontSize: '0.78rem', px: 1.2, '&:hover': { bgcolor: '#FEF3C7' } }}
-                  onClick={() => { const b = new Blob([`Name: ${data.representative.name}\nPhone: ${data.representative.phone}\nEmail: ${data.representative.email}`], { type: 'text/plain' }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'contact.txt'; a.click(); }}>
+                  onClick={() => {
+                    const b = new Blob(
+                      [`Name: ${data.representative.name}\nPhone: ${data.representative.phone}\nEmail: ${data.representative.email}`],
+                      { type: 'text/plain' }
+                    );
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(b);
+                    a.download = 'contact.txt';
+                    a.click();
+                  }}>
                   Download
                 </Button>
-                {isHR && <Button size="small" startIcon={<EditIcon sx={{ fontSize: 13 }} />} onClick={() => setEditContact(true)} sx={{ textTransform: 'none', color: '#6B7280', bgcolor: '#F3F4F6', borderRadius: '7px', fontSize: '0.78rem', px: 1.2 }}>Edit</Button>}
+                {isHR && (
+                  <Button size="small" startIcon={<EditIcon sx={{ fontSize: 13 }} />} onClick={() => setEditContact(true)}
+                    sx={{ textTransform: 'none', color: '#6B7280', bgcolor: '#F3F4F6', borderRadius: '7px', fontSize: '0.78rem', px: 1.2 }}>
+                    Edit
+                  </Button>
+                )}
               </Stack>
             </Box>
           ) : (
             <Stack spacing={0.8}>
               {(['name', 'phone', 'email'] as const).map(f => (
-                <TextField key={f} size="small" placeholder={f.charAt(0).toUpperCase() + f.slice(1)} value={contact[f]} onChange={e => setContact(p => ({ ...p, [f]: e.target.value }))} sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.82rem', bgcolor: 'white' } }} />
+                <TextField key={f} size="small" placeholder={f.charAt(0).toUpperCase() + f.slice(1)}
+                  value={contact[f]} onChange={e => setContact(p => ({ ...p, [f]: e.target.value }))}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px', fontSize: '0.82rem', bgcolor: 'white' } }} />
               ))}
               <Stack direction="row" spacing={1}>
-                <Button size="small" variant="contained" disabled={savingContact} onClick={async () => { setSavingContact(true); await saveContact(contact); setSavingContact(false); setEditContact(false); }} sx={{ bgcolor: '#F59E0B', borderRadius: '8px', textTransform: 'none', fontSize: '0.8rem', px: 2, '&:hover': { bgcolor: '#D97706' } }}>
+                <Button size="small" variant="contained" disabled={savingContact}
+                  onClick={async () => { setSavingContact(true); await saveContact(contact); setSavingContact(false); setEditContact(false); }}
+                  sx={{ bgcolor: '#F59E0B', borderRadius: '8px', textTransform: 'none', fontSize: '0.8rem', px: 2, '&:hover': { bgcolor: '#D97706' } }}>
                   {savingContact ? <CircularProgress size={12} color="inherit" /> : 'Save'}
                 </Button>
-                <Button size="small" onClick={() => setEditContact(false)} sx={{ textTransform: 'none', color: '#6B7280', borderRadius: '8px' }}>Cancel</Button>
+                <Button size="small" onClick={() => setEditContact(false)}
+                  sx={{ textTransform: 'none', color: '#6B7280', borderRadius: '8px' }}>
+                  Cancel
+                </Button>
               </Stack>
             </Stack>
           )}
@@ -428,7 +1156,10 @@ function InsuranceContent({ data, onUpdate }: { data: Insurance; onUpdate: (d: P
           <Box onClick={() => toggle(item.key)} sx={{ display: 'flex', alignItems: 'center', gap: 1.2, py: 1, px: 1.5, cursor: 'pointer', bgcolor: active === item.key ? `${item.color}0A` : 'rgba(255,255,255,0.5)', '&:hover': { bgcolor: `${item.color}08` } }}>
             <Box sx={{ color: item.color }}>{item.icon}</Box>
             <Typography fontSize="0.85rem" fontWeight={600} flex={1} color="#1F2937">{item.label}</Typography>
-            {active === item.key ? <ExpandLessIcon sx={{ fontSize: 16, color: '#9CA3AF' }} /> : <ExpandMoreIcon sx={{ fontSize: 16, color: '#9CA3AF' }} />}
+            {active === item.key
+              ? <ExpandLessIcon sx={{ fontSize: 16, color: '#9CA3AF' }} />
+              : <ExpandMoreIcon sx={{ fontSize: 16, color: '#9CA3AF' }} />
+            }
           </Box>
           <Collapse in={active === item.key} timeout="auto">
             <Box sx={{ px: 1.5, pb: 1.5, pt: 0.5 }}>{item.content}</Box>
@@ -439,7 +1170,7 @@ function InsuranceContent({ data, onUpdate }: { data: Insurance; onUpdate: (d: P
   );
 }
 
-// ── Enterprise card wrapper ───────────────────────────────────────────────────
+// ── Section card wrapper ───────────────────────────────────────────────────────
 function SectionCard({ label, icon, index, children }: { label: string; icon: React.ReactNode; index: number; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const cfg = CARD_CONFIGS[index % CARD_CONFIGS.length];
@@ -454,7 +1185,6 @@ function SectionCard({ label, icon, index, children }: { label: string; icon: Re
       overflow: 'hidden',
       '&:hover': { boxShadow: '0 4px 20px rgba(0,0,0,0.10)', borderColor: cfg.border },
     }}>
-      {/* Card header */}
       <Box onClick={() => setOpen(o => !o)} sx={{ display: 'flex', alignItems: 'center', gap: 2, px: 2.5, py: 2, cursor: 'pointer' }}>
         <Box sx={{ width: 44, height: 44, borderRadius: '12px', bgcolor: `${cfg.accent}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: cfg.accent }}>
           {icon}
@@ -473,7 +1203,6 @@ function SectionCard({ label, icon, index, children }: { label: string; icon: Re
         </Box>
       </Box>
 
-      {/* Divider when open */}
       {open && <Box sx={{ height: '1px', bgcolor: cfg.border, mx: 2.5 }} />}
 
       <Collapse in={open} timeout="auto" unmountOnExit>
@@ -483,7 +1212,7 @@ function SectionCard({ label, icon, index, children }: { label: string; icon: Re
   );
 }
 
-// ── Empty default data ────────────────────────────────────────────────────────
+// ── Default empty data ─────────────────────────────────────────────────────────
 const EMPTY: OrientationData = {
   onboardingPPT:  { name: 'Company_Onboarding_2025.pptx', url: '' },
   onboardingTest: { name: 'Onboarding_Test_Q&A.pdf', url: '' },
@@ -491,14 +1220,24 @@ const EMPTY: OrientationData = {
   insurance: {
     policyUrl: '', policyName: 'Group_Health_Policy_2025.pdf',
     claimFormUrl: '', claimFormName: 'Claim_Form.pdf',
-    eCardSteps: ['Visit health.insurer.com', 'Login with Employee ID & DOB', 'Go to "My E-Card"', 'Click Download PDF'],
-    claimSteps: ['Inform HR within 24 hrs', 'Fill Claim Form (attach bills)', 'Submit to HR for verification', 'HR forwards to TPA'],
+    eCardSteps: [
+      'Visit health.insurer.com',
+      'Login with Employee ID & DOB',
+      'Go to "My E-Card"',
+      'Click Download PDF',
+    ],
+    claimSteps: [
+      'Inform HR within 24 hrs',
+      'Fill Claim Form (attach bills)',
+      'Submit to HR for verification',
+      'HR forwards to TPA',
+    ],
     representative: { name: '', phone: '', email: '' },
   },
 };
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
-export default function CompanyOrientationPage() {
+// ── Main Page ──────────────────────────────────────────────────────────────────
+const CompanyOrientationPage: React.FC = () => {
   const [data, setData]     = useState<OrientationData>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [toast, setToast]   = useState<{ open: boolean; msg: string; type: 'success' | 'error' }>({ open: false, msg: '', type: 'success' });
@@ -509,18 +1248,19 @@ export default function CompanyOrientationPage() {
   }, []);
 
   useEffect(() => {
-    api.get('/').then(res => { if (res.success && res.data) setData({ ...EMPTY, ...res.data }); })
+    api.get('/')
+      .then(res => { if (res.success && res.data) setData({ ...EMPTY, ...res.data }); })
       .catch(() => setToast({ open: true, msg: 'Could not load data', type: 'error' }))
       .finally(() => setLoading(false));
   }, []);
 
   const sections = [
-    { label: 'Company Onboarding PPT',    icon: <SlideshowIcon sx={{ fontSize: 22 }} />, content: <OnboardingPPT data={data.onboardingPPT} onUpdate={onUpdate} /> },
-    { label: 'Onboarding Test',           icon: <QuizIcon sx={{ fontSize: 22 }} />,      content: <OnboardingTest data={data.onboardingTest} onUpdate={onUpdate} /> },
-    { label: 'Company Policies',          icon: <PolicyIcon sx={{ fontSize: 22 }} />,    content: <PoliciesContent data={data.policies} onUpdate={onUpdate} /> },
-    { label: 'Tax & Statutory Forms',     icon: <TaxIcon sx={{ fontSize: 22 }} />,       content: <TaxFormsContent data={data.taxForms} onUpdate={onUpdate} /> },
-    { label: 'Holiday & Week Off',        icon: <HolidayIcon sx={{ fontSize: 22 }} />,   content: <HolidayContent data={data.holidays} weekoffs={data.weekoffs} onUpdate={onUpdate} /> },
-    { label: 'Medical & Health Insurance',icon: <InsuranceIcon sx={{ fontSize: 22 }} />, content: <InsuranceContent data={data.insurance} onUpdate={onUpdate} /> },
+    { label: 'Company Onboarding PPT',     icon: <SlideshowIcon sx={{ fontSize: 22 }} />, content: <OnboardingPPT data={data.onboardingPPT} onUpdate={onUpdate} /> },
+    { label: 'Onboarding Test',            icon: <QuizIcon sx={{ fontSize: 22 }} />,      content: <OnboardingTest data={data.onboardingTest} onUpdate={onUpdate} /> },
+    { label: 'Company Policies',           icon: <PolicyIcon sx={{ fontSize: 22 }} />,    content: <PoliciesContent data={data.policies} onUpdate={onUpdate} /> },
+    { label: 'Tax & Statutory Forms',      icon: <TaxIcon sx={{ fontSize: 22 }} />,       content: <TaxFormsContent data={data.taxForms} onUpdate={onUpdate} /> },
+    { label: 'Holiday & Week Off',         icon: <HolidayIcon sx={{ fontSize: 22 }} />,   content: <HolidayContent data={data.holidays} weekoffs={data.weekoffs} onUpdate={onUpdate} /> },
+    { label: 'Medical & Health Insurance', icon: <InsuranceIcon sx={{ fontSize: 22 }} />, content: <InsuranceContent data={data.insurance} onUpdate={onUpdate} /> },
   ];
 
   return (
@@ -546,8 +1286,10 @@ export default function CompanyOrientationPage() {
                 {loading && <CircularProgress size={18} sx={{ color: 'rgba(255,255,255,0.7)' }} />}
                 <Chip label={`Role: ${currentUserRole.toUpperCase()}`} size="small"
                   sx={{ bgcolor: 'rgba(255,255,255,0.18)', color: 'white', fontWeight: 700, fontSize: '0.75rem', border: '1px solid rgba(255,255,255,0.3)' }} />
-                {isHR && <Chip label="Edit Mode" size="small" icon={<CheckCircleIcon sx={{ fontSize: 14, color: '#86EFAC !important' }} />}
-                  sx={{ bgcolor: 'rgba(134,239,172,0.15)', color: '#86EFAC', fontWeight: 600, fontSize: '0.75rem', border: '1px solid rgba(134,239,172,0.3)' }} />}
+                {isHR && (
+                  <Chip label="Edit Mode" size="small" icon={<CheckCircleIcon sx={{ fontSize: 14, color: '#86EFAC !important' }} />}
+                    sx={{ bgcolor: 'rgba(134,239,172,0.15)', color: '#86EFAC', fontWeight: 600, fontSize: '0.75rem', border: '1px solid rgba(134,239,172,0.3)' }} />
+                )}
               </Stack>
             </Box>
           </Box>
@@ -555,9 +1297,9 @@ export default function CompanyOrientationPage() {
           {/* Stats row */}
           <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2, mb: 3 }}>
             {[
-              { label: 'Policies', value: data.policies.length, color: '#10B981' },
-              { label: 'Tax Forms', value: data.taxForms.length, color: '#F59E0B' },
-              { label: 'Holidays', value: data.holidays.length, color: '#EC4899' },
+              { label: 'Policies',  value: data.policies.length,  color: '#10B981' },
+              { label: 'Tax Forms', value: data.taxForms.length,  color: '#F59E0B' },
+              { label: 'Holidays',  value: data.holidays.length,  color: '#EC4899' },
               { label: 'Documents', value: (data.onboardingPPT.url ? 1 : 0) + (data.onboardingTest.url ? 1 : 0), color: '#3B82F6' },
             ].map(s => (
               <Box key={s.label} sx={{ p: 2, borderRadius: '14px', bgcolor: 'white', border: '1px solid #E5E7EB', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
@@ -569,20 +1311,33 @@ export default function CompanyOrientationPage() {
 
           {/* Cards grid */}
           {loading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', pt: 10 }}><CircularProgress /></Box>
+            <Box sx={{ display: 'flex', justifyContent: 'center', pt: 10 }}>
+              <CircularProgress />
+            </Box>
           ) : (
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr', xl: 'repeat(3, 1fr)' }, gap: 2, alignItems: 'start' }}>
               {sections.map((s, i) => (
-                <SectionCard key={s.label} label={s.label} icon={s.icon} index={i}>{s.content}</SectionCard>
+                <SectionCard key={s.label} label={s.label} icon={s.icon} index={i}>
+                  {s.content}
+                </SectionCard>
               ))}
             </Box>
           )}
         </main>
       </div>
 
-      <Snackbar open={toast.open} autoHideDuration={3000} onClose={() => setToast(t => ({ ...t, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
-        <Alert severity={toast.type} onClose={() => setToast(t => ({ ...t, open: false }))} sx={{ borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>{toast.msg}</Alert>
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={3000}
+        onClose={() => setToast(t => ({ ...t, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
+        <Alert severity={toast.type} onClose={() => setToast(t => ({ ...t, open: false }))}
+          sx={{ borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
+          {toast.msg}
+        </Alert>
       </Snackbar>
     </div>
   );
-}
+};
+
+export default CompanyOrientationPage;

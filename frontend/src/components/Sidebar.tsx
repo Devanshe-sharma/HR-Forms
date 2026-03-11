@@ -16,7 +16,6 @@ import {
   Score as ScoreIcon,
   ExpandLess as ExpandLessIcon,
   ExpandMore as ExpandMoreIcon,
-  Checklist as ChecklistIcon,
   School as SchoolIcon,
   Event as EventIcon,
   Domain as CorporateFareIcon,
@@ -32,6 +31,8 @@ import {
   BeachAccess as BeachAccessIcon,
   WorkOff as WorkOffIcon,
   Today as TodayIcon,
+  Approval as ApprovalIcon,
+  EmojiEvents as EmojiEventsIcon,
 } from '@mui/icons-material';
 import { NavLink, useLocation } from 'react-router-dom';
 
@@ -46,60 +47,85 @@ export default function Sidebar() {
 
   const isActive = (path: string) => {
     const currentPath = location.pathname + location.search;
-    return currentPath === path;
+    // Exact match OR starts-with for paths that have sub-params
+    return currentPath === path || currentPath.startsWith(path + '&');
   };
 
   const menuItems = [
     { to: '/company-orientation', text: 'Company Orientation', icon: <CorporateFareIcon /> },
-    { to: '/dept-orientation', text: 'Dept Orientation', icon: <ApartmentIcon /> },
-    { to: '/hr-dashboard', text: 'Dashboard', icon: <DashboardIcon /> },
-    { to: '/employees', text: 'Employees', icon: <PeopleIcon /> },
+    { to: '/dept-orientation',    text: 'Dept Orientation',    icon: <ApartmentIcon /> },
+    { to: '/hr-dashboard',        text: 'Dashboard',           icon: <DashboardIcon /> },
+    { to: '/employees',           text: 'Employees',           icon: <PeopleIcon /> },
     {
       text: 'Attendance',
       icon: <AccessTimeIcon />,
       onClick: () => setOpenAttendance(!openAttendance),
       open: openAttendance,
       subItems: [
-        { to: '/attendance?tab=attendance', text: 'Attendance', icon: <TodayIcon /> },
-        { to: '/attendance?tab=leaves', text: 'Leaves', icon: <BeachAccessIcon /> },
+        { to: '/attendance?tab=attendance',    text: 'Attendance',    icon: <TodayIcon /> },
+        { to: '/attendance?tab=leaves',        text: 'Leaves',        icon: <BeachAccessIcon /> },
         { to: '/attendance?tab=out-of-office', text: 'Out of Office', icon: <WorkOffIcon /> },
       ],
     },
     { to: '/checklist-delegation', text: 'Check List & Delegation', icon: <AssignmentTurnedInIcon /> },
-    { to: '/requisition', text: 'Requisition', icon: <RequestPageIcon /> },
-    { to: '/onboarding', text: 'Onboarding', icon: <BusinessCenterIcon /> },
+    { to: '/requisition',          text: 'Requisition',             icon: <RequestPageIcon /> },
+    { to: '/onboarding',           text: 'Onboarding',              icon: <BusinessCenterIcon /> },
+
+    // ── Trainings ──────────────────────────────────────────────────────────────
     {
       text: 'Trainings',
       icon: <SchoolIcon />,
       onClick: () => setOpenTrainings(!openTrainings),
       open: openTrainings,
       subItems: [
-        { to: '/training-page?tab=HR', text: 'HR Training', icon: <PeopleIcon /> },
-        { to: '/training-page?tab=management', text: 'Management Training', icon: <BusinessCenterIcon /> },
-        { to: '/training-page?tab=employee', text: 'Employee', icon: <AssignmentIcon /> },
-        { to: '/training-page?tab=scorecard', text: 'Scorecard', icon: <ScoreIcon /> },
+        {
+          // HR: opens HR tab → defaults to capability sub-tab
+          to: '/training-page?tab=HR',
+          text: 'HR Training',
+          icon: <PeopleIcon />,
+        },
+        {
+          // Management: opens approval table only
+          to: '/training-page?tab=management',
+          text: 'Management Approval',
+          icon: <ApprovalIcon />,
+        },
+        {
+          // Employee: assessment + feedback sub-tabs
+          to: '/training-page?tab=employee',
+          text: 'Employee',
+          icon: <AssignmentIcon />,
+        },
+        {
+          // Scorecard
+          to: '/training-page?tab=scorecard',
+          text: 'Scorecard',
+          icon: <EmojiEventsIcon />,
+        },
       ],
     },
+    // ──────────────────────────────────────────────────────────────────────────
+
     {
       text: 'Outings / Events',
       icon: <EventIcon />,
       onClick: () => setOpenOuting(!openOuting),
       open: openOuting,
       subItems: [
-        { to: '/outing?tab=HR', text: 'HR Outing', icon: <PeopleIcon /> },
-        { to: '/outing?tab=management', text: 'Management Outing', icon: <BusinessCenterIcon /> },
-        { to: '/outing?tab=employee-feedback', text: 'Outing Feedback', icon: <AssignmentIcon /> },
-        { to: '/outing?tab=scorecard', text: 'Outing Scorecard', icon: <ScoreIcon /> },
+        { to: '/outing?tab=HR',               text: 'HR Outing',        icon: <PeopleIcon /> },
+        { to: '/outing?tab=management',        text: 'Management Outing', icon: <BusinessCenterIcon /> },
+        { to: '/outing?tab=employee-feedback', text: 'Outing Feedback',   icon: <AssignmentIcon /> },
+        { to: '/outing?tab=scorecard',         text: 'Outing Scorecard',  icon: <ScoreIcon /> },
       ],
     },
-    { to: '/confirmations', text: 'Confirmation', icon: <CheckCircleIcon /> },
-    { to: '/salary-revision', text: 'Salary Revision', icon: <TableChartIcon /> },
+    { to: '/confirmations',    text: 'Confirmation',     icon: <CheckCircleIcon /> },
+    { to: '/salary-revision',  text: 'Salary Revision',  icon: <TableChartIcon /> },
     { to: '/employee-letters', text: 'Employee Letters', icon: <MailIcon /> },
-    { to: '/salary-sheet', text: 'Salary Sheet', icon: <PaymentsIcon /> },
-    { to: '/pms', text: 'PMS', icon: <TrendingUpIcon /> },
-    { to: '/exits', text: 'Exit', icon: <ExitToAppIcon /> },
-    { to: '/profile', text: 'Profile', icon: <AccountCircleIcon /> },
-    { to: '/settings', text: 'Settings', icon: <SettingsIcon /> },
+    { to: '/salary-sheet',     text: 'Salary Sheet',     icon: <PaymentsIcon /> },
+    { to: '/pms',              text: 'PMS',              icon: <TrendingUpIcon /> },
+    { to: '/exits',            text: 'Exit',             icon: <ExitToAppIcon /> },
+    { to: '/profile',          text: 'Profile',          icon: <AccountCircleIcon /> },
+    { to: '/settings',         text: 'Settings',         icon: <SettingsIcon /> },
   ];
 
   return (
@@ -129,7 +155,7 @@ export default function Sidebar() {
       <List sx={{ px: 2, mt: 2 }}>
         {menuItems.map((item) => {
           const isParentActive = item.subItems?.some(sub => isActive(sub.to));
-          const active = isActive(item.to || '');
+          const active = item.to ? isActive(item.to) : false;
 
           if (item.subItems) {
             return (
@@ -147,6 +173,7 @@ export default function Sidebar() {
                   <ListItemText primary={item.text} primaryTypographyProps={{ fontSize: '0.875rem' }} />
                   {item.open ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                 </ListItemButton>
+
                 <Collapse in={item.open} timeout="auto" unmountOnExit>
                   <List disablePadding>
                     {item.subItems.map((sub) => {
@@ -160,9 +187,12 @@ export default function Sidebar() {
                             pl: 6, borderRadius: '8px', mt: 0.5,
                             bgcolor: subActive ? BRAND_BLUE : 'transparent',
                             color: subActive ? 'white' : '#212121',
-                            '&:hover': { bgcolor: subActive ? BRAND_BLUE : '#f8fafc' }
+                            '&:hover': { bgcolor: subActive ? BRAND_BLUE : '#f8fafc' },
                           }}
                         >
+                          <ListItemIcon sx={{ color: 'inherit', minWidth: 36, fontSize: '1rem' }}>
+                            {sub.icon}
+                          </ListItemIcon>
                           <ListItemText primary={sub.text} primaryTypographyProps={{ fontSize: '0.85rem' }} />
                         </ListItemButton>
                       );

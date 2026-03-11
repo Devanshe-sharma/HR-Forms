@@ -1,5 +1,5 @@
 const sendEmail = require('./sendEmail');
-const Training = require('../models/Training');
+const Training = require('../models/TrainingSchedule');
 const moment = require('moment-timezone');
 
 async function sendUpcomingTrainingReminder() {

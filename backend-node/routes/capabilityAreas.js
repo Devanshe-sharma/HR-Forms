@@ -1,68 +1,62 @@
 const express = require('express');
 const router = express.Router();
 const { requireRole } = require('../config/roles');
+const CapabilityArea = require('../models/CapabilityArea');
 
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-// Debug logging
-console.log('🔧 Capability Areas routes loaded');
 
-// In-memory storage for capability areas (replace with actual model later)
-let capabilityAreas = [];
-
+async function getNextCapabilityAreaId() {
+  const last = await CapabilityArea.findOne().sort({ createdAt: -1 }).select('capabilityAreaId');
+  if (!last?.capabilityAreaId) return 'CA001';
+  const num = parseInt(last.capabilityAreaId.replace('CA', ''), 10);
+  return isNaN(num) ? '001' : `${String(num + 1).padStart(3, '0')}`;
+}
 // GET all capability areas
-router.get('/', requireRole(['Admin', 'HR', 'Management']), asyncHandler(async (req, res) => {
-  console.log('📡 GET /capability-areas called');
-  res.json({ success: true, data: capabilityAreas });
+router.get('/', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
+  const areas = await CapabilityArea.find().sort({ createdAt: -1 });
+  res.json({ success: true, data: areas });
 }));
 
 // GET single capability area
 router.get('/:id', requireRole(['Admin', 'HR', 'Management']), asyncHandler(async (req, res) => {
-  const area = capabilityAreas.find(a => a._id === req.params.id);
+  const area = await CapabilityArea.findById(req.params.id);
   if (!area) return res.status(404).json({ success: false, error: 'Capability area not found' });
   res.json({ success: true, data: area });
 }));
 
 // POST create capability area
 router.post('/', requireRole(['Admin', 'HR']), asyncHandler(async (req, res) => {
-  const { capabilityAreaId, capabilityArea, createdBy } = req.body || {};
+  const { capabilityArea, createdBy } = req.body || {};
   if (!capabilityArea || !String(capabilityArea).trim()) {
     return res.status(400).json({ success: false, error: 'Capability area is required' });
   }
-  
-  const newArea = {
-    _id: Date.now().toString(),
-    capabilityAreaId: capabilityAreaId || 'CA' + Date.now().toString().slice(-8),
+  const capabilityAreaId = await getNextCapabilityAreaId();
+  const newArea = await CapabilityArea.create({
+    capabilityAreaId,
     capabilityArea: String(capabilityArea).trim(),
-    createdAt: new Date().toISOString(),
-    createdBy: createdBy || 'System',
-  };
-  
-  capabilityAreas.push(newArea);
+    createdBy: createdBy || req.headers['x-user-role'] || 'System',
+  });
   res.status(201).json({ success: true, data: newArea });
 }));
 
 // PATCH update capability area
 router.patch('/:id', requireRole(['Admin', 'HR']), asyncHandler(async (req, res) => {
-  const index = capabilityAreas.findIndex(a => a._id === req.params.id);
-  if (index === -1) return res.status(404).json({ success: false, error: 'Capability area not found' });
-  
   const { capabilityAreaId, capabilityArea } = req.body || {};
-  capabilityAreas[index] = {
-    ...capabilityAreas[index],
+  const updates = {
     ...(capabilityAreaId && { capabilityAreaId }),
     ...(capabilityArea && { capabilityArea: String(capabilityArea).trim() }),
   };
-  
-  res.json({ success: true, data: capabilityAreas[index] });
+
+  const updated = await CapabilityArea.findByIdAndUpdate(req.params.id, updates, { new: true });
+  if (!updated) return res.status(404).json({ success: false, error: 'Capability area not found' });
+  res.json({ success: true, data: updated });
 }));
 
 // DELETE capability area
 router.delete('/:id', requireRole(['Admin', 'HR']), asyncHandler(async (req, res) => {
-  const index = capabilityAreas.findIndex(a => a._id === req.params.id);
-  if (index === -1) return res.status(404).json({ success: false, error: 'Capability area not found' });
-  
-  capabilityAreas.splice(index, 1);
+  const deleted = await CapabilityArea.findByIdAndDelete(req.params.id);
+  if (!deleted) return res.status(404).json({ success: false, error: 'Capability area not found' });
   res.json({ success: true });
 }));
 

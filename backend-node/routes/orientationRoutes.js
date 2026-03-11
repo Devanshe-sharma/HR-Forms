@@ -2,7 +2,15 @@ const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const Orientation = require('../models/Orientation');
-const { protect, requireRole } = require('../middleware/auth');
+const protect = (req, res, next) => next(); // no JWT in this app
+
+const requireRole = (...roles) => (req, res, next) => {
+  const role = req.headers['x-user-role'] || '';
+  if (roles.length && !roles.includes(role)) {
+    return res.status(403).json({ success: false, message: 'Access denied' });
+  }
+  next();
+};
 
 // ── Helper: get or create the single orientation doc ──────────────────────────
 async function getDoc() {
@@ -33,7 +41,12 @@ router.put('/ppt', protect, requireRole('hr'), async (req, res) => {
     if (!url) return res.status(400).json({ success: false, message: 'URL is required' });
 
     const doc = await getDoc();
-    doc.onboardingPPT = { name: name || doc.onboardingPPT.name, url, updatedBy: req.user.name || req.user.id };
+    doc.onboardingPPT = {
+      name: name || doc.onboardingPPT.name,
+      url,
+      updatedBy: req.headers['x-user-role'] || 'unknown',
+    };
+    doc.markModified('onboardingPPT');
     await doc.save();
 
     res.json({ success: true, data: doc.onboardingPPT });
@@ -52,7 +65,12 @@ router.put('/test', protect, requireRole('hr'), async (req, res) => {
     if (!url) return res.status(400).json({ success: false, message: 'URL is required' });
 
     const doc = await getDoc();
-    doc.onboardingTest = { name: name || doc.onboardingTest.name, url, updatedBy: req.user.name || req.user.id };
+    doc.onboardingTest = {
+      name: name || doc.onboardingTest.name,
+      url,
+      updatedBy: req.headers['x-user-role'] || 'unknown',
+    };
+    doc.markModified('onboardingTest');
     await doc.save();
 
     res.json({ success: true, data: doc.onboardingTest });
@@ -73,8 +91,15 @@ router.post('/policies', protect, requireRole('hr'), async (req, res) => {
     if (!name || !url) return res.status(400).json({ success: false, message: 'Name and URL required' });
 
     const doc = await getDoc();
-    const newPolicy = { id: uuidv4(), name, url, uploadedBy: req.user.name || req.user.id, updatedAt: new Date() };
+    const newPolicy = {
+      id: uuidv4(),
+      name,
+      url,
+      uploadedBy: req.headers['x-user-role'] || 'unknown',
+      updatedAt: new Date(),
+    };
     doc.policies.push(newPolicy);
+    doc.markModified('policies');
     await doc.save();
 
     res.status(201).json({ success: true, data: newPolicy });
@@ -93,8 +118,9 @@ router.put('/policies/:id', protect, requireRole('hr'), async (req, res) => {
 
     if (req.body.name) policy.name = req.body.name;
     if (req.body.url)  policy.url  = req.body.url;
-    policy.uploadedBy = req.user.name || req.user.id;
+    policy.uploadedBy = req.headers['x-user-role'] || 'unknown';
     policy.updatedAt  = new Date();
+    doc.markModified('policies');
     await doc.save();
 
     res.json({ success: true, data: policy });
@@ -108,7 +134,9 @@ router.delete('/policies/:id', protect, requireRole('hr'), async (req, res) => {
   try {
     const doc = await getDoc();
     doc.policies = doc.policies.filter(p => p.id !== req.params.id);
+    doc.markModified('policies');
     await doc.save();
+
     res.json({ success: true, message: 'Policy removed' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -127,8 +155,15 @@ router.post('/tax-forms', protect, requireRole('hr'), async (req, res) => {
     if (!name || !url) return res.status(400).json({ success: false, message: 'Name and URL required' });
 
     const doc = await getDoc();
-    const newForm = { id: uuidv4(), name, url, uploadedBy: req.user.name || req.user.id, updatedAt: new Date() };
+    const newForm = {
+      id: uuidv4(),
+      name,
+      url,
+      uploadedBy: req.headers['x-user-role'] || 'unknown',
+      updatedAt: new Date(),
+    };
     doc.taxForms.push(newForm);
+    doc.markModified('taxForms');
     await doc.save();
 
     res.status(201).json({ success: true, data: newForm });
@@ -146,8 +181,9 @@ router.put('/tax-forms/:id', protect, requireRole('hr'), async (req, res) => {
 
     if (req.body.name) form.name = req.body.name;
     if (req.body.url)  form.url  = req.body.url;
-    form.uploadedBy = req.user.name || req.user.id;
+    form.uploadedBy = req.headers['x-user-role'] || 'unknown';
     form.updatedAt  = new Date();
+    doc.markModified('taxForms');
     await doc.save();
 
     res.json({ success: true, data: form });
@@ -161,7 +197,9 @@ router.delete('/tax-forms/:id', protect, requireRole('hr'), async (req, res) => 
   try {
     const doc = await getDoc();
     doc.taxForms = doc.taxForms.filter(f => f.id !== req.params.id);
+    doc.markModified('taxForms');
     await doc.save();
+
     res.json({ success: true, message: 'Form removed' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -180,8 +218,14 @@ router.post('/holidays', protect, requireRole('hr', 'management'), async (req, r
     if (!name || !date) return res.status(400).json({ success: false, message: 'Name and date required' });
 
     const doc = await getDoc();
-    const newHoliday = { id: uuidv4(), name, date, type: type || 'national' };
+    const newHoliday = {
+      id: uuidv4(),
+      name,
+      date,
+      type: type || 'national',
+    };
     doc.holidays.push(newHoliday);
+    doc.markModified('holidays');
     await doc.save();
 
     res.status(201).json({ success: true, data: newHoliday });
@@ -195,7 +239,9 @@ router.delete('/holidays/:id', protect, requireRole('hr'), async (req, res) => {
   try {
     const doc = await getDoc();
     doc.holidays = doc.holidays.filter(h => h.id !== req.params.id);
+    doc.markModified('holidays');
     await doc.save();
+
     res.json({ success: true, message: 'Holiday removed' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -215,6 +261,7 @@ router.post('/weekoffs', protect, requireRole('hr', 'management'), async (req, r
     const doc = await getDoc();
     const newWeekoff = { id: uuidv4(), label, days };
     doc.weekoffs.push(newWeekoff);
+    doc.markModified('weekoffs');
     await doc.save();
 
     res.status(201).json({ success: true, data: newWeekoff });
@@ -232,6 +279,7 @@ router.put('/weekoffs/:id', protect, requireRole('hr', 'management'), async (req
 
     if (req.body.label) weekoff.label = req.body.label;
     if (req.body.days)  weekoff.days  = req.body.days;
+    doc.markModified('weekoffs');
     await doc.save();
 
     res.json({ success: true, data: weekoff });
@@ -245,7 +293,9 @@ router.delete('/weekoffs/:id', protect, requireRole('hr'), async (req, res) => {
   try {
     const doc = await getDoc();
     doc.weekoffs = doc.weekoffs.filter(w => w.id !== req.params.id);
+    doc.markModified('weekoffs');
     await doc.save();
+
     res.json({ success: true, message: 'Week off removed' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -256,8 +306,8 @@ router.delete('/weekoffs/:id', protect, requireRole('hr'), async (req, res) => {
 // INSURANCE
 // ════════════════════════════════════════════════════════════════════════════════
 
-// PUT /api/orientation/insurance/policy — HR only: save Google Drive link to policy PDF
-// Body: { url, name, coverageAmount, coverageType }
+// PUT /api/orientation/insurance/policy — HR only
+// Body: { url, name }
 router.put('/insurance/policy', protect, requireRole('hr'), async (req, res) => {
   try {
     const { url, name } = req.body;
@@ -266,7 +316,8 @@ router.put('/insurance/policy', protect, requireRole('hr'), async (req, res) => 
     const doc = await getDoc();
     doc.insurance.policyUrl  = url;
     if (name) doc.insurance.policyName = name;
-    doc.insurance.updatedBy = req.user.name || req.user.id;
+    doc.insurance.updatedBy = req.headers['x-user-role'] || 'unknown';
+    doc.markModified('insurance');
     await doc.save();
 
     res.json({ success: true, data: doc.insurance });
@@ -285,7 +336,8 @@ router.put('/insurance/claim-form', protect, requireRole('hr'), async (req, res)
     const doc = await getDoc();
     doc.insurance.claimFormUrl  = url;
     if (name) doc.insurance.claimFormName = name;
-    doc.insurance.updatedBy = req.user.name || req.user.id;
+    doc.insurance.updatedBy = req.headers['x-user-role'] || 'unknown';
+    doc.markModified('insurance');
     await doc.save();
 
     res.json({ success: true, data: doc.insurance });
@@ -301,7 +353,8 @@ router.put('/insurance/steps', protect, requireRole('hr'), async (req, res) => {
     const doc = await getDoc();
     if (req.body.eCardSteps) doc.insurance.eCardSteps = req.body.eCardSteps;
     if (req.body.claimSteps) doc.insurance.claimSteps = req.body.claimSteps;
-    doc.insurance.updatedBy = req.user.name || req.user.id;
+    doc.insurance.updatedBy = req.headers['x-user-role'] || 'unknown';
+    doc.markModified('insurance');
     await doc.save();
 
     res.json({ success: true, data: doc.insurance });
@@ -316,8 +369,13 @@ router.put('/insurance/contact', protect, requireRole('hr'), async (req, res) =>
   try {
     const { name, phone, email } = req.body;
     const doc = await getDoc();
-    doc.insurance.representative = { name: name || '', phone: phone || '', email: email || '' };
-    doc.insurance.updatedBy = req.user.name || req.user.id;
+    doc.insurance.representative = {
+      name:  name  || '',
+      phone: phone || '',
+      email: email || '',
+    };
+    doc.insurance.updatedBy = req.headers['x-user-role'] || 'unknown';
+    doc.markModified('insurance');
     await doc.save();
 
     res.json({ success: true, data: doc.insurance.representative });

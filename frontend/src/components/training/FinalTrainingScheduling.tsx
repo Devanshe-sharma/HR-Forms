@@ -3,7 +3,7 @@ import axios from 'axios';
 import { Plus, X, Edit, Trash2, Save, Eye, Calendar, Clock, MapPin, Users, CheckCircle, XCircle, RotateCcw } from 'lucide-react';
 import { getRole, can } from '../../config/rbac';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 const api = axios.create({ baseURL: API_BASE });
 api.interceptors.request.use((config) => {
   const role = getRole();

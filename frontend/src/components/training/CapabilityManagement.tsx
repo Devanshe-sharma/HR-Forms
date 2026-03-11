@@ -3,7 +3,7 @@ import axios from 'axios';
 import { Plus, X, Edit, Trash2, Save } from 'lucide-react';
 import { getRole, can } from '../../config/rbac';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 const api = axios.create({ baseURL: API_BASE });
 api.interceptors.request.use((config) => {
   const role = getRole();
@@ -224,8 +224,8 @@ export default function CapabilityManagement() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Capability Management</h2>
-        <p className="text-gray-600">Manage capability areas and skills for training mapping</p>
+        <h2 className="text-xl text-gray-700 mb-2">Capability Management</h2>
+        <p className="text-gray-400 text-sm">Manage capability areas and skills for training mapping</p>
       </div>
 
       {error && (
@@ -237,7 +237,7 @@ export default function CapabilityManagement() {
       {/* Capability Areas Section */}
       <div className="mb-8">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold text-gray-800">Capability Areas</h3>
+          <h3 className="text-lg text-gray-500">Capability Areas</h3>
           {canCreate && (
             <button
               onClick={() => openCapabilityModal()}
@@ -309,7 +309,7 @@ export default function CapabilityManagement() {
       {/* Capability Skills Section */}
       <div>
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold text-gray-800">Capability Skills</h3>
+          <h3 className="text-lg  text-gray-500">Capability Skills</h3>
           {canCreate && (
             <button
               onClick={() => openSkillModal()}
@@ -395,7 +395,7 @@ export default function CapabilityManagement() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">
+              <h3 className="text-lg ">
                 {editingCapability ? 'Edit Capability Area' : 'Create Capability Area'}
               </h3>
               <button
@@ -458,7 +458,7 @@ export default function CapabilityManagement() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">
+              <h3 className="text-lg ">
                 {editingSkill ? 'Edit Capability Skill' : 'Create Capability Skill'}
               </h3>
               <button
