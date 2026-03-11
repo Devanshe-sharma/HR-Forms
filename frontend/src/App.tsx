@@ -13,7 +13,7 @@ import AllApplicants from "./pages/AllApplicants";
 import NewRequisitionForm from "./pages/new-requisition-form";
 import TrainingPage from "./pages/TrainingPageNew";
 import Outing from "./pages/Outing";
-import Requisition from "./pages/Requisition";
+import Requisition from "./pages/requisition";
 import Onboarding from "./pages/Onboarding";
 import Exit from "./pages/Exit";
 import DeptOrientationPage from "./pages/Deptorientationpage";

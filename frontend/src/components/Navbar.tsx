@@ -17,7 +17,7 @@ const pageTitles: Record<string, string> = {
   '/outing': 'Outing / Event',
   '/attendance': 'Attendance',
   '/checklist-delegation': 'Check List & Delegation',
-  '/requisition': 'Requisition',
+  '/requisition': 'requisition',
   '/confirmations': 'Confirmation',
   '/salary-sheet': 'Salary Sheet',
   '/pms': 'Performance Management System',
