@@ -145,11 +145,11 @@ growthSchema.pre('save', function(next) {
 });
 
 module.exports = {
-  Employee: mongoose.model('Employee', employeeSchema),
-  DeptKPI: mongoose.model('DeptKPI', deptKPISchema),
-  RoleKPI: mongoose.model('RoleKPI', roleKPISchema),
-  DeptTargets: mongoose.model('DeptTargets', deptTargetsSchema),
-  RoleTargets: mongoose.model('RoleTargets', roleTargetsSchema),
-  Hygiene: mongoose.model('Hygiene', hygieneSchema),
-  Growth: mongoose.model('Growth', growthSchema)
+  Employee: mongoose.models.Employee || mongoose.model('Employee', employeeSchema),
+  DeptKPI: mongoose.models.DeptKPI || mongoose.model('DeptKPI', deptKPISchema),
+  RoleKPI: mongoose.models.RoleKPI || mongoose.model('RoleKPI', roleKPISchema),
+  DeptTargets: mongoose.models.DeptTargets || mongoose.model('DeptTargets', deptTargetsSchema),
+  RoleTargets: mongoose.models.RoleTargets || mongoose.model('RoleTargets', roleTargetsSchema),
+  Hygiene: mongoose.models.Hygiene || mongoose.model('Hygiene', hygieneSchema),
+  Growth: mongoose.models.Growth || mongoose.model('Growth', growthSchema)
 };
