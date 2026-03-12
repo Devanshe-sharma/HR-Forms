@@ -54,6 +54,12 @@ app.use('/api/requisition',        require('./routes/requisition'));
 app.use('/api/onboarding',         require('./routes/onboarding'));
 app.use('/api/exit',               require('./routes/exit'));
 app.use('/api/outing',             require('./routes/outing'));
+app.use('/api/dept-kpi',           require('./routes/dept-kpi'));
+app.use('/api/role-kpi',           require('./routes/role-kpi'));
+app.use('/api/dept-targets',       require('./routes/dept-targets'));
+app.use('/api/role-targets',       require('./routes/role-targets'));
+app.use('/api/hygiene',            require('./routes/hygiene'));
+app.use('/api/growth',             require('./routes/growth'));
 app.use('/api',                    require('./routes/sheetWebhook'));
 app.use('/api/sync',               require('./routes/syncFms'));
 

@@ -13,6 +13,7 @@ import AllApplicants from "./pages/AllApplicants";
 import NewRequisitionForm from "./pages/new-requisition-form";
 import TrainingPage from "./pages/TrainingPageNew";
 import Outing from "./pages/Outing";
+import PMSDashboard from "./pages/PMSDashboard";
 import Requisition from "./pages/Requisition";
 import Onboarding from "./pages/Onboarding";
 import Exit from "./pages/Exit";
@@ -224,7 +225,7 @@ export default function App() {
         path="/pms"
         element={
           <ProtectedRoute>
-            <ComingSoon />
+            <PMSDashboard />
           </ProtectedRoute>
         }
       />

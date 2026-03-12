@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-  "dev": "parcel public/index.html --port 5173",
-  "build": "tsc -b && parcel build public/index.html"
-},
+    "dev": "parcel public/index.html --port 5173",
+    "build": "tsc -b && parcel build public/index.html"
+  },
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
@@ -24,8 +24,8 @@
     "jspdf": "^3.0.4",
     "lucide-react": "^0.562.0",
     "next": "^16.1.1",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "react-hook-form": "^7.71.1",
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^6.30.3",
@@ -36,8 +36,8 @@
     "@eslint/js": "^9.39.1",
     "@types/date-fns": "^2.5.3",
     "@types/node": "^24.10.9",
-    "@types/react": "^19.2.7",
-    "@types/react-dom": "^19.2.3",
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.7",
     "autoprefixer": "^10.4.23",
     "buffer": "^6.0.3",
     "eslint": "^9.39.1",
