@@ -36,8 +36,15 @@ router.post('/', asyncHandler(async (req, res) => {
       leaves: { taken, allowed } 
     } = req.body;
     
+    // Calculate attendance percentage
     const attendancePercentage = total > 0 ? (present / total) * 100 : 0;
     const remainingLeaves = allowed - taken;
+    
+    // Calculate hygiene score
+    const attendanceScore = attendancePercentage;
+    const lateScore = Math.max(0, 100 - (lateMarks * 10)); // 10 points per late mark
+    const leaveScore = (remainingLeaves / allowed) * 100;
+    const finalScore = (attendanceScore * 0.4) + (lateScore * 0.3) + (leaveScore * 0.3);
     
     const hygiene = new Hygiene({
       employeeId,
@@ -52,7 +59,8 @@ router.post('/', asyncHandler(async (req, res) => {
         allowed: allowed,
         remaining: remainingLeaves
       },
-      outOfOffice: 0
+      outOfOffice: 0,
+      score: finalScore
     });
 
     await hygiene.save();

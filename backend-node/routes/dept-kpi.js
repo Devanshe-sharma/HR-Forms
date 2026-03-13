@@ -3,10 +3,15 @@ const router = express.Router();
 const { DeptKPI } = require('../models/pmsModels');
 const asyncHandler = require('express-async-handler');
 
-// Helper function to calculate score
+// Helper function to calculate score based on gap
 const calculateScore = (achieved, target) => {
-  if (target === 0) return 0;
-  return Math.min(100, (achieved / target) * 100);
+  if (achieved >= target) return 0;
+  const gap = target - achieved;
+  
+  if (gap < 100) return -gap;
+  if (gap < 1000) return -(gap / 10);
+  if (gap < 10000) return -(gap / 100);
+  return -(gap / 1000);
 };
 
 // GET /api/dept-kpi - Get all department KPIs
@@ -39,6 +44,7 @@ router.post('/', asyncHandler(async (req, res) => {
   try {
     const { name, department, targetValue, achievedValue } = req.body;
     
+    // Calculate score based on gap
     const score = calculateScore(achievedValue || 0, targetValue);
     
     const deptKPI = new DeptKPI({

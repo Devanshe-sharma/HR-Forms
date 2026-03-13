@@ -97,52 +97,7 @@ const growthSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-// Pre-save middleware to calculate scores
-deptKPISchema.pre('save', function(next) {
-  if (this.targetValue > 0) {
-    this.score = (this.achievedValue / this.targetValue) * 100;
-  }
-  next();
-});
-
-roleKPISchema.pre('save', function(next) {
-  if (this.targetValue > 0) {
-    this.score = (this.achievedValue / this.targetValue) * 100;
-  }
-  next();
-});
-
-deptTargetsSchema.pre('save', function(next) {
-  if (this.targetValue > 0) {
-    this.score = (this.achievedValue / this.targetValue) * 100;
-  }
-  next();
-});
-
-roleTargetsSchema.pre('save', function(next) {
-  if (this.targetValue > 0) {
-    this.score = (this.achievedValue / this.targetValue) * 100;
-  }
-  next();
-});
-
-hygieneSchema.pre('save', function(next) {
-  // Calculate hygiene score based on multiple factors
-  const attendanceScore = this.attendance.percentage;
-  const lateScore = Math.max(0, 100 - (this.lateMarks * 10)); // 10 points per late mark
-  const leaveScore = (this.leaves.remaining / this.leaves.allowed) * 100;
-  this.score = (attendanceScore * 0.4) + (lateScore * 0.3) + (leaveScore * 0.3);
-  next();
-});
-
-growthSchema.pre('save', function(next) {
-  // Calculate growth score
-  const trainingScore = Math.min(100, (this.trainingAttended / 40) * 100); // 40 hours target
-  const investmentScore = Math.min(100, (this.investmentInitiatives / 5) * 100); // 5 initiatives target
-  const innovationScore = this.innovation.score;
-  this.score = (trainingScore * 0.4) + (investmentScore * 0.3) + (innovationScore * 0.3);
-  next();
-});
+// All pre-save middleware removed - handled in routes
 
 module.exports = {
   Employee: mongoose.models.Employee || mongoose.model('Employee', employeeSchema),

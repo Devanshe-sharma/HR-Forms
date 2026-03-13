@@ -1,47 +1,47 @@
 const express = require('express');
 const router = express.Router();
 const { DeptTargets } = require('../models/pmsModels');
-const asyncHandler = require('express-async-handler');
 
-// Helper function to calculate score
+// Helper function to calculate score based on gap
 const calculateScore = (achieved, target) => {
-  if (target === 0) return 0;
-  return Math.min(100, (achieved / target) * 100);
+  if (achieved >= target) return 0;
+  const gap = target - achieved;
+  
+  if (gap < 100) return -gap;
+  if (gap < 1000) return -(gap / 10);
+  if (gap < 10000) return -(gap / 100);
+  return -(gap / 1000);
 };
 
-// GET /api/dept-targets - Get all department targets
-router.get('/', asyncHandler(async (req, res) => {
+// GET all department targets
+router.get('/', async (req, res) => {
   try {
-    const { department } = req.query;
-    let query = {};
-    if (department) {
-      query.department = department;
-    }
-
-    const deptTargets = await DeptTargets.find(query).sort({ createdAt: -1 });
-    res.status(200).json({
-      success: true,
-      data: deptTargets,
-      message: 'Department targets retrieved successfully'
-    });
-  } catch (error) {
-    console.error('Error fetching department targets:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching department targets',
-      error: error.message
-    });
+    const targets = await DeptTargets.find();
+    res.json({ success: true, data: targets });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
-}));
+});
 
-// POST /api/dept-targets - Add new department target
-router.post('/', asyncHandler(async (req, res) => {
+// GET department targets by department
+router.get('/department/:department', async (req, res) => {
+  try {
+    const targets = await DeptTargets.find({ department: req.params.department });
+    res.json({ success: true, data: targets });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST new department target
+router.post('/', async (req, res) => {
   try {
     const { name, department, targetValue, achievedValue } = req.body;
     
+    // Calculate score based on gap
     const score = calculateScore(achievedValue || 0, targetValue);
     
-    const deptTarget = new DeptTargets({
+    const target = new DeptTargets({
       name,
       department,
       targetValue,
@@ -49,20 +49,58 @@ router.post('/', asyncHandler(async (req, res) => {
       score
     });
 
-    await deptTarget.save();
+    await target.save();
     res.status(201).json({
       success: true,
-      data: deptTarget,
+      data: target,
       message: 'Department target created successfully'
     });
-  } catch (error) {
-    console.error('Error creating department target:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error creating department target',
-      error: error.message
-    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
-}));
+});
+
+// PUT update department target
+router.put('/:id', async (req, res) => {
+  try {
+    const { name, department, targetValue, achievedValue } = req.body;
+    
+    const target = await DeptTargets.findByIdAndUpdate(
+      req.params.id,
+      { name, department, targetValue, achievedValue },
+      { new: true, runValidators: true }
+    );
+
+    if (!target) {
+      return res.status(404).json({ success: false, message: 'Department target not found' });
+    }
+
+    res.json({
+      success: true,
+      data: target,
+      message: 'Department target updated successfully'
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE department target
+router.delete('/:id', async (req, res) => {
+  try {
+    const target = await DeptTargets.findByIdAndDelete(req.params.id);
+    
+    if (!target) {
+      return res.status(404).json({ success: false, message: 'Department target not found' });
+    }
+
+    res.json({
+      success: true,
+      message: 'Department target deleted successfully'
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 module.exports = router;
