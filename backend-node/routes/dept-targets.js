@@ -7,7 +7,7 @@ router.get('/', async (req, res) => {
   try {
     const filter = req.query.department ? { dept: req.query.department } : {};
     const data   = await DeptTargets.find(filter).sort({ dept: 1, name: 1 });
-    console.log(`[dept-targets] ${data.length} records from collection: ${DeptTargets.collection.name}`);
+    // console.log(`[dept-targets] ${data.length} records from collection: ${DeptTargets.collection.name}`);
     res.json({ success: true, data });
   } catch (err) {
     console.error('[dept-targets]', err.message);

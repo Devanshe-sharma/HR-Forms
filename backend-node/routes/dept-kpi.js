@@ -9,14 +9,14 @@ router.get('/', async (req, res) => {
     
     // TEMP: bypass mongoose, query directly
     const raw = await DeptKPI.db.collection('deptKPIs').find({}).toArray();
-    console.log('[dept-kpi] RAW count:', raw.length, 'sample:', JSON.stringify(raw[0]?.name));
+    // console.log('[dept-kpi] RAW count:', raw.length, 'sample:', JSON.stringify(raw[0]?.name));
     
     const data = await DeptKPI.find(filter);
-    console.log('[dept-kpi] Mongoose count:', data.length, 'collection:', DeptKPI.collection.name);
+    // console.log('[dept-kpi] Mongoose count:', data.length, 'collection:', DeptKPI.collection.name);
     
     res.json({ success: true, data });
   } catch (err) {
-    console.error('[dept-kpi]', err.message);
+    // console.error('[dept-kpi]', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 });

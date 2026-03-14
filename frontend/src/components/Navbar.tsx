@@ -56,17 +56,17 @@ const TRAINING_EMP_SUBTABS = [
   { label: 'Feedback',   value: 'feedback' },
 ];
 
-// PMS main tabs — these sync with the PMSDashboard internal tab state via ?tab= param
 const PMS_TABS = [
-  { label: 'KPI & Targets',      value: 'kpi' },
-  { label: 'Hygiene Factors',    value: 'hygiene' },
-  { label: 'Growth',             value: 'growth' },
-  { label: 'Final Performance',  value: 'summary' },
+  { label: 'KPI & Targets',     value: 'kpi' },
+  { label: 'Hygiene Factors',   value: 'hygiene' },
+  { label: 'Growth',            value: 'growth' },
+  { label: 'Final Performance', value: 'summary' },
 ];
 
-// ─── Shared styles ────────────────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
-const TAB_STYLES = {
+// White-on-blue — used for main tab rows inside the blue AppBar
+const BLUE_TAB_STYLES = {
   minHeight: 40,
   '& .MuiTab-root': {
     color: 'rgba(255,255,255,0.7)',
@@ -79,10 +79,23 @@ const TAB_STYLES = {
   },
 };
 
+// Dark-on-white — used for the sub-tab rows rendered below the AppBar
+const WHITE_TAB_STYLES = {
+  minHeight: 40,
+  '& .MuiTab-root': {
+    color: 'rgba(0,0,0,0.45)',
+    fontWeight: 600,
+    fontSize: '0.78rem',
+    textTransform: 'none' as const,
+    minHeight: 40,
+    px: 2.5,
+    '&.Mui-selected': { color: '#1d1d1d' },
+  },
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Navbar() {
-  const location = useNavigate() as unknown as ReturnType<typeof useNavigate>;
   const nav = useNavigate();
   const loc = useLocation();
 
@@ -97,81 +110,121 @@ export default function Navbar() {
 
   const showTrainingHrSub  = isTrainingPage && activeTab === 'HR';
   const showTrainingEmpSub = isTrainingPage && activeTab === 'employee';
-  const hasTabRow          = isOutingPage || isTrainingPage || isPmsPage;
+
+  // AppBar stretches to fit its own content (toolbar + blue tab rows only)
+  const hasTabRow = isOutingPage || isTrainingPage || isPmsPage;
 
   const pageTitle = pageTitles[loc.pathname] || 'HR Portal';
 
-  const renderTabRow = (
+  // Blue tab row — rendered inside the AppBar
+  const renderBlueTabRow = (
     tabs: { label: string; value: string }[],
     activeValue: string,
     onChange: (v: string) => void,
-    borderTop = true,
   ) => (
-    <Box sx={{ borderTop: borderTop ? '1px solid rgba(255,255,255,0.2)' : 'none', px: 2 }}>
+    <Box sx={{ borderTop: '1px solid rgba(255,255,255,0.2)', px: 2 }}>
       <Tabs
         value={activeValue || tabs[0].value}
         onChange={(_, v: string) => onChange(v)}
         textColor="inherit"
         TabIndicatorProps={{ style: { backgroundColor: '#ffffff', height: 3 } }}
-        sx={TAB_STYLES}
+        sx={BLUE_TAB_STYLES}
       >
         {tabs.map(t => <Tab key={t.value} label={t.label} value={t.value} />)}
       </Tabs>
     </Box>
   );
 
-  return (
-    <AppBar
-      position="fixed"
+  // White sub-tab row — rendered OUTSIDE the AppBar (position:fixed strip below it)
+  const renderWhiteSubTabRow = (
+    tabs: { label: string; value: string }[],
+    activeValue: string,
+    onChange: (v: string) => void,
+    topOffset: number, // px — how far below the top of the page
+  ) => (
+    <Box
       sx={{
-        width: `calc(100% - ${drawerWidth}px)`,
-        ml: `${drawerWidth}px`,
-        backgroundColor: '#3B82F6',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-        height: hasTabRow ? 'auto' : undefined,
+        position: 'fixed',
+        top: topOffset,
+        left: drawerWidth,
+        right: 0,
+        zIndex: 1099, // just below AppBar (1100)
+        backgroundColor: '#ffffff',
+        borderBottom: '1px solid #e5e7eb',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.07)',
+        px: 2,
       }}
     >
-      <Toolbar sx={{ px: 4, minHeight: '56px !important' }}>
-        <Typography variant="h6" fontWeight={700} color="white">
-          {pageTitle}
-        </Typography>
-      </Toolbar>
+      <Tabs
+        value={activeValue || tabs[0].value}
+        onChange={(_, v: string) => onChange(v)}
+        textColor="inherit"
+        TabIndicatorProps={{ style: { backgroundColor: '#3B82F6', height: 3 } }}
+        sx={WHITE_TAB_STYLES}
+      >
+        {tabs.map(t => <Tab key={t.value} label={t.label} value={t.value} />)}
+      </Tabs>
+    </Box>
+  );
 
-      {/* Outing tabs */}
-      {isOutingPage && renderTabRow(
-        OUTING_TABS,
-        activeTab || 'HR',
-        v => nav(`/outing?tab=${v}`),
-      )}
+  // AppBar height: toolbar(56) + blue tab row(40) when on training/outing/pms page
+  const appBarBottom = hasTabRow ? 56 + 40 : 56;
 
-      {/* Training main tabs */}
-      {isTrainingPage && renderTabRow(
-        TRAINING_TABS,
-        activeTab || 'HR',
-        v => nav(`/training-page?tab=${v}`),
-      )}
+  return (
+    <>
+      <AppBar
+        position="fixed"
+        sx={{
+          width: `calc(100% - ${drawerWidth}px)`,
+          ml: `${drawerWidth}px`,
+          backgroundColor: '#3B82F6',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+          height: hasTabRow ? 'auto' : undefined,
+        }}
+      >
+        <Toolbar sx={{ px: 4, minHeight: '56px !important' }}>
+          <Typography variant="h6" fontWeight={700} color="white">
+            {pageTitle}
+          </Typography>
+        </Toolbar>
 
-      {/* Training HR sub-tabs */}
-      {showTrainingHrSub && renderTabRow(
+        {/* Outing blue tabs */}
+        {isOutingPage && renderBlueTabRow(
+          OUTING_TABS,
+          activeTab || 'HR',
+          v => nav(`/outing?tab=${v}`),
+        )}
+
+        {/* Training main blue tabs */}
+        {isTrainingPage && renderBlueTabRow(
+          TRAINING_TABS,
+          activeTab || 'HR',
+          v => nav(`/training-page?tab=${v}`),
+        )}
+
+        {/* PMS blue tabs */}
+        {isPmsPage && renderBlueTabRow(
+          PMS_TABS,
+          activeTab || 'kpi',
+          v => nav(`/pms?tab=${v}`),
+        )}
+      </AppBar>
+
+      {/* Training HR sub-tabs — white strip fixed just below the AppBar */}
+      {showTrainingHrSub && renderWhiteSubTabRow(
         TRAINING_HR_SUBTABS,
         activeHrSub,
         v => nav(`/training-page?tab=HR&hrSub=${v}`),
+        appBarBottom, // sits right below the blue AppBar
       )}
 
-      {/* Training Employee sub-tabs */}
-      {showTrainingEmpSub && renderTabRow(
+      {/* Training Employee sub-tabs — white strip fixed just below the AppBar */}
+      {showTrainingEmpSub && renderWhiteSubTabRow(
         TRAINING_EMP_SUBTABS,
         activeEmpSub,
         v => nav(`/training-page?tab=employee&empSub=${v}`),
+        appBarBottom,
       )}
-
-      {/* PMS tabs — note: PMSDashboard has its own internal state,
-          but the navbar tabs provide a URL-synced entry point too */}
-      {isPmsPage && renderTabRow(
-        PMS_TABS,
-        activeTab || 'kpi',
-        v => nav(`/pms?tab=${v}`),
-      )}
-    </AppBar>
+    </>
   );
 }

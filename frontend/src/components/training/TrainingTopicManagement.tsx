@@ -1,17 +1,28 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import Select from 'react-select';
-import { Plus, X, Edit, Trash2, Save, Eye, Calendar, FileText, Video, FileCheck } from 'lucide-react';
+import { Plus, X, Edit, Trash2, Save, Eye, Calendar } from 'lucide-react';
 import { getRole, can } from '../../config/rbac';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 const api = axios.create({ baseURL: API_BASE });
-
 api.interceptors.request.use((config) => {
   const role = getRole();
   if (role) config.headers['x-user-role'] = role;
   return config;
 });
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const LEVELS = [
+  { value: '1', label: '1 — Strategic' },
+  { value: '2', label: '2 — Sr Management' },
+  { value: '3', label: '3 — Middle Management' },
+  { value: '4', label: '4 — Junior Management' },
+  { value: '5', label: '5 — Staff' },
+];
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface CapabilityArea {
   _id: string;
@@ -27,6 +38,24 @@ interface CapabilitySkill {
   capabilityArea: string;
 }
 
+interface Department {
+  _id: string;
+  name: string;
+}
+
+interface Role {
+  _id: string;
+  title: string;
+}
+
+interface Employee {
+  name: string;
+  dept: string;
+  desig: string;
+  email: string;
+  score: number;
+}
+
 interface TrainingTopic {
   _id: string;
   trainingId: string;
@@ -37,20 +66,12 @@ interface TrainingTopic {
   type: 'Generic' | 'Dept Specific' | 'Level Specific' | 'Role Specific';
   isGeneric: boolean;
   proposedScheduleDate: string;
-  contentPdfLink: string;
-  videoLink: string;
-  assessmentLink: string;
+  targetLevels?: string[];
+  targetRoles?: string[];
+  targetDepartments?: string[];
   status: 'Draft' | 'Pending Approval';
   createdAt: string;
   createdBy: string;
-}
-
-interface Employee {
-  name: string;
-  dept: string;
-  desig: string;
-  email: string;
-  score: number;
 }
 
 type TrainingTopicForm = {
@@ -62,9 +83,9 @@ type TrainingTopicForm = {
   type: 'Generic' | 'Dept Specific' | 'Level Specific' | 'Role Specific';
   isGeneric: boolean;
   proposedScheduleDate: string;
-  contentPdfLink: string;
-  videoLink: string;
-  assessmentLink: string;
+  targetLevels: string[];      // for Level Specific
+  targetRoles: string[];       // for Role Specific
+  targetDepartments: string[]; // for Dept Specific
   status: 'Draft' | 'Pending Approval';
 };
 
@@ -77,30 +98,53 @@ const initialTrainingTopicForm: TrainingTopicForm = {
   type: 'Generic',
   isGeneric: true,
   proposedScheduleDate: '',
-  contentPdfLink: '',
-  videoLink: '',
-  assessmentLink: '',
+  targetLevels: [],
+  targetRoles: [],
+  targetDepartments: [],
   status: 'Draft',
 };
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const multiSelectStyles = {
+  control: (base: any) => ({
+    ...base,
+    borderColor: '#d1d5db',
+    boxShadow: 'none',
+    '&:hover': { borderColor: '#3b82f6' },
+    fontSize: '0.875rem',
+  }),
+  multiValue: (base: any) => ({ ...base, backgroundColor: '#eff6ff' }),
+  multiValueLabel: (base: any) => ({ ...base, color: '#1d4ed8', fontSize: '0.75rem' }),
+  multiValueRemove: (base: any) => ({
+    ...base, color: '#3b82f6',
+    '&:hover': { backgroundColor: '#bfdbfe', color: '#1e40af' },
+  }),
+};
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export default function TrainingTopicManagement() {
-  const [trainingTopics, setTrainingTopics] = useState<TrainingTopic[]>([]);
+  const [trainingTopics, setTrainingTopics]   = useState<TrainingTopic[]>([]);
   const [capabilityAreas, setCapabilityAreas] = useState<CapabilityArea[]>([]);
   const [capabilitySkills, setCapabilitySkills] = useState<CapabilitySkill[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [departments, setDepartments]         = useState<Department[]>([]);
+  const [roles, setRoles]                     = useState<Role[]>([]);
+  const [employees, setEmployees]             = useState<Employee[]>([]);
+  const [loading, setLoading]                 = useState(false);
+  const [error, setError]                     = useState('');
 
   const [trainingTopicForm, setTrainingTopicForm] = useState<TrainingTopicForm>(initialTrainingTopicForm);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingTopic, setEditingTopic] = useState<TrainingTopic | null>(null);
-  const [viewingTopic, setViewingTopic] = useState<TrainingTopic | null>(null);
-  const [generatedTrainingId, setGeneratedTrainingId] = useState<string>('');
+  const [isModalOpen, setIsModalOpen]             = useState(false);
+  const [editingTopic, setEditingTopic]           = useState<TrainingTopic | null>(null);
+  const [viewingTopic, setViewingTopic]           = useState<TrainingTopic | null>(null);
+  const [generatedTrainingId, setGeneratedTrainingId] = useState('');
 
-  // Permissions
   const canCreate = can('trainingSuggestions', 'create') || can('training', 'create');
-  const canEdit = can('trainingSuggestions', 'update') || can('training', 'update');
+  const canEdit   = can('trainingSuggestions', 'update') || can('training', 'update');
   const canDelete = can('trainingSuggestions', 'delete') || can('training', 'delete');
+
+  // ── Loaders ─────────────────────────────────────────────────────────────────
 
   const loadTrainingTopics = async () => {
     try {
@@ -129,14 +173,30 @@ export default function TrainingTopicManagement() {
     }
   };
 
+  const loadDepartments = async () => {
+    try {
+      const res = await api.get('/departments');
+      setDepartments(res.data?.data || []);
+    } catch (err: any) {
+      console.error('Failed to load departments:', err);
+    }
+  };
+
+  const loadRoles = async () => {
+    try {
+      const res = await api.get('/roles');
+      setRoles(res.data?.data || []);
+    } catch (err: any) {
+      console.error('Failed to load roles:', err);
+    }
+  };
+
   const loadEmployees = async () => {
     try {
       const res = await api.get('/employees?lightweight=true');
-      if (res.data?.success) {
-        setEmployees(res.data.data || []);
-      }
+      if (res.data?.success) setEmployees(res.data.data || []);
     } catch (err: any) {
-      console.error('Failed to load employees for trainer dropdown:', err);
+      console.error('Failed to load employees:', err);
     }
   };
 
@@ -144,89 +204,96 @@ export default function TrainingTopicManagement() {
     loadTrainingTopics();
     loadCapabilityAreas();
     loadCapabilitySkills();
+    loadDepartments();
+    loadRoles();
     loadEmployees();
   }, []);
 
-  const generateTrainingId = (): string => {
-    const nextNumber = trainingTopics.length + 1;
-    return String(nextNumber).padStart(3, '0'); // "001", "002", "003", ...
-  };
+  // ── Modal ─────────────────────────────────────────────────────────────────
+
+  const generateTrainingId = (): string =>
+    String(trainingTopics.length + 1).padStart(3, '0');
 
   const openModal = (topic?: TrainingTopic) => {
     if (topic) {
-      // Edit mode
       setEditingTopic(topic);
       setGeneratedTrainingId(topic.trainingId);
-
       setTrainingTopicForm({
-        trainingId: topic.trainingId,
-        trainingName: topic.trainingName,
-        trainerName: topic.trainerName,
-        capabilityAreaId: capabilityAreas.find(ca => ca.capabilityArea === topic.capabilityArea)?._id || '',
+        trainingId:        topic.trainingId,
+        trainingName:      topic.trainingName,
+        trainerName:       topic.trainerName,
+        capabilityAreaId:  capabilityAreas.find(ca => ca.capabilityArea === topic.capabilityArea)?._id || '',
         capabilitySkillId: capabilitySkills.find(cs => cs.capabilitySkill === topic.capabilitySkill)?._id || '',
-        type: topic.type,
-        isGeneric: topic.isGeneric,
+        type:              topic.type,
+        isGeneric:         topic.isGeneric,
         proposedScheduleDate: topic.proposedScheduleDate,
-        contentPdfLink: topic.contentPdfLink,
-        videoLink: topic.videoLink,
-        assessmentLink: topic.assessmentLink,
-        status: topic.status,
+        targetLevels:      topic.targetLevels || [],
+        targetRoles:       topic.targetRoles || [],
+        targetDepartments: topic.targetDepartments || [],
+        status:            topic.status,
       });
     } else {
-      // Create mode
       setEditingTopic(null);
       const newId = generateTrainingId();
       setGeneratedTrainingId(newId);
-
-      setTrainingTopicForm({
-        ...initialTrainingTopicForm,
-        trainingId: newId,
-      });
+      setTrainingTopicForm({ ...initialTrainingTopicForm, trainingId: newId });
     }
     setIsModalOpen(true);
     setError('');
   };
 
-  const openViewModal = (topic: TrainingTopic) => {
-    setViewingTopic(topic);
+  // Clear targeting arrays when type changes
+  const handleTypeChange = (newType: TrainingTopicForm['type']) => {
+    setTrainingTopicForm(prev => ({
+      ...prev,
+      type:             newType,
+      isGeneric:        newType === 'Generic',
+      targetLevels:     [],
+      targetRoles:      [],
+      targetDepartments: [],
+    }));
   };
 
+  // ── Save ─────────────────────────────────────────────────────────────────────
+
   const saveTrainingTopic = async () => {
-    if (!trainingTopicForm.trainingName.trim()) {
-      return setError('Training Name is required');
-    }
-    if (!trainingTopicForm.trainerName.trim()) {
-      return setError('Trainer Name is required');
-    }
-    if (!trainingTopicForm.capabilityAreaId) {
-      return setError('Please select a capability area');
-    }
-    if (!trainingTopicForm.capabilitySkillId) {
-      return setError('Please select a capability skill');
-    }
-    if (!trainingTopicForm.proposedScheduleDate) {
-      return setError('Proposed Schedule Date is required');
-    }
+    if (!trainingTopicForm.trainingName.trim())   return setError('Training Name is required');
+    if (!trainingTopicForm.trainerName.trim())    return setError('Trainer Name is required');
+    if (!trainingTopicForm.capabilityAreaId)      return setError('Please select a capability area');
+    if (!trainingTopicForm.capabilitySkillId)     return setError('Please select a capability skill');
+    if (!trainingTopicForm.proposedScheduleDate)  return setError('Proposed Schedule Date is required');
+    if (trainingTopicForm.type === 'Level Specific' && trainingTopicForm.targetLevels.length === 0)
+      return setError('Please select at least one level');
+    if (trainingTopicForm.type === 'Role Specific' && trainingTopicForm.targetRoles.length === 0)
+      return setError('Please select at least one role');
+    if (trainingTopicForm.type === 'Dept Specific' && trainingTopicForm.targetDepartments.length === 0)
+      return setError('Please select at least one department');
 
     setLoading(true);
     try {
-      const selectedArea = capabilityAreas.find(ca => ca._id === trainingTopicForm.capabilityAreaId);
+      const selectedArea  = capabilityAreas.find(ca => ca._id === trainingTopicForm.capabilityAreaId);
       const selectedSkill = capabilitySkills.find(cs => cs._id === trainingTopicForm.capabilitySkillId);
 
-      const payload = {
-        trainingId: trainingTopicForm.trainingId || generatedTrainingId,
-        trainingName: trainingTopicForm.trainingName.trim(),
-        trainerName: trainingTopicForm.trainerName.trim(),
-        capabilityArea: selectedArea?.capabilityArea || '',
-        capabilitySkill: selectedSkill?.capabilitySkill || '',
-        type: trainingTopicForm.type,
-        isGeneric: trainingTopicForm.isGeneric,
+      const payload: any = {
+        trainingId:           trainingTopicForm.trainingId || generatedTrainingId,
+        trainingName:         trainingTopicForm.trainingName.trim(),
+        trainerName:          trainingTopicForm.trainerName.trim(),
+        capabilityArea:       selectedArea?.capabilityArea  || '',
+        capabilitySkill:      selectedSkill?.capabilitySkill || '',
+        type:                 trainingTopicForm.type,
+        isGeneric:            trainingTopicForm.isGeneric,
         proposedScheduleDate: trainingTopicForm.proposedScheduleDate,
-        contentPdfLink: trainingTopicForm.contentPdfLink.trim(),
-        videoLink: trainingTopicForm.videoLink.trim(),
-        assessmentLink: trainingTopicForm.assessmentLink.trim(),
-        status: trainingTopicForm.status,
+        status:               trainingTopicForm.status,
       };
+
+      // Only include targeting fields when relevant
+      if (trainingTopicForm.type === 'Level Specific') {
+        payload.targetLevels     = trainingTopicForm.targetLevels;
+      } else if (trainingTopicForm.type === 'Role Specific') {
+        payload.targetRoles      = trainingTopicForm.targetRoles;
+      } else if (trainingTopicForm.type === 'Dept Specific') {
+        payload.targetDepartments = trainingTopicForm.targetDepartments;
+      }
 
       if (editingTopic) {
         await api.patch(`/training-topics/${editingTopic._id}`, payload);
@@ -245,9 +312,10 @@ export default function TrainingTopicManagement() {
     }
   };
 
+  // ── Other actions ─────────────────────────────────────────────────────────
+
   const deleteTrainingTopic = async (id: string) => {
     if (!confirm('Are you sure you want to delete this training topic?')) return;
-
     try {
       await api.delete(`/training-topics/${id}`);
       await loadTrainingTopics();
@@ -257,8 +325,7 @@ export default function TrainingTopicManagement() {
   };
 
   const submitForApproval = async (id: string) => {
-    if (!confirm('Are you sure you want to submit this training topic for approval?')) return;
-
+    if (!confirm('Submit this training topic for approval?')) return;
     try {
       await api.patch(`/training-topics/${id}/submit-for-approval`);
       await loadTrainingTopics();
@@ -267,92 +334,118 @@ export default function TrainingTopicManagement() {
     }
   };
 
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
   const filteredSkills = capabilitySkills.filter(
-    skill => skill.capabilityId === trainingTopicForm.capabilityAreaId
+    s => s.capabilityId === trainingTopicForm.capabilityAreaId
   );
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Draft': return 'bg-gray-100 text-gray-800';
+  const getStatusColor = (s: string) => {
+    switch (s) {
+      case 'Draft':            return 'bg-gray-100 text-gray-800';
       case 'Pending Approval': return 'bg-yellow-100 text-yellow-800';
-      default: return 'bg-gray-100 text-gray-800';
+      default:                 return 'bg-gray-100 text-gray-800';
     }
   };
 
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case 'Generic': return 'bg-green-100 text-green-800';
-      case 'Dept Specific': return 'bg-blue-100 text-blue-800';
+  const getTypeColor = (t: string) => {
+    switch (t) {
+      case 'Generic':        return 'bg-green-100 text-green-800';
+      case 'Dept Specific':  return 'bg-blue-100 text-blue-800';
       case 'Level Specific': return 'bg-purple-100 text-purple-800';
-      case 'Role Specific': return 'bg-orange-100 text-orange-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'Role Specific':  return 'bg-orange-100 text-orange-800';
+      default:               return 'bg-gray-100 text-gray-800';
     }
   };
 
-  // Prepare options for react-select
-  const trainerOptions = employees.map(emp => ({
-    value: emp.name,
-    label: `${emp.name}${emp.desig ? ` — ${emp.desig}` : ''}${emp.dept ? ` (${emp.dept})` : ''}`
+  // react-select option builders
+  const trainerOptions = employees.map(e => ({
+    value: e.name,
+    label: `${e.name}${e.desig ? ` — ${e.desig}` : ''}${e.dept ? ` (${e.dept})` : ''}`,
   }));
 
-  const selectedTrainer = trainerOptions.find(opt => opt.value === trainingTopicForm.trainerName) || null;
+  const departmentOptions = departments.map(d => ({ value: d._id, label: d.name }));
+  const roleOptions       = roles.map(r => ({ value: r._id, label: r.title }));
+
+  const selectedTrainer     = trainerOptions.find(o => o.value === trainingTopicForm.trainerName) || null;
+  const selectedLevels      = LEVELS.filter(l => trainingTopicForm.targetLevels.includes(l.value));
+  const selectedDepartments = departmentOptions.filter(d => trainingTopicForm.targetDepartments.includes(d.value));
+  const selectedRoles       = roleOptions.filter(r => trainingTopicForm.targetRoles.includes(r.value));
+
+  // Label for targeting summary in view modal
+  const targetingLabel = (topic: TrainingTopic): string => {
+    if (topic.type === 'Generic') return 'All employees';
+    if (topic.type === 'Level Specific' && topic.targetLevels?.length) {
+      return topic.targetLevels
+        .map(v => LEVELS.find(l => l.value === v)?.label || v)
+        .join(', ');
+    }
+    if (topic.type === 'Role Specific' && topic.targetRoles?.length) {
+      return topic.targetRoles
+        .map(v => roles.find(r => r._id === v)?.title || v)
+        .join(', ');
+    }
+    if (topic.type === 'Dept Specific' && topic.targetDepartments?.length) {
+      return topic.targetDepartments
+        .map(v => departments.find(d => d._id === v)?.name || v)
+        .join(', ');
+    }
+    return '—';
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Training Topic Management</h2>
-        <p className="text-gray-600">Create and manage training topics before approval</p>
+        <h2 className="text-xl text-gray-700 mb-2">Training Topic Management</h2>
+        <p className="text-gray-400 text-sm">Create and manage training topics before approval</p>
       </div>
 
       {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md text-red-700">
-          {error}
-        </div>
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">{error}</div>
       )}
 
       <div className="mb-4">
         {canCreate && (
-          <button
-            onClick={() => openModal()}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Create Training Topic
+          <button onClick={() => openModal()}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm">
+            <Plus className="w-4 h-4" /> Create Training Topic
           </button>
         )}
       </div>
 
+      {/* Table */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Training ID</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Training Name</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Capability Skill</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Proposed Date</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              {['Training ID', 'Training Name', 'Capability Skill', 'Type', 'Target', 'Proposed Date', 'Status', 'Actions'].map(h => (
+                <th key={h} className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+              ))}
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {trainingTopics.map((topic) => (
+            {trainingTopics.map(topic => (
               <tr key={topic._id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{topic.trainingId}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{topic.trainingName}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{topic.capabilitySkill}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td className="px-5 py-4 text-sm text-gray-500 font-mono">{topic.trainingId}</td>
+                <td className="px-5 py-4 text-sm text-gray-900">{topic.trainingName}</td>
+                <td className="px-5 py-4 text-sm text-gray-900">{topic.capabilitySkill}</td>
+                <td className="px-5 py-4">
                   <span className={`px-2 py-1 text-xs rounded-full ${getTypeColor(topic.type)}`}>{topic.type}</span>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td className="px-5 py-4 text-xs text-gray-500 max-w-[160px] truncate" title={targetingLabel(topic)}>
+                  {targetingLabel(topic)}
+                </td>
+                <td className="px-5 py-4 text-sm text-gray-500 whitespace-nowrap">
                   {new Date(topic.proposedScheduleDate).toLocaleDateString()}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td className="px-5 py-4">
                   <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(topic.status)}`}>{topic.status}</span>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td className="px-5 py-4">
                   <div className="flex gap-2">
-                    <button onClick={() => openViewModal(topic)} className="text-blue-600 hover:text-blue-800" title="View">
+                    <button onClick={() => setViewingTopic(topic)} className="text-blue-600 hover:text-blue-800" title="View">
                       <Eye className="w-4 h-4" />
                     </button>
                     {canEdit && topic.status === 'Draft' && (
@@ -378,10 +471,10 @@ export default function TrainingTopicManagement() {
         </table>
       </div>
 
-      {/* Create / Edit Modal */}
+      {/* ── Create / Edit Modal ── */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl mt-40 max-h-[70vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold">
                 {editingTopic ? 'Edit Training Topic' : 'Create Training Topic'}
@@ -392,114 +485,72 @@ export default function TrainingTopicManagement() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
               {/* Training ID */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Training ID</label>
                 <div className="relative">
-                  <input
-                    type="text"
-                    value={generatedTrainingId}
-                    readOnly
-                    className={`
-                      w-full px-3 py-2 border border-gray-300 rounded-md
-                      bg-gray-50 text-gray-700 cursor-not-allowed font-mono
-                      ${editingTopic ? 'border-gray-300' : 'border-indigo-200 bg-indigo-50/30'}
-                    `}
-                    title={editingTopic ? "Training ID is fixed once created" : "Auto-generated ID"}
-                  />
+                  <input type="text" value={generatedTrainingId} readOnly
+                    className={`w-full px-3 py-2 border rounded-md bg-gray-50 text-gray-700 cursor-not-allowed font-mono text-sm
+                      ${editingTopic ? 'border-gray-300' : 'border-indigo-200 bg-indigo-50/30'}`} />
                   {!editingTopic && (
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-indigo-600 font-medium">
-                      auto-generated
-                    </span>
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-indigo-600 font-medium">auto-generated</span>
                   )}
                 </div>
-                {!editingTopic && (
-                  <p className="mt-1 text-xs text-gray-500">
-                    This ID will be used when the topic is saved.
-                  </p>
-                )}
               </div>
 
               {/* Training Name */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Training Name *
-                </label>
-                <input
-                  type="text"
-                  value={trainingTopicForm.trainingName}
-                  onChange={(e) => setTrainingTopicForm(prev => ({ ...prev, trainingName: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                <label className="block text-sm font-medium text-gray-700 mb-1">Training Name *</label>
+                <input type="text" value={trainingTopicForm.trainingName}
+                  onChange={e => setTrainingTopicForm(p => ({ ...p, trainingName: e.target.value }))}
                   placeholder="e.g., Advanced Leadership Skills"
-                />
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
               </div>
 
               {/* Trainer */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Trainer *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Trainer *</label>
                 <Select
                   options={trainerOptions}
                   value={selectedTrainer}
-                  onChange={(option) => setTrainingTopicForm(prev => ({ ...prev, trainerName: option?.value || '' }))}
+                  onChange={o => setTrainingTopicForm(p => ({ ...p, trainerName: o?.value || '' }))}
                   placeholder="Search or select trainer..."
-                  isSearchable
-                  isClearable
-                  className="react-select-container"
+                  isSearchable isClearable
+                  styles={multiSelectStyles}
                   classNamePrefix="react-select"
                 />
               </div>
 
               {/* Capability Area */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Capability Area *
-                </label>
-                <select
-                  value={trainingTopicForm.capabilityAreaId}
-                  onChange={(e) => setTrainingTopicForm(prev => ({ ...prev, capabilityAreaId: e.target.value, capabilitySkillId: '' }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
+                <label className="block text-sm font-medium text-gray-700 mb-1">Capability Area *</label>
+                <select value={trainingTopicForm.capabilityAreaId}
+                  onChange={e => setTrainingTopicForm(p => ({ ...p, capabilityAreaId: e.target.value, capabilitySkillId: '' }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
                   <option value="">Select a capability area</option>
-                  {capabilityAreas.map(area => (
-                    <option key={area._id} value={area._id}>{area.capabilityArea}</option>
-                  ))}
+                  {capabilityAreas.map(a => <option key={a._id} value={a._id}>{a.capabilityArea}</option>)}
                 </select>
               </div>
 
               {/* Capability Skill */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Capability Skill *
-                </label>
-                <select
-                  value={trainingTopicForm.capabilitySkillId}
-                  onChange={(e) => setTrainingTopicForm(prev => ({ ...prev, capabilitySkillId: e.target.value }))}
+                <label className="block text-sm font-medium text-gray-700 mb-1">Capability Skill *</label>
+                <select value={trainingTopicForm.capabilitySkillId}
+                  onChange={e => setTrainingTopicForm(p => ({ ...p, capabilitySkillId: e.target.value }))}
                   disabled={!trainingTopicForm.capabilityAreaId}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm disabled:bg-gray-50">
                   <option value="">Select a capability skill</option>
-                  {filteredSkills.map(skill => (
-                    <option key={skill._id} value={skill._id}>{skill.capabilitySkill}</option>
-                  ))}
+                  {filteredSkills.map(s => <option key={s._id} value={s._id}>{s.capabilitySkill}</option>)}
                 </select>
               </div>
 
               {/* Type */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Type *
-                </label>
-                <select
-                  value={trainingTopicForm.type}
-                  onChange={(e) => setTrainingTopicForm(prev => ({
-                    ...prev,
-                    type: e.target.value as any,
-                    isGeneric: e.target.value === 'Generic'
-                  }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
+                <label className="block text-sm font-medium text-gray-700 mb-1">Type *</label>
+                <select value={trainingTopicForm.type}
+                  onChange={e => handleTypeChange(e.target.value as TrainingTopicForm['type'])}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
                   <option value="Generic">Generic</option>
                   <option value="Dept Specific">Dept Specific</option>
                   <option value="Level Specific">Level Specific</option>
@@ -509,87 +560,96 @@ export default function TrainingTopicManagement() {
 
               {/* Proposed Schedule Date */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Proposed Schedule Date *
-                </label>
-                <input
-                  type="date"
-                  value={trainingTopicForm.proposedScheduleDate}
-                  onChange={(e) => setTrainingTopicForm(prev => ({ ...prev, proposedScheduleDate: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Content PDF Link */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Content PDF Link
-                </label>
-                <input
-                  type="url"
-                  value={trainingTopicForm.contentPdfLink}
-                  onChange={(e) => setTrainingTopicForm(prev => ({ ...prev, contentPdfLink: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="https://example.com/content.pdf"
-                />
-              </div>
-
-              {/* Video Link */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Video Link
-                </label>
-                <input
-                  type="url"
-                  value={trainingTopicForm.videoLink}
-                  onChange={(e) => setTrainingTopicForm(prev => ({ ...prev, videoLink: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="https://example.com/video"
-                />
-              </div>
-
-              {/* Assessment Link */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Assessment Link
-                </label>
-                <input
-                  type="url"
-                  value={trainingTopicForm.assessmentLink}
-                  onChange={(e) => setTrainingTopicForm(prev => ({ ...prev, assessmentLink: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="https://example.com/assessment"
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-1">Proposed Schedule Date *</label>
+                <input type="date" value={trainingTopicForm.proposedScheduleDate}
+                  onChange={e => setTrainingTopicForm(p => ({ ...p, proposedScheduleDate: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
               </div>
 
               {/* Status */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Status
-                </label>
-                <select
-                  value={trainingTopicForm.status}
-                  onChange={(e) => setTrainingTopicForm(prev => ({ ...prev, status: e.target.value as any }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
+                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select value={trainingTopicForm.status}
+                  onChange={e => setTrainingTopicForm(p => ({ ...p, status: e.target.value as any }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
                   <option value="Draft">Draft</option>
                   <option value="Pending Approval">Pending Approval</option>
                 </select>
               </div>
             </div>
 
+            {/* ── Conditional targeting fields — full width ── */}
+
+            {/* Level Specific */}
+            {trainingTopicForm.type === 'Level Specific' && (
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Target Levels * <span className="text-xs font-normal text-gray-400">(select one or more)</span>
+                </label>
+                <Select
+                  isMulti
+                  options={LEVELS}
+                  value={selectedLevels}
+                  onChange={opts => setTrainingTopicForm(p => ({
+                    ...p, targetLevels: (opts as typeof LEVELS).map(o => o.value),
+                  }))}
+                  placeholder="Select levels..."
+                  styles={multiSelectStyles}
+                  classNamePrefix="react-select"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  1 — Strategic · 2 — Sr Management · 3 — Middle Management · 4 — Junior Management · 5 — Staff
+                </p>
+              </div>
+            )}
+
+            {/* Dept Specific */}
+            {trainingTopicForm.type === 'Dept Specific' && (
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Target Departments * <span className="text-xs font-normal text-gray-400">(select one or more)</span>
+                </label>
+                <Select
+                  isMulti
+                  options={departmentOptions}
+                  value={selectedDepartments}
+                  onChange={opts => setTrainingTopicForm(p => ({
+                    ...p, targetDepartments: (opts as typeof departmentOptions).map(o => o.value),
+                  }))}
+                  placeholder="Select departments..."
+                  styles={multiSelectStyles}
+                  classNamePrefix="react-select"
+                />
+              </div>
+            )}
+
+            {/* Role Specific */}
+            {trainingTopicForm.type === 'Role Specific' && (
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Target Roles * <span className="text-xs font-normal text-gray-400">(select one or more)</span>
+                </label>
+                <Select
+                  isMulti
+                  options={roleOptions}
+                  value={selectedRoles}
+                  onChange={opts => setTrainingTopicForm(p => ({
+                    ...p, targetRoles: (opts as typeof roleOptions).map(o => o.value),
+                  }))}
+                  placeholder="Select roles..."
+                  styles={multiSelectStyles}
+                  classNamePrefix="react-select"
+                />
+              </div>
+            )}
+
             <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
-              >
+              <button onClick={() => setIsModalOpen(false)}
+                className="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
                 Cancel
               </button>
-              <button
-                onClick={saveTrainingTopic}
-                disabled={loading}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
-              >
+              <button onClick={saveTrainingTopic} disabled={loading}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50">
                 <Save className="w-4 h-4" />
                 {loading ? 'Saving...' : 'Save'}
               </button>
@@ -598,7 +658,7 @@ export default function TrainingTopicManagement() {
         </div>
       )}
 
-      {/* View Modal */}
+      {/* ── View Modal ── */}
       {viewingTopic && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -612,11 +672,11 @@ export default function TrainingTopicManagement() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Training ID</p>
-                  <p className="text-sm text-gray-900">{viewingTopic.trainingId}</p>
+                  <p className="text-xs font-medium text-gray-500 uppercase mb-1">Training ID</p>
+                  <p className="text-sm text-gray-900 font-mono">{viewingTopic.trainingId}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Status</p>
+                  <p className="text-xs font-medium text-gray-500 uppercase mb-1">Status</p>
                   <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(viewingTopic.status)}`}>
                     {viewingTopic.status}
                   </span>
@@ -624,101 +684,76 @@ export default function TrainingTopicManagement() {
               </div>
 
               <div>
-                <p className="text-sm font-medium text-gray-500">Training Name</p>
+                <p className="text-xs font-medium text-gray-500 uppercase mb-1">Training Name</p>
                 <p className="text-sm text-gray-900">{viewingTopic.trainingName}</p>
               </div>
 
               <div>
-                <p className="text-sm font-medium text-gray-500">Trainer Name</p>
+                <p className="text-xs font-medium text-gray-500 uppercase mb-1">Trainer</p>
                 <p className="text-sm text-gray-900">{viewingTopic.trainerName}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Capability Area</p>
+                  <p className="text-xs font-medium text-gray-500 uppercase mb-1">Capability Area</p>
                   <p className="text-sm text-gray-900">{viewingTopic.capabilityArea}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Capability Skill</p>
+                  <p className="text-xs font-medium text-gray-500 uppercase mb-1">Capability Skill</p>
                   <p className="text-sm text-gray-900">{viewingTopic.capabilitySkill}</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Type</p>
+                  <p className="text-xs font-medium text-gray-500 uppercase mb-1">Type</p>
                   <span className={`px-2 py-1 text-xs rounded-full ${getTypeColor(viewingTopic.type)}`}>
                     {viewingTopic.type}
                   </span>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Proposed Schedule Date</p>
+                  <p className="text-xs font-medium text-gray-500 uppercase mb-1">Proposed Date</p>
                   <p className="text-sm text-gray-900">
                     {new Date(viewingTopic.proposedScheduleDate).toLocaleDateString()}
                   </p>
                 </div>
               </div>
 
-              <div className="space-y-3">
+              {/* Targeting — only shown when relevant */}
+              {viewingTopic.type !== 'Generic' && (
                 <div>
-                  <p className="text-sm font-medium text-gray-500 mb-2">Content Links</p>
-                  <div className="space-y-2">
-                    {viewingTopic.contentPdfLink && (
-                      <a
-                        href={viewingTopic.contentPdfLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm"
-                      >
-                        <FileText className="w-4 h-4" />
-                        Content PDF
-                      </a>
-                    )}
-                    {viewingTopic.videoLink && (
-                      <a
-                        href={viewingTopic.videoLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm"
-                      >
-                        <Video className="w-4 h-4" />
-                        Video Content
-                      </a>
-                    )}
-                    {viewingTopic.assessmentLink && (
-                      <a
-                        href={viewingTopic.assessmentLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm"
-                      >
-                        <FileCheck className="w-4 h-4" />
-                        Assessment
-                      </a>
-                    )}
+                  <p className="text-xs font-medium text-gray-500 uppercase mb-1">
+                    {viewingTopic.type === 'Level Specific' ? 'Target Levels'
+                      : viewingTopic.type === 'Dept Specific' ? 'Target Departments'
+                      : 'Target Roles'}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {targetingLabel(viewingTopic)
+                      .split(', ')
+                      .map((tag, i) => (
+                        <span key={i} className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-full border border-blue-100">
+                          {tag}
+                        </span>
+                      ))}
                   </div>
                 </div>
-              </div>
+              )}
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-100">
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Created By</p>
+                  <p className="text-xs font-medium text-gray-500 uppercase mb-1">Created By</p>
                   <p className="text-sm text-gray-900">{viewingTopic.createdBy}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Created At</p>
-                  <p className="text-sm text-gray-900">
-                    {new Date(viewingTopic.createdAt).toLocaleDateString()}
-                  </p>
+                  <p className="text-xs font-medium text-gray-500 uppercase mb-1">Created At</p>
+                  <p className="text-sm text-gray-900">{new Date(viewingTopic.createdAt).toLocaleDateString()}</p>
                 </div>
               </div>
             </div>
 
             <div className="flex justify-end mt-6">
-              <button
-                onClick={() => setViewingTopic(null)}
-                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
-              >
+              <button onClick={() => setViewingTopic(null)}
+                className="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
                 Close
               </button>
             </div>

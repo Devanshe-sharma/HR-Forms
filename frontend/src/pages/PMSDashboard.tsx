@@ -573,116 +573,116 @@ const PMSDashboard: React.FC = () => {
                     )}
 
                     {hygiene && emp && (
-  <Paper
-    variant="outlined"
-    sx={{
-      borderRadius: 1.5,
-      overflow: 'hidden',
-      boxShadow: '0 2px 10px rgba(99,102,241,0.08)',
-      border: '1px solid #e0e7ff',
-      transition: 'box-shadow 0.2s ease, transform 0.2s ease',
-      '&:hover': {
-        boxShadow: '0 4px 18px rgba(99,102,241,0.14)',
-        transform: 'translateY(-1px)'
-      },
-      ...fadeSlideIn
-    }}
-  >
-    <Box
-      sx={{
-        px: 1.5,
-        py: 1,
-        borderBottom: '1px solid #3b82f6',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 1
-      }}
-    >
-      <Box sx={{ width: 3, height: 16, borderRadius: 1, bgcolor: '#3b82f6' }} />
+                      <Paper
+                        variant="outlined"
+                        sx={{
+                          borderRadius: 1.5,
+                          overflow: 'hidden',
+                          boxShadow: '0 2px 10px rgba(99,102,241,0.08)',
+                          border: '1px solid #e0e7ff',
+                          transition: 'box-shadow 0.2s ease, transform 0.2s ease',
+                          '&:hover': {
+                            boxShadow: '0 4px 18px rgba(99,102,241,0.14)',
+                            transform: 'translateY(-1px)'
+                          },
+                          ...fadeSlideIn
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            px: 1.5,
+                            py: 1,
+                            borderBottom: '1px solid #3b82f6',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1
+                          }}
+                        >
+                          <Box sx={{ width: 3, height: 16, borderRadius: 1, bgcolor: '#3b82f6' }} />
 
-      <Typography fontSize={13} fontWeight={700}>
-        {emp.name}
-      </Typography>
+                          <Typography fontSize={13} fontWeight={700}>
+                            {emp.name}
+                          </Typography>
 
-      <Chip
-        label={emp.department}
-        size="small"
-        sx={{
-          height: 20,
-          fontSize: 10,
-          bgcolor: '#bfdbfe',
-          color: '#1e40af',
-          fontWeight: 600
-        }}
-      />
+                          <Chip
+                            label={emp.department}
+                            size="small"
+                            sx={{
+                              height: 20,
+                              fontSize: 10,
+                              bgcolor: '#bfdbfe',
+                              color: '#1e40af',
+                              fontWeight: 600
+                            }}
+                          />
 
-      <Chip
-        label={scoreLabel(hygiene.score)}
-        size="small"
-        sx={{
-          ml: 'auto',
-          height: 20,
-          fontSize: 10,
-          bgcolor: scoreBg(hygiene.score),
-          color: scoreColor(hygiene.score),
-          fontWeight: 700
-        }}
-      />
-    </Box>
+                          <Chip
+                            label={scoreLabel(hygiene.score)}
+                            size="small"
+                            sx={{
+                              ml: 'auto',
+                              height: 20,
+                              fontSize: 10,
+                              bgcolor: scoreBg(hygiene.score),
+                              color: scoreColor(hygiene.score),
+                              fontWeight: 700
+                            }}
+                          />
+                        </Box>
 
-    <Box sx={{ p: 1.5 }}>
-      <Grid container spacing={1}>
-        <Grid size={{ xs: 6, sm: 6, md: 3 }}>
-          <StatCard
-            label="Attendance"
-            value={`${hygiene.attendance.percentage.toFixed(1)}%`}
-            sub={`${hygiene.attendance.present}/${hygiene.attendance.total}`}
-            icon={<People fontSize="small" />}
-            color="#16a34a"
-            progress={{
-              achieved: hygiene.attendance.percentage,
-              target: 100
-            }}
-          />
-        </Grid>
+                        <Box sx={{ p: 1.5 }}>
+                          <Grid container spacing={1}>
+                            <Grid size={{ xs: 6, sm: 6, md: 3 }}>
+                              <StatCard
+                                label="Attendance"
+                                value={`${hygiene.attendance.percentage.toFixed(1)}%`}
+                                sub={`${hygiene.attendance.present}/${hygiene.attendance.total}`}
+                                icon={<People fontSize="small" />}
+                                color="#16a34a"
+                                progress={{
+                                  achieved: hygiene.attendance.percentage,
+                                  target: 100
+                                }}
+                              />
+                            </Grid>
 
-        <Grid size={{ xs: 6, sm: 6, md: 3 }}>
-          <StatCard
-            label="Late Marks"
-            value={hygiene.lateMarks}
-            sub="This period"
-            icon={<AccessTime fontSize="small" />}
-            color={hygiene.lateMarks <= 1 ? '#16a34a' : '#dc2626'}
-          />
-        </Grid>
+                            <Grid size={{ xs: 6, sm: 6, md: 3 }}>
+                              <StatCard
+                                label="Late Marks"
+                                value={hygiene.lateMarks}
+                                sub="This period"
+                                icon={<AccessTime fontSize="small" />}
+                                color={hygiene.lateMarks <= 1 ? '#16a34a' : '#dc2626'}
+                              />
+                            </Grid>
 
-        <Grid size={{ xs: 6, sm: 6, md: 3 }}>
-          <StatCard
-            label="Leaves Taken"
-            value={hygiene.leaves.taken}
-            sub={`${hygiene.leaves.remaining}/${hygiene.leaves.allowed}`}
-            icon={<HealthAndSafety fontSize="small" />}
-            color="#2563eb"
-            progress={{
-              achieved: hygiene.leaves.taken,
-              target: hygiene.leaves.allowed
-            }}
-          />
-        </Grid>
+                            <Grid size={{ xs: 6, sm: 6, md: 3 }}>
+                              <StatCard
+                                label="Leaves Taken"
+                                value={hygiene.leaves.taken}
+                                sub={`${hygiene.leaves.remaining}/${hygiene.leaves.allowed}`}
+                                icon={<HealthAndSafety fontSize="small" />}
+                                color="#2563eb"
+                                progress={{
+                                  achieved: hygiene.leaves.taken,
+                                  target: hygiene.leaves.allowed
+                                }}
+                              />
+                            </Grid>
 
-        <Grid size={{ xs: 6, sm: 6, md: 3 }}>
-          <StatCard
-            label="Out of Office"
-            value={hygiene.outOfOffice}
-            sub="Days"
-            icon={<TrendingUp fontSize="small" />}
-            color={hygiene.outOfOffice <= 3 ? '#16a34a' : '#dc2626'}
-          />
-        </Grid>
-      </Grid>
-    </Box>
-  </Paper>
-)}
+                            <Grid size={{ xs: 6, sm: 6, md: 3 }}>
+                              <StatCard
+                                label="Out of Office"
+                                value={hygiene.outOfOffice}
+                                sub="Days"
+                                icon={<TrendingUp fontSize="small" />}
+                                color={hygiene.outOfOffice <= 3 ? '#16a34a' : '#dc2626'}
+                              />
+                            </Grid>
+                          </Grid>
+                        </Box>
+                      </Paper>
+                    )}
 
                     {hygieneData.length > 0 && (
                       <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: '0 4px 20px rgba(99,102,241,0.10)', border: '1px solid #e0e7ff', transition: 'box-shadow 0.25s ease, transform 0.25s ease', '&:hover': { boxShadow: '0 8px 32px rgba(99,102,241,0.16)', transform: 'translateY(-1px)' }, ...fadeSlideIn }}>
