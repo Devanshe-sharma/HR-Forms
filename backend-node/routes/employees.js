@@ -1,41 +1,38 @@
-const express = require('express');
-const router = express.Router();
+// routes/employees.js
+// CRITICAL: lightweight mode MUST return _id so dashboard can match
+// hygienes.employeeId / growths.employeeId / rolekpis.employeeId
+// All three collections store the Employee MongoDB _id as their employeeId field
+
+const express  = require('express');
+const router   = express.Router();
 const Employee = require('../models/Employee');
 
 router.get('/', async (req, res) => {
-    try {
-        // 1. Check for lightweight query FIRST
-        if (req.query.lightweight === 'true') {
-            const employees = await Employee.find()
-                .select('full_name department designation official_email score')
-                .sort({ full_name: 1 })
-                .lean();
+  try {
+    if (req.query.lightweight === 'true') {
+      const employees = await Employee.find()
+        .select('_id full_name department designation official_email score')
+        .sort({ full_name: 1 })
+        .lean();
 
-            const formatted = employees.map(emp => ({
-                name: emp.full_name || '',
-                dept: emp.department || '',
-                desig: emp.designation || '',
-                email: emp.official_email || '',
-                score: emp.score || 0
-            }));
+      const formatted = employees.map(emp => ({
+        _id:         emp._id,               // ObjectId — used to match employeeId in hygienes/growths/rolekpis
+        name:        emp.full_name    || '',
+        department:  emp.department   || '',
+        designation: emp.designation  || '',
+        email:       emp.official_email || String(emp._id), // unique React key
+        score:       emp.score        || 0,
+      }));
 
-            // Use 'return' to stop the function here
-            return res.json({ success: true, data: formatted });
-        }
-
-        // 2. Default logic (Full Employee List)
-        const employees = await Employee.find();
-        
-        // Use 'return' here as well for good measure
-        return res.json({
-            success: true,
-            data: employees
-        });
-
-    } catch (err) {
-        // Always 'return' on errors to prevent further execution
-        return res.status(500).json({ success: false, error: err.message });
+      return res.json({ success: true, data: formatted });
     }
+
+    const employees = await Employee.find();
+    return res.json({ success: true, data: employees });
+
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 module.exports = router;

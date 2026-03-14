@@ -86,7 +86,8 @@ router.put('/:id', asyncHandler(async (req, res) => {
       attendance, 
       lateMarks, 
       leaves, 
-      outOfOffice 
+      outOfOffice,
+      employeeId
     } = req.body;
     
     const hygiene = await Hygiene.findById(req.params.id);
@@ -116,6 +117,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
       };
     }
     if (outOfOffice !== undefined) hygiene.outOfOffice = outOfOffice;
+    if (employeeId !== undefined) hygiene.employeeId = employeeId;
     
     hygiene.updatedAt = new Date();
     
