@@ -1,5 +1,8 @@
 import { AppBar, Toolbar, Typography, Tabs, Tab, Box } from '@mui/material';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useTheme } from '../contexts/ThemeContext';
+import Brightness4Icon from '@mui/icons-material/Brightness4';
+import Brightness7Icon from '@mui/icons-material/Brightness7';
 
 const drawerWidth = 260;
 
@@ -7,7 +10,6 @@ const pageTitles: Record<string, string> = {
   '/hr-dashboard':         'Dashboard',
   '/employees':            'Employees',
   '/candidates':           'Candidates',
-  '/salary-revision':      'Salary Revision',
   '/employee-letters':     'Employee Letters',
   '/recruitment':          'All Requisitions',
   '/applicants':           'All Applicants',
@@ -101,6 +103,7 @@ const TAB_ROW_H  = 40;
 export default function Navbar() {
   const nav = useNavigate();
   const loc = useLocation();
+  const { darkMode, toggleDarkMode } = useTheme();
 
   const sp           = new URLSearchParams(loc.search);
   const activeTab    = sp.get('tab')    || '';
@@ -170,8 +173,26 @@ export default function Navbar() {
         backgroundColor: '#3B82F6', boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
         height: TOOLBAR_H,
       }}>
-        <Toolbar sx={{ px: 4, minHeight: `${TOOLBAR_H}px !important` }}>
+        <Toolbar sx={{ px: 4, minHeight: `${TOOLBAR_H}px !important`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Typography variant="h6" fontWeight={700} color="white">{pageTitle}</Typography>
+          <Box
+            onClick={toggleDarkMode}
+            sx={{ 
+              cursor: 'pointer', 
+              display: 'flex', 
+              alignItems: 'center',
+              gap: 1,
+              padding: '4px 8px',
+              borderRadius: '4px',
+              '&:hover': { backgroundColor: 'rgba(255,255,255,0.1)' }
+            }}
+          >
+            {darkMode ? (
+              <Brightness7Icon sx={{ color: 'white', fontSize: 20 }} />
+            ) : (
+              <Brightness4Icon sx={{ color: 'white', fontSize: 20 }} />
+            )}
+          </Box>
         </Toolbar>
       </AppBar>
 

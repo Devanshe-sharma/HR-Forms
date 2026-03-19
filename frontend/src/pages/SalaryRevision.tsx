@@ -539,7 +539,7 @@ useEffect(() => {
                 >
                   <div className="py-1">
                     {[
-                      { type: 'salary-revision', label: 'Salary Revision Letter' },
+                      { type: 'salary-revision', label: 'Employee Letter' },
                       { type: 'confirmation', label: 'Confirmation Letter' },
                       { type: 'consultant-contract', label: 'Consultant Contract' },
                       { type: 'salary-breakdown', label: 'Salary Breakdown' },

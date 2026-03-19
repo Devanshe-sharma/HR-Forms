@@ -141,7 +141,6 @@ export default function Sidebar() {
     },
 
     { to: '/confirmations',    text: 'Confirmations',    icon: <CheckCircleIcon /> },
-    { to: '/salary-revision',  text: 'Salary Revision', icon: <TableChartIcon /> },
     { to: '/employee-letters', text: 'Employee Letters',icon: <MailIcon /> },
     { to: '/salary-sheet',     text: 'Salary Sheet',    icon: <PaymentsIcon /> },
 

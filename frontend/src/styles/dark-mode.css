@@ -1,0 +1,54 @@
+/* Dark mode styles */
+.dark-mode {
+  background-color: #121212;
+  color: #ffffff;
+}
+
+.dark-mode .MuiPaper-root {
+  background-color: #1e1e1e !important;
+  color: #ffffff !important;
+}
+
+.dark-mode .MuiAppBar-root {
+  background-color: #1e1e1e !important;
+}
+
+.dark-mode .MuiDrawer-paper {
+  background-color: #1e1e1e !important;
+  border-right: 1px solid #333333 !important;
+}
+
+.dark-mode .MuiCard-root {
+  background-color: #1e1e1e !important;
+  color: #ffffff !important;
+}
+
+.dark-mode .MuiListItemText-primary {
+  color: #ffffff !important;
+}
+
+.dark-mode .MuiListItemText-secondary {
+  color: #b0b0b0 !important;
+}
+
+.dark-mode .MuiTypography-root {
+  color: #ffffff !important;
+}
+
+/* Custom scrollbar for dark mode */
+.dark-mode ::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dark-mode ::-webkit-scrollbar-track {
+  background: #2d2d2d;
+}
+
+.dark-mode ::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 4px;
+}
+
+.dark-mode ::-webkit-scrollbar-thumb:hover {
+  background: #777;
+}

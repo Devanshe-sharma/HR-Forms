@@ -4,7 +4,10 @@ import HRDashboard from "./pages/HRDashboard";
 import OutsiderDashboard from "./pages/OutsiderDashboard";
 import CandidateApplicationPage from "./pages/CandidateApplication";
 import SalaryRevision from "./pages/SalaryRevision";
+import Profile from "./pages/Profile";
+import Settings from "./pages/Settings";
 import ProtectedRoute from './components/ProtectedRoute';
+
 import Recruitment from "./pages/RequisitionDashboard";
 import CTCComponentsDashboard from "./components/CTCComponentsDashboard";
 import LetterTemplate from "./pages/LetterTemplate";
@@ -20,18 +23,22 @@ import Exit from "./pages/Exit";
 import Confirmationspage from "./pages/Confirmationspage";
 import DeptOrientationPage from "./pages/Deptorientationpage";
 import Companyorientationpage from "./pages/Companyorientationpage";
+import { ThemeProvider } from "./contexts/ThemeContext";
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
+    <ThemeProvider>
+      <Routes>
+        <Route path="/" element={<Home />} />
 
       {/* Employee dashboards */}
       <Route
         path="/hr-dashboard"
         element={
           <ProtectedRoute>
-            <HRDashboard />
+             
+              <HRDashboard />
+             
           </ProtectedRoute>
         }
       />
@@ -42,10 +49,12 @@ export default function App() {
 
       {/* Protected core routes */}
       <Route
-        path="/salary-revision"
+        path="/employee-letters"
         element={
           <ProtectedRoute>
-            <SalaryRevision />
+             
+              <SalaryRevision />
+             
           </ProtectedRoute>
         }
       />
@@ -54,7 +63,9 @@ export default function App() {
         path="/recruitment"
         element={
           <ProtectedRoute>
-            <Recruitment />
+             
+              <Recruitment />
+             
           </ProtectedRoute>
         }
       />
@@ -63,7 +74,9 @@ export default function App() {
         path="/ctc-components"
         element={
           <ProtectedRoute>
-            <CTCComponentsDashboard />
+             
+              <CTCComponentsDashboard />
+             
           </ProtectedRoute>
         }
       />
@@ -72,7 +85,9 @@ export default function App() {
         path="/letter"
         element={
           <ProtectedRoute>
-            <LetterTemplate />
+             
+              <LetterTemplate />
+             
           </ProtectedRoute>
         }
       />
@@ -81,7 +96,9 @@ export default function App() {
         path="/employees"
         element={
           <ProtectedRoute>
-            <ComingSoon />
+             
+              <ComingSoon />
+             
           </ProtectedRoute>
         }
       />
@@ -90,7 +107,9 @@ export default function App() {
         path="/candidates"
         element={
           <ProtectedRoute>
-            <ComingSoon />
+             
+              <ComingSoon />
+             
           </ProtectedRoute>
         }
       />
@@ -99,7 +118,9 @@ export default function App() {
         path="/applicants"
         element={
           <ProtectedRoute>
-            <AllApplicants />
+             
+              <AllApplicants />
+             
           </ProtectedRoute>
         }
       />
@@ -108,7 +129,9 @@ export default function App() {
         path="/new-hiring-requisition"
         element={
           <ProtectedRoute>
-            <NewRequisitionForm />
+             
+              <NewRequisitionForm />
+             
           </ProtectedRoute>
         }
       />
@@ -117,7 +140,9 @@ export default function App() {
         path="/training-page"
         element={
           <ProtectedRoute>
-            <TrainingPage />
+             
+              <TrainingPage />
+             
           </ProtectedRoute>
         }
       />
@@ -126,7 +151,9 @@ export default function App() {
         path="/Outing"
         element={
           <ProtectedRoute>
-            <Outing />
+             
+              <Outing />
+             
           </ProtectedRoute>
         }
       />
@@ -135,7 +162,9 @@ export default function App() {
         path="/requisition"
         element={
           <ProtectedRoute>
-            <Requisition />
+             
+              <Requisition />
+             
           </ProtectedRoute>
         }
       />
@@ -144,7 +173,9 @@ export default function App() {
         path="/onboarding"
         element={
           <ProtectedRoute>
-            <Onboarding />
+             
+              <Onboarding />
+             
           </ProtectedRoute>
         }
       />
@@ -153,7 +184,9 @@ export default function App() {
         path="/exits"
         element={
           <ProtectedRoute>
-            <Exit />
+             
+              <Exit />
+             
           </ProtectedRoute>
         }
       />
@@ -163,7 +196,9 @@ export default function App() {
         path="/company-orientation"
         element={
           <ProtectedRoute>
-            <Companyorientationpage />
+             
+              <Companyorientationpage />
+            
           </ProtectedRoute>
         }
       />
@@ -172,7 +207,9 @@ export default function App() {
         path="/dept-orientation"
         element={
           <ProtectedRoute>
-            <DeptOrientationPage />
+             
+              <DeptOrientationPage />
+             
           </ProtectedRoute>
         }
       />
@@ -181,7 +218,9 @@ export default function App() {
         path="/attendance"
         element={
           <ProtectedRoute>
-            <ComingSoon />
+             
+              <ComingSoon />
+             
           </ProtectedRoute>
         }
       />
@@ -190,7 +229,9 @@ export default function App() {
         path="/checklist-delegation"
         element={
           <ProtectedRoute>
-            <ComingSoon />
+             
+              <ComingSoon />
+             
           </ProtectedRoute>
         }
       />
@@ -199,16 +240,31 @@ export default function App() {
         path="/confirmations"
         element={
           <ProtectedRoute>
-            <Confirmationspage />
+             
+              <Confirmationspage />
+             
           </ProtectedRoute>
         }
       />
 
       <Route
-        path="/employee-letters"
+        path="/profile"
         element={
           <ProtectedRoute>
-            <ComingSoon />
+             
+              <Profile />
+             
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+             
+              <Settings />
+             
           </ProtectedRoute>
         }
       />
@@ -217,7 +273,9 @@ export default function App() {
         path="/salary-sheet"
         element={
           <ProtectedRoute>
-            <ComingSoon />
+             
+              <ComingSoon />
+             
           </ProtectedRoute>
         }
       />
@@ -226,7 +284,9 @@ export default function App() {
         path="/pms"
         element={
           <ProtectedRoute>
-            <PMSDashboard />
+             
+              <PMSDashboard />
+             
           </ProtectedRoute>
         }
       />
@@ -236,10 +296,13 @@ export default function App() {
         path="*"
         element={
           <ProtectedRoute>
-            <ComingSoon />
+             
+              <ComingSoon />
+             
           </ProtectedRoute>
         }
       />
     </Routes>
+    </ThemeProvider>
   );
 }
