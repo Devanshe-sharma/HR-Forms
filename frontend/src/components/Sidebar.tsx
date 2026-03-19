@@ -118,6 +118,7 @@ export default function Sidebar() {
       open: openTrainings,
       subItems: [
         { to: '/training-page?tab=HR',         text: 'HR Training',         icon: <PeopleIcon /> },
+        { to: '/training-page?tab=manager',    text: 'Manager',             icon: <AssignmentIcon /> },
         { to: '/training-page?tab=management', text: 'Management Approval',  icon: <ApprovalIcon /> },
         { to: '/training-page?tab=employee',   text: 'Employee',            icon: <AssignmentIcon /> },
         { to: '/training-page?tab=scorecard',  text: 'Scorecard',           icon: <EmojiEventsIcon /> },
@@ -132,13 +133,14 @@ export default function Sidebar() {
       open: openOuting,
       subItems: [
         { to: '/outing?tab=HR',               text: 'HR Outing',        icon: <PeopleIcon /> },
+        
         { to: '/outing?tab=management',        text: 'Management Outing', icon: <BusinessCenterIcon /> },
         { to: '/outing?tab=employee-feedback', text: 'Outing Feedback',  icon: <AssignmentIcon /> },
         { to: '/outing?tab=scorecard',         text: 'Outing Scorecard', icon: <ScoreIcon /> },
       ],
     },
 
-    { to: '/confirmations',    text: 'Confirmation',    icon: <CheckCircleIcon /> },
+    { to: '/confirmations',    text: 'Confirmations',    icon: <CheckCircleIcon /> },
     { to: '/salary-revision',  text: 'Salary Revision', icon: <TableChartIcon /> },
     { to: '/employee-letters', text: 'Employee Letters',icon: <MailIcon /> },
     { to: '/salary-sheet',     text: 'Salary Sheet',    icon: <PaymentsIcon /> },

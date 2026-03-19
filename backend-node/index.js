@@ -31,24 +31,21 @@ app.get('/', (req, res) => res.send('Backend server is alive!'));
 
 
 app.use('/api/employees',          require('./routes/employees'));
+app.use('/api/confirmations',      require('./routes/confirmations'));
 app.use('/api/departments',        require('./routes/departments'));
 app.use('/api/designations',       require('./routes/designations'));
 app.use('/api/hiringrequisitions', require('./routes/hiringRequisitions'));
 app.use('/api/ctc-components',     require('./routes/ctcComponents'));
 // app.use('/api/trainings',          require('./routes/training'));
 app.use('/api/required-score-by-level', require('./routes/requiredScoreByLevel'));
-// app.use('/api/capabilities',       require('./routes/capabilities'));
 app.use('/api/capability-areas',    require('./routes/capabilityAreas'));
 app.use('/api/capability-skills',   require('./routes/capabilitySkills'));
-// app.use('/api/capability-assessment', require('./routes/capabilityAssessment'));
-// app.use('/api/capability-role-map', require('./routes/capabilityRoleMap'));
-// app.use('/api/training-suggestions', require('./routes/trainingSuggestions'));
-// app.use('/api/training-topic',     require('./routes/trainingTopic'));
+app.use('/api/capability-evaluations', require('./routes/capabilityEvaluations'));
 app.use('/api/training-topics',    require('./routes/trainingTopic'));
 app.use('/api/training-schedules',  require('./routes/trainingSchedules'));
-// app.use('/api/training-schedule',  require('./routes/trainingSchedule'));
 // app.use('/api/training-materials', require('./routes/trainingMaterials'));
-// app.use('/api/training-feedback',  require('./routes/trainingFeedback'));
+app.use('/api/training-feedback',  require('./routes/trainingFeedback'));
+app.use('/api/training-assessments', require('./routes/trainingAssessments'));
 app.use('/api/employee-scores',    require('./routes/employeeScores'));
 app.use('/api/requisition',        require('./routes/requisition'));
 app.use('/api/onboarding',         require('./routes/onboarding'));
@@ -63,6 +60,7 @@ app.use('/api/growth',             require('./routes/growth'));
 app.use('/api',                    require('./routes/sheetWebhook'));
 app.use('/api/sync',               require('./routes/syncFms'));
 
+
 app.use('/api/dept-orientation',   require('./routes/deptOrientationRoutes'));
 app.use('/api/orientation',        require('./routes/orientationRoutes')); 
 
@@ -75,6 +73,10 @@ mongoose
 /* ─────────────────── EMAIL SCHEDULER ─────────────────── */
 const { startEmailScheduler } = require('./emails/scheduler');
 startEmailScheduler();
+
+/* ─────────────────── EXTENSION SCHEDULER ─────────────────── */
+const { startExtensionScheduler } = require('./scheduler/extensionScheduler');
+startExtensionScheduler();
 
 /* ─────────────────── DAILY CRON JOB ─────────────────── */
 cron.schedule(

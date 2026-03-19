@@ -17,6 +17,7 @@ import PMSDashboard from "./pages/PMSDashboard";
 import Requisition from "./pages/Requisition";
 import Onboarding from "./pages/Onboarding";
 import Exit from "./pages/Exit";
+import Confirmationspage from "./pages/Confirmationspage";
 import DeptOrientationPage from "./pages/Deptorientationpage";
 import Companyorientationpage from "./pages/Companyorientationpage";
 
@@ -198,7 +199,7 @@ export default function App() {
         path="/confirmations"
         element={
           <ProtectedRoute>
-            <ComingSoon />
+            <Confirmationspage />
           </ProtectedRoute>
         }
       />

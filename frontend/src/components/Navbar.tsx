@@ -4,28 +4,28 @@ import { useLocation, useNavigate } from 'react-router-dom';
 const drawerWidth = 260;
 
 const pageTitles: Record<string, string> = {
-  '/hr-dashboard':          'Dashboard',
-  '/employees':             'Employees',
-  '/candidates':            'Candidates',
-  '/salary-revision':       'Salary Revision',
-  '/employee-letters':      'Employee Letters',
-  '/recruitment':           'All Requisitions',
-  '/applicants':            'All Applicants',
-  '/scoring':               'Recruitment Scoring',
-  '/onboarding':            'Onboarding',
-  '/training-page':         'Training Management',
-  '/outing':                'Outing / Event',
-  '/attendance':            'Attendance',
-  '/checklist-delegation':  'Check List & Delegation',
-  '/requisition':           'Requisition',
-  '/confirmations':         'Confirmation',
-  '/salary-sheet':          'Salary Sheet',
-  '/pms':                   'Performance Management System',
-  '/exits':                 'Exit',
-  '/company-orientation':   'Company Orientation',
-  '/dept-orientation':      'Department Orientation',
-  '/profile':               'Profile',
-  '/settings':              'Settings',
+  '/hr-dashboard':         'Dashboard',
+  '/employees':            'Employees',
+  '/candidates':           'Candidates',
+  '/salary-revision':      'Salary Revision',
+  '/employee-letters':     'Employee Letters',
+  '/recruitment':          'All Requisitions',
+  '/applicants':           'All Applicants',
+  '/scoring':              'Recruitment Scoring',
+  '/onboarding':           'Onboarding',
+  '/training-page':        'Training Management',
+  '/outing':               'Outing / Event',
+  '/attendance':           'Attendance',
+  '/checklist-delegation': 'Check List & Delegation',
+  '/requisition':          'Requisition',
+  '/confirmations':        'Confirmations',
+  '/salary-sheet':         'Salary Sheet',
+  '/pms':                  'Performance Management System',
+  '/exits':                'Exit',
+  '/company-orientation':  'Company Orientation',
+  '/dept-orientation':     'Department Orientation',
+  '/profile':              'Profile',
+  '/settings':             'Settings',
 };
 
 // ─── Tab definitions ──────────────────────────────────────────────────────────
@@ -38,7 +38,9 @@ const OUTING_TABS = [
 ];
 
 const TRAINING_TABS = [
-  { label: 'HR Training',         value: 'HR' },
+  { label: 'HR',                  value: 'HR' },
+  { label: 'Manager Evaluation',  value: 'manager' },
+  { label: 'Skill Gap',           value: 'skillgap' },
   { label: 'Management Approval', value: 'management' },
   { label: 'Employee',            value: 'employee' },
   { label: 'Training Delivery',   value: 'delivery' },
@@ -65,7 +67,6 @@ const PMS_TABS = [
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-// White-on-blue — used for main tab rows inside the blue AppBar
 const BLUE_TAB_STYLES = {
   minHeight: 40,
   '& .MuiTab-root': {
@@ -79,7 +80,6 @@ const BLUE_TAB_STYLES = {
   },
 };
 
-// Dark-on-white — used for the sub-tab rows rendered below the AppBar
 const WHITE_TAB_STYLES = {
   minHeight: 40,
   '& .MuiTab-root': {
@@ -92,6 +92,9 @@ const WHITE_TAB_STYLES = {
     '&.Mui-selected': { color: '#1d1d1d' },
   },
 };
+
+const TOOLBAR_H  = 56;
+const TAB_ROW_H  = 40;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -111,12 +114,9 @@ export default function Navbar() {
   const showTrainingHrSub  = isTrainingPage && activeTab === 'HR';
   const showTrainingEmpSub = isTrainingPage && activeTab === 'employee';
 
-  // AppBar stretches to fit its own content (toolbar + blue tab rows only)
-  const hasTabRow = isOutingPage || isTrainingPage || isPmsPage;
-
   const pageTitle = pageTitles[loc.pathname] || 'HR Portal';
 
-  // Blue tab row — rendered inside the AppBar
+  // Blue tab row — inside AppBar (only outing/pms still blue)
   const renderBlueTabRow = (
     tabs: { label: string; value: string }[],
     activeValue: string,
@@ -135,26 +135,18 @@ export default function Navbar() {
     </Box>
   );
 
-  // White sub-tab row — rendered OUTSIDE the AppBar (position:fixed strip below it)
-  const renderWhiteSubTabRow = (
+  // White tab row — fixed strip outside AppBar
+  const renderWhiteTabRow = (
     tabs: { label: string; value: string }[],
     activeValue: string,
     onChange: (v: string) => void,
-    topOffset: number, // px — how far below the top of the page
+    topOffset: number,
   ) => (
-    <Box
-      sx={{
-        position: 'fixed',
-        top: topOffset,
-        left: drawerWidth,
-        right: 0,
-        zIndex: 1099, // just below AppBar (1100)
-        backgroundColor: '#ffffff',
-        borderBottom: '1px solid #e5e7eb',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.07)',
-        px: 2,
-      }}
-    >
+    <Box sx={{
+      position: 'fixed', top: topOffset, left: drawerWidth, right: 0, zIndex: 1099,
+      backgroundColor: '#ffffff', borderBottom: '1px solid #e5e7eb',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.07)', px: 2,
+    }}>
       <Tabs
         value={activeValue || tabs[0].value}
         onChange={(_, v: string) => onChange(v)}
@@ -167,63 +159,45 @@ export default function Navbar() {
     </Box>
   );
 
-  // AppBar height: toolbar(56) + blue tab row(40) when on training/outing/pms page
-  const appBarBottom = hasTabRow ? 56 + 40 : 56;
+  const row1Top = TOOLBAR_H;
+  const row2Top = TOOLBAR_H + TAB_ROW_H;
 
   return (
     <>
-      <AppBar
-        position="fixed"
-        sx={{
-          width: `calc(100% - ${drawerWidth}px)`,
-          ml: `${drawerWidth}px`,
-          backgroundColor: '#3B82F6',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-          height: hasTabRow ? 'auto' : undefined,
-        }}
-      >
-        <Toolbar sx={{ px: 4, minHeight: '56px !important' }}>
-          <Typography variant="h6" fontWeight={700} color="white">
-            {pageTitle}
-          </Typography>
+      {/* Blue AppBar — title only */}
+      <AppBar position="fixed" sx={{
+        width: `calc(100% - ${drawerWidth}px)`, ml: `${drawerWidth}px`,
+        backgroundColor: '#3B82F6', boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+        height: TOOLBAR_H,
+      }}>
+        <Toolbar sx={{ px: 4, minHeight: `${TOOLBAR_H}px !important` }}>
+          <Typography variant="h6" fontWeight={700} color="white">{pageTitle}</Typography>
         </Toolbar>
-
-        {/* Outing blue tabs */}
-        {isOutingPage && renderBlueTabRow(
-          OUTING_TABS,
-          activeTab || 'HR',
-          v => nav(`/outing?tab=${v}`),
-        )}
-
-        {/* Training main blue tabs */}
-        {isTrainingPage && renderBlueTabRow(
-          TRAINING_TABS,
-          activeTab || 'HR',
-          v => nav(`/training-page?tab=${v}`),
-        )}
-
-        {/* PMS blue tabs */}
-        {isPmsPage && renderBlueTabRow(
-          PMS_TABS,
-          activeTab || 'kpi',
-          v => nav(`/pms?tab=${v}`),
-        )}
       </AppBar>
 
-      {/* Training HR sub-tabs — white strip fixed just below the AppBar */}
-      {showTrainingHrSub && renderWhiteSubTabRow(
-        TRAINING_HR_SUBTABS,
-        activeHrSub,
-        v => nav(`/training-page?tab=HR&hrSub=${v}`),
-        appBarBottom, // sits right below the blue AppBar
+      {/* Outing white row */}
+      {isOutingPage && renderWhiteTabRow(
+        OUTING_TABS, activeTab || 'HR', v => nav(`/outing?tab=${v}`), row1Top,
       )}
 
-      {/* Training Employee sub-tabs — white strip fixed just below the AppBar */}
-      {showTrainingEmpSub && renderWhiteSubTabRow(
-        TRAINING_EMP_SUBTABS,
-        activeEmpSub,
-        v => nav(`/training-page?tab=employee&empSub=${v}`),
-        appBarBottom,
+      {/* Training main white row */}
+      {isTrainingPage && renderWhiteTabRow(
+        TRAINING_TABS, activeTab || 'HR', v => nav(`/training-page?tab=${v}`), row1Top,
+      )}
+
+      {/* Training HR sub-tab white row */}
+      {showTrainingHrSub && renderWhiteTabRow(
+        TRAINING_HR_SUBTABS, activeHrSub, v => nav(`/training-page?tab=HR&hrSub=${v}`), row2Top,
+      )}
+
+      {/* Training Employee sub-tab white row */}
+      {showTrainingEmpSub && renderWhiteTabRow(
+        TRAINING_EMP_SUBTABS, activeEmpSub, v => nav(`/training-page?tab=employee&empSub=${v}`), row2Top,
+      )}
+
+      {/* PMS white row */}
+      {isPmsPage && renderWhiteTabRow(
+        PMS_TABS, activeTab || 'kpi', v => nav(`/pms?tab=${v}`), row1Top,
       )}
     </>
   );

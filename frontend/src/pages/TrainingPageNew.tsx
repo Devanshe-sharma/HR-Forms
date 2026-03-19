@@ -8,36 +8,44 @@ import CapabilityManagement from '../components/training/CapabilityManagement';
 import TrainingTopicManagement from '../components/training/TrainingTopicManagement';
 import TrainingApproval from '../components/training/TrainingApproval';
 import FinalTrainingScheduling from '../components/training/FinalTrainingScheduling';
+import ManagerEvaluation from '../components/training/Managerevaluation';
+import SkillGapReport from '../components/training/Skillgapreport';
 import EmployeeAssessment from '../components/training/Employeeassessment';
 import EmployeeFeedback from '../components/training/Employeefeedback';
 import TrainingDelivery from '../components/training/Trainingdelivery';
 import TrainingScorecard from '../components/training/Trainingscorecard';
 
-type MainTab = 'HR' | 'management' | 'employee' | 'delivery' | 'scorecard';
-type HRSubTab = 'capability' | 'topics' | 'scheduling' ;
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type MainTab = 'HR' | 'manager' | 'skillgap' | 'management' | 'employee' | 'delivery' | 'scorecard';
+type HRSubTab = 'capability' | 'topics' | 'scheduling';
 type EmployeeSubTab = 'assessment' | 'feedback';
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function TrainingPageImpl() {
   const location = useLocation();
-  const params = new URLSearchParams(location.search);
+  const params   = new URLSearchParams(location.search);
 
-  const mainTab = (params.get('tab')    || 'HR')         as MainTab;
-  const hrSub   = (params.get('hrSub')  || 'capability') as HRSubTab;
-  const empSub  = (params.get('empSub') || 'assessment') as EmployeeSubTab;
+  const mainTab = (params.get('tab')    || 'HR')          as MainTab;
+  const hrSub   = (params.get('hrSub')  || 'capability')  as HRSubTab;
+  const empSub  = (params.get('empSub') || 'assessment')  as EmployeeSubTab;
 
   // ── Navbar height breakdown ──────────────────────────────────────────────
-  //  Toolbar                 : 56px  — always
-  //  Main training tabs row  : 40px  — always on /training-page
-  //  Sub-tabs row            : 40px  — only HR and employee tabs
+  //  Blue AppBar (title only)   :  56px  — always
+  //  White main tab row         :  40px  — always on /training-page
+  //  White sub-tab row          :  40px  — only for HR and employee tabs
   //
-  //  management / delivery / scorecard  →  56 + 40       =  96px
-  //  HR / employee                      →  56 + 40 + 40  = 136px
+  //  All tabs except HR/employee  →  56 + 40        =  96px
+  //  HR / employee                →  56 + 40 + 40   = 136px
   // ────────────────────────────────────────────────────────────────────────
   const hasSubTabs = mainTab === 'HR' || mainTab === 'employee';
   const topMargin  = hasSubTabs ? 'mt-[136px]' : 'mt-[96px]';
 
   const renderContent = () => {
     switch (mainTab) {
+
+      // ── HR: Capability → Topics → Scheduling ──────────────────────────
       case 'HR':
         return (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -47,6 +55,23 @@ export default function TrainingPageImpl() {
           </div>
         );
 
+      // ── Manager Evaluation ────────────────────────────────────────────
+      case 'manager':
+        return (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <ManagerEvaluation />
+          </div>
+        );
+
+      // ── Skill Gap Report ──────────────────────────────────────────────
+      case 'skillgap':
+        return (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <SkillGapReport />
+          </div>
+        );
+
+      // ── Management Approval ───────────────────────────────────────────
       case 'management':
         return (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -54,6 +79,7 @@ export default function TrainingPageImpl() {
           </div>
         );
 
+      // ── Employee: Assessment → Feedback ───────────────────────────────
       case 'employee':
         return (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -62,6 +88,7 @@ export default function TrainingPageImpl() {
           </div>
         );
 
+      // ── Training Delivery ─────────────────────────────────────────────
       case 'delivery':
         return (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -69,6 +96,7 @@ export default function TrainingPageImpl() {
           </div>
         );
 
+      // ── Scorecard ─────────────────────────────────────────────────────
       case 'scorecard':
         return (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
