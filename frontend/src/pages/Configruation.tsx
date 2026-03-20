@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   Box,
   Card,
@@ -19,7 +19,6 @@ import {
   Tab,
   Tabs,
   Alert,
-  Link,
 } from '@mui/material';
 import {
   Person as PersonIcon,
@@ -32,16 +31,9 @@ import {
   Group as UserManagementIcon,
   Backup as BackupIcon,
   Assessment as ReportIcon,
-  ArrowForward as ArrowForwardIcon,
-  Dashboard as DashboardIcon,
-  AccountCircle as ProfileIcon,
-  ExitToApp as ExitIcon,
 } from '@mui/icons-material';
 import { getRole, hasAnyRole } from '../config/rbac';
 import { useTheme } from '../contexts/ThemeContext';
-import { useNavigate } from 'react-router-dom';
-import Navbar from '../components/Navbar';
-import Sidebar from '../components/Sidebar';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -55,8 +47,8 @@ function TabPanel(props: TabPanelProps) {
     <div
       role="tabpanel"
       hidden={value !== index}
-      id={`settings-tabpanel-${index}`}
-      aria-labelledby={`settings-tab-${index}`}
+      id={`configruation-tabpanel-${index}`}
+      aria-labelledby={`configruation-tab-${index}`}
       {...other}
     >
       {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
@@ -64,7 +56,7 @@ function TabPanel(props: TabPanelProps) {
   );
 }
 
-export default function Settings() {
+export default function Configruation() {
   const [tabValue, setTabValue] = useState(0);
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [language, setLanguage] = useState('english');
@@ -72,7 +64,6 @@ export default function Settings() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const navigate = useNavigate();
 
   const { darkMode, toggleDarkMode } = useTheme();
   const currentRole = getRole();
@@ -100,55 +91,24 @@ export default function Settings() {
   };
 
   const handleSaveSettings = () => {
-    console.log('Settings saved:', {
+    console.log('Configruation saved:', {
       emailNotifications,
       language,
     });
-    alert('Settings saved successfully!');
+    alert('Configruation saved successfully!');
   };
 
   return (
     <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
-      {/* Quick Navigation Bar */}
-      <Paper sx={{ mb: 3, p: 2, bgcolor: '#f8fafc' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-          <Typography variant="body2" color="text.secondary">Quick Navigation:</Typography>
-          <Button
-            size="small"
-            startIcon={<DashboardIcon />}
-            onClick={() => navigate('/hr-dashboard')}
-            sx={{ textTransform: 'none' }}
-          >
-            Dashboard
-          </Button>
-          <Button
-            size="small"
-            startIcon={<ProfileIcon />}
-            onClick={() => navigate('/profile')}
-            sx={{ textTransform: 'none' }}
-          >
-            Profile
-          </Button>
-          <Button
-            size="small"
-            startIcon={<ExitIcon />}
-            onClick={() => navigate('/logout')}
-            sx={{ textTransform: 'none' }}
-          >
-            Logout
-          </Button>
-        </Box>
-      </Paper>
-
       <Typography variant="h4" fontWeight="bold" gutterBottom>
-        Settings
+        Configruation
       </Typography>
 
       <Paper sx={{ mb: 3 }}>
         <Tabs
           value={tabValue}
           onChange={handleTabChange}
-          aria-label="Settings tabs"
+          aria-label="Configruation tabs"
         >
           <Tab label="General" icon={<SettingsIcon />} />
           <Tab label="Security" icon={<SecurityIcon />} />
@@ -217,7 +177,7 @@ export default function Settings() {
                   onClick={handleSaveSettings}
                   sx={{ mr: 2 }}
                 >
-                  Save Settings
+                  Save Configruation
                 </Button>
               </Box>
             </CardContent>
@@ -296,15 +256,19 @@ export default function Settings() {
               <CardContent>
                 <Typography variant="h6" gutterBottom>User Management</Typography>
                 <List>
-                  <ListItem component={Link} href="/employees" sx={{ textDecoration: 'none', color: 'inherit' }}>
+                  <ListItem>
                     <ListItemIcon><UserManagementIcon color="primary" /></ListItemIcon>
-                    <ListItemText primary="Manage Users" secondary="Add, edit, or remove user accounts" />
-                    <ArrowForwardIcon color="action" sx={{ ml: 'auto' }} />
+                    <ListItemText 
+                      primary="Manage Users" 
+                      secondary="Add, edit, or remove user accounts" 
+                    />
                   </ListItem>
-                  <ListItem component={Link} href="/recruitment" sx={{ textDecoration: 'none', color: 'inherit' }}>
+                  <ListItem>
                     <ListItemIcon><AdminIcon color="primary" /></ListItemIcon>
-                    <ListItemText primary="Role Management" secondary="Assign roles and permissions" />
-                    <ArrowForwardIcon color="action" sx={{ ml: 'auto' }} />
+                    <ListItemText 
+                      primary="Role Management" 
+                      secondary="Assign roles and permissions" 
+                    />
                   </ListItem>
                 </List>
               </CardContent>
@@ -313,15 +277,19 @@ export default function Settings() {
               <CardContent>
                 <Typography variant="h6" gutterBottom>System Administration</Typography>
                 <List>
-                  <ListItem component={Link} href="/salary-sheet" sx={{ textDecoration: 'none', color: 'inherit' }}>
+                  <ListItem>
                     <ListItemIcon><BackupIcon color="primary" /></ListItemIcon>
-                    <ListItemText primary="Backup & Restore" secondary="System backup and recovery" />
-                    <ArrowForwardIcon color="action" sx={{ ml: 'auto' }} />
+                    <ListItemText 
+                      primary="Backup & Restore" 
+                      secondary="System backup and recovery" 
+                    />
                   </ListItem>
-                  <ListItem component={Link} href="/attendance" sx={{ textDecoration: 'none', color: 'inherit' }}>
+                  <ListItem>
                     <ListItemIcon><ReportIcon color="primary" /></ListItemIcon>
-                    <ListItemText primary="Audit Logs" secondary="View system activity logs" />
-                    <ArrowForwardIcon color="action" sx={{ ml: 'auto' }} />
+                    <ListItemText 
+                      primary="Audit Logs" 
+                      secondary="View system activity logs" 
+                    />
                   </ListItem>
                 </List>
               </CardContent>
@@ -332,7 +300,7 @@ export default function Settings() {
 
       <Alert severity="info" sx={{ mt: 3 }}>
         <Typography variant="body2">
-          Some settings may require administrator approval. Contact your HR department for assistance.
+          Some configruation may require administrator approval. Contact your HR department for assistance.
         </Typography>
       </Alert>
     </Box>

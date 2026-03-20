@@ -25,3 +25,9 @@ input:focus, select:focus, textarea:focus {
   @apply ring-4 ring-lime-300;
 }
 
+/* Dark mode focus ring */
+.dark-mode input:focus,
+.dark-mode select:focus,
+.dark-mode textarea:focus {
+  @apply ring-4 ring-blue-400;
+}

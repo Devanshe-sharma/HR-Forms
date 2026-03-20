@@ -161,7 +161,7 @@ export default function Sidebar() {
 
     { to: '/exits',   text: 'Exit',    icon: <ExitToAppIcon /> },
     { to: '/profile', text: 'Profile', icon: <AccountCircleIcon /> },
-    { to: '/settings',text: 'Settings',icon: <SettingsIcon /> },
+    { to: '/configuration',text: 'Configuration',icon: <SettingsIcon /> },
   ];
 
   return (

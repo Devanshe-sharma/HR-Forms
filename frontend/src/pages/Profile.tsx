@@ -1,69 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Box,
-  Card,
-  CardContent,
-  Typography,
-  Avatar,
-  Grid,
-  Chip,
-  Divider,
-  Button,
-  Tab,
-  Tabs,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Paper,
-  Link,
+  Box, Card, CardContent, Typography, Avatar, Grid, Chip, Divider,
+  Button, Tab, Tabs, List, ListItem, ListItemText, ListItemIcon,
+  Paper, Link, Fade, IconButton, Stack, CircularProgress
 } from '@mui/material';
 import {
-  Person as PersonIcon,
-  Email as EmailIcon,
-  Business as BusinessIcon,
-  Work as WorkIcon,
-  CalendarToday as CalendarIcon,
-  Badge as BadgeIcon,
-  Security as SecurityIcon,
-  Settings as SettingsIcon,
-  Description as DocumentIcon,
-  School as TrainingIcon,
-  Assessment as EvaluationIcon,
-  Group as TeamIcon,
-  ArrowForward as ArrowForwardIcon,
-  Dashboard as DashboardIcon,
-  ExitToApp as ExitIcon,
+  Person as PersonIcon, Email as EmailIcon, Business as BusinessIcon,
+  Work as WorkIcon, CalendarToday as CalendarIcon, Badge as BadgeIcon,
+  Settings as SettingsIcon, Description as DocumentIcon, School as TrainingIcon,
+  Assessment as EvaluationIcon, Group as TeamIcon, ChevronRight as ArrowIcon,
+  Dashboard as DashboardIcon, Logout as ExitIcon, VerifiedUser as ShieldIcon,
+  Info as InfoIcon
 } from '@mui/icons-material';
 import { getRole, hasAnyRole } from '../config/rbac';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import Navbar from '../components/Navbar';
-import Sidebar from '../components/Sidebar';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-}
+// Add CSS keyframes for gradient animation
+const gradientAnimation = `
+  @keyframes gradientShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+`;
 
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`profile-tabpanel-${index}`}
-      aria-labelledby={`profile-tab-${index}`}
-      {...other}
-    >
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
-    </div>
-  );
-}
-
+// --- Interfaces ---
 interface UserProfile {
   _id?: string;
   full_name: string;
@@ -76,33 +40,120 @@ interface UserProfile {
   photo?: string;
 }
 
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
+
+// --- Helper Components ---
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`profile-tabpanel-${index}`}
+      aria-labelledby={`profile-tab-${index}`}
+      {...other}
+    >
+      {value === index && <Box sx={{ pt: 1 }}>{children}</Box>}
+    </div>
+  );
+}
+
+function InfoCard({ title, icon, children }: { title: string, icon: React.ReactNode, children: React.ReactNode }) {
+  return (
+    <Card sx={{ 
+      borderRadius: 4, 
+      border: '1px solid rgba(226, 232, 240, 0.8)', 
+      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)', 
+      mb: 2,
+      backdropFilter: 'blur(8px)',
+      background: 'rgba(255, 255, 255, 0.9)'
+    }}>
+      <CardContent sx={{ p: 3 }}>
+        <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 3 }}>
+          <Box sx={{ color: 'primary.main', display: 'flex' }}>{icon}</Box>
+          <Typography variant="h6" fontWeight="700" color="text.primary">{title}</Typography>
+        </Stack>
+        {children}
+      </CardContent>
+    </Card>
+  );
+}
+
+function InfoItem({ label, value }: { label: string, value: any }) {
+  return (
+    <Box sx={{ flex: { xs: '1 1 100%', sm: '0 0 45%' }, mb: 1 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', fontWeight: 700, letterSpacing: 1 }}>
+        {label}
+      </Typography>
+      <Typography variant="body1" fontWeight="600" sx={{ mt: 0.5, color: '#1e293b' }}>
+        {value || '—'}
+      </Typography>
+    </Box>
+  );
+}
+
+function DocumentListItem({ title, subtitle, href }: { title: string, subtitle: string, href: string }) {
+  return (
+    <ListItem 
+      component={Link} 
+      href={href} 
+      sx={{ 
+        py: 2.5, px: 3, textDecoration: 'none', color: 'inherit',
+        transition: 'all 0.2s',
+        '&:hover': { bgcolor: 'rgba(241, 245, 249, 0.5)', transform: 'translateX(4px)' }
+      }}
+    >
+      <ListItemIcon>
+        <Box sx={{ p: 1.2, bgcolor: '#eff6ff', borderRadius: 2, display: 'flex' }}>
+          <DocumentIcon color="primary" fontSize="small" />
+        </Box>
+      </ListItemIcon>
+      <ListItemText 
+        primary={<Typography fontWeight="700" variant="body1">{title}</Typography>} 
+        secondary={<Typography variant="body2" color="text.secondary">{subtitle}</Typography>} 
+      />
+      <IconButton size="small" sx={{ bgcolor: '#f8fafc' }}><ArrowIcon fontSize="small" /></IconButton>
+    </ListItem>
+  );
+}
+
+// --- Main Component ---
 export default function Profile() {
   const [tabValue, setTabValue] = useState(0);
+  const [detailTabValue, setDetailTabValue] = useState(0);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-
   const currentRole = getRole();
 
   useEffect(() => {
     fetchUserProfile();
+    
+    // Inject gradient animation CSS
+    const styleElement = document.createElement('style');
+    styleElement.textContent = gradientAnimation;
+    document.head.appendChild(styleElement);
+    
+    return () => {
+      document.head.removeChild(styleElement);
+    };
   }, []);
 
   const fetchUserProfile = async () => {
     try {
       setLoading(true);
-      // Get current user's email from localStorage or another source
       const userEmail = localStorage.getItem('userEmail') || '';
       
-      // If we have a user endpoint, use it. Otherwise, use mock data for now
       if (userEmail) {
         const response = await axios.get(`${API_BASE}/employees?email=${userEmail}`);
         if (response.data.success && response.data.data.length > 0) {
           setUserProfile(response.data.data[0]);
         }
       } else {
-        // Mock data for demonstration
         setUserProfile({
           full_name: 'Demo User',
           official_email: 'demo@company.com',
@@ -113,9 +164,6 @@ export default function Profile() {
         });
       }
     } catch (err) {
-      console.error('Error fetching user profile:', err);
-      setError('Failed to load profile');
-      // Set mock data on error
       setUserProfile({
         full_name: 'Demo User',
         official_email: 'demo@company.com',
@@ -130,276 +178,319 @@ export default function Profile() {
   };
 
   const getRoleColor = (role: string | null) => {
-    const roleColors: Record<string, string> = {
-      'Admin': '#ef4444',
-      'HR': '#3b82f6',
-      'Manager': '#10b981',
-      'HeadOfDepartment': '#f59e0b',
-      'Trainer': '#8b5cf6',
-      'Management': '#6366f1',
-      'Employee': '#6b7280',
+    const colors: Record<string, string> = {
+      'Admin': '#f43f5e', 'HR': '#3b82f6', 'Manager': '#10b981',
+      'HeadOfDepartment': '#f59e0b', 'Employee': '#6366f1'
     };
-    return roleColors[role || ''] || '#6b7280';
+    return colors[role || ''] || '#64748b';
   };
 
   const getPermissionsForRole = (role: string | null) => {
     const permissionMap: Record<string, string[]> = {
-      'Admin': ['Full system access', 'User management', 'All modules', 'System configuration'],
-      'HR': ['Employee management', 'Training setup', 'Recruitment', 'Onboarding'],
-      'Manager': ['Team management', 'Performance reviews', 'Training assignments'],
-      'HeadOfDepartment': ['Department oversight', 'Team management', 'Training suggestions'],
-      'Trainer': ['Content creation', 'Training delivery', 'Material management'],
-      'Management': ['Approvals', 'Reports', 'Strategic oversight'],
-      'Employee': ['Personal data', 'Training access', 'Feedback submission'],
+      'Admin': ['Full system access', 'User management', 'All modules'],
+      'HR': ['Employee management', 'Training setup', 'Onboarding'],
+      'Manager': ['Team management', 'Performance reviews'],
+      'Employee': ['Personal data', 'Training access'],
     };
     return permissionMap[role || ''] || [];
   };
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    setTabValue(newValue);
-  };
-
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
-        <Typography>Loading profile...</Typography>
-      </Box>
-    );
-  }
-
-  if (error && !userProfile) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
-        <Typography color="error">{error}</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#f8fafc' }}>
+        <CircularProgress thickness={5} size={50} />
       </Box>
     );
   }
 
   return (
-    <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
-      {/* Quick Navigation Bar */}
-      <Paper sx={{ mb: 3, p: 2, bgcolor: '#f8fafc' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-          <Typography variant="body2" color="text.secondary">Quick Navigation:</Typography>
-          <Button
-            size="small"
-            startIcon={<DashboardIcon />}
-            onClick={() => navigate('/hr-dashboard')}
-            sx={{ textTransform: 'none' }}
-          >
-            Dashboard
-          </Button>
-          <Button
-            size="small"
-            startIcon={<SettingsIcon />}
-            onClick={() => navigate('/settings')}
-            sx={{ textTransform: 'none' }}
-          >
-            Settings
-          </Button>
-          <Button
-            size="small"
-            startIcon={<ExitIcon />}
-            onClick={() => navigate('/logout')}
-            sx={{ textTransform: 'none' }}
-          >
-            Logout
-          </Button>
-        </Box>
-      </Paper>
+    <Box sx={{ 
+      height: '100vh', 
+      overflow: 'hidden',
+      // Enhanced full-page background gradient
+      background: `
+        linear-gradient(135deg, #667eea 0%, #764ba2 25% , #4facfe 100%),
+        radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.3) 0%, transparent 50%),
+        radial-gradient(circle at 40% 40%, rgba(120, 219, 255, 0.2) 0%, transparent 50%)
+      `,
+      backgroundSize: '400% 400%',
+      backgroundAttachment: 'fixed',
+      animation: 'gradientShift 15s ease infinite',
+      bgcolor: '#f8fafc',
+      position: 'relative',
+      display: 'flex',
+      flexDirection: 'column',
+      '&::before': {
+        content: '""',
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(255, 255, 255, 0.1)',
+        backdropFilter: 'blur(1px)',
+        zIndex: -1
+      }
+    }}>
+      {/* 1. Sleek Navigation Header */}
+      <Box sx={{ 
+        bgcolor: 'rgba(255, 255, 255, 0.8)', 
+        backdropFilter: 'blur(12px)',
+        borderBottom: '1px solid #e2e8f0', 
+        px: { xs: 2, md: 4 }, py: 1.5,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        position: 'sticky', top: 0, zIndex: 1000,
+        flexShrink: 0
+      }}>
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <Box sx={{ bgcolor: 'primary.main', p: 0.8, borderRadius: 1.5, display: 'flex' }}>
+            <DashboardIcon sx={{ color: 'white', fontSize: 20 }} />
+          </Box>
+          <Typography variant="subtitle1" fontWeight="800" sx={{ letterSpacing: -0.5 }}>HR PORTAL</Typography>
+        </Stack>
+        <Stack direction="row" spacing={1}>
+          <Button startIcon={<SettingsIcon />} size="small" onClick={() => navigate('/configuration')} sx={{ color: 'text.secondary', textTransform: 'none', fontWeight: 600 }}>Configuration</Button>
+          <Button startIcon={<ExitIcon />} size="small" color="error" onClick={() => navigate('/logout')} sx={{ textTransform: 'none', fontWeight: 600 }}>Logout</Button>
+        </Stack>
+      </Box>
 
-      <Typography variant="h4" fontWeight="bold" gutterBottom>
-        My Profile
-      </Typography>
-
-      {/* Profile Header */}
-      <Card sx={{ mb: 3 }}>
-        <CardContent sx={{ p: 4 }}>
-          <Grid container spacing={3} alignItems="center">
-            <Grid>
-              <Avatar
-                sx={{ width: 100, height: 100, bgcolor: getRoleColor(currentRole) }}
-                src={userProfile?.photo}
-              >
-                {userProfile?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'}
-              </Avatar>
-            </Grid>
-            <Grid>
-              <Typography variant="h4" fontWeight="bold">
-                {userProfile?.full_name || 'Unknown User'}
+      <Box sx={{ maxWidth: 1150, mx: 'auto', px: 3, flex: 1, overflow: 'hidden' }}>
+        {/* 2. Hero Profile Section */}
+        <Box sx={{ 
+          position: 'relative', mb: 4, borderRadius: 5, height: 100,
+          background: `linear-gradient(135deg, ${getRoleColor(currentRole)} 0%, #0f172a 100%)`,
+          boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)'
+        }}>
+          <Box sx={{ position: 'absolute', bottom: -30, left: { xs: 20, md: 40 }, display: 'flex', alignItems: 'flex-end', gap: 3 }}>
+            <Avatar
+              sx={{ 
+                width: { xs: 60, md: 80 }, height: { xs: 60, md: 80 }, 
+                border: '6px solid #fff', 
+                boxShadow: '0 10px 15px -3px rgba(0,0,0,0.2)', 
+                bgcolor: '#cbd5e1', fontSize: '1.5rem', fontWeight: 700
+              }}
+              src={userProfile?.photo}
+            >
+              {userProfile?.full_name?.[0]}
+            </Avatar>
+            <Box sx={{ pb: 1 }}>
+              <Typography variant="h6" fontWeight="900" sx={{ color: 'white', textShadow: '0 2px 10px rgba(0,0,0,0.3)', lineHeight: 1.2 }}>
+                {userProfile?.full_name}
               </Typography>
-              <Typography variant="h6" color="text.secondary">
-                {userProfile?.designation} • {userProfile?.department}
-              </Typography>
-              <Box sx={{ mt: 1 }}>
-                <Chip
-                  label={currentRole || 'No Role'}
-                  sx={{
-                    backgroundColor: getRoleColor(currentRole),
-                    color: 'white',
-                    fontWeight: 'bold',
-                  }}
+              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mt: 0.5 }}>
+                <Chip 
+                  label={currentRole} 
+                  size="small" 
+                  sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', fontWeight: 700, backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.3)' }} 
                 />
-              </Box>
-            </Grid>
-          </Grid>
-        </CardContent>
-      </Card>
-
-      {/* Tabs */}
-      <Paper sx={{ mb: 3 }}>
-        <Tabs
-          value={tabValue}
-          onChange={handleTabChange}
-          aria-label="Profile tabs"
-        >
-          <Tab label="Personal Information" icon={<PersonIcon />} />
-          <Tab label="Permissions" icon={<BadgeIcon />} />
-          <Tab label="My Documents" icon={<DocumentIcon />} />
-          {hasAnyRole(['Manager', 'HeadOfDepartment']) && (
-            <Tab label="Team" icon={<TeamIcon />} />
-          )}
-        </Tabs>
-      </Paper>
-
-      {/* Tab Panels */}
-      <TabPanel value={tabValue} index={0}>
-        <Grid container spacing={3}>
-          <Grid>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>Basic Information</Typography>
-                <List>
-                  <ListItem>
-                    <ListItemIcon><PersonIcon color="primary" /></ListItemIcon>
-                    <ListItemText primary="Full Name" secondary={userProfile?.full_name || '—'} />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemIcon><BadgeIcon color="primary" /></ListItemIcon>
-                    <ListItemText primary="Employee ID" secondary={userProfile?.employee_id || '—'} />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemIcon><EmailIcon color="primary" /></ListItemIcon>
-                    <ListItemText primary="Official Email" secondary={userProfile?.official_email || '—'} />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemIcon><CalendarIcon color="primary" /></ListItemIcon>
-                    <ListItemText primary="Joining Date" secondary={userProfile?.joining_date || '—'} />
-                  </ListItem>
-                </List>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>Work Information</Typography>
-                <List>
-                  <ListItem>
-                    <ListItemIcon><BusinessIcon color="primary" /></ListItemIcon>
-                    <ListItemText primary="Department" secondary={userProfile?.department || '—'} />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemIcon><WorkIcon color="primary" /></ListItemIcon>
-                    <ListItemText primary="Designation" secondary={userProfile?.designation || '—'} />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemIcon><BadgeIcon color="primary" /></ListItemIcon>
-                    <ListItemText primary="Level" secondary={`L${userProfile?.level || 1}`} />
-                  </ListItem>
-                </List>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-      </TabPanel>
-
-      <TabPanel value={tabValue} index={1}>
-        <Card>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>Role & Permissions</Typography>
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="subtitle1" gutterBottom>
-                Current Role: <strong>{currentRole}</strong>
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Based on your role, you have access to the following:
-              </Typography>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)', fontWeight: 500 }}>
+                  {userProfile?.designation} • {userProfile?.department}
+                </Typography>
+              </Stack>
             </Box>
-            <List>
-              {getPermissionsForRole(currentRole).map((permission, index) => (
-                <ListItem key={index}>
-                  <ListItemIcon><BadgeIcon color="primary" /></ListItemIcon>
-                  <ListItemText primary={permission} />
-                </ListItem>
-              ))}
-            </List>
-          </CardContent>
-        </Card>
-      </TabPanel>
+          </Box>
+        </Box>
 
-      <TabPanel value={tabValue} index={2}>
-        <Card>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>My Documents</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Access your personal documents and letters here.
-            </Typography>
-            <List>
-              <ListItem component={Link} href="/employee-letters" sx={{ textDecoration: 'none', color: 'inherit' }}>
-                <ListItemIcon><DocumentIcon color="primary" /></ListItemIcon>
-                <ListItemText primary="Employee Letters" secondary="View salary revision, confirmation letters" />
-                <ArrowForwardIcon color="action" sx={{ ml: 'auto' }} />
-              </ListItem>
-              <ListItem component={Link} href="/training-page?tab=employee" sx={{ textDecoration: 'none', color: 'inherit' }}>
-                <ListItemIcon><TrainingIcon color="primary" /></ListItemIcon>
-                <ListItemText primary="Training Certificates" secondary="View completed training certificates" />
-                <ArrowForwardIcon color="action" sx={{ ml: 'auto' }} />
-              </ListItem>
-              <ListItem component={Link} href="/pms?tab=summary" sx={{ textDecoration: 'none', color: 'inherit' }}>
-                <ListItemIcon><EvaluationIcon color="primary" /></ListItemIcon>
-                <ListItemText primary="Performance Reports" secondary="View your performance evaluations" />
-                <ArrowForwardIcon color="action" sx={{ ml: 'auto' }} />
-              </ListItem>
-              <ListItem component={Link} href="/attendance?tab=leaves" sx={{ textDecoration: 'none', color: 'inherit' }}>
-                <ListItemIcon><CalendarIcon color="primary" /></ListItemIcon>
-                <ListItemText primary="Leave History" secondary="View your leave balance and history" />
-                <ArrowForwardIcon color="action" sx={{ ml: 'auto' }} />
-              </ListItem>
-            </List>
-          </CardContent>
-        </Card>
-      </TabPanel>
+        {/* 3. Main Content Grid */}
+        <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+          <Box sx={{ flex: { xs: '1 1 100%', md: '0 0 28%' } }}>
+            <Paper sx={{ 
+              borderRadius: 4, overflow: 'hidden', border: '1px solid #e2e8f0', 
+              boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', bgcolor: 'rgba(255,255,255,0.9)',
+              backdropFilter: 'blur(8px)'
+            }}>
+              <Tabs
+                orientation="vertical"
+                value={tabValue}
+                onChange={(e, v) => setTabValue(v)}
+                sx={{
+                  '& .MuiTab-root': {
+                    alignItems: 'flex-start', py: 2.5, px: 3, textTransform: 'none', fontWeight: 700,
+                    color: 'text.secondary', transition: 'all 0.2s',
+                    minWidth: 120,
+                    flex: 1,
+                    '&:hover': { bgcolor: '#f1f5f9' }
+                  },
+                  '& .Mui-selected': { bgcolor: '#eff6ff', color: 'primary.main !important' },
+                  '& .MuiTabs-indicator': { width: 4, borderRadius: '0 4px 4px 0' }
+                }}
+              >
+                <Tab icon={<InfoIcon sx={{ fontSize: 20 }} />} iconPosition="start" label="Public Information" />
+                <Tab icon={<PersonIcon sx={{ fontSize: 20 }} />} iconPosition="start" label="Personal Information" />
+                <Tab icon={<SettingsIcon sx={{ fontSize: 20 }} />} iconPosition="start" label="HR Configuration" />
+                {hasAnyRole(['Manager', 'HeadOfDepartment']) && (
+                  <Tab icon={<TeamIcon sx={{ fontSize: 20 }} />} iconPosition="start" label="My Team" />
+                )}
+              </Tabs>
+            </Paper>
+          </Box>
+          <Box sx={{ flex: { xs: '1 1 100%', md: '0 0 68%' } }}>
+            <Fade in={true} timeout={600}>
+              <Box>
+                <TabPanel value={tabValue} index={0}>
+                  <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', md: 'row' } }}>
+                    {/* Contact Information Section */}
+                    <Box sx={{ flex: 1 }}>
+                      <Card sx={{ 
+                        borderRadius: 2, 
+                        border: '1px solid #e2e8f0', 
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.1)', 
+                        mb: 1,
+                        bgcolor: 'background.paper'
+                      }}>
+                        <CardContent sx={{ p: 2 }}>
+                          <Typography variant="h6" fontWeight="600" sx={{ mb: 2, color: 'text.primary' }}>
+                            Contact Information
+                          </Typography>
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>
+                                Working Address
+                              </Typography>
+                              <Typography variant="body2" sx={{ mt: 0.5, color: 'text.primary' }}>
+                                Brisk Olive Business Solutions Pvt Ltd G 203 (Second Floor) Sector 63, Noida 201301
+                              </Typography>
+                            </Box>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>
+                                Work Mobile
+                              </Typography>
+                              <Typography variant="body2" sx={{ mt: 0.5, color: 'text.primary' }}>
+                                9319022243
+                              </Typography>
+                            </Box>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>
+                                Work Location
+                              </Typography>
+                              <Typography variant="body2" sx={{ mt: 0.5, color: 'text.primary' }}>
+                                Office
+                              </Typography>
+                            </Box>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>
+                                Work Email
+                              </Typography>
+                              <Typography variant="body2" sx={{ mt: 0.5, color: 'text.primary' }}>
+                                software.engineeringintern@briskolive.com
+                              </Typography>
+                            </Box>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>
+                                Work Phone
+                              </Typography>
+                              <Typography variant="body2" sx={{ mt: 0.5, color: 'text.primary' }}>
+                                9319022243
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Box>
 
-      {hasAnyRole(['Manager', 'HeadOfDepartment']) && (
-        <TabPanel value={tabValue} index={3}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>Team Information</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                Manage your team members and their activities.
-              </Typography>
-              <List>
-                <ListItem component={Link} href="/employees" sx={{ textDecoration: 'none', color: 'inherit' }}>
-                  <ListItemIcon><TeamIcon color="primary" /></ListItemIcon>
-                  <ListItemText primary="Team Members" secondary="View and manage your team" />
-                  <ArrowForwardIcon color="action" sx={{ ml: 'auto' }} />
-                </ListItem>
-                <ListItem component={Link} href="/pms?tab=kpi" sx={{ textDecoration: 'none', color: 'inherit' }}>
-                  <ListItemIcon><EvaluationIcon color="primary" /></ListItemIcon>
-                  <ListItemText primary="Team Performance" secondary="Review team evaluations" />
-                  <ArrowForwardIcon color="action" sx={{ ml: 'auto' }} />
-                </ListItem>
-                <ListItem component={Link} href="/training-page?tab=manager" sx={{ textDecoration: 'none', color: 'inherit' }}>
-                  <ListItemIcon><TrainingIcon color="primary" /></ListItemIcon>
-                  <ListItemText primary="Team Training" secondary="Assign and track team training" />
-                  <ArrowForwardIcon color="action" sx={{ ml: 'auto' }} />
-                </ListItem>
-              </List>
-            </CardContent>
-          </Card>
-        </TabPanel>
-      )}
+                    {/* Position Section */}
+                    <Box sx={{ flex: 1 }}>
+                      <Card sx={{ 
+                        borderRadius: 2, 
+                        border: '1px solid #e2e8f0', 
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.1)', 
+                        mb: 1,
+                        bgcolor: 'background.paper'
+                      }}>
+                        <CardContent sx={{ p: 2 }}>
+                          <Typography variant="h6" fontWeight="600" sx={{ mb: 2, color: 'text.primary' }}>
+                            Position
+                          </Typography>
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>
+                                Department
+                              </Typography>
+                              <Typography variant="body2" sx={{ mt: 0.5, color: 'text.primary' }}>
+                                Management / Data Analytics and Automation
+                              </Typography>
+                            </Box>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>
+                                Job Title
+                              </Typography>
+                              <Typography variant="body2" sx={{ mt: 0.5, color: 'text.primary' }}>
+                                Software Developer
+                              </Typography>
+                            </Box>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>
+                                Manager
+                              </Typography>
+                              <Typography variant="body2" sx={{ mt: 0.5, color: 'text.primary' }}>
+                                Tanisha Sharma
+                              </Typography>
+                            </Box>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>
+                                Coach
+                              </Typography>
+                              <Typography variant="body2" sx={{ mt: 0.5, color: 'text.primary' }}>
+                                —
+                              </Typography>
+                            </Box>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', fontWeight: 600, fontSize: '0.75rem' }}>
+                                Is a Manager
+                              </Typography>
+                              <Box sx={{ 
+                                width: 16, height: 16, 
+                                border: '2px solid #d1d5db', 
+                                borderRadius: 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer'
+                              }}>
+                              </Box>
+                            </Box>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Box>
+                  </Box>
+                </TabPanel>
+
+                <TabPanel value={tabValue} index={1}>
+                  <InfoCard title="Role & Permissions" icon={<ShieldIcon />}>
+                    <Typography variant="body1" color="text.secondary" sx={{ mb: 3, lineHeight: 1.6 }}>
+                      Your account is assigned the <Chip label={currentRole} size="small" sx={{ fontWeight: 700, bgcolor: '#f1f5f9' }} /> role. This grants you the following workspace capabilities:
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                      {getPermissionsForRole(currentRole).map((p, i) => (
+                        <Box key={i} sx={{ flex: { xs: '1 1 100%', sm: '0 0 45%' } }}>
+                          <Paper sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2, bgcolor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 3, boxShadow: 'none' }}>
+                            <BadgeIcon fontSize="small" color="primary" />
+                            <Typography variant="body2" fontWeight="600">{p}</Typography>
+                          </Paper>
+                        </Box>
+                      ))}
+                    </Box>
+                  </InfoCard>
+                </TabPanel>
+
+                <TabPanel value={tabValue} index={2}>
+                   <Card sx={{ borderRadius: 4, border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+                     <List disablePadding>
+                        <DocumentListItem title="Salary & Revision Letters" subtitle="Official compensation and increment documents" href="/employee-letters" />
+                        <Divider sx={{ opacity: 0.6 }} />
+                        <DocumentListItem title="Learning Portfolio" subtitle="Course completion certificates and progress" href="/training-page?tab=employee" />
+                        <Divider sx={{ opacity: 0.6 }} />
+                        <DocumentListItem title="Performance Appraisals" subtitle="Quarterly and annual historical reviews" href="/pms?tab=summary" />
+                     </List>
+                   </Card>
+                </TabPanel>
+              </Box>
+            </Fade>
+          </Box>
+        </Box>
+      </Box>
     </Box>
   );
 }

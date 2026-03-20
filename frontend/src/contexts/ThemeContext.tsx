@@ -123,12 +123,24 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   });
 
   useEffect(() => {
-    // Apply dark mode class to body
+    // Apply dark mode class to body with smooth transition
+    const body = document.body;
+
+    // Add transition class temporarily for smooth color change
+    body.classList.add('theme-transition');
+
     if (darkMode) {
-      document.body.classList.add('dark-mode');
+      body.classList.add('dark-mode');
     } else {
-      document.body.classList.remove('dark-mode');
+      body.classList.remove('dark-mode');
     }
+
+    // Remove transition class after animation completes
+    const timer = setTimeout(() => {
+      body.classList.remove('theme-transition');
+    }, 300);
+
+    return () => clearTimeout(timer);
   }, [darkMode]);
 
   const value = { darkMode, toggleDarkMode };

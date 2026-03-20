@@ -37,6 +37,63 @@ router.get('/', asyncHandler(async (req, res) => {
   }
 }));
 
+// GET /api/capability-evaluations/skill-gaps - Get skill gaps report
+router.get('/skill-gaps', asyncHandler(async (req, res) => {
+  try {
+    const role = req.headers['x-user-role'] || '';
+    
+    let query = {};
+    
+    // Filter by role-based access
+    if (role === 'Employee') {
+      // Employees can only see their own evaluations
+      const employeeId = req.headers['x-employee-id'];
+      if (employeeId) {
+        query.employeeId = employeeId;
+      }
+    } else if (role === 'Manager' || role === 'HeadOfDepartment') {
+      // Managers can see their team's evaluations
+      const managerDept = req.headers['x-department'];
+      if (managerDept) {
+        query.employeeRole = { $regex: managerDept, $options: 'i' };
+      }
+    }
+    // HR, Admin, Management can see all evaluations (no filter)
+
+    const evaluations = await ManagerEvaluation.find(query)
+      .sort({ evaluatedAt: -1 });
+
+    // Transform data for skill gap report
+    const skillGapData = evaluations.map(eval => ({
+      employeeId: eval.employeeId,
+      employeeName: eval.employeeName,
+      employeeRole: eval.employeeRole,
+      dept: eval.employeeRole, // Using employeeRole as department proxy
+      capabilityArea: eval.capabilityArea,
+      capabilitySkill: eval.capabilitySkill,
+      requiredScore: eval.requiredScore,
+      actualScore: eval.actualScore,
+      gap: eval.gap || 0,
+      isMandatory: eval.isMandatory || false,
+      evaluatedBy: eval.evaluatedBy || 'Unknown',
+      evaluatedAt: eval.evaluatedAt || new Date()
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: skillGapData,
+      message: 'Skill gaps data retrieved successfully'
+    });
+  } catch (error) {
+    console.error('Error fetching skill gaps:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching skill gaps',
+      error: error.message
+    });
+  }
+}));
+
 // GET /api/capability-evaluations/:id - Get evaluation by ID
 router.get('/:id', asyncHandler(async (req, res) => {
   try {

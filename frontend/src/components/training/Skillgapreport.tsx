@@ -37,9 +37,9 @@ interface Summary {
 // ─── Gap severity ─────────────────────────────────────────────────────────────
 
 function gapSeverity(gap: number): { label: string; cls: string } {
-  if (gap <= 0) return { label: 'Met',      cls: 'bg-green-100 text-green-800' };
-  if (gap <= 2) return { label: 'Minor',    cls: 'bg-yellow-100 text-yellow-800' };
-  if (gap <= 4) return { label: 'Moderate', cls: 'bg-orange-100 text-orange-800' };
+  if (gap >= 0) return { label: 'Met',      cls: 'bg-green-100 text-green-800' };
+  if (gap >= 2) return { label: 'Minor',    cls: 'bg-yellow-100 text-yellow-800' };
+  if (gap >= 4) return { label: 'Moderate', cls: 'bg-orange-100 text-orange-800' };
   return            { label: 'Critical',   cls: 'bg-red-100 text-red-800' };
 }
 
@@ -47,11 +47,11 @@ function GapBar({ required, actual }: { required: number; actual: number }) {
   const pct = Math.min(100, Math.round((actual / required) * 100));
   const color = pct >= 100 ? 'bg-green-500' : pct >= 60 ? 'bg-yellow-400' : 'bg-red-400';
   return (
-    <div className="flex items-center gap-2 min-w-[120px]">
-      <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
-        <div className={`h-2 rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
+    <div className="flex items-center gap-1 min-w-[80px]">
+      <div className="flex-1 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+        <div className={`h-1.5 rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-xs text-gray-500 w-12 text-right">{actual}/{required}</span>
+      <span className="text-xs text-gray-500 w-10 text-right">{actual}/{required}</span>
     </div>
   );
 }
@@ -118,7 +118,7 @@ export default function SkillGapReport() {
 
   return (
     <div className="p-6">
-      <div className="mb-6">
+      <div className="mb-6 ">
         <h2 className="text-xl text-gray-700 mb-1">Skill Gap Report</h2>
         <p className="text-gray-400 text-sm">
           {isEmployee
@@ -193,14 +193,14 @@ export default function SkillGapReport() {
         </div>
       ) : (
         <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
+          <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50">
               <tr>
                 {[
                   ...(!isEmployee ? ['Employee', 'Dept', 'Role'] : []),
-                  'Capability Area', 'Skill', 'Score', 'Severity', 'Mandatory', 'Evaluated By',
+                  'Capability', 'Skill', 'Score', 'Severity', 'Mandatory', "Manager",
                 ].map(h => (
-                  <th key={h} className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  <th key={h} className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -211,27 +211,27 @@ export default function SkillGapReport() {
                   <tr key={i} className={`hover:bg-gray-50 ${r.gap > 0 && r.isMandatory ? 'bg-red-50/30' : ''}`}>
                     {!isEmployee && (
                       <>
-                        <td className="px-5 py-4 text-sm font-medium text-gray-900">{r.employeeName}</td>
-                        <td className="px-5 py-4 text-sm text-gray-500">{r.dept}</td>
-                        <td className="px-5 py-4 text-sm text-gray-500">{r.employeeRole}</td>
+                        <td className="px-3 py-2 text-xs font-medium text-gray-900">{r.employeeName}</td>
+                        <td className="px-3 py-2 text-xs text-gray-500">{r.dept}</td>
+                        <td className="px-3 py-2 text-xs text-gray-500">{r.employeeRole}</td>
                       </>
                     )}
-                    <td className="px-5 py-4 text-sm text-gray-500">{r.capabilityArea}</td>
-                    <td className="px-5 py-4 text-sm text-gray-900">{r.capabilitySkill}</td>
-                    <td className="px-5 py-4">
+                    <td className="px-3 py-2 text-xs text-gray-500">{r.capabilityArea}</td>
+                    <td className="px-3 py-2 text-xs text-gray-900">{r.capabilitySkill}</td>
+                    <td className="px-3 py-2">
                       <GapBar required={r.requiredScore} actual={r.actualScore} />
                     </td>
-                    <td className="px-5 py-4">
-                      <span className={`px-2 py-1 text-xs rounded-full font-medium ${sev.cls}`}>
+                    <td className="px-3 py-2">
+                      <span className={`px-1 py-0.5 text-xs rounded-full font-medium ${sev.cls}`}>
                         {sev.label}
                       </span>
                     </td>
-                    <td className="px-5 py-4 text-center">
+                    <td className="px-3 py-2 text-center">
                       {r.isMandatory
-                        ? <span className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded-full">Yes</span>
-                        : <span className="px-2 py-1 text-xs bg-gray-100 text-gray-500 rounded-full">No</span>}
+                        ? <span className="px-1 py-0.5 text-xs bg-red-100 text-red-700 rounded-full">Yes</span>
+                        : <span className="px-1 py-0.5 text-xs bg-gray-100 text-gray-500 rounded-full">No</span>}
                     </td>
-                    <td className="px-5 py-4 text-sm text-gray-500">{r.evaluatedBy}</td>
+                    <td className="px-3 py-2 text-xs text-gray-500">{r.evaluatedBy}</td>
                   </tr>
                 );
               })}

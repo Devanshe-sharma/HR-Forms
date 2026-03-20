@@ -27,7 +27,7 @@ const pageTitles: Record<string, string> = {
   '/company-orientation':  'Company Orientation',
   '/dept-orientation':     'Department Orientation',
   '/profile':              'Profile',
-  '/settings':             'Settings',
+  '/configuration':             'Configuration',
 };
 
 // ─── Tab definitions ──────────────────────────────────────────────────────────

@@ -1,7 +1,49 @@
+/* Smooth theme transition */
+.theme-transition * {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease !important;
+}
+
 /* Dark mode styles */
 .dark-mode {
-  background-color: #121212;
-  color: #ffffff;
+  background-color: #121212 !important;
+  color: #ffffff !important;
+}
+
+.dark-mode html {
+  background-color: #121212 !important;
+}
+
+.dark-mode body {
+  background-color: #121212 !important;
+  color: #ffffff !important;
+}
+
+/* Ensure all major layout elements have dark background */
+.dark-mode main,
+.dark-mode [role="main"],
+.dark-mode .MuiBox-root {
+  background-color: #121212 !important;
+}
+
+/* Handle containers with Tailwind's min-h-screen */
+.dark-mode .min-h-screen {
+  background-color: #1e1e1e !important;
+}
+
+.dark-mode .h-full,
+.dark-mode .h-screen {
+  background-color: #1e1e1e !important;
+}
+
+/* Border colors in dark mode */
+.dark-mode .border-gray-200,
+.dark-mode .border-gray-300,
+.dark-mode .border-gray-400 {
+  border-color: #444444 !important;
+}
+
+.dark-mode .divide-gray-200 {
+  border-color: #444444 !important;
 }
 
 .dark-mode .MuiPaper-root {
@@ -51,4 +93,238 @@
 
 .dark-mode ::-webkit-scrollbar-thumb:hover {
   background: #777;
+}
+
+/* Input fields and form elements in dark mode */
+.dark-mode .MuiTextField-root input,
+.dark-mode .MuiInput-root input,
+.dark-mode .MuiOutlinedInput-root input,
+.dark-mode .MuiFilledInput-root input {
+  color: #ffffff !important;
+  caret-color: #3B82F6;
+}
+
+.dark-mode .MuiOutlinedInput-root {
+  color: #ffffff !important;
+}
+
+.dark-mode .MuiOutlinedInput-root fieldset {
+  border-color: #444444 !important;
+}
+
+.dark-mode .MuiOutlinedInput-root:hover fieldset {
+  border-color: #666666 !important;
+}
+
+.dark-mode .MuiOutlinedInput-root.Mui-focused fieldset {
+  border-color: #3B82F6 !important;
+}
+
+/* Table styling in dark mode */
+.dark-mode .MuiTable-root td,
+.dark-mode .MuiTable-root th {
+  color: #ffffff;
+  border-bottom-color: #444444 !important;
+}
+
+.dark-mode .MuiTableHead-root {
+  background-color: #1e1e1e;
+}
+
+.dark-mode .MuiTableBody-root tr:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Dialog and modals in dark mode */
+.dark-mode .MuiDialog-paper {
+  background-color: #1e1e1e !important;
+  color: #ffffff !important;
+}
+
+.dark-mode .MuiModal-backdrop {
+  background-color: rgba(0, 0, 0, 0.7);
+}
+
+/* Menu and popover in dark mode */
+.dark-mode .MuiPopover-paper,
+.dark-mode .MuiMenu-paper {
+  background-color: #1e1e1e !important;
+  color: #ffffff !important;
+}
+
+.dark-mode .MuiMenuItem-root {
+  color: #ffffff;
+}
+
+.dark-mode .MuiMenuItem-root:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Chip in dark mode */
+.dark-mode .MuiChip-root {
+  background-color: #333333 !important;
+  color: #ffffff !important;
+}
+
+.dark-mode .MuiChip-outlined {
+  border-color: #666666 !important;
+}
+
+/* Tabs in dark mode */
+.dark-mode .MuiTabs-indicator {
+  background-color: #3B82F6 !important;
+}
+
+.dark-mode .MuiTab-root {
+  color: #b0b0b0 !important;
+}
+
+.dark-mode .MuiTab-root.Mui-selected {
+  color: #ffffff !important;
+}
+
+/* Select field in dark mode */
+.dark-mode .MuiSelect-select {
+  color: #ffffff !important;
+}
+
+.dark-mode .MuiNativeSelect-select {
+  color: #ffffff !important;
+  background-color: #1e1e1e !important;
+}
+
+/* Button in dark mode */
+.dark-mode .MuiButton-outlined {
+  border-color: #666666;
+  color: #ffffff;
+}
+
+.dark-mode .MuiButton-outlined:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: #3B82F6;
+}
+
+.dark-mode .MuiButton-text {
+  color: #ffffff;
+}
+
+/* Link in dark mode */
+.dark-mode a {
+  color: #60A5FA;
+}
+
+.dark-mode a:hover {
+  color: #93C5FD;
+}
+
+/* Override Tailwind white backgrounds in dark mode */
+.dark-mode .bg-white {
+  background-color: #1e1e1e !important;
+}
+
+.dark-mode .bg-gray-50,
+.dark-mode .bg-gray-100,
+.dark-mode .bg-gray-200,
+.dark-mode .bg-gray-300,
+.dark-mode .bg-gray-400 {
+  background-color: #1e1e1e !important;
+}
+
+.dark-mode .text-gray-900,
+.dark-mode .text-gray-800,
+.dark-mode .text-gray-700,
+.dark-mode .text-gray-600,
+.dark-mode .text-gray-500,
+.dark-mode .text-gray-400,
+.dark-mode .text-gray-300 {
+  color: #ffffff !important;
+}
+
+.dark-mode .text-black {
+  color: #ffffff !important;
+}
+
+/* Override slate colors too */
+.dark-mode .bg-slate-50,
+.dark-mode .bg-slate-100,
+.dark-mode .bg-slate-200,
+.dark-mode .bg-slate-300 {
+  background-color: #1e1e1e !important;
+}
+
+.dark-mode .text-slate-900,
+.dark-mode .text-slate-800,
+.dark-mode .text-slate-700,
+.dark-mode .text-slate-600,
+.dark-mode .text-slate-500 {
+  color: #ffffff !important;
+}
+
+/* Override neutral colors */
+.dark-mode .bg-neutral-50,
+.dark-mode .bg-neutral-100,
+.dark-mode .bg-neutral-200 {
+  background-color: #1e1e1e !important;
+}
+
+.dark-mode .text-neutral-900,
+.dark-mode .text-neutral-800,
+.dark-mode .text-neutral-700,
+.dark-mode .text-neutral-600 {
+  color: #ffffff !important;
+}
+
+/* Divider in dark mode */
+.dark-mode .MuiDivider-root {
+  border-color: #444444 !important;
+}
+
+/* Alert in dark mode */
+.dark-mode .MuiAlert-standardInfo {
+  background-color: rgba(59, 130, 246, 0.1) !important;
+  color: #ffffff !important;
+}
+
+.dark-mode .MuiAlert-standardSuccess {
+  background-color: rgba(16, 185, 129, 0.1) !important;
+  color: #ffffff !important;
+}
+
+.dark-mode .MuiAlert-standardWarning {
+  background-color: rgba(202, 138, 4, 0.1) !important;
+  color: #ffffff !important;
+}
+
+.dark-mode .MuiAlert-standardError {
+  background-color: rgba(220, 38, 38, 0.1) !important;
+  color: #ffffff !important;
+}
+
+/* Tooltip in dark mode */
+.dark-mode .MuiTooltip-tooltip {
+  background-color: #333333;
+  color: #ffffff;
+}
+
+/* Stepper in dark mode */
+.dark-mode .MuiStepIcon-root {
+  color: #444444;
+}
+
+.dark-mode .MuiStepIcon-root.Mui-active {
+  color: #3B82F6;
+}
+
+.dark-mode .MuiStepConnector-line {
+  border-color: #444444;
+}
+
+/* Progress bar in dark mode */
+.dark-mode .MuiLinearProgress-root {
+  background-color: #333333;
+}
+
+/* Skeleton loader in dark mode */
+.dark-mode .MuiSkeleton-root {
+  background-color: #333333;
 }
