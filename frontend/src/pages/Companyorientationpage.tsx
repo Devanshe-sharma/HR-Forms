@@ -38,7 +38,7 @@ import {
   TableChart as TableChartIcon,
 } from '@mui/icons-material';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://3.109.132.204:5000/api';
 const currentUserRole: 'hr' | 'management' | 'employee' = 'hr';
 const isHR = currentUserRole === 'hr';
 const isHRorMgmt = currentUserRole === 'hr' || currentUserRole === 'management';
