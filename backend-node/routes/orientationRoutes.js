@@ -12,6 +12,7 @@ const requireRole = (...roles) => (req, res, next) => {
   next();
 };
 
+
 // ── Helper: get or create the single orientation doc ──────────────────────────
 async function getDoc() {
   let doc = await Orientation.findOne();
