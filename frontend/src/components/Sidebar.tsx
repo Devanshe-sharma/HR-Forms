@@ -38,6 +38,7 @@ import {
   HealthAndSafety as HygieneIcon,
   AutoGraph as GrowthIcon,
   Leaderboard as SummaryIcon,
+  MonetizationOn as MonetizationOnIcon,
 } from '@mui/icons-material';
 import { NavLink, useLocation } from 'react-router-dom';
 
@@ -141,6 +142,7 @@ export default function Sidebar() {
     },
 
     { to: '/confirmations',    text: 'Confirmations',    icon: <CheckCircleIcon /> },
+    { to: '/salary-revision',   text: 'Salary revision',   icon: <MonetizationOnIcon /> },
     { to: '/employee-letters', text: 'Employee Letters',icon: <MailIcon /> },
     { to: '/salary-sheet',     text: 'Salary Sheet',    icon: <PaymentsIcon /> },
 

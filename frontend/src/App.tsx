@@ -5,6 +5,7 @@ import HRDashboard from "./pages/HRDashboard";
 import OutsiderDashboard from "./pages/OutsiderDashboard";
 import CandidateApplicationPage from "./pages/CandidateApplication";
 import SalaryRevision from "./pages/SalaryRevision";
+import SalaryRevisionNew from "./pages/SalaryRevisionNew";
 import Profile from "./pages/Profile";
 import Configuration from "./pages/Configruation";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -40,6 +41,7 @@ export default function App() {
         <Route element={<ProtectedRoute />}>
           <Route path="/hr-dashboard" element={<HRDashboard />} />
           <Route path="/employee-letters" element={<SalaryRevision />} />
+          <Route path="/salary-revision" element={<SalaryRevisionNew />} />
           <Route path="/recruitment" element={<Recruitment />} />
           <Route path="/ctc-components" element={<CTCComponentsDashboard />} />
           <Route path="/letter" element={<LetterTemplate />} />

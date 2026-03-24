@@ -62,7 +62,8 @@ app.use('/api/sync',               require('./routes/syncFms'));
 
 
 app.use('/api/dept-orientation',   require('./routes/deptOrientationRoutes'));
-app.use('/api/orientation',        require('./routes/orientationRoutes')); 
+app.use('/api/orientation',        require('./routes/orientationRoutes'));
+app.use('/api/salary-revisions',   require('./routes/salaryRevisions')); 
 
 /* ─────────────────── DATABASE ─────────────────── */
 // mongoose.connect(process.env.MONGO_URI)
@@ -120,11 +121,6 @@ cron.schedule(
   },
   { timezone: 'Asia/Kolkata' }
 );
-
-
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ MongoDB connected"))
-  .catch(err => console.error("❌ MongoDB error:", err));
 
 /* ─────────────────── SERVER START ─────────────────── */
 const PORT = process.env.PORT || 5000;
