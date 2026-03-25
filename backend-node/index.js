@@ -66,11 +66,11 @@ app.use('/api/orientation',        require('./routes/orientationRoutes'));
 app.use('/api/salary-revisions',   require('./routes/salaryRevisions')); 
 
 /* ─────────────────── DATABASE ─────────────────── */
-// mongoose.connect(process.env.MONGO_URI)
-//   .then(() => console.log('✅ MongoDB connected successfully'))
-//   .catch(err => {
-//     console.error('❌ MongoDB connection error:', err.message);
-//   });
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log('✅ MongoDB connected successfully'))
+  .catch(err => {
+    console.error('❌ MongoDB connection error:', err.message);
+  });
 
 /* ─────────────────── EMAIL SCHEDULER ─────────────────── */
 const { startEmailScheduler } = require('./emails/scheduler');

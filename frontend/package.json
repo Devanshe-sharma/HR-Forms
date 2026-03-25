@@ -30,6 +30,7 @@
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^6.30.3",
     "react-select": "^5.10.2",
+    "serve": "^14.2.6",
     "zod": "^4.3.6"
   },
   "devDependencies": {
