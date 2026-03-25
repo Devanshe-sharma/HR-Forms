@@ -63,6 +63,8 @@
 import { Link } from "react-router-dom";
 
 export default function Home() {
+  // Temporary: auto-set Admin role for testing until login is built
+  localStorage.setItem('role', 'Admin');
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-lime-50 to-white flex items-center justify-center">
