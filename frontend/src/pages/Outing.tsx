@@ -160,7 +160,7 @@ const Outing: React.FC = () => {
     }
   };
 
-  const API_BASE = process.env.NODE_ENV === 'development' ? 'http://localhost:5000/api' : '/api';
+  const API_BASE = process.env.NODE_ENV === 'development' ? 'http://13.235.0.127:5000/api' : '/api';
 
   // ─── LOAD DATA ────────────────────────────────────────────
   const refreshData = async () => {

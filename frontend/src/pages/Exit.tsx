@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-const API_BASE = "http://localhost:5000/api";
+const API_BASE = "http://13.235.0.127:5000/api";
 
 type Row = {
   ser: number | string;

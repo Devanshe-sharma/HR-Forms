@@ -30,7 +30,7 @@ const CTCComponentsDashboard: React.FC = () => {
 
   // Use fallback URL – replace with your real backend URL
   // For production: use NEXT_PUBLIC_API_BASE in .env
-  const API_URL = 'http://localhost:5000/api/ctc-components/';
+  const API_URL = 'http://13.235.0.127:5000/api/ctc-components/';
 
   // Fetch all components
   const fetchComponents = async () => {

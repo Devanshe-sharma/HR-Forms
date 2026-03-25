@@ -16,7 +16,7 @@ import {
   Person, Group,
 } from '@mui/icons-material';
 
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = 'http://13.235.0.127:5000/api';
 const BRAND    = '#3B82F6';
 
 // ─── Types ───────────────────────────────────────────────────────────────────

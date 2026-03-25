@@ -16,7 +16,7 @@ import { getRole, hasAnyRole } from '../config/rbac';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://13.235.0.127:5000/api';
 
 // Add CSS keyframes for gradient animation
 const gradientAnimation = `

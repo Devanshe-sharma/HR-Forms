@@ -55,7 +55,7 @@ interface Employee {
 }
 
 const categories = ['All', 'Employee', 'Consultant', 'Intern', 'Temporary Staff', 'Contract Based'];
-const API_BASE = 'http://localhost:5000/api'; // change to production URL later
+const API_BASE = 'http://13.235.0.127:5000/api'; // change to production URL later
 
 export default function EmployeeContractsPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
