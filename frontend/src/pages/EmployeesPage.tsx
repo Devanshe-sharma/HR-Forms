@@ -205,7 +205,7 @@ const EmployeesPage: React.FC = () => {
               </Box>
               <Box>
                 <Typography variant="h5" fontWeight={700} color={theme.palette.text.primary} lineHeight={1.2}>
-                  Employees
+                  Employees List
                 </Typography>
                 <Typography variant="caption" color={theme.palette.text.secondary}>
                   {employees.length} total members

@@ -125,7 +125,7 @@ export default function Sidebar() {
     { to: '/company-orientation', text: 'Company Orientation', icon: <CorporateFareIcon /> },
     { to: '/dept-orientation', text: 'Dept Orientation', icon: <ApartmentIcon /> },
     { to: '/hr-dashboard', text: 'Dashboard', icon: <DashboardIcon /> },
-    { to: '/employees', text: 'Employees', icon: <PeopleIcon /> },
+    { to: '/employees', text: 'Employees List', icon: <PeopleIcon /> },
 
     {
       text: 'Attendance',
