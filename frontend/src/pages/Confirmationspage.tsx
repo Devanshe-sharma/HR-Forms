@@ -151,104 +151,331 @@ function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error';
   );
 }
 
-// ─── Dashboard View ───────────────────────────────────────────────────────────
+// ─── Dashboard View ─────────────────────────────────────────────────────────--
 
 function DashboardView({ records, loading, onSelect }: {
   records : Confirmation[];
   loading : boolean;
   onSelect: (r: Confirmation) => void;
 }) {
+  // Filter states
+  const [employeeSearch, setEmployeeSearch] = useState('');
+  const [showAllProbation, setShowAllProbation] = useState(false); // Toggle state
+  
+  // Get current date info
+  const currentDate = new Date();
+  const currentMonth = currentDate.getMonth();
+  const currentYear = currentDate.getFullYear();
+  
+  // Helper function to check if employee is within first 6 months (on probation)
+  const isOnProbation = (joiningDate: string) => {
+    const joined = new Date(joiningDate);
+    const sixMonthsLater = new Date(joined);
+    sixMonthsLater.setMonth(sixMonthsLater.getMonth() + 6);
+    return currentDate <= sixMonthsLater;
+  };
+  
+  // Filter records - based on toggle state
+  const filteredRecords = records.filter(record => {
+    const recordDate = new Date(record.joiningDate);
+    const recordMonth = recordDate.getMonth();
+    const recordYear = recordDate.getFullYear();
+    
+    // Calculate review date (6 months after joining)
+    const reviewDate = new Date(recordDate);
+    reviewDate.setMonth(reviewDate.getMonth() + 6);
+    const reviewMonth = reviewDate.getMonth();
+    const reviewYear = reviewDate.getFullYear();
+    
+    // Check if confirmation is pending this month
+    const isPendingThisMonth = reviewMonth === currentMonth && 
+                              reviewYear === currentYear && 
+                              (record.stage === 'pending_manager' || 
+                               record.stage === 'pending_management' ||
+                               record.stage === 'on_hold');
+    
+    // Show all probation employees (within first 6 months) or only pending this month
+    const shouldShow = showAllProbation 
+      ? isOnProbation(record.joiningDate) // All employees within first 6 months
+      : isPendingThisMonth; // Only pending this month
+    
+    const matchesSearch = !employeeSearch || 
+      record.employeeName.toLowerCase().includes(employeeSearch.toLowerCase()) ||
+      record.employeeCode.toLowerCase().includes(employeeSearch.toLowerCase());
+    
+    return shouldShow && matchesSearch;
+  });
+
   const counts = {
-    total       : records.length,
-    probation   : records.filter(r => r.currentStatus === 'probation').length,
-    confirmed   : records.filter(r => r.currentStatus === 'confirmed').length,
-    extended    : records.filter(r => r.currentStatus === 'extended').length,
-    notConfirmed: records.filter(r => r.currentStatus === 'not_confirmed').length,
-    onHold      : records.filter(r => r.stage === 'on_hold').length,
+    total       : filteredRecords.length,
+    probation   : filteredRecords.filter(r => isOnProbation(r.joiningDate)).length,
+    confirmed   : filteredRecords.filter(r => r.currentStatus === 'confirmed').length,
+    extended    : filteredRecords.filter(r => r.currentStatus === 'extended').length,
+    notConfirmed: filteredRecords.filter(r => r.currentStatus === 'not_confirmed').length,
+    onHold      : filteredRecords.filter(r => r.stage === 'on_hold').length,
   };
 
   const STATS = [
-    { label: 'Total',         value: counts.total,        color: '#3B82F6', bg: '#EFF6FF' },
-    { label: 'Probation',     value: counts.probation,    color: '#6B7280', bg: '#F3F4F6' },
+    { 
+      label: showAllProbation ? 'All Probation' : 'Pending This Month', 
+      value: counts.total,        
+      color: '#3B82F6', 
+      bg: '#EFF6FF' 
+    },
+    { label: 'On Probation',  value: counts.probation,    color: '#6B7280', bg: '#F3F4F6' },
     { label: 'Confirmed',     value: counts.confirmed,    color: '#059669', bg: '#ECFDF5' },
     { label: 'Extended',      value: counts.extended,     color: '#D97706', bg: '#FFFBEB' },
     { label: 'Not Confirmed', value: counts.notConfirmed, color: '#DC2626', bg: '#FEF2F2' },
-    // { label: 'On Hold',       value: counts.onHold,       color: '#F59E0B', bg: '#FEF3C7' },
   ];
 
   return (
-    <Box>
+    <Box sx={{ p: 3, maxWidth: 1400, mx: 'auto' }}>
+      {/* Header */}
+      <Typography variant="h5" fontWeight={700} sx={{ mb: 3, color: '#1F2937' }}>
+        Probation Confirmations - {showAllProbation ? 'All Employees' : currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+      </Typography>
+
+      {/* Stats Cards */}
       <Box sx={{ display: 'flex', gap: 2, mb: 4, flexWrap: 'wrap' }}>
         {STATS.map(s => (
-          <Box key={s.label} sx={{ flex: '1 1 110px', p: 2.5, borderRadius: 2, bgcolor: s.bg, border: `1px solid ${s.color}30` }}>
-            <Typography fontSize={32} fontWeight={800} color={s.color} lineHeight={1}>{s.value}</Typography>
-            <Typography fontSize={13} color="text.secondary" mt={0.5}>{s.label}</Typography>
+          <Box key={s.label} sx={{ 
+            flex: '1 1 140px', 
+            p: 2, 
+            borderRadius: 2, 
+            bgcolor: s.bg, 
+            border: `1px solid ${s.color}30`,
+            transition: 'all 0.3s ease',
+            '&:hover': {
+              transform: 'translateY(-2px)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+            }
+          }}>
+            <Typography fontSize={28} fontWeight={800} color={s.color} lineHeight={1}>{s.value}</Typography>
+            <Typography fontSize={12} color="text.secondary" mt={0.5}>{s.label}</Typography>
           </Box>
         ))}
       </Box>
 
-      {loading ? (
-        <Box display="flex" justifyContent="center" pt={10}><CircularProgress size={60} /></Box>
-      ) : (
-        <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
-          <Table size="small">
-            <TableHead>
-              <TableRow sx={{ '& th': TH }}>
-                <TableCell>Employee</TableCell>
-                <TableCell>Department</TableCell>
-                <TableCell>Designation</TableCell>
-                <TableCell>Reporting Manager</TableCell>
-                <TableCell>Joining Date</TableCell>
-                <TableCell>PMS Score</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Stage</TableCell>
-                <TableCell>Review Due</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {records.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={9} align="center" sx={{ py: 8, color: 'text.secondary', fontSize: 14 }}>
-                    No employees found in the probation review period
-                  </TableCell>
-                </TableRow>
-              )}
-              {records.map(r => (
-                <TableRow key={r._id} hover sx={{ cursor: 'pointer' }} onClick={() => onSelect(r)}>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <Avatar sx={{ width: 34, height: 34, bgcolor: '#3B82F6', fontSize: 13, fontWeight: 700 }}>
-                        {initials(r.employeeName)}
-                      </Avatar>
-                      <Box>
-                        <Typography fontSize={13.5} fontWeight={600}>{r.employeeName}</Typography>
-                        <Typography fontSize={11.5} color="text.secondary">{r.employeeCode}</Typography>
-                      </Box>
-                    </Box>
-                  </TableCell>
-                  <TableCell sx={{ fontSize: 13 }}>{r.department   || '—'}</TableCell>
-                  <TableCell sx={{ fontSize: 13 }}>{r.designation  || '—'}</TableCell>
-                  <TableCell sx={{ fontSize: 13 }}>{r.reportingManager || '—'}</TableCell>
-                  <TableCell sx={{ fontSize: 13 }}>{fmtDate(r.joiningDate)}</TableCell>
-                  <TableCell>
-                    {r.pmsScore != null
-                      ? <Chip label={r.pmsScore} size="small" sx={{ fontWeight: 700, bgcolor: '#EFF6FF', color: '#2563EB' }} />
-                      : '—'}
-                  </TableCell>
-                  <TableCell><StatusChip status={r.currentStatus} /></TableCell>
-                  <TableCell><StageChip  stage={r.stage} /></TableCell>
-                  <TableCell sx={{ fontSize: 13 }}>
-                    {r.stage === 'on_hold' && r.reviewDate
-                      ? fmtDate(r.reviewDate)
-                      : fmtDate(calculateReviewDate(r.joiningDate)?.toISOString())
-                    }
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+      {/* Filters */}
+      <Box sx={{ 
+        display: 'flex', 
+        gap: 2, 
+        mb: 3, 
+        flexWrap: 'wrap',
+        p: 2,
+        bgcolor: 'white',
+        borderRadius: 2,
+        border: '1px solid #E5E7EB',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+        alignItems: 'center',
+      }}>
+        <TextField
+          size="small"
+          placeholder="Search employee..."
+          value={employeeSearch}
+          onChange={(e) => setEmployeeSearch(e.target.value)}
+          sx={{ minWidth: 200 }}
+          InputProps={{
+            sx: { fontSize: 14 }
+          }}
+        />
+
+        {/* Toggle Button */}
+        <Button
+          variant={showAllProbation ? "contained" : "outlined"}
+          size="small"
+          onClick={() => setShowAllProbation(!showAllProbation)}
+          sx={{ 
+            fontSize: 14, 
+            textTransform: 'none',
+            bgcolor: showAllProbation ? '#3B82F6' : 'transparent',
+            color: showAllProbation ? 'white' : '#3B82F6',
+            borderColor: '#3B82F6',
+            '&:hover': {
+              bgcolor: showAllProbation ? '#2563EB' : '#EFF6FF',
+            }
+          }}
+        >
+          {showAllProbation ? 'Show This Month Only' : 'Show All Probation'}
+        </Button>
+
+        <Button
+          variant="outlined"
+          size="small"
+          onClick={() => {
+            setEmployeeSearch('');
+            setShowAllProbation(false);
+          }}
+          sx={{ fontSize: 14, textTransform: 'none' }}
+        >
+          Reset All
+        </Button>
+      </Box>
+
+      {/* Info Banner */}
+      {!showAllProbation && (
+        <Box sx={{ 
+          mb: 3,
+          p: 2,
+          bgcolor: '#EFF6FF',
+          border: '1px solid #BFDBFE',
+          borderRadius: 2,
+          fontSize: 13,
+          color: '#1E40AF',
+        }}>
+          <strong>Current View:</strong> Showing employees whose probation confirmation is pending for {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}. 
+          Click "Show All Probation" to view all employees currently on probation (within first 6 months of joining).
+        </Box>
       )}
+
+      {showAllProbation && (
+        <Box sx={{ 
+          mb: 3,
+          p: 2,
+          bgcolor: '#F0FDF4',
+          border: '1px solid #BBF7D0',
+          borderRadius: 2,
+          fontSize: 13,
+          color: '#166534',
+        }}>
+          <strong>Current View:</strong> Showing all employees currently on probation (within their first 6 months of employment). 
+          Click "Show This Month Only" to view only pending confirmations for {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.
+        </Box>
+      )}
+
+      {/* Table Container */}
+      <Box sx={{ 
+        bgcolor: 'white', 
+        borderRadius: 2, 
+        border: '1px solid #E5E7EB',
+        overflow: 'hidden',
+        maxHeight: '600px', // Fixed height for scrollable table
+        display: 'flex',
+        flexDirection: 'column',
+      }}>
+        {loading ? (
+          <Box display="flex" justifyContent="center" alignItems="center" py={10}>
+            <CircularProgress size={40} />
+          </Box>
+        ) : (
+          <TableContainer sx={{ maxHeight: 550, overflow: 'auto' }}>
+            <Table size="small" stickyHeader>
+              <TableHead>
+                <TableRow sx={{ '& th': TH }}>
+                  <TableCell>Employee</TableCell>
+                  <TableCell>Department</TableCell>
+                  <TableCell>Designation</TableCell>
+                  <TableCell>Reporting Manager</TableCell>
+                  <TableCell>Joining Date</TableCell>
+                  <TableCell>PMS Score</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Stage</TableCell>
+                  <TableCell>Review Due</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filteredRecords.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={9} align="center" sx={{ py: 8, color: 'text.secondary', fontSize: 14 }}>
+                      {showAllProbation 
+                        ? 'No employees found on probation (within first 6 months)'
+                        : `No pending confirmations found for ${currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`
+                      }
+                    </TableCell>
+                  </TableRow>
+                )}
+                {filteredRecords.map(r => (
+                  <TableRow 
+                    key={r._id} 
+                    sx={{ 
+                      cursor: 'pointer',
+                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                      position: 'relative',
+                      '&:hover': {
+                        bgcolor: '#E0F2FE', // Pastel blue
+                        transform: 'translateX(2px)',
+                        '& td': {
+                          color: '#0C4A6E',
+                        }
+                      },
+                      '& td': {
+                        transition: 'all 0.3s ease',
+                        position: 'relative',
+                        overflow: 'hidden',
+                      }
+                    }} 
+                    onClick={() => onSelect(r)}
+                  >
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Avatar sx={{ 
+                          width: 32, 
+                          height: 32, 
+                          bgcolor: '#3B82F6', 
+                          fontSize: 12, 
+                          fontWeight: 700,
+                          transition: 'all 0.3s ease',
+                        }}>
+                          {initials(r.employeeName)}
+                        </Avatar>
+                        <Box>
+                          <Typography fontSize={13} fontWeight={600}>{r.employeeName}</Typography>
+                          <Typography fontSize={11} color="text.secondary">{r.employeeCode}</Typography>
+                        </Box>
+                        {/* Click to proceed overlay */}
+                        <Box
+                          sx={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            bgcolor: 'rgba(2, 132, 199, 0.95)',
+                            color: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: 12,
+                            fontWeight: 600,
+                            opacity: 0,
+                            visibility: 'hidden',
+                            transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                            transform: 'scale(0.9)',
+                            borderRadius: 1,
+                            zIndex: 10,
+                            pointerEvents: 'none',
+                            '&::before': {
+                              content: '"Click to proceed"',
+                            }
+                          }}
+                          className="hover-overlay"
+                        />
+                      </Box>
+                    </TableCell>
+                    <TableCell sx={{ fontSize: 13 }}>{r.department   || '—'}</TableCell>
+                    <TableCell sx={{ fontSize: 13 }}>{r.designation  || '—'}</TableCell>
+                    <TableCell sx={{ fontSize: 13 }}>{r.reportingManager || '—'}</TableCell>
+                    <TableCell sx={{ fontSize: 13 }}>{fmtDate(r.joiningDate)}</TableCell>
+                    <TableCell>
+                      {r.pmsScore != null
+                        ? <Chip label={r.pmsScore} size="small" sx={{ fontWeight: 700, bgcolor: '#EFF6FF', color: '#2563EB' }} />
+                        : '—'}
+                    </TableCell>
+                    <TableCell><StatusChip status={r.currentStatus} /></TableCell>
+                    <TableCell><StageChip  stage={r.stage} /></TableCell>
+                    <TableCell sx={{ fontSize: 13 }}>
+                      {r.stage === 'on_hold' && r.reviewDate
+                        ? fmtDate(r.reviewDate)
+                        : fmtDate(calculateReviewDate(r.joiningDate)?.toISOString())
+                      }
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Box>
     </Box>
   );
 }
@@ -622,10 +849,10 @@ export default function ConfirmationsPage() {
         {/* Navbar */}
         <Navbar />
 
-        {/* Scrollable content with top padding to clear fixed navbar */}
-        <main className="flex-1 overflow-y-auto pt-16 md:pt-20 pb-12 px-4 sm:px-6 lg:px-8">
+        {/* Fixed height content area - no page scroll */}
+        <main className="flex-1 overflow-hidden pt-16 md:pt-20">
 
-          <Box sx={{ maxWidth: 1400, mx: "auto", width: "100%" }}>
+          <Box sx={{ maxWidth: 1400, mx: "auto", width: "100%", height: "100%", overflow: "hidden" }}>
 
             {/* Toast */}
             {toastMsg && (
@@ -636,7 +863,7 @@ export default function ConfirmationsPage() {
               />
             )}
 
-            {/* Active view */}
+            {/* Active view - takes full height */}
             {view === 'dashboard' && (
               <DashboardView
                 records={records}

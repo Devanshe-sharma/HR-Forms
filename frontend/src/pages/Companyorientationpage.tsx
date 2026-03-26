@@ -509,7 +509,6 @@ function TaxFormsContent({ data, onUpdate }: { data: FileItem[]; onUpdate: (d: P
   );
 }
 
-// ── WeekOff tab — full Add / Edit / Delete ────────────────────────────────────
 function WeekOffTab({ weekoffs, onUpdate }: {
   weekoffs: WeekOff[];
   onUpdate: (d: Partial<OrientationData>) => void;
@@ -1255,7 +1254,7 @@ const CompanyOrientationPage: React.FC = () => {
   }, []);
 
   const sections = [
-    { label: 'Company Onboarding PPT',     icon: <SlideshowIcon sx={{ fontSize: 22 }} />, content: <OnboardingPPT data={data.onboardingPPT} onUpdate={onUpdate} /> },
+    { label: 'Company Onboarding',     icon: <SlideshowIcon sx={{ fontSize: 22 }} />, content: <OnboardingPPT data={data.onboardingPPT} onUpdate={onUpdate} /> },
     { label: 'Onboarding Test',            icon: <QuizIcon sx={{ fontSize: 22 }} />,      content: <OnboardingTest data={data.onboardingTest} onUpdate={onUpdate} /> },
     { label: 'Company Policies',           icon: <PolicyIcon sx={{ fontSize: 22 }} />,    content: <PoliciesContent data={data.policies} onUpdate={onUpdate} /> },
     { label: 'Tax & Statutory Forms',      icon: <TaxIcon sx={{ fontSize: 22 }} />,       content: <TaxFormsContent data={data.taxForms} onUpdate={onUpdate} /> },
@@ -1271,7 +1270,7 @@ const CompanyOrientationPage: React.FC = () => {
         <main style={{ padding: '24px', paddingTop: '88px' }}>
 
           {/* Hero header */}
-          <Box sx={{ mb: 4, p: 3.5, borderRadius: '20px', background: 'linear-gradient(135deg, #1E3A5F 0%, #3B82F6 100%)', color: 'white', position: 'relative', overflow: 'hidden' }}>
+          <Box sx={{ mb: 4, p: 3.5, borderRadius: '20px', background: 'linear-gradient(135deg, #1E3A5F 0%, #3B82F6 100%)', color: 'white', position: 'relative' }}>
             <Box sx={{ position: 'absolute', top: -30, right: -30, width: 160, height: 160, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.06)' }} />
             <Box sx={{ position: 'absolute', bottom: -40, right: 80, width: 100, height: 100, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.04)' }} />
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, position: 'relative', zIndex: 1 }}>

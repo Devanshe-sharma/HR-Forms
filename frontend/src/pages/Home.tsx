@@ -63,8 +63,22 @@
 import { Link } from "react-router-dom";
 
 export default function Home() {
-  // Temporary: auto-set Admin role for testing until login is built
+  // Demo user for testing - remove when real login is implemented
   localStorage.setItem('role', 'Admin');
+  localStorage.setItem('userEmail', 'demo.user@briskolive.com');
+  localStorage.setItem('token', 'demo-jwt-token-12345');
+  localStorage.setItem('userName', 'Demo User');
+  
+  // Get current user info from localStorage
+  const currentRole = localStorage.getItem('role') || '';
+  const currentUserEmail = localStorage.getItem('userEmail') || '';
+  const currentUserName = localStorage.getItem('userName') || '';
+  
+  console.log('Demo user logged in:', { 
+    role: currentRole, 
+    email: currentUserEmail, 
+    name: currentUserName 
+  });
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-lime-50 to-white flex items-center justify-center">

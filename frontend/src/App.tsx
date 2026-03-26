@@ -25,6 +25,7 @@ import Exit from "./pages/Exit";
 import Confirmationspage from "./pages/Confirmationspage";
 import DeptOrientationPage from "./pages/Deptorientationpage";
 import Companyorientationpage from "./pages/Companyorientationpage";
+import EmployeesPage from "./pages/EmployeesPage";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
 export default function App() {
@@ -45,7 +46,7 @@ export default function App() {
           <Route path="/recruitment" element={<Recruitment />} />
           <Route path="/ctc-components" element={<CTCComponentsDashboard />} />
           <Route path="/letter" element={<LetterTemplate />} />
-          <Route path="/employees" element={<ComingSoon />} />
+          <Route path="/employees" element={<EmployeesPage />} />
           <Route path="/candidates" element={<ComingSoon />} />
           <Route path="/applicants" element={<AllApplicants />} />
           <Route path="/new-hiring-requisition" element={<NewRequisitionForm />} />

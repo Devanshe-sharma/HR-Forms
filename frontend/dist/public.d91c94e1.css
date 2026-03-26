@@ -550,6 +550,10 @@ h3 {
   }
 }
 
+.visible {
+  visibility: visible;
+}
+
 .collapse {
   visibility: collapse;
 }
@@ -1465,6 +1469,10 @@ h3 {
   white-space: nowrap;
 }
 
+.break-all {
+  word-break: break-all;
+}
+
 .rounded {
   border-radius: .25rem;
 }
@@ -2215,10 +2223,6 @@ h3 {
   padding-bottom: 2.5rem;
 }
 
-.pb-12 {
-  padding-bottom: 3rem;
-}
-
 .pb-2 {
   padding-bottom: .5rem;
 }
@@ -2848,11 +2852,6 @@ h3 {
   --tw-ring-opacity: .05;
 }
 
-.blur {
-  --tw-blur: blur(8px);
-  filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);
-}
-
 .filter {
   filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);
 }
@@ -3437,6 +3436,10 @@ input:focus, select:focus, textarea:focus {
     justify-content: space-between;
   }
 
+  .sm\:gap-2 {
+    gap: .5rem;
+  }
+
   .sm\:gap-3 {
     gap: .75rem;
   }
@@ -3622,11 +3625,6 @@ input:focus, select:focus, textarea:focus {
 
   .lg\:p-8 {
     padding: 2rem;
-  }
-
-  .lg\:px-8 {
-    padding-left: 2rem;
-    padding-right: 2rem;
   }
 
   .lg\:pl-64 {

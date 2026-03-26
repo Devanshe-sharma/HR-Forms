@@ -72,7 +72,9 @@ const OUTING_TABS = [
 
   { label: 'HR',                value: 'HR' },
 
-  { label: 'Management',        value: 'management' },
+  { label: 'Management Approvals', value: 'management' },
+
+  { label: 'Scheduled & Completed', value: 'outings-view' },
 
   { label: 'Employee Feedback', value: 'employee-feedback' },
 
