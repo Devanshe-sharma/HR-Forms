@@ -669,11 +669,11 @@ const Outing: React.FC = () => {
             </button>
           )}
 
-          <div className="mb-4 sm:mb-6">
+          {/* <div className="mb-4 sm:mb-6">
             <h2 className="text-xl sm:text-2xl font-bold text-gray-800 capitalize">
               Outing / Event Module - {currentTab.replace('-', ' ')}
             </h2>
-          </div>
+          </div> */}
 
           {/* ─── HR TAB (detailed control) ─── */}
           {currentTab === 'HR' && (
@@ -1042,82 +1042,140 @@ const Outing: React.FC = () => {
 
           {/* ─── EMPLOYEE FEEDBACK TAB ─── */}
           {currentTab === 'employee-feedback' && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-8 max-w-3xl mx-auto">
-              <h3 className="text-xl sm:text-2xl font-bold text-gray-800 mb-6 sm:mb-8 text-center">Outing / Event Feedback</h3>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-2 max-w-2xl mx-auto">
+            <h3 className="text-lg font-bold text-gray-800 text-center mb-2">
+              Outing / Event Feedback
+            </h3>
 
-              <form onSubmit={handleOutingFeedbackSubmit} className="space-y-4 sm:space-y-6">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Your Name *</label>
-                  <select required value={feedbackForm.employeeName} onChange={(e) => {
+            <form onSubmit={handleOutingFeedbackSubmit} className="space-y-2">
+
+              {/* Name */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Name *</label>
+                <select
+                  required
+                  value={feedbackForm.employeeName}
+                  onChange={(e) => {
                     const emp = employees.find(em => em.name === e.target.value);
-                    setFeedbackForm({ ...feedbackForm, employeeName: e.target.value, department: emp?.dept || '', designation: emp?.desig || '' });
-                  }} className="w-full border border-gray-300 rounded-xl px-3 sm:px-4 py-2 sm:py-3 text-sm">
-                    <option value="">Select your name</option>
-                    {employees.map(emp => <option key={emp.email} value={emp.name}>{emp.name}</option>)}
-                  </select>
-                </div>
+                    setFeedbackForm({
+                      ...feedbackForm,
+                      employeeName: e.target.value,
+                      department: emp?.dept || '',
+                      designation: emp?.desig || ''
+                    });
+                  }}
+                  className="w-full border border-gray-300 rounded-lg px-2 py-1 text-xs"
+                >
+                  <option value="">Select Employee</option>
+                  {employees.map(emp => (
+                    <option key={emp.email} value={emp.name}>{emp.name}</option>
+                  ))}
+                </select>
+              </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Department</label>
-                    <input value={feedbackForm.department} readOnly className="w-full border border-gray-300 rounded-xl px-3 sm:px-4 py-2 sm:py-3 bg-gray-100 text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Designation</label>
-                    <input value={feedbackForm.designation} readOnly className="w-full border border-gray-300 rounded-xl px-3 sm:px-4 py-2 sm:py-3 bg-gray-100 text-sm" />
-                  </div>
-                </div>
+              {/* Dept + Desig - Auto-fetched */}
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  value={feedbackForm.department}
+                  readOnly
+                  placeholder="Department (Auto)"
+                  className="border border-gray-300 rounded-lg px-2 py-1 bg-gray-100 text-xs"
+                />
+                <input
+                  value={feedbackForm.designation}
+                  readOnly
+                  placeholder="Designation (Auto)"
+                  className="border border-gray-300 rounded-lg px-2 py-1 bg-gray-100 text-xs"
+                />
+              </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Outing / Event *</label>
-                  <select required value={feedbackForm.outingId} onChange={e => setFeedbackForm({ ...feedbackForm, outingId: e.target.value })} className="w-full border border-gray-300 rounded-xl px-3 sm:px-4 py-2 sm:py-3 text-sm">
-                    <option value="">-- Select Outing --</option>
-                    {outingList.filter(o => o.status === 'Completed').map(o => (
+              {/* Outing - Only Completed */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Completed Outing *</label>
+                <select
+                  required
+                  value={feedbackForm.outingId}
+                  onChange={e => setFeedbackForm({ ...feedbackForm, outingId: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-2 py-1 text-xs"
+                >
+                  <option value="">Select Completed Outing</option>
+                  {outingList
+                    .filter(o => o.status === 'Completed')
+                    .sort((a, b) => new Date(b.tentativeDate || 0).getTime() - new Date(a.tentativeDate || 0).getTime())
+                    .map(o => (
                       <option key={o._id} value={o._id}>
-                        {o.topic} ({o.tentativeDate ? formatDate(o.tentativeDate) : 'TBD'})
+                        {o.topic} ({o.tentativeDate ? formatDate(o.tentativeDate) : 'No date'})
                       </option>
                     ))}
-                  </select>
-                </div>
+                </select>
+              </div>
 
-                <div className="flex items-center space-x-3">
-                  <input type="checkbox" id="attended" checked={feedbackForm.attended} onChange={e => setFeedbackForm({ ...feedbackForm, attended: e.target.checked })} className="h-4 w-4 sm:h-5 sm:w-5 text-[#7a8b2e]" />
-                  <label htmlFor="attended" className="text-sm font-medium text-gray-700">I attended this outing/event *</label>
-                </div>
+              {/* Checkbox */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={feedbackForm.attended}
+                  onChange={e => setFeedbackForm({ ...feedbackForm, attended: e.target.checked })}
+                  className="h-3 w-3"
+                />
+                <span className="text-xs text-gray-600">Attended *</span>
+              </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Overall Rating *</label>
-                    <select required value={feedbackForm.overallRating} onChange={e => setFeedbackForm({ ...feedbackForm, overallRating: e.target.value })} className="w-full border border-gray-300 rounded-xl px-3 sm:px-4 py-2 sm:py-3 text-sm">
-                      <option value="">--Select--</option>
-                      {[1,2,3,4,5].map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Content Quality *</label>
-                    <select required value={feedbackForm.contentQuality} onChange={e => setFeedbackForm({ ...feedbackForm, contentQuality: e.target.value })} className="w-full border border-gray-300 rounded-xl px-3 sm:px-4 py-2 sm:py-3 text-sm">
-                      <option value="">--Select--</option>
-                      {[1,2,3,4,5].map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                </div>
+              {/* Ratings */}
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  required
+                  value={feedbackForm.overallRating}
+                  onChange={e => setFeedbackForm({ ...feedbackForm, overallRating: e.target.value })}
+                  className="border border-gray-300 rounded-lg px-2 py-1 text-xs"
+                >
+                  <option value="">Overall</option>
+                  {[1,2,3,4,5].map(v => <option key={v}>{v}</option>)}
+                </select>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">What was missing?</label>
-                  <textarea value={feedbackForm.whatWasMissing} onChange={e => setFeedbackForm({ ...feedbackForm, whatWasMissing: e.target.value })} className="w-full border border-gray-300 rounded-xl px-3 sm:px-4 py-2 sm:py-3 h-20 sm:h-24 text-sm" placeholder="Topics, activities, arrangements..." />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">How was it helpful?</label>
-                  <textarea value={feedbackForm.howHelpful} onChange={e => setFeedbackForm({ ...feedbackForm, howHelpful: e.target.value })} className="w-full border border-gray-300 rounded-xl px-3 sm:px-4 py-2 sm:py-3 h-20 sm:h-24 text-sm" placeholder="How this outing helped you..." />
-                </div>
+                <select
+                  required
+                  value={feedbackForm.contentQuality}
+                  onChange={e => setFeedbackForm({ ...feedbackForm, contentQuality: e.target.value })}
+                  className="border border-gray-300 rounded-lg px-2 py-1 text-xs"
+                >
+                  <option value="">Content</option>
+                  {[1,2,3,4,5].map(v => <option key={v}>{v}</option>)}
+                </select>
+              </div>
 
-                <div className="flex justify-end">
-                  <button type="submit" disabled={loadingFeedback || !feedbackForm.attended} className={`px-6 sm:px-10 py-3 rounded-xl font-bold text-white transition text-sm ${loadingFeedback || !feedbackForm.attended ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#7a8b2e] hover:bg-[#5e6c24]'}`}>
-                    {loadingFeedback ? 'Submitting...' : 'Submit Feedback'}
-                  </button>
-                </div>
-              </form>
-            </div>
+              {/* Textareas */}
+              <textarea
+                value={feedbackForm.whatWasMissing}
+                onChange={e => setFeedbackForm({ ...feedbackForm, whatWasMissing: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-2 py-1 text-xs h-12"
+                placeholder="What was missing..."
+              />
+
+              <textarea
+                value={feedbackForm.howHelpful}
+                onChange={e => setFeedbackForm({ ...feedbackForm, howHelpful: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-2 py-1 text-xs h-12"
+                placeholder="How was it helpful..."
+              />
+
+              {/* Submit */}
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={loadingFeedback || !feedbackForm.attended}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-semibold text-white transition ${
+                    loadingFeedback || !feedbackForm.attended
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-[#7a8b2e] hover:bg-[#5e6c24]'
+                  }`}
+                >
+                  {loadingFeedback ? '...' : 'Submit'}
+                </button>
+              </div>
+
+            </form>
+          </div>
           )}
 
           {/* ─── REJECT MODAL ─── */}

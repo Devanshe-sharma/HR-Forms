@@ -127,21 +127,7 @@ export default function Sidebar() {
     { to: '/hr-dashboard', text: 'Dashboard', icon: <DashboardIcon /> },
     { to: '/employees', text: 'Employees List', icon: <PeopleIcon /> },
 
-    {
-      text: 'Attendance',
-      icon: <AccessTimeIcon />,
-      onClick: () => setOpenAttendance(p => !p),
-      open: openAttendance,
-      subItems: [
-        { to: '/attendance?tab=attendance', text: 'Attendance', icon: <TodayIcon /> },
-        { to: '/attendance?tab=leaves', text: 'Leaves', icon: <BeachAccessIcon /> },
-        { to: '/attendance?tab=out-of-office', text: 'Out of Office', icon: <WorkOffIcon /> },
-      ],
-    },
-
-    { to: '/checklist-delegation', text: 'Check List & Delegation', icon: <AssignmentTurnedInIcon /> },
-    { to: '/requisition', text: 'Requisition', icon: <RequestPageIcon /> },
-    { to: '/onboarding', text: 'Onboarding', icon: <BusinessCenterIcon /> },
+    
 
     {
       text: 'Trainings',
@@ -166,7 +152,7 @@ export default function Sidebar() {
         { to: '/outing?tab=HR', text: 'HR Outing', icon: <PeopleIcon /> },
         { to: '/outing?tab=management', text: 'Management Approvals', icon: <BusinessCenterIcon /> },
         { to: '/outing?tab=outings-view', text: 'Scheduled & Completed', icon: <EventIcon /> },
-        { to: '/outing?tab=employee-feedback', text: 'Outing Feedback', icon: <AssignmentIcon /> },
+        { to: '/outing?tab=employee-feedback', text: 'Employee Feedback', icon: <AssignmentIcon /> },
         { to: '/outing?tab=scorecard', text: 'Outing Scorecard', icon: <ScoreIcon /> },
       ],
     },
@@ -174,7 +160,7 @@ export default function Sidebar() {
     { to: '/confirmations', text: 'Confirmations', icon: <CheckCircleIcon /> },
     { to: '/salary-revision', text: 'Salary Revision', icon: <MonetizationOnIcon /> },
     { to: '/employee-letters', text: 'Employee Letters', icon: <MailIcon /> },
-    { to: '/salary-sheet', text: 'Salary Sheet', icon: <PaymentsIcon /> },
+    // { to: '/salary-sheet', text: 'Salary Sheet', icon: <PaymentsIcon /> },
 
     {
       text: 'PMS',
@@ -188,8 +174,23 @@ export default function Sidebar() {
         { to: '/pms?tab=summary', text: 'Final Performance', icon: <SummaryIcon /> },
       ],
     },
+    
+    // { to: '/exits', text: 'Exit', icon: <ExitToAppIcon /> },
+    // {
+    //   text: 'Attendance',
+    //   icon: <AccessTimeIcon />,
+    //   onClick: () => setOpenAttendance(p => !p),
+    //   open: openAttendance,
+    //   subItems: [
+    //     { to: '/attendance?tab=attendance', text: 'Attendance', icon: <TodayIcon /> },
+    //     { to: '/attendance?tab=leaves', text: 'Leaves', icon: <BeachAccessIcon /> },
+    //     { to: '/attendance?tab=out-of-office', text: 'Out of Office', icon: <WorkOffIcon /> },
+    //   ],
+    // },
 
-    { to: '/exits', text: 'Exit', icon: <ExitToAppIcon /> },
+    // { to: '/checklist-delegation', text: 'Check List & Delegation', icon: <AssignmentTurnedInIcon /> },
+    // { to: '/requisition', text: 'Requisition', icon: <RequestPageIcon /> },
+    // { to: '/onboarding', text: 'Onboarding', icon: <BusinessCenterIcon /> },
     { to: '/profile', text: 'Profile', icon: <AccountCircleIcon /> },
     { to: '/configuration', text: 'Configuration', icon: <SettingsIcon /> },
   ];

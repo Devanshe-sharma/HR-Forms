@@ -134,6 +134,15 @@ const api = {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return (await response.json()) as ApiResponse<T>;
   },
+  postFormData: async function <T>(path: string, formData: FormData): Promise<ApiResponse<T>> {
+    const response = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getToken()}` },
+      body: formData,
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return (await response.json()) as ApiResponse<T>;
+  },
   del: async function <T>(path: string): Promise<ApiResponse<T>> {
     const response = await fetch(`${API_BASE}${path}`, {
       method: 'DELETE',
@@ -782,12 +791,8 @@ function JDRoleDocs({ dept, c, designations }: { dept: string; c: string; design
     }
     
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://13.235.0.127:5000/api'}/upload-designation-doc`, {
-        method: 'POST',
-        body: formData,
-      });
-      
-      if (response.ok) {
+      const response = await api.postFormData<{ success: boolean }>(`/upload-designation-doc`, formData);
+      if (response.success) {
         window.location.reload();
       }
     } catch (error) {
@@ -1118,7 +1123,7 @@ function DeptNotes({ dept, c, dd, onUpdate }: {
       formData.append('link', form.link);
     }
     
-    const r = await api.post<DeptNote>(`/dept-orientation/${dd?.id}/notes`, formData);
+    const r = await api.postFormData<DeptNote>(`/dept-orientation/${dd?.id}/notes`, formData);
     if (r.success && r.data) onUpdate(dept, { notes: [...(dd?.notes || []), r.data] });
     setSaving(false);
     setAddDlg(false);
@@ -1387,7 +1392,7 @@ function NotionDeptSelect({
       >
         <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: activeStyle.color, flexShrink: 0 }} />
         <Typography sx={{ fontSize: '0.85rem', fontWeight: 700, color: activeStyle.color, lineHeight: 1.3 }}>
-          {value || 'Select department'}
+          {value || 'Select Department'}
         </Typography>
         <ArrowDownIcon sx={{
           fontSize: 16, color: activeStyle.color, opacity: 0.7,
@@ -1482,7 +1487,8 @@ export default function DeptOrientationPage() {
           setDeptDataMap(map);
           const sorted = Object.keys(map).sort();
           setDepartments(sorted);
-          if (sorted.length > 0) setActiveDept(sorted[0]);
+          // Don't auto-select first department - let user choose
+          // if (sorted.length > 0) setActiveDept(sorted[0]);
         }
       })
       .catch(err => {

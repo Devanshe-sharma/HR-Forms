@@ -3352,12 +3352,12 @@ input:focus, select:focus, textarea:focus {
     top: 6rem;
   }
 
-  .sm\:mb-6 {
-    margin-bottom: 1.5rem;
+  .sm\:mb-4 {
+    margin-bottom: 1rem;
   }
 
-  .sm\:mb-8 {
-    margin-bottom: 2rem;
+  .sm\:mb-6 {
+    margin-bottom: 1.5rem;
   }
 
   .sm\:mt-20 {
@@ -3376,8 +3376,8 @@ input:focus, select:focus, textarea:focus {
     display: none;
   }
 
-  .sm\:h-24 {
-    height: 6rem;
+  .sm\:h-20 {
+    height: 5rem;
   }
 
   .sm\:h-32 {
@@ -3456,6 +3456,12 @@ input:focus, select:focus, textarea:focus {
     --tw-space-y-reverse: 0;
     margin-top: calc(2.5rem * calc(1 - var(--tw-space-y-reverse)));
     margin-bottom: calc(2.5rem * var(--tw-space-y-reverse));
+  }
+
+  .sm\:space-y-4 > :not([hidden]) ~ :not([hidden]) {
+    --tw-space-y-reverse: 0;
+    margin-top: calc(1rem * calc(1 - var(--tw-space-y-reverse)));
+    margin-bottom: calc(1rem * var(--tw-space-y-reverse));
   }
 
   .sm\:space-y-6 > :not([hidden]) ~ :not([hidden]) {
