@@ -50,7 +50,7 @@ router.get('/', async (req, res) => {
 });
 
 // ── ONBOARDING PPT ────────────────────────────────────────────
-router.put('/:deptName/onboarding-ppt', requireRole('hr'), async (req, res) => {
+router.put('/:deptName/onboarding-ppt', requireRole(['HR', 'Admin']), async (req, res) => {
   try {
     const { name, url } = req.body;
     if (!url) return res.status(400).json({ success: false, message: 'URL required' });
@@ -65,7 +65,7 @@ router.put('/:deptName/onboarding-ppt', requireRole('hr'), async (req, res) => {
 });
 
 // ── MASTER PPT ────────────────────────────────────────────────
-router.put('/:deptName/master-ppt', requireRole('hr'), async (req, res) => {
+router.put('/:deptName/master-ppt', requireRole(['HR', 'Admin']), async (req, res) => {
   try {
     const { name, url } = req.body;
     if (!url) return res.status(400).json({ success: false, message: 'URL required' });
@@ -80,7 +80,7 @@ router.put('/:deptName/master-ppt', requireRole('hr'), async (req, res) => {
 });
 
 // ── REVIEW PPTs ───────────────────────────────────────────────
-router.post('/:deptId/review-ppts', requireRole('hr'), async (req, res) => {
+router.post('/:deptId/review-ppts', requireRole(['HR', 'Admin']), async (req, res) => {
   try {
     const { fy, quarter, name, url } = req.body;
     if (!fy || !quarter || !name || !url)
@@ -96,7 +96,7 @@ router.post('/:deptId/review-ppts', requireRole('hr'), async (req, res) => {
   }
 });
 
-router.delete('/:deptId/review-ppts/:pptId', requireRole('hr'), async (req, res) => {
+router.delete('/:deptId/review-ppts/:pptId', requireRole(['HR', 'Admin']), async (req, res) => {
   try {
     const dept = await findDept(req.params.deptId);
     if (!dept) return res.status(404).json({ success: false, message: 'Department not found' });
@@ -109,7 +109,7 @@ router.delete('/:deptId/review-ppts/:pptId', requireRole('hr'), async (req, res)
 });
 
 // ── NOTES ─────────────────────────────────────────────────────
-router.post('/:deptId/notes', requireRole('hr'), async (req, res) => {
+router.post('/:deptId/notes', requireRole(['HR', 'Admin']), async (req, res) => {
   try {
     const { title, content } = req.body;
     if (!title || !content)
@@ -128,7 +128,7 @@ router.post('/:deptId/notes', requireRole('hr'), async (req, res) => {
   }
 });
 
-router.delete('/:deptId/notes/:noteId', requireRole('hr'), async (req, res) => {
+router.delete('/:deptId/notes/:noteId', requireRole(['HR', 'Admin']), async (req, res) => {
   try {
     const dept = await findDept(req.params.deptId);
     if (!dept) return res.status(404).json({ success: false, message: 'Department not found' });
@@ -141,7 +141,7 @@ router.delete('/:deptId/notes/:noteId', requireRole('hr'), async (req, res) => {
 });
 
 // ── TESTS ─────────────────────────────────────────────────────
-router.put('/:deptId/tests/recruitment', requireRole('hr'), async (req, res) => {
+router.put('/:deptId/tests/recruitment', requireRole(['HR', 'Admin']), async (req, res) => {
   try {
     const { name, url } = req.body;
     if (!url) return res.status(400).json({ success: false, message: 'URL required' });
@@ -155,7 +155,7 @@ router.put('/:deptId/tests/recruitment', requireRole('hr'), async (req, res) => 
   }
 });
 
-router.put('/:deptId/tests/onboarding', requireRole('hr'), async (req, res) => {
+router.put('/:deptId/tests/onboarding', requireRole(['HR', 'Admin']), async (req, res) => {
   try {
     const { name, url } = req.body;
     if (!url) return res.status(400).json({ success: false, message: 'URL required' });

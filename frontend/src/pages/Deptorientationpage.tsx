@@ -51,10 +51,11 @@ import {
   Check as CheckIcon,
 } from '@mui/icons-material';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://3.109.132.204:5000/api';
+const API_BASE = 'http://13.235.0.127:5000/api';
 const currentUserRole: 'hr' | 'management' | 'employee' = 'hr';
 const isHR = currentUserRole === 'hr';
 const getToken = () => localStorage.getItem('token') || '';
+const getRole = () => localStorage.getItem('role') || 'Admin';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Designation {
@@ -111,7 +112,10 @@ interface ApiResponse<T = unknown> {
 const api = {
   get: async function <T>(path: string): Promise<ApiResponse<T>> {
     const response = await fetch(`${API_BASE}${path}`, {
-      headers: { Authorization: `Bearer ${getToken()}` },
+      headers: { 
+        Authorization: `Bearer ${getToken()}`,
+        'x-user-role': getRole(),
+      },
     });
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     return (await response.json()) as ApiResponse<T>;
@@ -119,7 +123,11 @@ const api = {
   put: async function <T>(path: string, body: object): Promise<ApiResponse<T>> {
     const response = await fetch(`${API_BASE}${path}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+      headers: { 
+        'Content-Type': 'application/json', 
+        Authorization: `Bearer ${getToken()}`,
+        'x-user-role': getRole(),
+      },
       body: JSON.stringify(body),
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -128,7 +136,11 @@ const api = {
   post: async function <T>(path: string, body: object): Promise<ApiResponse<T>> {
     const response = await fetch(`${API_BASE}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+      headers: { 
+        'Content-Type': 'application/json', 
+        Authorization: `Bearer ${getToken()}`,
+        'x-user-role': getRole(),
+      },
       body: JSON.stringify(body),
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -137,7 +149,10 @@ const api = {
   postFormData: async function <T>(path: string, formData: FormData): Promise<ApiResponse<T>> {
     const response = await fetch(`${API_BASE}${path}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${getToken()}` },
+      headers: { 
+        Authorization: `Bearer ${getToken()}`,
+        'x-user-role': getRole(),
+      },
       body: formData,
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -146,7 +161,10 @@ const api = {
   del: async function <T>(path: string): Promise<ApiResponse<T>> {
     const response = await fetch(`${API_BASE}${path}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${getToken()}` },
+      headers: { 
+        Authorization: `Bearer ${getToken()}`,
+        'x-user-role': getRole(),
+      },
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return (await response.json()) as ApiResponse<T>;
@@ -154,7 +172,10 @@ const api = {
   upload: async function <T>(path: string, formData: FormData): Promise<ApiResponse<T>> {
     const response = await fetch(`${API_BASE}${path}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${getToken()}` },
+      headers: { 
+        Authorization: `Bearer ${getToken()}`,
+        'x-user-role': getRole(),
+      },
       body: formData,
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
