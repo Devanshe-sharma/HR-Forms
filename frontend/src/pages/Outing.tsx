@@ -4,6 +4,8 @@ import axios from 'axios';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
 import { Plus, X, CheckCircle, XCircle, Edit, Trash2, Save, Archive, Calendar, MapPin, IndianRupee, AlignLeft, Tag, Eye, Star } from 'lucide-react';
+axios.defaults.headers.common['x-user-role'] = localStorage.getItem('role') || 'Admin';
+
 
 const formatDate = (date?: string | Date | null): string => {
   if (!date) return 'TBD';
@@ -171,7 +173,7 @@ const Outing: React.FC = () => {
     }
   };
 
-  const API_BASE = process.env.NODE_ENV === 'development' ? 'http://13.235.0.127:5000/api' : '/api';
+  const API_BASE = 'http://13.235.0.127:5000/api';
 
   // ─── LOAD DATA ────────────────────────────────────────────
   const refreshData = async () => {
