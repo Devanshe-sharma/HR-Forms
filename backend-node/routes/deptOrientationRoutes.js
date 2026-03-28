@@ -44,8 +44,8 @@ router.get('/', async (req, res) => {
     const results = await Promise.all(
       validNames.map(name =>
         Department.findOneAndUpdate(
-          { department: name },                    // ← was { name }
-          { $setOnInsert: { department: name } },  // ← was { name }
+          { name: name },
+          { $setOnInsert: { name: name } },  // ← was { name }
           { upsert: true, new: true, lean: true, setDefaultsOnInsert: true }
         )
       )
@@ -56,7 +56,7 @@ router.get('/', async (req, res) => {
       .map(doc => ({
         ...doc,
         id: doc._id?.toString() || '',
-        name: doc.department,   // ← map "department" → "name" for the frontend
+        name: doc.name,   // ← map "department" → "name" for the frontend
       }));
 
     res.json({ success: true, data });
