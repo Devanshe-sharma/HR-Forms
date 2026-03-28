@@ -42,4 +42,4 @@ const DepartmentSchema = new mongoose.Schema({
   onboardingTest:  { type: LinkSchema, default: null },
 }, { timestamps: true });
 
-module.exports = mongoose.model('Department', DepartmentSchema);
+module.exports = mongoose.model('DepartmentOrientation', DepartmentSchema);

@@ -55,7 +55,7 @@ const API_BASE = 'http://13.235.0.127:5000/api';
 const currentUserRole: 'hr' | 'management' | 'employee' = 'hr';
 const isHR = currentUserRole === 'hr';
 const getToken = () => localStorage.getItem('token') || '';
-const getRole = () => localStorage.getItem('role') || 'Admin';
+const getRole = () => (localStorage.getItem('role') || 'Admin');
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Designation {
@@ -812,7 +812,7 @@ function JDRoleDocs({ dept, c, designations }: { dept: string; c: string; design
     }
     
     try {
-      const response = await api.postFormData<{ success: boolean }>(`/upload-designation-doc`, formData);
+      const response = await api.postFormData<{ success: boolean }>(`/dept-orientation/upload-designation-doc`, formData);
       if (response.success) {
         window.location.reload();
       }

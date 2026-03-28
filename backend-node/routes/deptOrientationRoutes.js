@@ -1,13 +1,30 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
+const multer = require('multer');
 const Designation = require('../models/Designation');
-const Department = require('../models/Department');   // ← THIS WAS MISSING
+const Department = require('../models/Departmentorientation');   // ← Restored
 const { requireRole } = require('../config/roles');
+
+// Configure multer for file uploads
+const storage = multer.memoryStorage();
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['.pdf', '.doc', '.docx', '.txt', '.jpg', '.jpeg', '.png'];
+    const fileExt = file.originalname.toLowerCase().substring(file.originalname.lastIndexOf('.'));
+    if (allowedTypes.includes(fileExt)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only PDF, DOC, DOCX, TXT, JPG, JPEG, PNG allowed.'));
+    }
+  }
+});
 
 // ── Helper ────────────────────────────────────────────────────
 async function findDept(nameOrId) {
-  let doc = await Department.findOne({ name: nameOrId });
+  let doc = await Department.findOne({ name: nameOrId }); 
   if (!doc && nameOrId.match(/^[a-f\d]{24}$/i)) {
     doc = await Department.findById(nameOrId);
   }
@@ -48,6 +65,89 @@ router.get('/', async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
+router.get('/test-upload', (req, res) => {
+  res.json({ message: 'Upload route working!' });
+});
+
+// ── UPLOAD DESIGNATION DOCUMENTS (JD & Role Docs) ───────────────────────────────────────
+router.post(
+  '/upload-designation-doc',
+  requireRole(['HR', 'Admin']),
+  upload.single('file'),  
+  async (req, res) => {
+  try {
+    const { department, designation, type, systemName, driveLink } = req.body;
+    const file = req.file;
+
+    console.log('Upload request received:', { department, designation, type, systemName, driveLink, file: !!file });
+
+    if (!department || !designation || !type || !systemName) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'department, designation, type, and systemName required' 
+      });
+    }
+
+    if (!file && !driveLink) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Either file or driveLink is required' 
+      });
+    }
+
+    // Find department
+    const dept = await findDept(department);
+    if (!dept) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Department not found' 
+      });
+    }
+
+    // Create document URL (for file uploads, you'd need to implement file storage)
+    const docUrl = driveLink || (file ? `/uploads/${file.originalname}` : '');
+
+    // Create new role document
+    const newRoleDoc = {
+      id: uuidv4(),
+      role: designation,
+      jdUrl: type === 'jd' ? docUrl : dept.roleDocs?.find(doc => doc.role === designation)?.jdUrl || '',
+      roleDocUrl: type === 'role' ? docUrl : dept.roleDocs?.find(doc => doc.role === designation)?.roleDocUrl || '',
+    };
+
+    // Find existing role doc for this designation or add new one
+    const existingDocIndex = dept.roleDocs.findIndex(doc => doc.role === designation);
+    
+    if (existingDocIndex >= 0) {
+      // Update existing document
+      if (type === 'jd') {
+        dept.roleDocs[existingDocIndex].jdUrl = docUrl;
+      } else {
+        dept.roleDocs[existingDocIndex].roleDocUrl = docUrl;
+      }
+    } else {
+      // Add new role document
+      dept.roleDocs.push(newRoleDoc);
+    }
+
+    await dept.save();
+
+    res.json({ 
+      success: true, 
+      message: `${type === 'jd' ? 'JD' : 'Role document'} uploaded successfully`,
+      data: type === 'jd' ? newRoleDoc.jdUrl : newRoleDoc.roleDocUrl
+    });
+
+  } catch (err) {
+    console.error('Upload designation doc error:', err.message);
+    res.status(500).json({ 
+      success: false, 
+      message: err.message 
+    });
+  }
+});
+
 
 // ── ONBOARDING PPT ────────────────────────────────────────────
 router.put('/:deptName/onboarding-ppt', requireRole(['HR', 'Admin']), async (req, res) => {
@@ -168,5 +268,8 @@ router.put('/:deptId/tests/onboarding', requireRole(['HR', 'Admin']), async (req
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
+
+
 
 module.exports = router;
