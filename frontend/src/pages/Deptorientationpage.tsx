@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box, Typography, Stack, Button, IconButton, Tooltip, TextField,
   Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress,
@@ -34,7 +34,7 @@ import {
 const API_BASE = 'http://13.235.0.127:5000/api';
 const getToken = () => localStorage.getItem('token') || '';
 const getRole  = () => localStorage.getItem('role')  || 'Admin';
-const isHR = true; // swap with real role check
+const isHR = getRole() === 'HR' || getRole() === 'Admin';
 
 // ── Clipboard helper — works on HTTP (no HTTPS required) ─────────────────────
 function copyToClipboard(text: string): void {
@@ -75,6 +75,7 @@ interface DeptData {
   id: string; name: string;
   onboardingPPT: LinkItem | null; reviewPPTs: QuarterPPT[]; masterPPT: LinkItem | null;
   notes: DeptNote[]; recruitmentTest: LinkItem | null; onboardingTest: LinkItem | null;
+  roleDocs?: Array<{ id: string; role: string; jdUrl?: string; roleDocUrl?: string; }>;
 }
 interface ApiResponse<T = unknown> { success: boolean; data?: T; message?: string; }
 
@@ -354,9 +355,127 @@ function DeptPresentations({dept,dd,c,onUpdate}:{dept:string;dd:DeptData|undefin
 // ══════════════════════════════════════════════════════════════════════════════
 // Section 2 — JD & Role Docs  (read-only from Designation model)
 // ══════════════════════════════════════════════════════════════════════════════
-function JDRoleDocs({dept,c,designations}:{dept:string;c:string;designations:Designation[]}) {
+function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;designations:Designation[];dd:DeptData|undefined;onUpdate:(n:string,d:Partial<DeptData>)=>void}) {
   const [active,setActive] = useState<string|null>(null);
+  const [uploadDialog, setUploadDialog] = useState<{ 
+    open: boolean; 
+    type: 'jd' | 'role_doc'; 
+    designation: string;
+    dept: string;
+  }>({ 
+    open: false, 
+    type: 'jd', 
+    designation: '',
+    dept: ''
+  });
+  const [uploadType, setUploadType] = useState<'file' | 'drive'>('file');
+  const [driveLink, setDriveLink] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
   const roles = designations.filter(d=>d.department===dept);
+
+  const openUploadDialog = (type: 'jd' | 'role_doc', designation: string) => {
+    console.log('Opening upload dialog:', { type, designation, dept });
+    setUploadDialog({
+      open: true,
+      type,
+      designation,
+      dept
+    });
+    setUploadType('file');
+    setDriveLink('');
+    setSelectedFile(null);
+  };
+
+  const handleFileUpload = async () => {
+    console.log('Starting upload:', uploadDialog);
+    if (!uploadDialog.designation || !uploadDialog.dept) {
+      console.error('Missing department or designation:', uploadDialog);
+      return;
+    }
+    
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('department', uploadDialog.dept);
+      formData.append('designation', uploadDialog.designation);
+      formData.append('type', uploadDialog.type);
+      
+      const systemName = `${slugify(uploadDialog.dept)}_${slugify(uploadDialog.designation)}_${uploadDialog.type}`;
+      formData.append('systemName', systemName);
+      
+      console.log('FormData prepared:', { department: uploadDialog.dept, designation: uploadDialog.designation, type: uploadDialog.type, systemName });
+      
+      if (uploadType === 'file' && selectedFile) {
+        formData.append('file', selectedFile);
+        console.log('File selected:', selectedFile.name);
+      } else if (uploadType === 'drive' && driveLink) {
+        formData.append('driveLink', driveLink);
+        console.log('Drive link provided:', driveLink);
+      } else {
+        throw new Error('Please provide either a file or Google Drive link');
+      }
+
+      const response = await fetch(`${API_BASE}/dept-orientation/upload-designation-doc`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${getToken()}`,
+          'x-user-role': getRole(),
+        },
+        body: formData,
+      });
+
+      console.log('Upload response status:', response.status);
+      
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Upload error response:', error);
+        throw new Error(error.message || 'Upload failed');
+      }
+
+      const result = await response.json();
+      console.log('Upload success:', result);
+      
+      if (result.success) {
+        setUploadDialog({ open: false, type: 'jd', designation: '', dept: '' });
+        
+        // Update the department data with the new document
+        if (result.data && dd) {
+          const updatedRoleDocs = dd.roleDocs || [];
+          const existingDocIndex = updatedRoleDocs.findIndex(doc => doc.role === uploadDialog.designation);
+          
+          const newDoc = {
+            id: uploadDialog.designation + '_' + Date.now(), // temporary ID
+            role: uploadDialog.designation,
+            [uploadDialog.type === 'jd' ? 'jdUrl' : 'roleDocUrl']: result.data
+          };
+          
+          if (existingDocIndex >= 0) {
+            // Update existing document
+            updatedRoleDocs[existingDocIndex] = {
+              ...updatedRoleDocs[existingDocIndex],
+              ...newDoc
+            };
+          } else {
+            // Add new document
+            updatedRoleDocs.push(newDoc);
+          }
+          
+          onUpdate(dept, { roleDocs: updatedRoleDocs });
+          console.log('Document uploaded and state updated:', result.data);
+        }
+      } else {
+        throw new Error(result.message || 'Upload failed');
+      }
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      alert(error.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   return (
     <Box>
@@ -368,6 +487,11 @@ function JDRoleDocs({dept,c,designations}:{dept:string;c:string;designations:Des
             const roleSys = `${slugify(dept)}_${slugify(r.designation)}_role_doc`;
             const hasJD   = !!r.jd_link;
             const hasRole = !!(r.role_document_link||r.role_document);
+            
+            // Check for uploaded documents in department data
+            const uploadedDoc = dd?.roleDocs?.find(doc => doc.role === r.designation);
+            const uploadedJD = uploadedDoc?.jdUrl;
+            const uploadedRole = uploadedDoc?.roleDocUrl;
             return(
               <Box key={r._id}>
                 <Box onClick={()=>setActive(a=>a===r._id?null:r._id)}
@@ -378,8 +502,8 @@ function JDRoleDocs({dept,c,designations}:{dept:string;c:string;designations:Des
                     {r.remarks&&<Typography fontSize="0.72rem" color="#9CA3AF">{r.remarks}</Typography>}
                   </Box>
                   <Stack direction="row" spacing={0.5}>
-                    {hasJD  &&<Chip label="JD"       size="small" sx={{fontSize:'0.65rem',height:18,bgcolor:`${c}12`,color:c,fontWeight:700}}/>}
-                    {hasRole&&<Chip label="Role Doc" size="small" sx={{fontSize:'0.65rem',height:18,bgcolor:'#F3F4F6',color:'#6B7280',fontWeight:700}}/>}
+                    {(hasJD || uploadedJD)  &&<Chip label="JD"       size="small" sx={{fontSize:'0.65rem',height:18,bgcolor:`${c}12`,color:c,fontWeight:700}}/>}
+                    {(hasRole || uploadedRole)&&<Chip label="Role Doc" size="small" sx={{fontSize:'0.65rem',height:18,bgcolor:'#F3F4F6',color:'#6B7280',fontWeight:700}}/>}
                   </Stack>
                   <ExpandMoreIcon sx={{fontSize:18,color:'#9CA3AF',transform:active===r._id?'rotate(180deg)':'none',transition:'transform 0.2s'}}/>
                 </Box>
@@ -394,13 +518,30 @@ function JDRoleDocs({dept,c,designations}:{dept:string;c:string;designations:Des
                           <Typography fontSize="0.82rem" fontWeight={700} color="#1F2937">Job Description</Typography>
                           <CopyBadge text={jdSys}/>
                         </Box>
-                        {hasJD?(
+                        {(uploadedJD || hasJD)?(
                           <Stack direction="row" spacing={1}>
-                            <Button href={r.jd_link} target="_blank" startIcon={<OpenInNewIcon sx={{fontSize:14}}/>}
+                            <Button href={uploadedJD || r.jd_link} target="_blank" startIcon={<OpenInNewIcon sx={{fontSize:14}}/>}
                               sx={{textTransform:'none',fontWeight:700,fontSize:'0.82rem',color:'white',bgcolor:c,borderRadius:'8px',px:2,py:0.7,'&:hover':{opacity:0.88}}}>Open</Button>
-                            <Tooltip title="Download"><IconButton component="a" href={r.jd_link} download={jdSys} sx={{color:'#6B7280',bgcolor:'#F3F4F6',borderRadius:'7px',width:32,height:32}}><DownloadIcon sx={{fontSize:15}}/></IconButton></Tooltip>
+                            <Tooltip title="Download"><IconButton component="a" href={uploadedJD || r.jd_link} download={jdSys} sx={{color:'#6B7280',bgcolor:'#F3F4F6',borderRadius:'7px',width:32,height:32}}><DownloadIcon sx={{fontSize:15}}/></IconButton></Tooltip>
+                            {isHR && (
+                              <Tooltip title="Upload New JD">
+                                <IconButton onClick={() => openUploadDialog('jd', r.designation)} sx={{color:c,bgcolor:`${c}12`,borderRadius:'7px',width:32,height:32}}>
+                                  <EditIcon sx={{fontSize:15}}/>
+                                </IconButton>
+                              </Tooltip>
+                            )}
                           </Stack>
-                        ):<Typography fontSize="0.78rem" color="#9CA3AF" fontStyle="italic">No JD linked in designation record.</Typography>}
+                        ):(
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <Typography fontSize="0.78rem" color="#9CA3AF" fontStyle="italic" flex={1}>No JD linked in designation record.</Typography>
+                            {isHR && (
+                              <Button size="small" startIcon={<EditIcon sx={{fontSize:14}}/>} onClick={() => openUploadDialog('jd', r.designation)}
+                                sx={{textTransform:'none',fontWeight:600,fontSize:'0.78rem',color:c,bgcolor:`${c}10`,border:`1px solid ${c}30`,borderRadius:'6px',px:1.5,py:0.5}}>
+                                Upload JD
+                              </Button>
+                            )}
+                          </Stack>
+                        )}
                       </Box>
                       {/* Role Doc */}
                       <Box sx={{p:1.5,bgcolor:'white',borderRadius:'10px',border:'1px solid #E5E7EB'}}>
@@ -409,13 +550,30 @@ function JDRoleDocs({dept,c,designations}:{dept:string;c:string;designations:Des
                           <Typography fontSize="0.82rem" fontWeight={700} color="#1F2937">Role Document</Typography>
                           <CopyBadge text={roleSys}/>
                         </Box>
-                        {hasRole?(
+                        {(uploadedRole || hasRole)?(
                           <Stack direction="row" spacing={1}>
-                            <Button href={r.role_document_link||r.role_document} target="_blank" startIcon={<OpenInNewIcon sx={{fontSize:14}}/>}
+                            <Button href={uploadedRole || r.role_document_link||r.role_document} target="_blank" startIcon={<OpenInNewIcon sx={{fontSize:14}}/>}
                               sx={{textTransform:'none',fontWeight:700,fontSize:'0.82rem',color:c,bgcolor:`${c}12`,border:`1px solid ${c}30`,borderRadius:'8px',px:2,py:0.7,'&:hover':{bgcolor:`${c}20`}}}>Open</Button>
-                            <Tooltip title="Download"><IconButton component="a" href={r.role_document_link||r.role_document} download={roleSys} sx={{color:'#6B7280',bgcolor:'#F3F4F6',borderRadius:'7px',width:32,height:32}}><DownloadIcon sx={{fontSize:15}}/></IconButton></Tooltip>
+                            <Tooltip title="Download"><IconButton component="a" href={uploadedRole || r.role_document_link||r.role_document} download={roleSys} sx={{color:'#6B7280',bgcolor:'#F3F4F6',borderRadius:'7px',width:32,height:32}}><DownloadIcon sx={{fontSize:15}}/></IconButton></Tooltip>
+                            {isHR && (
+                              <Tooltip title="Upload New Role Doc">
+                                <IconButton onClick={() => openUploadDialog('role_doc', r.designation)} sx={{color:'#6B7280',bgcolor:'#F3F4F6',borderRadius:'7px',width:32,height:32}}>
+                                  <EditIcon sx={{fontSize:15}}/>
+                                </IconButton>
+                              </Tooltip>
+                            )}
                           </Stack>
-                        ):<Typography fontSize="0.78rem" color="#9CA3AF" fontStyle="italic">No role document linked in designation record.</Typography>}
+                        ):(
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <Typography fontSize="0.78rem" color="#9CA3AF" fontStyle="italic" flex={1}>No role document linked in designation record.</Typography>
+                            {isHR && (
+                              <Button size="small" startIcon={<EditIcon sx={{fontSize:14}}/>} onClick={() => openUploadDialog('role_doc', r.designation)}
+                                sx={{textTransform:'none',fontWeight:600,fontSize:'0.78rem',color:'#6B7280',bgcolor:'#F3F4F6',border:'1px solid #D1D5DB',borderRadius:'6px',px:1.5,py:0.5}}>
+                                Upload Role Doc
+                              </Button>
+                            )}
+                          </Stack>
+                        )}
                       </Box>
                     </Stack>
                   </Box>
@@ -425,6 +583,107 @@ function JDRoleDocs({dept,c,designations}:{dept:string;c:string;designations:Des
           })}
         </Stack>
       }
+      
+      {/* Upload Dialog */}
+      <Dialog open={uploadDialog.open} onClose={() => setUploadDialog({ ...uploadDialog, open: false })} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '16px' } }}>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
+          Upload {uploadDialog.type === 'jd' ? 'Job Description' : 'Role Document'} — {uploadDialog.designation}
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} mt={0.5}>
+            {/* Upload Type Selection */}
+            <Stack direction="row" spacing={1}>
+              <Button
+                variant={uploadType === 'file' ? 'contained' : 'outlined'}
+                size="small"
+                onClick={() => setUploadType('file')}
+                sx={{ 
+                  borderRadius: '8px', 
+                  textTransform: 'none',
+                  bgcolor: uploadType === 'file' ? c : 'transparent',
+                  color: uploadType === 'file' ? 'white' : c,
+                  borderColor: c
+                }}
+              >
+                Upload File
+              </Button>
+              <Button
+                variant={uploadType === 'drive' ? 'contained' : 'outlined'}
+                size="small"
+                onClick={() => setUploadType('drive')}
+                sx={{ 
+                  borderRadius: '8px', 
+                  textTransform: 'none',
+                  bgcolor: uploadType === 'drive' ? c : 'transparent',
+                  color: uploadType === 'drive' ? 'white' : c,
+                  borderColor: c
+                }}
+              >
+                Google Drive Link
+              </Button>
+            </Stack>
+
+            {uploadType === 'file' ? (
+              <>
+                <TextField
+                  size="small"
+                  label="Select File"
+                  fullWidth
+                  value={selectedFile?.name || ''}
+                  onClick={() => fileInputRef.current?.click()}
+                  InputProps={{
+                    readOnly: true,
+                  }}
+                  sx={{ 
+                    cursor: 'pointer',
+                    '& .MuiOutlinedInput-root': { borderRadius: '10px' },
+                  }}
+                />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  hidden
+                  accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png"
+                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                />
+                {selectedFile && (
+                  <Box sx={{ p: 1.5, bgcolor: '#F8FAFC', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                    <Typography fontSize="0.78rem" color="#64748B">
+                      Selected: <span style={{ fontWeight: 600, color: '#334155' }}>{selectedFile.name}</span>
+                    </Typography>
+                    <Typography fontSize="0.72rem" color="#94A3B8">
+                      Size: {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                    </Typography>
+                  </Box>
+                )}
+              </>
+            ) : (
+              <TextField
+                size="small"
+                label="Google Drive Link"
+                fullWidth
+                value={driveLink}
+                onChange={e => setDriveLink(e.target.value)}
+                placeholder="https://drive.google.com/file/d/..."
+                sx={{ '& .MuiOutlinedInput-root': { borderRadius: '10px' } }}
+              />
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setUploadDialog({ ...uploadDialog, open: false })} sx={{ textTransform: 'none', color: '#6B7280', borderRadius: '8px' }}>
+            Cancel
+          </Button>
+          <Button 
+            variant="contained" 
+            onClick={handleFileUpload} 
+            disabled={uploading || (uploadType === 'file' ? !selectedFile : !driveLink)}
+            sx={{ bgcolor: c, borderRadius: '8px', textTransform: 'none', px: 3 }}
+          >
+            {uploading ? <CircularProgress size={14} color="inherit" /> : 'Upload'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
@@ -663,7 +922,7 @@ export default function DeptOrientationPage() {
                     <DeptPresentations dept={activeDept} dd={dd} c={c} onUpdate={updateDeptData}/>
                   </SectionCard>
                   <SectionCard num={2} label="JD & Role Documents" icon={<WorkIcon sx={{fontSize:21}}/>}>
-                    <JDRoleDocs dept={activeDept} c={c} designations={designations}/>
+                    <JDRoleDocs dept={activeDept} c={c} designations={designations} dd={dd} onUpdate={updateDeptData}/>
                   </SectionCard>
                   <SectionCard num={3} label="Department Notes"  icon={<NotesIcon sx={{fontSize:21}}/>}>
                     <DeptNotes dept={activeDept} c={c} dd={dd} onUpdate={updateDeptData}/>
