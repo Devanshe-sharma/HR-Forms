@@ -44,8 +44,8 @@ router.get('/', async (req, res) => {
     const results = await Promise.all(
       validNames.map(name =>
         Department.findOneAndUpdate(
-          { department: name },                    // ← use department field
-          { $setOnInsert: { department: name } },  // ← use department field
+          { name: name },                  // ← use department field
+          { $setOnInsert: { name : name } },  // ← use department field
           { upsert: true, new: true, lean: true, setDefaultsOnInsert: true }
         )
       )
@@ -56,7 +56,7 @@ router.get('/', async (req, res) => {
       .map(doc => ({
         ...doc,
         id: doc._id?.toString() || '',
-        name: doc.department,   // ← map department field to name for frontend
+        name: doc.name,   // ← map department field to name for frontend
       }));
 
     res.json({ success: true, data });
@@ -92,7 +92,7 @@ router.post(
     });
 
     if (!department || !designation || !type || !systemName) {
-      console.log('❌ Missing required fields');
+      console.log('Missing required fields');
       return res.status(400).json({ 
         success: false, 
         message: 'department, designation, type, and systemName required' 

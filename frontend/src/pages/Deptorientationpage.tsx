@@ -87,15 +87,18 @@ const authH = () => ({
 });
 async function apiGet<T>(p: string): Promise<ApiResponse<T>> {
   const r = await fetch(`${API_BASE}${p}`, { headers: authH() });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json();
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
 }
 async function apiPut<T>(p: string, body: object): Promise<ApiResponse<T>> {
   const r = await fetch(`${API_BASE}${p}`, { method:'PUT', headers:authH(), body:JSON.stringify(body) });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json();
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
 }
 async function apiPost<T>(p: string, body: object): Promise<ApiResponse<T>> {
   const r = await fetch(`${API_BASE}${p}`, { method:'POST', headers:authH(), body:JSON.stringify(body) });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json();
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
 }
 async function apiDel<T>(p: string): Promise<ApiResponse<T>> {
   const r = await fetch(`${API_BASE}${p}`, { method:'DELETE', headers:authH() });
