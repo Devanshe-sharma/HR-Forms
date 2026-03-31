@@ -6,7 +6,7 @@ const DesignationSchema = new mongoose.Schema(
         department: String,
         designation: String,
         role_document_link: String,
-        jd_link: Number,
+        jd_link: String,
         remarks: String,
         role_document: String
     },
