@@ -4,7 +4,7 @@ import Navbar from '../components/Navbar';
 import { Search, Plus, Edit, Save, X, Filter, Download, Calendar, User, Building, Mail, DollarSign, TrendingUp, AlertCircle } from 'lucide-react';
 import axios from 'axios';
 
-const API_BASE = 'http://3.109.132.204:5000/api';
+const API_BASE = 'http://3.110.162.1:5000/api';
 
 // Configure axios defaults
 const api = axios.create({
