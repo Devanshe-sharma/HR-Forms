@@ -31,7 +31,7 @@ import {
   Check as CheckIcon,
 } from '@mui/icons-material';
 
-const API_BASE = 'http://13.235.0.127:5000/api';
+const API_BASE = process.env.API_BASE_URL;
 const getToken = () => localStorage.getItem('token') || '';
 const getRole  = () => localStorage.getItem('role')  || 'Admin';
 const isHR = getRole() === 'HR' || getRole() === 'Admin';

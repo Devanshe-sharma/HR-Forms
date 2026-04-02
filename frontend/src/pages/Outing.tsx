@@ -173,7 +173,7 @@ const Outing: React.FC = () => {
     }
   };
 
-  const API_BASE = 'http://13.235.0.127:5000/api';
+  const API_BASE = 'http://3.109.132.204:5000/api';
 
   // ─── LOAD DATA ────────────────────────────────────────────
   const refreshData = async () => {

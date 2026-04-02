@@ -63,7 +63,7 @@ type Employee = { id: number; full_name: string; official_email: string };
 type Department = { id: number; name: string; dept_head_email?: string; dept_group_email?: string };
 type Designation = { id: number; name: string; role_document_link?: string; jd_link?: string };
 
-const API_BASE = 'http://13.235.0.127:5000/api'; // change to production later
+const API_BASE = 'http://3.109.132.204:5000/api'; // change to production later
 
 export default function NewRequisitionForm() {
   const [employees, setEmployees] = useState<Employee[]>([]);

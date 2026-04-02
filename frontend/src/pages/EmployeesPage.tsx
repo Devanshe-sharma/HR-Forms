@@ -48,7 +48,7 @@ interface Department {
   department_type: string;
 }
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://3.109.132.204:5000/api';
+const API_BASE = process.env.API_BASE_URL || 'http://3.109.132.204:5000/api';
 
 // Consistent avatar color per name initial
 const AVATAR_COLORS = [

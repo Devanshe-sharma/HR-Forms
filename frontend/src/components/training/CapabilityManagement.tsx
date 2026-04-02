@@ -3,7 +3,7 @@ import axios from 'axios';
 import { Plus, X, Edit, Trash2, Save } from 'lucide-react';
 import { getRole, can } from '../../config/rbac';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://13.235.0.127:5000/api';
+const API_BASE = process.env.API_BASE_URL || 'http://3.109.132.204:5000/api';
 const api = axios.create({ baseURL: API_BASE });
 api.interceptors.request.use((config) => {
   const role = getRole();
@@ -222,7 +222,7 @@ export default function CapabilityManagement() {
   };
 
   return (
-    <div className="p-6">
+    <div className="w-full min-w-0 p-6">
       <div className="mb-6">
         <h2 className="text-xl text-gray-700 mb-2">Capability Management</h2>
         <p className="text-gray-400 text-sm">Manage capability areas and skills for training mapping</p>
@@ -249,7 +249,7 @@ export default function CapabilityManagement() {
           )}
         </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -321,7 +321,7 @@ export default function CapabilityManagement() {
           )}
         </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
