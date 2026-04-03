@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "webpack serve --mode development --config webpack.config.mjs",
-    "build": "webpack --mode production --config webpack.config.mjs"
-  },
+  "dev": "webpack serve --mode development --config webpack.config.mjs",
+  "build": "cross-env NODE_ENV=production webpack --mode production --config webpack.config.mjs"
+ },
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
@@ -42,6 +42,7 @@
     "@types/react-dom": "^18.3.7",
     "autoprefixer": "^10.4.23",
     "buffer": "^6.0.3",
+    "cross-env": "^10.1.0",
     "css-loader": "^7.1.4",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
