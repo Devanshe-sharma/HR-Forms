@@ -16,7 +16,7 @@ import {
   Person, Group,
 } from '@mui/icons-material';
 
-const API_BASE = process.env.API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.API_BASE_URL;
 const BRAND    = '#3B82F6';
 
 // ─── Types ───────────────────────────────────────────────────────────────────

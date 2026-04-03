@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { getRole } from '../../config/rbac';
 
-const API_BASE = process.env.API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.API_BASE_URL;
 const api = axios.create({ baseURL: API_BASE });
 api.interceptors.request.use((config) => {
   const role = getRole();

@@ -32,7 +32,7 @@ import { getRole } from '../config/rbac';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
-const API_BASE = process.env.API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.API_BASE_URL;
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 interface UserProfile {

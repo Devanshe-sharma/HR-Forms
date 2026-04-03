@@ -48,7 +48,7 @@ interface Department {
   department_type: string;
 }
 
-const API_BASE = process.env.API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.API_BASE_URL;
 
 // Consistent avatar color per name initial
 const AVATAR_COLORS = [
@@ -82,7 +82,6 @@ const EmployeesPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState('');
   const [selectedDesignation, setSelectedDesignation] = useState('');
-  const [selectedParentDepartment, setSelectedParentDepartment] = useState('');
 
   useEffect(() => {
     fetchEmployees();
@@ -147,20 +146,17 @@ const EmployeesPage: React.FC = () => {
       (emp.employee_id?.toLowerCase() || '').includes(q);
     const matchDept = !selectedDepartment || emp.department === selectedDepartment;
     const matchDesig = !selectedDesignation || emp.designation === selectedDesignation;
-    const empDept = departments.find(d => d.department === emp.department);
-    const matchParent = !selectedParentDepartment || empDept?.parent_department === selectedParentDepartment;
-    return matchSearch && matchDept && matchDesig && matchParent;
+    return matchSearch && matchDept && matchDesig;
   });
 
   const uniqueDesignations = Array.from(new Set(employees.map(e => e.designation).filter(Boolean))).sort();
-  const uniqueParentDepts = Array.from(new Set(departments.map(d => d.parent_department).filter(Boolean))).sort();
   const sortedDepartments = [...departments].sort((a, b) => a.department.localeCompare(b.department));
   const sortedFiltered = [...filteredEmployees].sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
-  const hasFilters = !!(searchTerm || selectedDepartment || selectedDesignation || selectedParentDepartment);
+  const hasFilters = !!(searchTerm || selectedDepartment || selectedDesignation);
 
   const clearFilters = () => {
     setSearchTerm(''); setSelectedDepartment('');
-    setSelectedDesignation(''); setSelectedParentDepartment('');
+    setSelectedDesignation('');
   };
 
   const borderColor = isLight ? '#E2E8F0' : 'rgba(255,255,255,0.09)';
@@ -252,11 +248,6 @@ const EmployeesPage: React.FC = () => {
               <TextField select label="Designation" size="small" value={selectedDesignation} onChange={e => setSelectedDesignation(e.target.value)} sx={filterSx}>
                 <MenuItem value="" sx={{ fontSize: '0.8rem', color: theme.palette.text.secondary }}>All</MenuItem>
                 {uniqueDesignations.map(d => <MenuItem key={d} value={d} sx={{ fontSize: '0.8rem' }}>{d}</MenuItem>)}
-              </TextField>
-
-              <TextField select label="Parent Dept." size="small" value={selectedParentDepartment} onChange={e => setSelectedParentDepartment(e.target.value)} sx={filterSx}>
-                <MenuItem value="" sx={{ fontSize: '0.8rem', color: theme.palette.text.secondary }}>All</MenuItem>
-                {uniqueParentDepts.map(d => <MenuItem key={d} value={d} sx={{ fontSize: '0.8rem' }}>{d}</MenuItem>)}
               </TextField>
 
               <Stack direction="row" alignItems="center" spacing={0.75} sx={{ ml: { sm: 'auto' } }}>

@@ -30,7 +30,6 @@ import {
   ContentCopy as CopyIcon,
   Check as CheckIcon,
 } from '@mui/icons-material';
-
 const API_BASE = process.env.API_BASE_URL;
 const getToken = () => localStorage.getItem('token') || '';
 const getRole  = () => localStorage.getItem('role')  || 'Admin';
@@ -68,7 +67,8 @@ interface QuarterPPT {
   id: string; fy: string; quarter: 'Q1'|'Q2'|'Q3'|'Q4'; name: string; url: string;
 }
 interface DeptNote {
-  id: string; title: string; content: string; updatedAt: string;
+  id: string; updatedAt: string;
+  link?: string; attachment?: string; systemName?: string;
 }
 interface LinkItem { id: string; name: string; url: string; }
 interface DeptData {
@@ -697,22 +697,64 @@ function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;desi
 function DeptNotes({dept,c,dd,onUpdate}:{dept:string;c:string;dd:DeptData|undefined;onUpdate:(n:string,d:Partial<DeptData>)=>void}) {
   const [expanded,setExpanded] = useState<string|null>(null);
   const [addDlg,setDlg]        = useState(false);
-  const [title,setTitle]       = useState('');
-  const [content,setContent]   = useState('');
+  const [link,setLink]         = useState('');
+  const [attachment,setAttachment] = useState('');
+  const [uploadType,setUploadType] = useState<'link'|'file'>('link');
+  const [selectedFile,setSelectedFile] = useState<File|null>(null);
   const [saving,setSaving]     = useState(false);
 
+  // Generate system name based on department and timestamp
+  const generateSystemName = () => {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    return `${dept.toLowerCase().replace(/\s+/g, '_')}_note_${timestamp}`;
+  };
+
   const addNote = async()=>{
-    if (!title.trim()||!content.trim()) return;
     setSaving(true);
     try {
-      const r = await apiPost<DeptNote>(`/dept-orientation/${dd?.id}/notes`,{title:title.trim(),content:content.trim()});
+      const systemName = generateSystemName();
+      const noteData = {
+        link: link.trim() || undefined,
+        attachment: attachment.trim() || undefined,
+        systemName
+      };
+      const r = await apiPost<DeptNote>(`/dept-orientation/${dd?.id}/notes`, noteData);
       if (r.success&&r.data) onUpdate(dept,{notes:[...(dd?.notes||[]),r.data]});
-      setDlg(false); setTitle(''); setContent('');
+      setDlg(false); setLink(''); setAttachment(''); setSelectedFile(null);
     } finally { setSaving(false); }
   };
+
   const delNote = async(id:string)=>{
     await apiDel(`/dept-orientation/${dd?.id}/notes/${id}`);
     onUpdate(dept,{notes:(dd?.notes||[]).filter(n=>n.id!==id)});
+  };
+
+  const handleFileUpload = async () => {
+    if (!selectedFile) return;
+    
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+    formData.append('systemName', generateSystemName());
+    
+    try {
+      const response = await fetch(`${API_BASE}/upload/note`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${getToken()}`,
+          'x-user-role': getRole(),
+        },
+        body: formData
+      });
+      
+      if (!response.ok) throw new Error('Upload failed');
+      const result = await response.json();
+      if (result.success) {
+        setAttachment(result.data.url);
+        setSelectedFile(null);
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+    }
   };
 
   return(
@@ -731,31 +773,142 @@ function DeptNotes({dept,c,dd,onUpdate}:{dept:string;c:string;dd:DeptData|undefi
               <Box onClick={()=>setExpanded(e=>e===note.id?null:note.id)}
                 sx={{display:'flex',alignItems:'center',gap:1.5,px:1.8,py:1.3,cursor:'pointer','&:hover':{bgcolor:'#F8FAFC'}}}>
                 <NotesIcon sx={{fontSize:17,color:c,flexShrink:0}}/>
-                <Typography fontSize="0.88rem" fontWeight={600} color="#1F2937" flex={1}>{note.title}</Typography>
+                <Typography fontSize="0.88rem" fontWeight={600} color="#1F2937" flex={1}>Note Attachment</Typography>
                 <Typography fontSize="0.72rem" color="#9CA3AF">{note.updatedAt}</Typography>
+                {(note.link || note.attachment) && (
+                  <Chip label="Has Attachment" size="small" sx={{fontSize:'0.65rem',height:18,bgcolor:`${c}12`,color:c,fontWeight:600}}/>
+                )}
                 {isHR&&<Tooltip title="Delete"><IconButton size="small" onClick={e=>{e.stopPropagation();delNote(note.id);}} sx={{color:'#EF4444',p:0.3}}><DeleteIcon sx={{fontSize:13}}/></IconButton></Tooltip>}
                 <ExpandMoreIcon sx={{fontSize:18,color:'#9CA3AF',transform:expanded===note.id?'rotate(180deg)':'none',transition:'transform 0.2s'}}/>
               </Box>
               <Collapse in={expanded===note.id}>
                 <Box sx={{px:2.5,py:2,bgcolor:'#FAFAFA',borderTop:`1px solid ${c}12`}}>
-                  <Typography fontSize="0.84rem" color="#374151" sx={{whiteSpace:'pre-wrap',lineHeight:1.85}}>{note.content}</Typography>
+                  
+                  {/* Show system name if available */}
+                  {note.systemName && (
+                    <Typography fontSize="0.72rem" color="#6B7280" sx={{mb:1,fontStyle:'italic'}}>
+                      System Name: {note.systemName}
+                    </Typography>
+                  )}
+                  
+                  {/* Show link if available */}
+                  {note.link && (
+                    <Box sx={{mb:1}}>
+                      <Typography fontSize="0.75rem" color="#6B7280" sx={{mb:0.5}}>External Link:</Typography>
+                      <Button 
+                        size="small" 
+                        startIcon={<OpenInNewIcon sx={{fontSize:14}}/>}
+                        onClick={() => window.open(note.link, '_blank')}
+                        sx={{textTransform:'none',fontSize:'0.75rem',color:c,bgcolor:`${c}08`,border:`1px solid ${c}20`,borderRadius:'6px',py:0.5,px:1}}
+                      >
+                        Open Link
+                      </Button>
+                    </Box>
+                  )}
+                  
+                  {/* Show attachment if available */}
+                  {note.attachment && (
+                    <Box sx={{mb:1}}>
+                      <Typography fontSize="0.75rem" color="#6B7280" sx={{mb:0.5}}>Attachment:</Typography>
+                      <Button 
+                        size="small" 
+                        startIcon={<DownloadIcon sx={{fontSize:14}}/>}
+                        onClick={() => window.open(note.attachment, '_blank')}
+                        sx={{textTransform:'none',fontSize:'0.75rem',color:'#10B981',bgcolor:'#10B98108',border:'1px solid #10B98120',borderRadius:'6px',py:0.5,px:1}}
+                      >
+                        Download File
+                      </Button>
+                    </Box>
+                  )}
                 </Box>
               </Collapse>
             </Box>
           ))}
         </Stack>
       }
-      <Dialog open={addDlg} onClose={()=>setDlg(false)} maxWidth="sm" fullWidth PaperProps={{sx:{borderRadius:'16px'}}}>
+      <Dialog open={addDlg} onClose={()=>setDlg(false)} maxWidth="md" fullWidth PaperProps={{sx:{borderRadius:'16px'}}}>
         <DialogTitle sx={{fontWeight:700,fontSize:'0.95rem'}}>Add Note — {dept}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} mt={0.5}>
-            <TextField size="small" label="Title" fullWidth value={title} onChange={e=>setTitle(e.target.value)} sx={{'& .MuiOutlinedInput-root':{borderRadius:'10px'}}}/>
-            <TextField size="small" label="Content" fullWidth multiline minRows={3} value={content} onChange={e=>setContent(e.target.value)} sx={{'& .MuiOutlinedInput-root':{borderRadius:'10px'}}}/>
+            {/* Link/Upload Section */}
+            <Box sx={{border:'1px solid #E5E7EB',borderRadius:'10px',p:2}}>
+              <Typography fontSize="0.85rem" fontWeight={600} color="#374151" sx={{mb:1.5}}>Add Link or Attachment (Optional)</Typography>
+              
+              {/* Upload Type Selector */}
+              <Stack direction="row" spacing={1} sx={{mb:2}}>
+                <Button 
+                  size="small" 
+                  variant={uploadType === 'link' ? 'contained' : 'outlined'}
+                  onClick={() => setUploadType('link')}
+                  sx={{textTransform:'none',fontSize:'0.75rem',borderRadius:'6px'}}
+                >
+                  Add Link
+                </Button>
+                <Button 
+                  size="small" 
+                  variant={uploadType === 'file' ? 'contained' : 'outlined'}
+                  onClick={() => setUploadType('file')}
+                  sx={{textTransform:'none',fontSize:'0.75rem',borderRadius:'6px'}}
+                >
+                  Upload File
+                </Button>
+              </Stack>
+
+              {/* Link Input */}
+              {uploadType === 'link' ? (
+                <TextField
+                  size="small"
+                  label="External Link"
+                  fullWidth
+                  value={link}
+                  onChange={e => setLink(e.target.value)}
+                  placeholder="https://..."
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: '8px' } }}
+                />
+              ) : (
+                <Stack spacing={1}>
+                  <Button
+                    component="label"
+                    size="small"
+                    variant="outlined"
+                    sx={{textTransform:'none',borderRadius:'8px',borderStyle:'dashed'}}
+                  >
+                    Choose File
+                    <input
+                      type="file"
+                      hidden
+                      onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                    />
+                  </Button>
+                  {selectedFile && (
+                    <Box sx={{p:1,bgcolor:'#F8FAFC',borderRadius:'6px',fontSize:'0.75rem',color:'#64748B'}}>
+                      Selected: {selectedFile.name}
+                    </Box>
+                  )}
+                  {attachment && (
+                    <Box sx={{p:1,bgcolor:'#10B98108',borderRadius:'6px',fontSize:'0.75rem',color:'#10B981'}}>
+                      File uploaded successfully
+                    </Box>
+                  )}
+                </Stack>
+              )}
+              
+              {/* System Name Display */}
+              <Typography fontSize="0.72rem" color="#9CA3AF" sx={{mt:1,fontStyle:'italic'}}>
+                System Name: {generateSystemName()}
+              </Typography>
+            </Box>
           </Stack>
         </DialogContent>
         <DialogActions sx={{px:3,pb:2.5}}>
           <Button onClick={()=>setDlg(false)} sx={{textTransform:'none',color:'#6B7280',borderRadius:'8px'}}>Cancel</Button>
-          <Button variant="contained" onClick={addNote} disabled={saving||!title.trim()||!content.trim()} sx={{bgcolor:c,borderRadius:'8px',textTransform:'none',px:3}}>
+          <Button variant="contained" onClick={() => {
+            if (uploadType === 'file' && selectedFile && !attachment) {
+              handleFileUpload();
+            } else {
+              addNote();
+            }
+          }} disabled={saving||(uploadType==='file' && !!selectedFile && !attachment)} sx={{bgcolor:c,borderRadius:'8px',textTransform:'none',px:3}}>
             {saving?<CircularProgress size={14} color="inherit"/>:'Save'}
           </Button>
         </DialogActions>
@@ -913,28 +1066,28 @@ export default function DeptOrientationPage() {
               <Box sx={{display:'flex',alignItems:'center',gap:2,px:2.5,py:1.8,bgcolor:'white',borderRadius:'14px',border:'1px solid #E5E7EB',boxShadow:'0 1px 4px rgba(0,0,0,0.05)'}}>
                 <Typography fontSize="0.82rem" fontWeight={700} color="#6B7280" whiteSpace="nowrap">Department</Typography>
                 <DeptPicker departments={departments} value={activeDept} onChange={setActiveDept}/>
+                {!activeDept && (
+                  <Typography fontSize="0.75rem" color="#9CA3AF" fontStyle="italic">
+                    (Select department to edit specific content)
+                  </Typography>
+                )}
               </Box>
 
-              {!activeDept
-                ?<Box sx={{py:6,textAlign:'center',color:'#9CA3AF'}}>
-                  <ApartmentIcon sx={{fontSize:48,opacity:0.3,mb:1}}/>
-                  <Typography fontSize="0.9rem">Select a department above to get started</Typography>
-                </Box>
-                :<>
-                  <SectionCard num={1} label="Presentations"     icon={<SlideshowIcon sx={{fontSize:21}}/>}>
-                    <DeptPresentations dept={activeDept} dd={dd} c={c} onUpdate={updateDeptData}/>
-                  </SectionCard>
-                  <SectionCard num={2} label="JD & Role Documents" icon={<WorkIcon sx={{fontSize:21}}/>}>
-                    <JDRoleDocs dept={activeDept} c={c} designations={designations} dd={dd} onUpdate={updateDeptData}/>
-                  </SectionCard>
-                  <SectionCard num={3} label="Department Notes"  icon={<NotesIcon sx={{fontSize:21}}/>}>
-                    <DeptNotes dept={activeDept} c={c} dd={dd} onUpdate={updateDeptData}/>
-                  </SectionCard>
-                  <SectionCard num={4} label="Department Tests"  icon={<QuizIcon sx={{fontSize:21}}/>}>
-                    <DeptTests dept={activeDept} c={c} dd={dd} onUpdate={updateDeptData}/>
-                  </SectionCard>
-                </>
-              }
+              {/* Always show tabs */}
+              <>
+                <SectionCard num={1} label="Presentations"     icon={<SlideshowIcon sx={{fontSize:21}}/>}>
+                  <DeptPresentations dept={activeDept} dd={dd} c={c} onUpdate={updateDeptData}/>
+                </SectionCard>
+                <SectionCard num={2} label="JD & Role Documents" icon={<WorkIcon sx={{fontSize:21}}/>}>
+                  <JDRoleDocs dept={activeDept} c={c} designations={designations} dd={dd} onUpdate={updateDeptData}/>
+                </SectionCard>
+                <SectionCard num={3} label="Department Notes"  icon={<NotesIcon sx={{fontSize:21}}/>}>
+                  <DeptNotes dept={activeDept} c={c} dd={dd} onUpdate={updateDeptData}/>
+                </SectionCard>
+                <SectionCard num={4} label="Department Tests"  icon={<QuizIcon sx={{fontSize:21}}/>}>
+                  <DeptTests dept={activeDept} c={c} dd={dd} onUpdate={updateDeptData}/>
+                </SectionCard>
+              </>
             </Stack>
           }
         </main>

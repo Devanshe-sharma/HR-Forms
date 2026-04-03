@@ -23,10 +23,10 @@ const formatDate = (date?: string | Date | null): string => {
 
 // ─── TYPES ────────────────────────────────────────────────
 type Employee = {
-  name: string;
-  dept: string;
-  desig: string;
-  email: string;
+  full_name: string;
+  department: string;
+  designation: string;
+  official_email: string;
 };
 
 const STATUS_OPTIONS = [
@@ -183,7 +183,19 @@ const Outing: React.FC = () => {
         axios.get(`${API_BASE}/employees?lightweight=true`)
       ]);
       setOutingList(oRes.data.data || []);
-      setEmployees(eRes.data.data || []);
+      const rawEmployees = eRes.data.data || [];
+      console.log('Raw employees data:', rawEmployees); // Debug log
+      
+      // Map employees to consistent format
+      const mappedEmployees = rawEmployees.map((emp: any) => ({
+        full_name: emp.full_name || emp.name || 'Unknown',
+        department: emp.department || emp.dept || 'Unknown',
+        designation: emp.designation || emp.desig || 'Unknown',
+        official_email: emp.official_email || emp.email || 'unknown@example.com'
+      }));
+      
+      setEmployees(mappedEmployees);
+      console.log('Mapped employees:', mappedEmployees); // Debug log
     } catch (err) {
       console.error("Data load failed", err);
     }
@@ -192,6 +204,13 @@ const Outing: React.FC = () => {
   useEffect(() => {
     refreshData();
   }, []);
+
+  // Debug: Log current state
+  useEffect(() => {
+    console.log('Current employees state:', employees);
+    console.log('Current outings state:', outingList);
+    console.log('Completed outings count:', outingList.filter(o => o.status === 'Completed').length);
+  }, [employees, outingList]);
 
   // Reset form state when component unmounts or tab changes
   useEffect(() => {
@@ -1058,19 +1077,21 @@ const Outing: React.FC = () => {
                   required
                   value={feedbackForm.employeeName}
                   onChange={(e) => {
-                    const emp = employees.find(em => em.name === e.target.value);
+                    console.log('Selected employee:', e.target.value);
+                    const emp = employees.find(em => em.full_name === e.target.value);
+                    console.log('Found employee:', emp);
                     setFeedbackForm({
                       ...feedbackForm,
                       employeeName: e.target.value,
-                      department: emp?.dept || '',
-                      designation: emp?.desig || ''
+                      department: emp?.department || '',
+                      designation: emp?.designation || ''
                     });
                   }}
                   className="w-full border border-gray-300 rounded-lg px-2 py-1 text-xs"
                 >
                   <option value="">Select Employee</option>
                   {employees.map(emp => (
-                    <option key={emp.email} value={emp.name}>{emp.name}</option>
+                    <option key={emp.official_email} value={emp.full_name}>{emp.full_name}</option>
                   ))}
                 </select>
               </div>

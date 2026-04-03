@@ -57,10 +57,24 @@ interface Confirmation {
   createdAt         : string;
 }
 
+interface Employee {
+  _id              : string;
+  employee_id      : string;
+  full_name        : string;
+  department       : string;
+  designation      : string;
+  email            : string;
+  joining_date     : string | null;
+  employee_category: string;
+  level            : number;
+  reporting_manager : string;
+}
+
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const API_BASE = process.env.API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.API_BASE_URL || 'http://3.110.162.1:5000/api';
 const API      = API_BASE + '/confirmations';
+const EMP_API  = API_BASE + '/employees';
 
 const STATUS_CFG: Record<CurrentStatus, { label: string; color: string; bg: string }> = {
   probation    : { label: 'Probation',     color: '#6B7280', bg: '#F3F4F6' },
@@ -109,6 +123,28 @@ const calculateReviewDate = (joiningDate?: string | null) => {
   }
 };
 
+/**
+ * Check if employee is currently on probation (within first 6 months)
+ */
+const isOnProbation = (joiningDate: string): boolean => {
+  const joined = new Date(joiningDate);
+  const now    = new Date();
+  const months = (now.getFullYear() - joined.getFullYear()) * 12
+               + (now.getMonth()    - joined.getMonth());
+  return months < 6;
+};
+
+/**
+ * Check if confirmation is due this month (exactly 6 months from joining)
+ */
+const isConfirmationDueThisMonth = (joiningDate: string): boolean => {
+  const joined = new Date(joiningDate);
+  const now    = new Date();
+  const months = (now.getFullYear() - joined.getFullYear()) * 12
+               + (now.getMonth()    - joined.getMonth());
+  return months >= 6 && months < 7;
+};
+
 // ─── Status / Stage chips ─────────────────────────────────────────────────────
 
 function StatusChip({ status }: { status: CurrentStatus }) {
@@ -153,8 +189,9 @@ function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error';
 
 // ─── Dashboard View ─────────────────────────────────────────────────────────--
 
-function DashboardView({ records, loading, onSelect }: {
+function DashboardView({ records, employees, loading, onSelect }: {
   records : Confirmation[];
+  employees: Employee[];
   loading : boolean;
   onSelect: (r: Confirmation) => void;
 }) {
@@ -167,34 +204,49 @@ function DashboardView({ records, loading, onSelect }: {
   const currentMonth = currentDate.getMonth();
   const currentYear = currentDate.getFullYear();
   
-  // Helper function to check if employee is within first 6 months (on probation)
-  const isOnProbation = (joiningDate: string) => {
-    const joined = new Date(joiningDate);
-    const sixMonthsLater = new Date(joined);
-    sixMonthsLater.setMonth(sixMonthsLater.getMonth() + 6);
-    return currentDate <= sixMonthsLater;
-  };
+  // Create combined list of employees with existing confirmation records
+  const allEmployeeData = React.useMemo(() => {
+    const employeeMap = new Map(employees.map(emp => [emp._id, emp]));
+    
+    // Add employees from confirmation records
+    records.forEach(record => {
+      if (!employeeMap.has(record._id)) {
+        employeeMap.set(record._id, {
+          _id: record._id,
+          employee_id: record.employeeCode,
+          full_name: record.employeeName,
+          department: record.department,
+          designation: record.designation,
+          email: record.email,
+          joining_date: record.joiningDate,
+          employee_category: '',
+          level: record.level,
+          reporting_manager: record.reportingManager
+        } as Employee);
+      }
+    });
+    
+    return Array.from(employeeMap.values());
+  }, [employees, records]);
   
   // Filter records - based on toggle state
+  const filteredEmployees = allEmployeeData.filter(emp => {
+    if (!emp.joining_date || !isOnProbation(emp.joining_date)) return false;
+    
+    const isPendingThisMonth = isConfirmationDueThisMonth(emp.joining_date);
+    const shouldShow = showAllProbation 
+      ? isOnProbation(emp.joining_date) // All employees within first 6 months
+      : isPendingThisMonth; // Only pending this month
+    
+    const matchesSearch = !employeeSearch || 
+      emp.full_name.toLowerCase().includes(employeeSearch.toLowerCase()) ||
+      emp.employee_id.toLowerCase().includes(employeeSearch.toLowerCase());
+    
+    return shouldShow && matchesSearch;
+  });
+  
   const filteredRecords = records.filter(record => {
-    const recordDate = new Date(record.joiningDate);
-    const recordMonth = recordDate.getMonth();
-    const recordYear = recordDate.getFullYear();
-    
-    // Calculate review date (6 months after joining)
-    const reviewDate = new Date(recordDate);
-    reviewDate.setMonth(reviewDate.getMonth() + 6);
-    const reviewMonth = reviewDate.getMonth();
-    const reviewYear = reviewDate.getFullYear();
-    
-    // Check if confirmation is pending this month
-    const isPendingThisMonth = reviewMonth === currentMonth && 
-                              reviewYear === currentYear && 
-                              (record.stage === 'pending_manager' || 
-                               record.stage === 'pending_management' ||
-                               record.stage === 'on_hold');
-    
-    // Show all probation employees (within first 6 months) or only pending this month
+    const isPendingThisMonth = isConfirmationDueThisMonth(record.joiningDate);
     const shouldShow = showAllProbation 
       ? isOnProbation(record.joiningDate) // All employees within first 6 months
       : isPendingThisMonth; // Only pending this month
@@ -207,8 +259,8 @@ function DashboardView({ records, loading, onSelect }: {
   });
 
   const counts = {
-    total       : filteredRecords.length,
-    probation   : filteredRecords.filter(r => isOnProbation(r.joiningDate)).length,
+    total       : filteredEmployees.length,
+    probation   : filteredEmployees.length,
     confirmed   : filteredRecords.filter(r => r.currentStatus === 'confirmed').length,
     extended    : filteredRecords.filter(r => r.currentStatus === 'extended').length,
     notConfirmed: filteredRecords.filter(r => r.currentStatus === 'not_confirmed').length,
@@ -868,8 +920,7 @@ export default function ConfirmationsPage() {
               <DashboardView
                 records={records}
                 loading={loading}
-                onSelect={handleSelect}
-              />
+                onSelect={handleSelect} employees={[]}              />
             )}
 
             {view === 'detail' && selected && (

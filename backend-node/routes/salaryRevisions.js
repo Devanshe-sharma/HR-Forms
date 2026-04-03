@@ -248,4 +248,78 @@ router.get('/stats', asyncHandler(async (req, res) => {
   }
 }));
 
+// POST /api/salary-revisions/save-decision - Save manager decision
+router.post('/save-decision', asyncHandler(async (req, res) => {
+  try {
+    const {
+      employeeId,
+      employeeName,
+      department,
+      designation,
+      applicableDate,
+      category,
+      decision,
+      managerRecommendation,
+      managementRecommendation,
+      finalIncrement,
+      pipReason,
+      pipDuration,
+      newCTC,
+      previousCTC,
+      salaryStructure
+    } = req.body;
+
+    // Find existing salary revision or create new one
+    const revision = await SalaryRevision.findOneAndUpdate(
+      { 
+        employee_id: employeeId,
+        applicable_date: new Date(applicableDate)
+      },
+      {
+        employee_id: employeeId,
+        employee_name: employeeName,
+        department,
+        designation,
+        applicable_date: new Date(applicableDate),
+        category,
+        decision: decision === 'increment' ? 'Increment' : 'PIP',
+        manager_recommendation: managerRecommendation || 0,
+        management_recommendation: managementRecommendation || 0,
+        final_increment_percentage: finalIncrement || 0,
+        previous_ctc: previousCTC,
+        new_ctc: newCTC,
+        pip_duration: pipDuration,
+        pip_reason: pipReason,
+        salary_structure: salaryStructure,
+        status: managementRecommendation ? 'Approved' : 'Submitted',
+        created_by: req.headers['x-user-name'] || 'System',
+        updated_by: req.headers['x-user-name'] || 'System',
+        updated_at: new Date()
+      },
+      { 
+        new: true, 
+        upsert: true,
+        runValidators: true 
+      }
+    );
+
+    res.status(200).json({
+      success: true,
+      data: revision,
+      message: 'Decision saved successfully'
+    });
+  } catch (error) {
+    console.error('Error saving decision:', error);
+    console.error('Request body:', req.body);
+    console.error('Validation errors:', error.errors);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Error saving decision',
+      error: error.message,
+      details: error.errors
+    });
+  }
+}));
+
 module.exports = router;
