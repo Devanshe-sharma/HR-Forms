@@ -32,6 +32,7 @@ const NoteSchema = new mongoose.Schema({
 const DepartmentSchema = new mongoose.Schema({
   id:              { type: String, default: () => uuidv4() },
   name:            { type: String, required: true, unique: true, trim: true },
+  department:      { type: String, default: '' },
   color:           { type: String, default: '#3B82F6' },
   onboardingPPT:   { type: LinkSchema, default: null },
   reviewPPTs:      { type: [QuarterPPTSchema], default: [] },
