@@ -59,7 +59,7 @@ interface Confirmation {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const API_BASE = process.env.API_BASE_URL || 'http://3.110.162.1:5000/api';
+const API_BASE = process.env.API_BASE_URL || 'http://localhost:5000/api';
 const API      = API_BASE + '/confirmations';
 
 const STATUS_CFG: Record<CurrentStatus, { label: string; color: string; bg: string }> = {
