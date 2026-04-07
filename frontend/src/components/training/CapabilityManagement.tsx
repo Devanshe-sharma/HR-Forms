@@ -224,7 +224,7 @@ export default function CapabilityManagement() {
   return (
     <div className="w-full min-w-0 p-6">
       <div className="mb-6">
-        <h2 className="text-xl text-gray-700 mb-2">Capability Management</h2>
+        <h2 className="text-base text-gray-700 mb-2">Capability Management</h2>
         <p className="text-gray-400 text-sm">Manage capability areas and skills for training mapping</p>
       </div>
 
@@ -237,7 +237,7 @@ export default function CapabilityManagement() {
       {/* Capability Areas Section */}
       <div className="mb-8">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg text-gray-500">Capability Areas</h3>
+          <h3 className="text-sm text-gray-500">Capability Areas</h3>
           {canCreate && (
             <button
               onClick={() => openCapabilityModal()}
@@ -253,16 +253,16 @@ export default function CapabilityManagement() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Capability Area ID
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Capability Area
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Created By
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
@@ -270,16 +270,16 @@ export default function CapabilityManagement() {
             <tbody className="bg-white divide-y divide-gray-200">
               {capabilityAreas.map((area) => (
                 <tr key={area._id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-900">
                     {area.capabilityAreaId}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-900">
                     {area.capabilityArea}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
                     {area.createdBy}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
                     <div className="flex gap-2">
                       {canEdit && (
                         <button
@@ -309,7 +309,7 @@ export default function CapabilityManagement() {
       {/* Capability Skills Section */}
       <div>
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg  text-gray-500">Capability Skills</h3>
+          <h3 className="text-sm  text-gray-500">Capability Skills</h3>
           {canCreate && (
             <button
               onClick={() => openSkillModal()}
@@ -325,19 +325,19 @@ export default function CapabilityManagement() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Capability Area
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Capability Skill
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Generic
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Created By
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
@@ -345,13 +345,13 @@ export default function CapabilityManagement() {
             <tbody className="bg-white divide-y divide-gray-200">
               {capabilitySkills.map((skill) => (
                 <tr key={skill._id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-900">
                     {skill.capabilityArea}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-900">
                     {skill.capabilitySkill}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
                     <span className={`px-2 py-1 text-xs rounded-full ${
                       skill.isGeneric 
                         ? 'bg-green-100 text-green-800' 
@@ -360,10 +360,10 @@ export default function CapabilityManagement() {
                       {skill.isGeneric ? 'Yes' : 'No'}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
                     {skill.createdBy}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
                     <div className="flex gap-2">
                       {canEdit && (
                         <button
@@ -392,10 +392,10 @@ export default function CapabilityManagement() {
 
       {/* Capability Area Modal */}
       {isCapabilityModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg ">
+              <h3 className="text-base ">
                 {editingCapability ? 'Edit Capability Area' : 'Create Capability Area'}
               </h3>
               <button
@@ -408,26 +408,26 @@ export default function CapabilityManagement() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1">
                   Capability Area ID
                 </label>
                 <input
                   type="text"
                   value={capabilityForm.capabilityAreaId}
                   onChange={(e) => setCapabilityForm(prev => ({ ...prev, capabilityAreaId: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
                   placeholder="Auto-generated if empty"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1">
                   Capability Area *
                 </label>
                 <input
                   type="text"
                   value={capabilityForm.capabilityArea}
                   onChange={(e) => setCapabilityForm(prev => ({ ...prev, capabilityArea: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
                   placeholder="e.g., Leadership, Technical Skills, Communication"
                 />
               </div>
@@ -436,14 +436,14 @@ export default function CapabilityManagement() {
             <div className="flex justify-end gap-3 mt-6">
               <button
                 onClick={() => setIsCapabilityModalOpen(false)}
-                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                className="px-3 py-1.5 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors text-xs"
               >
                 Cancel
               </button>
               <button
                 onClick={saveCapability}
                 disabled={loading}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors text-xs"
               >
                 <Save className="w-4 h-4" />
                 {loading ? 'Saving...' : 'Save'}
@@ -455,10 +455,10 @@ export default function CapabilityManagement() {
 
       {/* Capability Skill Modal */}
       {isSkillModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg ">
+              <h3 className="text-base ">
                 {editingSkill ? 'Edit Capability Skill' : 'Create Capability Skill'}
               </h3>
               <button
@@ -471,13 +471,13 @@ export default function CapabilityManagement() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1">
                   Capability Area *
                 </label>
                 <select
                   value={skillForm.capabilityId}
                   onChange={(e) => setSkillForm(prev => ({ ...prev, capabilityId: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
                 >
                   <option value="">Select a capability area</option>
                   {capabilityAreas.map((area) => (
@@ -488,14 +488,14 @@ export default function CapabilityManagement() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1">
                   Capability Skill *
                 </label>
                 <input
                   type="text"
                   value={skillForm.capabilitySkill}
                   onChange={(e) => setSkillForm(prev => ({ ...prev, capabilitySkill: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
                   placeholder="e.g., Public Speaking, Project Management, Data Analysis"
                 />
               </div>
@@ -507,7 +507,7 @@ export default function CapabilityManagement() {
                     onChange={(e) => setSkillForm(prev => ({ ...prev, isGeneric: e.target.checked }))}
                     className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
-                  <span className="text-sm font-medium text-gray-700">
+                  <span className="text-xs font-medium text-gray-700">
                     Generic (Available for all roles)
                   </span>
                 </label>
@@ -520,14 +520,14 @@ export default function CapabilityManagement() {
             <div className="flex justify-end gap-3 mt-6">
               <button
                 onClick={() => setIsSkillModalOpen(false)}
-                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
+                className="px-3 py-1.5 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors text-xs"
               >
                 Cancel
               </button>
               <button
                 onClick={saveSkill}
                 disabled={loading}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors text-xs"
               >
                 <Save className="w-4 h-4" />
                 {loading ? 'Saving...' : 'Save'}

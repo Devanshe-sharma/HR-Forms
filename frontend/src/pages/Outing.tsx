@@ -1429,12 +1429,13 @@ const Outing: React.FC = () => {
 
           {/* ─── FULL OUTING DETAILS MODAL ─── */}
           {isDetailsModalOpen && selectedOuting && (
-            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+            <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[9999] p-4">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto mx-auto">
-                <div className="sticky top-0 bg-white p-4 sm:p-6 border-b flex justify-between items-center z-10">
+                <div className="sticky top-0 bg-white p-3 sm:p-4 border-b flex justify-between items-center z-10">
                   <div>
-                    <h3 className="text-lg sm:text-2xl font-bold text-gray-800">{selectedOuting.topic}</h3>
-                    <p className="text-xs sm:text-sm text-gray-500 mt-1">ID: {selectedOuting._id?.slice(-8)} • {selectedOuting.proposedByRole} Proposal</p>
+                    <h3 className="text-base sm:text-lg font-bold text-gray-800">{selectedOuting.topic}</h3>
+                    <p className="text-xs text-gray-500 mt-1">ID: {selectedOuting._id?.slice(-8)} • {selectedOuting.proposedByRole} Proposal</p>
+                    <p className="text-xs text-gray-400 mt-1">Proposed by: {selectedOuting.proposedByName || 'Unknown'}</p>
                   </div>
                   <div className="flex items-center gap-2 sm:gap-3">
                     <span className={`status-pill ${selectedOuting.status?.toLowerCase().replace(' ', '-') || ''}`}>{selectedOuting.status}</span>
@@ -1443,65 +1444,136 @@ const Outing: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="p-4 sm:p-8 space-y-6 sm:space-y-10">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
-                    <div className="bg-gray-50 p-4 sm:p-6 rounded-2xl">
-                      <div className="text-xs uppercase tracking-widest text-gray-500 mb-2">Tentative Date</div>
-                      <div className="text-lg sm:text-2xl font-semibold text-gray-800">{formatDate(selectedOuting.tentativeDate)}</div>
+                <div className="p-3 sm:p-4 space-y-3 sm:space-y-4">
+                  {/* Quick Info Grid */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3">
+                    <div className="bg-blue-50 p-2 sm:p-3 rounded-lg border border-blue-200">
+                      <div className="text-xs text-blue-600 font-medium mb-1">Tentative Date</div>
+                      <div className="text-sm font-semibold text-blue-800">{formatDate(selectedOuting.tentativeDate)}</div>
                     </div>
-                    <div className="bg-gray-50 p-4 sm:p-6 rounded-2xl">
-                      <div className="text-xs uppercase tracking-widest text-gray-500 mb-2">Place</div>
-                      <div className="text-base sm:text-xl font-medium">{selectedOuting.tentativePlace || 'Not decided'}</div>
+                    <div className="bg-green-50 p-2 sm:p-3 rounded-lg border border-green-200">
+                      <div className="text-xs text-green-600 font-medium mb-1">Place</div>
+                      <div className="text-sm font-medium text-green-800 truncate">{selectedOuting.tentativePlace || 'Not decided'}</div>
                     </div>
-                    <div className="bg-gray-50 p-4 sm:p-6 rounded-2xl">
-                      <div className="text-xs uppercase tracking-widest text-gray-500 mb-2">Budget</div>
-                      <div className="text-lg sm:text-2xl font-semibold text-[#7a8b2e]">₹{selectedOuting.tentativeBudget?.toLocaleString() || 'TBD'}</div>
+                    <div className="bg-purple-50 p-2 sm:p-3 rounded-lg border border-purple-200">
+                      <div className="text-xs text-purple-600 font-medium mb-1">Budget</div>
+                      <div className="text-sm font-semibold text-purple-800">₹{selectedOuting.tentativeBudget?.toLocaleString() || 'TBD'}</div>
+                    </div>
+                    <div className="bg-orange-50 p-2 sm:p-3 rounded-lg border border-orange-200">
+                      <div className="text-xs text-orange-600 font-medium mb-1">Priority</div>
+                      <div className="text-sm font-semibold text-orange-800">{selectedOuting.priority || 'P3'}</div>
                     </div>
                   </div>
 
+                  {/* Additional Details */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="bg-gray-50 p-3 rounded-lg border">
+                      <div className="text-xs text-gray-600 font-medium mb-2 flex items-center gap-1"><Calendar size={12} /> Time Period</div>
+                      <div className="text-sm font-medium text-gray-800">
+                        {selectedOuting.quarter && <span>Q{selectedOuting.quarter} </span>}
+                        {selectedOuting.financialYear && <span>• FY{selectedOuting.financialYear}</span>}
+                        {!selectedOuting.quarter && !selectedOuting.financialYear && <span className="text-gray-500">Not specified</span>}
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-lg border">
+                      <div className="text-xs text-gray-600 font-medium mb-2 flex items-center gap-1"><Tag size={12} /> Category</div>
+                      <div className="text-sm font-medium text-gray-800">
+                        {selectedOuting.proposedByRole === 'HR' ? 'HR Initiative' : selectedOuting.proposedByRole === 'Management' ? 'Management Suggestion' : 'Employee Proposal'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Description with enhanced formatting */}
                   <div>
-                    <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2"><AlignLeft size={18} /> Description</h4>
-                    <p className="text-gray-600 leading-relaxed bg-gray-50 p-4 sm:p-6 rounded-2xl border text-sm">{selectedOuting.description}</p>
+                    <h4 className="font-semibold text-gray-700 mb-2 flex items-center gap-2"><AlignLeft size={16} /> Description</h4>
+                    <div className="bg-gray-50 p-3 sm:p-4 rounded-2xl border">
+                      <p className="text-gray-600 leading-relaxed text-sm">{selectedOuting.description}</p>
+                      <div className="mt-2 pt-2 border-t border-gray-200 flex items-center justify-between text-xs text-gray-500">
+                        <span>Word count: {selectedOuting.description?.split(' ').length || 0}</span>
+                        <span>Characters: {selectedOuting.description?.length || 0}</span>
+                      </div>
+                    </div>
                   </div>
 
+                  {/* Enhanced Remarks/Reason Section */}
                   {(selectedOuting.remark || selectedOuting.reason) && (
-                    <div className="bg-amber-50 border border-amber-200 p-4 sm:p-6 rounded-2xl">
-                      <h4 className="font-semibold mb-2 text-sm">Remark / Reason</h4>
-                      <p className="text-gray-700 text-sm">{selectedOuting.remark || selectedOuting.reason}</p>
+                    <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg">
+                      <h4 className="font-semibold mb-2 text-sm flex items-center gap-2">
+                        <div className="w-2 h-2 bg-amber-400 rounded-full"></div>
+                        Additional Notes
+                      </h4>
+                      <p className="text-gray-700 text-sm mb-2">{selectedOuting.remark || selectedOuting.reason}</p>
+                      <div className="text-xs text-amber-600 font-medium">Type: {selectedOuting.remark ? 'Internal Remark' : 'Rejection Reason'}</div>
                     </div>
                   )}
 
+                  {/* Enhanced Feedback Section */}
                   <div>
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end mb-4 gap-2">
-                      <h4 className="text-base sm:text-lg font-semibold">Employee Feedbacks ({selectedOuting.feedbacks?.length || 0})</h4>
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end mb-3 gap-2">
+                      <h4 className="text-sm sm:text-base font-semibold flex items-center gap-2">
+                        <Star size={16} className="text-yellow-500" />
+                        Employee Feedbacks ({selectedOuting.feedbacks?.length || 0})
+                      </h4>
                       {selectedOuting.feedbacks && selectedOuting.feedbacks.length > 0 && (
-                        <div className="text-[#7a8b2e] font-medium text-sm sm:text-base">Average Overall Rating: <span className="text-2xl sm:text-3xl">{calculateAvgRating(selectedOuting.feedbacks)}</span> ⭐</div>
+                        <div className="flex items-center gap-3">
+                          <div className="text-[#7a8b2e] font-medium text-sm">Avg Rating: <span className="text-xl sm:text-2xl">{calculateAvgRating(selectedOuting.feedbacks)}</span> ⭐</div>
+                          <div className="text-xs text-gray-500">
+                            {selectedOuting.feedbacks.filter(f => f.attended).length} attended
+                          </div>
+                        </div>
                       )}
                     </div>
 
                     {selectedOuting.feedbacks && selectedOuting.feedbacks.length > 0 ? (
-                      <div className="space-y-4 sm:space-y-6">
+                      <div className="space-y-3">
                         {selectedOuting.feedbacks.map((fb, idx) => (
-                          <div key={idx} className="border border-gray-200 rounded-2xl p-4 sm:p-6">
+                          <div key={idx} className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors">
                             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                              <div>
-                                <div className="font-semibold text-sm">{fb.employeeName}</div>
-                                <div className="text-xs text-gray-500">{fb.department} • {fb.designation}</div>
-                              </div>
-                              <div className="text-right">
-                                <div className="flex gap-1 justify-end">
-                                  {Array.from({ length: 5 }).map((_, i) => (
-                                    <Star key={i} size={14} className={i < (fb.overallRating || 0) ? 'text-yellow-400 fill-current' : 'text-gray-300'} />
-                                  ))}
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <div className="font-semibold text-sm">{fb.employeeName}</div>
+                                  {fb.attended && <span className="inline-flex items-center gap-1 text-green-600 text-xs bg-green-50 px-2 py-0.5 rounded-full"><CheckCircle size={10} /> Attended</span>}
                                 </div>
-                                <div className="text-xs text-gray-500 mt-1">Content: {fb.contentQuality}</div>
+                                <div className="text-xs text-gray-500 mb-2">{fb.department} • {fb.designation}</div>
+                                
+                                {/* Rating Breakdown */}
+                                <div className="flex items-center gap-3 mb-2">
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-xs text-gray-600">Overall:</span>
+                                    <div className="flex gap-0.5">
+                                      {Array.from({ length: 5 }).map((_, i) => (
+                                        <Star key={i} size={12} className={i < (fb.overallRating || 0) ? 'text-yellow-400 fill-current' : 'text-gray-300'} />
+                                      ))}
+                                    </div>
+                                    <span className="text-xs font-medium">{fb.overallRating || 0}/5</span>
+                                  </div>
+                                  {fb.contentQuality && (
+                                    <div className="text-xs text-gray-600">
+                                      Content: <span className="font-medium">{fb.contentQuality}/5</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="text-xs text-gray-400">
+                                {formatDate(fb.submittedAt)}
                               </div>
                             </div>
-                            {fb.attended && <div className="mt-3 inline-flex items-center gap-1 text-green-600 text-xs"><CheckCircle size={14} /> Attended</div>}
+                            
+                            {/* Detailed Feedback */}
                             {(fb.whatWasMissing || fb.howHelpful) && (
-                              <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 text-sm">
-                                {fb.whatWasMissing && <div><strong className="block text-gray-500 mb-1">What was missing?</strong> {fb.whatWasMissing}</div>}
-                                {fb.howHelpful && <div><strong className="block text-gray-500 mb-1">How was it helpful?</strong> {fb.howHelpful}</div>}
+                              <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {fb.whatWasMissing && (
+                                  <div className="bg-red-50 p-2 rounded border border-red-100">
+                                    <div className="text-xs font-medium text-red-700 mb-1">What was missing?</div>
+                                    <div className="text-xs text-red-600">{fb.whatWasMissing}</div>
+                                  </div>
+                                )}
+                                {fb.howHelpful && (
+                                  <div className="bg-green-50 p-2 rounded border border-green-100">
+                                    <div className="text-xs font-medium text-green-700 mb-1">How helpful?</div>
+                                    <div className="text-xs text-green-600">{fb.howHelpful}</div>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
@@ -1512,15 +1584,25 @@ const Outing: React.FC = () => {
                     )}
                   </div>
 
+                  {/* Enhanced Discrepancies Section */}
                   {selectedOuting.discrepancies && selectedOuting.discrepancies.length > 0 && (
                     <div>
-                      <h4 className="text-base sm:text-lg font-semibold mb-4 text-red-700">Discrepancies Reported ({selectedOuting.discrepancies.length})</h4>
-                      <div className="space-y-4">
+                      <h4 className="text-sm sm:text-base font-semibold mb-3 text-red-700 flex items-center gap-2">
+                        <div className="w-2 h-2 bg-red-400 rounded-full"></div>
+                        Discrepancies Reported ({selectedOuting.discrepancies.length})
+                      </h4>
+                      <div className="space-y-2">
                         {selectedOuting.discrepancies.map((d, idx) => (
-                          <div key={idx} className="bg-red-50 border border-red-200 p-4 sm:p-5 rounded-2xl">
-                            <div className="font-medium text-red-800 text-sm">{d.employeeName}</div>
-                            <div className="text-red-700 mt-1 text-sm">{d.reason}</div>
-                            <div className="text-xs text-gray-500 mt-3">Reported on {formatDate(d.createdAt)}</div>
+                          <div key={idx} className="bg-red-50 border border-red-200 p-3 rounded-lg">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="font-medium text-red-800 text-sm">{d.employeeName}</div>
+                                <div className="text-red-700 text-sm mt-1">{d.reason}</div>
+                              </div>
+                              <div className="text-xs text-red-600 bg-red-100 px-2 py-1 rounded-full">
+                                {formatDate(d.createdAt)}
+                              </div>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1528,8 +1610,8 @@ const Outing: React.FC = () => {
                   )}
                 </div>
 
-                <div className="sticky bottom-0 bg-white border-t p-4 sm:p-6 flex justify-end">
-                  <button onClick={() => { setIsDetailsModalOpen(false); setSelectedOuting(null); }} className="px-6 sm:px-10 py-2 sm:py-3 bg-gray-800 text-white rounded-2xl font-medium hover:bg-black transition text-sm">Close Details</button>
+                <div className="sticky bottom-0 bg-white border-t p-3 sm:p-4 flex justify-end">
+                  <button onClick={() => { setIsDetailsModalOpen(false); setSelectedOuting(null); }} className="px-4 sm:px-6 py-2 bg-gray-800 text-white rounded-2xl font-medium hover:bg-black transition text-sm">Close Details</button>
                 </div>
               </div>
             </div>

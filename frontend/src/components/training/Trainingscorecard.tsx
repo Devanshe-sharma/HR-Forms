@@ -64,7 +64,7 @@ export default function TrainingScorecard() {
     <div className="p-6">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl text-gray-700 mb-2">Training Scorecard</h2>
+          <h2 className="text-base text-gray-700 mb-2">Training Scorecard</h2>
           <p className="text-gray-400 text-sm">Consolidated training performance across all employees</p>
         </div>
         <input
@@ -95,25 +95,25 @@ export default function TrainingScorecard() {
             <thead className="bg-gray-50">
               <tr>
                 {['Employee', 'Department', 'Designation', 'Attended', 'Completed', 'Avg Score %', 'Pass Rate %', 'Feedback Rating'].map(h => (
-                  <th key={h} className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  <th key={h} className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filtered.map(row => (
                 <tr key={row.employeeId} className="hover:bg-gray-50">
-                  <td className="px-5 py-4 text-sm font-medium text-gray-900">{row.employeeName}</td>
-                  <td className="px-5 py-4 text-sm text-gray-500">{row.dept}</td>
-                  <td className="px-5 py-4 text-sm text-gray-500">{row.desig}</td>
-                  <td className="px-5 py-4 text-sm text-gray-900 text-center">{row.trainingsAttended}</td>
-                  <td className="px-5 py-4 text-sm text-gray-900 text-center">{row.trainingsCompleted}</td>
-                  <td className="px-5 py-4 text-sm text-gray-900 w-36">
+                  <td className="px-3 py-2 text-xs font-medium text-gray-900">{row.employeeName}</td>
+                  <td className="px-3 py-2 text-xs text-gray-500">{row.dept}</td>
+                  <td className="px-3 py-2 text-xs text-gray-500">{row.desig}</td>
+                  <td className="px-3 py-2 text-xs text-gray-900 text-center">{row.trainingsAttended}</td>
+                  <td className="px-3 py-2 text-xs text-gray-900 text-center">{row.trainingsCompleted}</td>
+                  <td className="px-3 py-2 text-xs text-gray-900 w-36">
                     <RatingDot value={row.avgScore} max={100} />
                   </td>
-                  <td className="px-5 py-4 text-sm text-gray-900 w-36">
+                  <td className="px-3 py-2 text-xs text-gray-900 w-36">
                     <RatingDot value={row.passRate} max={100} />
                   </td>
-                  <td className="px-5 py-4 text-sm text-gray-900 w-36">
+                  <td className="px-3 py-2 text-xs text-gray-900 w-36">
                     <RatingDot value={row.avgFeedbackRating} max={5} />
                   </td>
                 </tr>

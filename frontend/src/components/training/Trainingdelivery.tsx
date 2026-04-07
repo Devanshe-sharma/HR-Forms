@@ -100,7 +100,7 @@ export default function TrainingDelivery() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h2 className="text-xl text-gray-700 mb-1">Training Delivery</h2>
+        <h2 className="text-base text-gray-700 mb-1">Training Delivery</h2>
         <p className="text-gray-400 text-sm">All successfully completed training sessions</p>
       </div>
 
@@ -159,25 +159,25 @@ export default function TrainingDelivery() {
             <thead className="bg-gray-50">
               <tr>
                 {['Training ID', 'Training Name', 'Capability Skill', 'Trainer', 'Type', 'Date', 'Time', 'Audience', 'Actions'].map(h => (
-                  <th key={h} className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  <th key={h} className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filtered.map(t => (
                 <tr key={t._id} className="hover:bg-gray-50">
-                  <td className="px-5 py-4 text-sm text-gray-500 font-mono">{t.trainingId}</td>
-                  <td className="px-5 py-4 text-sm font-medium text-gray-900 max-w-[180px] truncate">{t.trainingName}</td>
-                  <td className="px-5 py-4 text-sm text-gray-700">{t.capabilitySkill}</td>
-                  <td className="px-5 py-4 text-sm text-gray-700">{t.trainerName}</td>
+                  <td className="px-3 py-2 text-xs text-gray-500 font-mono">{t.trainingId}</td>
+                  <td className="px-3 py-2 text-xs font-medium text-gray-900 max-w-[180px] truncate">{t.trainingName}</td>
+                  <td className="px-3 py-2 text-xs text-gray-700">{t.capabilitySkill}</td>
+                  <td className="px-3 py-2 text-xs text-gray-700">{t.trainerName}</td>
                   <td className="px-5 py-4">
                     <span className={`px-2 py-1 text-xs rounded-full ${getTypeColor(t.type)}`}>{t.type}</span>
                   </td>
-                  <td className="px-5 py-4 text-sm text-gray-600 whitespace-nowrap">
+                  <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
                     {new Date(t.trainingDate).toLocaleDateString()}
                   </td>
-                  <td className="px-5 py-4 text-sm text-gray-500 whitespace-nowrap">{t.startTime} – {t.endTime}</td>
-                  <td className="px-5 py-4 text-sm text-gray-500">{audienceText(t)}</td>
+                  <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{t.startTime} – {t.endTime}</td>
+                  <td className="px-3 py-2 text-xs text-gray-500">{audienceText(t)}</td>
                   <td className="px-5 py-4">
                     <button onClick={() => setViewingTraining(t)} className="text-blue-600 hover:text-blue-800" title="View">
                       <Eye className="w-4 h-4" />
@@ -192,11 +192,11 @@ export default function TrainingDelivery() {
 
       {/* View Modal */}
       {viewingTraining && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">{viewingTraining.trainingName}</h3>
+                <h3 className="text-sm font-semibold text-gray-900">{viewingTraining.trainingName}</h3>
                 <span className="text-xs text-gray-400 font-mono">{viewingTraining.trainingId}</span>
               </div>
               <button onClick={() => setViewingTraining(null)} className="text-gray-400 hover:text-gray-600">

@@ -301,7 +301,7 @@ export default function ManagerEvaluation() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h2 className="text-xl text-gray-700 mb-1">Manager Evaluation</h2>
+        <h2 className="text-base text-gray-700 mb-1">Manager Evaluation</h2>
         <p className="text-gray-400 text-sm">Evaluate employees on capability skills to identify skill gaps</p>
       </div>
 
@@ -315,7 +315,7 @@ export default function ManagerEvaluation() {
       {reviewPeriodEmployees.length > 0 && (
         <div className="mb-6">
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-blue-900 mb-3">
+            <h3 className="text-sm font-semibold text-blue-900 mb-2">
               Employees in Review Period (Less than 6 months)
             </h3>
             <p className="text-blue-700 text-sm mb-4">
@@ -328,7 +328,7 @@ export default function ManagerEvaluation() {
                     {['Employee', 'Department', 'Designation', 'Joining Date', 'Months in Service', 'Status'].map((h) => (
                       <th
                         key={h}
-                        className="px-4 py-3 text-left text-xs font-medium text-blue-700 uppercase tracking-wider whitespace-nowrap"
+                        className="px-3 py-2 text-left text-xs font-medium text-blue-700 uppercase tracking-wider whitespace-nowrap"
                       >
                         {h}
                       </th>
@@ -338,22 +338,22 @@ export default function ManagerEvaluation() {
                 <tbody className="bg-white divide-y divide-blue-100">
                   {reviewPeriodEmployees.map((emp) => (
                     <tr key={emp._id} className="hover:bg-blue-50">
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                      <td className="px-3 py-2 text-xs font-medium text-gray-900">
                         <div className="flex items-center">
                           <div className="w-2 h-2 bg-green-400 rounded-full mr-2"></div>
                           {emp.name}
                         </div>
                         <div className="text-xs text-gray-500">{emp.email}</div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{emp.department || 'Not specified'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{emp.designation || 'Not specified'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{emp.joining_date || 'Not specified'}</td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-3 py-2 text-xs text-gray-700">{emp.department || 'Not specified'}</td>
+                      <td className="px-3 py-2 text-xs text-gray-700">{emp.designation || 'Not specified'}</td>
+                      <td className="px-3 py-2 text-xs text-gray-700">{emp.joining_date || 'Not specified'}</td>
+                      <td className="px-3 py-2 text-center">
                         <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded-full font-medium">
                           {emp.months_in_service} months
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-3 py-2 text-center">
                         <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full font-medium">
                           {emp.review_status}
                         </span>
@@ -378,14 +378,14 @@ export default function ManagerEvaluation() {
         )}
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
               {['Employee', 'Role', 'Capability Skill', 'Required', 'Actual', 'Gap', 'Mandatory', 'Actions'].map((h) => (
                 <th
                   key={h}
-                  className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap"
+                  className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap"
                 >
                   {h}
                 </th>
@@ -395,27 +395,27 @@ export default function ManagerEvaluation() {
           <tbody className="bg-white divide-y divide-gray-200">
             {evaluations.map((ev) => (
               <tr key={ev._id} className="hover:bg-gray-50">
-                <td className="px-5 py-4 text-sm font-medium text-gray-900">{ev.employeeName}</td>
-                <td className="px-5 py-4 text-sm text-gray-500">{ev.employeeRole}</td>
-                <td className="px-5 py-4 text-sm text-gray-700">
+                <td className="px-3 py-2 text-xs font-medium text-gray-900">{ev.employeeName}</td>
+                <td className="px-3 py-2 text-xs text-gray-500">{ev.employeeRole}</td>
+                <td className="px-3 py-2 text-xs text-gray-700">
                   <div>{ev.capabilitySkill}</div>
                   <div className="text-xs text-gray-400">{ev.capabilityArea}</div>
                 </td>
-                <td className="px-5 py-4 text-sm text-gray-900 text-center font-medium">{ev.requiredScore}</td>
-                <td className="px-5 py-4 text-sm text-gray-900 text-center font-medium">{ev.actualScore}</td>
-                <td className="px-5 py-4 text-center">
+                <td className="px-3 py-2 text-xs text-gray-900 text-center font-medium">{ev.requiredScore}</td>
+                <td className="px-3 py-2 text-xs text-gray-900 text-center font-medium">{ev.actualScore}</td>
+                <td className="px-3 py-2 text-center">
                   <span className={`px-2 py-1 text-xs rounded-full font-medium ${getGapColor(ev.gap)}`}>
                     {ev.gap >= 0 ? 'Met' : `Gap ${ev.gap}`}
                   </span>
                 </td>
-                <td className="px-5 py-4 text-center">
+                <td className="px-3 py-2 text-center">
                   {ev.isMandatory ? (
                     <span className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded-full">Yes</span>
                   ) : (
                     <span className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-full">No</span>
                   )}
                 </td>
-                <td className="px-5 py-4 whitespace-nowrap">
+                <td className="px-3 py-2 whitespace-nowrap">
                   <div className="flex gap-3">
                     <button
                       onClick={() => setViewingEval(ev)}
@@ -459,10 +459,10 @@ export default function ManagerEvaluation() {
 
       {/* Create / Edit Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999]">
           <div className="bg-white rounded-lg p-6 w-full max-w-lg mt-10 max-h-[80vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">
+              <h3 className="text-sm font-semibold">
                 {editingEval ? 'Edit Evaluation' : 'Add Evaluation'}
               </h3>
               <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
@@ -624,7 +624,7 @@ export default function ManagerEvaluation() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center ">
           <div className="bg-white rounded-lg p-6 w-full max-w-md mt-12 max-h-[80vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Evaluation Details</h3>
+              <h3 className="text-sm font-semibold">Evaluation Details</h3>
               <button onClick={() => setViewingEval(null)} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
@@ -650,15 +650,15 @@ export default function ManagerEvaluation() {
 
               <div className="grid grid-cols-3 gap-3">
                 <div className="text-center p-3 bg-blue-50 rounded-lg">
-                  <p className="text-xl font-bold text-blue-700">{viewingEval.requiredScore}</p>
+                  <p className="text-base font-bold text-blue-700">{viewingEval.requiredScore}</p>
                   <p className="text-xs text-blue-500">Required</p>
                 </div>
                 <div className="text-center p-3 bg-gray-50 rounded-lg">
-                  <p className="text-xl font-bold text-gray-700">{viewingEval.actualScore}</p>
+                  <p className="text-base font-bold text-gray-700">{viewingEval.actualScore}</p>
                   <p className="text-xs text-gray-500">Actual</p>
                 </div>
                 <div className={`text-center p-3 rounded-lg ${(viewingEval.gap >= 0) ? 'bg-green-50' : 'bg-red-50'}`}>
-                  <p className={`text-xl font-bold ${(viewingEval.gap >= 0) ? 'text-green-700' : 'text-red-700'}`}>
+                  <p className={`text-base font-bold ${(viewingEval.gap >= 0) ? 'text-green-700' : 'text-red-700'}`}>
                     {viewingEval.gap >= 0 ? 'Met' : viewingEval.gap}
                   </p>
                   <p className={`text-xs ${(viewingEval.gap >= 0) ? 'text-green-600' : 'text-red-600'}`}>

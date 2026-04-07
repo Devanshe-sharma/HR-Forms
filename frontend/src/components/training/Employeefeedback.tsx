@@ -78,13 +78,13 @@ function StarPicker({ value, onChange }: { value: number; onChange: (n: number) 
           onMouseLeave={() => setHover(0)}
           onClick={() => onChange(n)}
           className="focus:outline-none">
-          <Star className={`w-6 h-6 transition-colors ${
+          <Star className={`w-5 h-5 transition-colors ${
             n <= (hover || value) ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'
           }`} />
         </button>
       ))}
       {value > 0 && (
-        <span className="ml-1 text-sm text-gray-500 self-center">{value}/5</span>
+        <span className="ml-1 text-xs text-gray-500 self-center">{value}/5</span>
       )}
     </div>
   );
@@ -96,7 +96,7 @@ function StarDisplay({ value }: { value: number }) {
   return (
     <span className="flex gap-0.5">
       {[1, 2, 3, 4, 5].map(n => (
-        <Star key={n} className={`w-4 h-4 ${n <= value ? 'text-yellow-400 fill-yellow-400' : 'text-gray-200'}`} />
+        <Star key={n} className={`w-3 h-3 ${n <= value ? 'text-yellow-400 fill-yellow-400' : 'text-gray-200'}`} />
       ))}
     </span>
   );
@@ -192,20 +192,20 @@ export default function EmployeeFeedback() {
         <button onClick={() => setView('list')} className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-4">
           ← Back
         </button>
-        <h2 className="text-xl text-gray-700 mb-1">Feedback Responses</h2>
+        <h2 className="text-base text-gray-700 mb-1">Feedback Responses</h2>
         <p className="text-gray-400 text-sm mb-4">{selected.trainingName}</p>
 
         <div className="flex gap-4 mb-6">
-          <div className="bg-blue-50 border border-blue-100 rounded-lg px-5 py-3 text-center">
-            <p className="text-2xl font-bold text-blue-700">{list.length}</p>
+          <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 text-center">
+            <p className="text-lg font-bold text-blue-700">{list.length}</p>
             <p className="text-xs text-blue-500 mt-0.5">Responses</p>
           </div>
           <div className="bg-yellow-50 border border-yellow-100 rounded-lg px-5 py-3 text-center">
-            <p className="text-2xl font-bold text-yellow-600">{avgRating}</p>
+            <p className="text-lg font-bold text-yellow-600">{avgRating}</p>
             <p className="text-xs text-yellow-500 mt-0.5">Avg Rating</p>
           </div>
           <div className="bg-green-50 border border-green-100 rounded-lg px-5 py-3 text-center">
-            <p className="text-2xl font-bold text-green-700">
+            <p className="text-lg font-bold text-green-700">
               {list.length ? Math.round((list.filter(f => f.wouldRecommend).length / list.length) * 100) : 0}%
             </p>
             <p className="text-xs text-green-500 mt-0.5">Would Recommend</p>
@@ -217,15 +217,15 @@ export default function EmployeeFeedback() {
         ) : (
           <div className="space-y-4">
             {list.map(f => (
-              <div key={f._id} className="bg-white border border-gray-200 rounded-xl p-5">
-                <div className="flex items-start justify-between mb-3">
+              <div key={f._id} className="bg-white border border-gray-200 rounded-xl p-3">
+                <div className="flex items-start justify-between mb-2">
                   <div>
-                    <p className="font-medium text-gray-800 text-sm">{f.employeeName}</p>
+                    <p className="font-medium text-gray-800 text-xs">{f.employeeName}</p>
                     <p className="text-xs text-gray-400">{new Date(f.submittedAt).toLocaleDateString()}</p>
                   </div>
                   <StarDisplay value={f.rating} />
                 </div>
-                <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="grid grid-cols-2 gap-2 mb-2">
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Trainer</p>
                     <StarDisplay value={f.trainerRating} />
@@ -238,13 +238,13 @@ export default function EmployeeFeedback() {
                 {f.comments && (
                   <div className="mb-2">
                     <p className="text-xs font-medium text-gray-500 mb-0.5">Most valuable</p>
-                    <p className="text-sm text-gray-700 bg-gray-50 rounded p-2">{f.comments}</p>
+                    <p className="text-xs text-gray-700 bg-gray-50 rounded p-1.5">{f.comments}</p>
                   </div>
                 )}
                 {f.improvements && (
                   <div>
                     <p className="text-xs font-medium text-gray-500 mb-0.5">Improvements</p>
-                    <p className="text-sm text-gray-700 bg-gray-50 rounded p-2">{f.improvements}</p>
+                    <p className="text-xs text-gray-700 bg-gray-50 rounded p-1.5">{f.improvements}</p>
                   </div>
                 )}
                 <div className="mt-2">
@@ -263,16 +263,22 @@ export default function EmployeeFeedback() {
   // ── VIEW: Feedback submitted confirmation ──────────────────────────────────
   if (view === 'submitted') {
     return (
-      <div className="p-6 max-w-md mx-auto text-center py-16">
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <CheckCircle className="w-8 h-8 text-green-600" />
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
+        <div className="p-6 max-w-md mx-auto text-center py-16">
+          <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+            <CheckCircle className="w-6 h-6 text-green-600" />
+          </div>
+          <h3 className="text-base font-semibold text-gray-800 mb-2">Feedback Submitted!</h3>
+          <p className="text-gray-500 text-sm mb-6">
+            Thank you for your feedback on <strong>{selected?.trainingName}</strong>. Your response has been recorded.
+          </p>
+          <button onClick={() => setView('list')}
+            className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-xs">
+            Back to Trainings
+          </button>
         </div>
-        <h3 className="text-xl font-semibold text-gray-800 mb-2">Feedback Submitted!</h3>
-        <p className="text-gray-500 text-sm mb-6">
-          Thank you for your feedback on <strong>{selected?.trainingName}</strong>. Your response has been recorded.
-        </p>
         <button onClick={() => setView('list')}
-          className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm">
+          className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-xs">
           Back to Trainings
         </button>
       </div>
@@ -291,11 +297,11 @@ export default function EmployeeFeedback() {
 
         {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">{error}</div>}
 
-        <div className="space-y-6">
+        <div className="space-y-4">
 
           {/* Overall rating */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-xs font-medium text-gray-700 mb-1.5">
               Overall training rating <span className="text-red-500">*</span>
             </label>
             <StarPicker value={form.rating} onChange={v => setForm(p => ({ ...p, rating: v }))} />
@@ -303,7 +309,7 @@ export default function EmployeeFeedback() {
 
           {/* Trainer rating */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-xs font-medium text-gray-700 mb-1.5">
               Trainer effectiveness <span className="text-red-500">*</span>
             </label>
             <StarPicker value={form.trainerRating} onChange={v => setForm(p => ({ ...p, trainerRating: v }))} />
@@ -311,7 +317,7 @@ export default function EmployeeFeedback() {
 
           {/* Content rating */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-xs font-medium text-gray-700 mb-1.5">
               Quality of content / material <span className="text-red-500">*</span>
             </label>
             <StarPicker value={form.contentRating} onChange={v => setForm(p => ({ ...p, contentRating: v }))} />
@@ -319,14 +325,14 @@ export default function EmployeeFeedback() {
 
           {/* Would recommend */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-xs font-medium text-gray-700 mb-1.5">
               Would you recommend this to colleagues? <span className="text-red-500">*</span>
             </label>
             <div className="flex gap-3">
               {[true, false].map(val => (
                 <button key={String(val)} type="button"
                   onClick={() => setForm(p => ({ ...p, wouldRecommend: val }))}
-                  className={`px-5 py-2 text-sm rounded-md border transition-colors ${
+                  className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
                     form.wouldRecommend === val
                       ? val ? 'bg-green-600 text-white border-green-600' : 'bg-red-500 text-white border-red-500'
                       : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
@@ -339,34 +345,34 @@ export default function EmployeeFeedback() {
 
           {/* Comments */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-xs font-medium text-gray-700 mb-1.5">
               What did you find most valuable?
             </label>
             <textarea value={form.comments}
               onChange={e => setForm(p => ({ ...p, comments: e.target.value }))}
               rows={3} placeholder="Share what was most useful..."
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
 
           {/* Improvements */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-xs font-medium text-gray-700 mb-1.5">
               What could be improved?
             </label>
             <textarea value={form.improvements}
               onChange={e => setForm(p => ({ ...p, improvements: e.target.value }))}
               rows={3} placeholder="Suggestions for improvement..."
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
         </div>
 
-        <div className="flex gap-3 mt-8">
+        <div className="flex gap-2 mt-6">
           <button onClick={() => setView('list')}
-            className="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+            className="px-3 py-1.5 text-xs text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
             Cancel
           </button>
           <button onClick={submitFeedback} disabled={!isFormValid || saving}
-            className="flex items-center gap-2 px-5 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40">
+            className="flex items-center gap-2 px-3 py-1.5 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-40">
             <CheckCircle className="w-4 h-4" />
             {saving ? 'Submitting...' : 'Submit Feedback'}
           </button>
@@ -402,14 +408,14 @@ export default function EmployeeFeedback() {
             const resCount = trainingFeedbacks(t.trainingId).length;
 
             return (
-              <div key={t._id} className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-3 hover:shadow-sm transition-shadow">
+              <div key={t._id} className="bg-white border border-gray-200 rounded-xl p-3 flex flex-col gap-2 hover:shadow-sm transition-shadow">
                 <div>
-                  <h3 className="font-semibold text-gray-800 text-sm leading-snug">{t.trainingName}</h3>
+                  <h3 className="font-semibold text-gray-800 text-xs leading-snug">{t.trainingName}</h3>
                   <p className="text-xs text-gray-400 mt-0.5">{t.capabilitySkill}</p>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">{t.trainerName}</span>
+                  <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">{t.trainerName}</span>
                   <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">
                     {new Date(t.trainingDate).toLocaleDateString()}
                   </span>
@@ -417,24 +423,24 @@ export default function EmployeeFeedback() {
 
                 {/* Already submitted badge */}
                 {done && (
-                  <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 px-2 py-1 rounded-full w-fit">
-                    <CheckCircle className="w-3.5 h-3.5" />
+                  <div className="flex items-center gap-1 text-xs text-green-700 bg-green-50 px-1.5 py-0.5 rounded-full w-fit">
+                    <CheckCircle className="w-3 h-3" />
                     Feedback submitted · <StarDisplay value={done.rating} />
                   </div>
                 )}
 
-                <div className="flex gap-2 mt-auto pt-1 flex-wrap">
+                <div className="flex gap-1 mt-auto pt-1 flex-wrap">
                   {/* Employee: give feedback (only once) */}
                   {!done && (
                     <button onClick={() => openForm(t)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
-                      <ChevronRight className="w-3.5 h-3.5" /> Give Feedback
+                      className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                      <ChevronRight className="w-3 h-3" /> Give Feedback
                     </button>
                   )}
 
                   {/* HR / manager: view all responses */}
                   <button onClick={() => openAllResponses(t)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-300 text-gray-600 rounded-md hover:bg-gray-50 transition-colors">
+                    className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 text-gray-600 rounded-md hover:bg-gray-50 transition-colors">
                     📊 {resCount} Response{resCount !== 1 ? 's' : ''}
                   </button>
                 </div>

@@ -119,7 +119,7 @@ export default function SkillGapReport() {
   return (
     <div className="p-6">
       <div className="mb-6 ">
-        <h2 className="text-xl text-gray-700 mb-1">Skill Gap Report</h2>
+        <h2 className="text-base text-gray-700 mb-1">Skill Gap Report</h2>
         <p className="text-gray-400 text-sm">
           {isEmployee
             ? 'Your personal skill assessment and gaps'

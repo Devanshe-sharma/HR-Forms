@@ -59,6 +59,7 @@ app.use('/api/hygiene',            require('./routes/hygiene'));
 app.use('/api/growth',             require('./routes/growth'));
 app.use('/api',                    require('./routes/sheetWebhook'));
 app.use('/api/sync',               require('./routes/syncFms'));
+app.use('/api/rbac', require('./routes/rbac'));
 
 
 app.use('/api/dept-orientation',   require('./routes/deptOrientationRoutes'));

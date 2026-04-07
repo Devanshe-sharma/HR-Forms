@@ -405,7 +405,7 @@ export default function TrainingTopicManagement() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h2 className="text-xl text-gray-700 mb-2">Training Topic Management</h2>
+        <h2 className="text-base text-gray-700 mb-2">Training Topic Management</h2>
         <p className="text-gray-400 text-sm">Create and manage training topics before approval</p>
       </div>
 
@@ -428,23 +428,23 @@ export default function TrainingTopicManagement() {
           <thead className="bg-gray-50">
             <tr>
               {['ID', 'Training Name', 'Capability Skill', 'Type', 'Target', 'Proposed Date', 'Status', 'Actions'].map(h => (
-                <th key={h} className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                <th key={h} className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {trainingTopics.map(topic => (
               <tr key={topic._id} className="hover:bg-gray-50">
-                <td className="px-5 py-4 text-sm text-gray-500 font-mono">{topic.trainingId}</td>
-                <td className="px-5 py-4 text-sm text-gray-900">{topic.trainingName}</td>
-                <td className="px-5 py-4 text-sm text-gray-700">{topic.capabilitySkill}</td>
+                <td className="px-3 py-2 text-xs text-gray-500 font-mono">{topic.trainingId}</td>
+                <td className="px-3 py-2 text-xs text-gray-900">{topic.trainingName}</td>
+                <td className="px-3 py-2 text-xs text-gray-700">{topic.capabilitySkill}</td>
                 <td className="px-5 py-4">
                   <span className={`px-2 py-1 text-xs rounded-full ${getTypeColor(topic.type)}`}>{topic.type}</span>
                 </td>
-                <td className="px-5 py-4 text-xs text-gray-500 max-w-[160px] truncate" title={targetingLabel(topic)}>
+                <td className="px-3 py-2 text-xs text-gray-500 max-w-[160px] truncate" title={targetingLabel(topic)}>
                   {targetingLabel(topic)}
                 </td>
-                <td className="px-5 py-4 text-sm text-gray-500 whitespace-nowrap">
+                <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
                   {new Date(topic.proposedScheduleDate).toLocaleDateString()}
                 </td>
                 <td className="px-5 py-4">
@@ -487,10 +487,10 @@ export default function TrainingTopicManagement() {
 
       {/* ── Create / Edit Modal ── */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl mt-20 max-h-[80vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">
+              <h3 className="text-sm font-semibold">
                 {editingTopic ? 'Edit Training Topic' : 'Create Training Topic'}
               </h3>
               <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
@@ -683,10 +683,10 @@ export default function TrainingTopicManagement() {
 
       {/* ── View Modal ── */}
       {viewingTopic && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[70vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Training Topic Details</h3>
+              <h3 className="text-sm font-semibold">Training Topic Details</h3>
               <button onClick={() => setViewingTopic(null)} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>

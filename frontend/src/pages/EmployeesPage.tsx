@@ -48,7 +48,7 @@ interface Department {
   department_type: string;
 }
 
-const API_BASE = process.env.API_BASE_URL;
+const API_BASE = process.env.API_BASE_URL || 'http://localhost:5000/api';
 
 // Consistent avatar color per name initial
 const AVATAR_COLORS = [
@@ -110,11 +110,15 @@ const EmployeesPage: React.FC = () => {
   const fetchEmployees = async () => {
     try {
       const token = localStorage.getItem('token') || '';
+      console.log('Fetching employees from:', `${API_BASE}/employees`);
       const res = await fetch(`${API_BASE}/employees`, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       });
+      console.log('Employees response status:', res.status);
+      
       if (res.ok) {
         const data = await res.json();
+        console.log('Employees data:', data);
         if (data.success && data.data) {
           setEmployees(data.data.map((emp: any) => ({
             _id: emp._id, employee_id: emp.employee_id, full_name: emp.full_name,
@@ -123,8 +127,11 @@ const EmployeesPage: React.FC = () => {
             photo: emp.photo || undefined,
           })));
         }
+      } else {
+        console.error('Failed to fetch employees:', res.statusText);
       }
-    } catch {
+    } catch (error) {
+      console.error('Error fetching employees:', error);
       setEmployees([
         { _id: '1', employee_id: 'EMP001', full_name: 'John Doe', official_email: 'john.doe@company.com', personal_email: 'john@gmail.com', mobile: '+91 98765 43210', designation: 'Senior Software Engineer', department: 'Engineering' },
         { _id: '2', employee_id: 'EMP002', full_name: 'Jane Smith', official_email: 'jane.smith@company.com', personal_email: 'jane@yahoo.com', mobile: '+91 87654 32109', designation: 'HR Manager', department: 'Human Resources' },
