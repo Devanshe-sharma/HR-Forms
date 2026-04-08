@@ -315,7 +315,7 @@ export default function Navbar() {
 
         textColor="inherit"
 
-        TabIndicatorProps={{ style: { backgroundColor: '#186FCB', height: 3 } }}
+        TabIndicatorProps={{ style: { backgroundColor: '#1976d2', height: 3 } }}
 
         sx={WHITE_TAB_STYLES}
 
@@ -347,7 +347,7 @@ export default function Navbar() {
 
         width: `calc(100% - ${drawerWidth}px)`, ml: `${drawerWidth}px`,
 
-        backgroundColor: '#3B82F6', boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+        backgroundColor: '#1976d2', boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
 
         height: TOOLBAR_H,
 

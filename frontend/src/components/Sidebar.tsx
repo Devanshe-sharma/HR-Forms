@@ -41,7 +41,7 @@ import {
 import { NavLink, useLocation } from 'react-router-dom';
 
 const drawerWidth = 260;
-const BRAND_BLUE = '#3B82F6';
+const BRAND_BLUE = '#1976d2';
 
 // ─── Types ─────────────────────────────────────
 interface SubItem {
@@ -289,7 +289,7 @@ export default function Sidebar() {
                     transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                     transform: 'translateX(0)',
                     '&:hover': {
-                      bgcolor: isParentActive ? '#2563eb' : '#f8fafc',
+                      bgcolor: isParentActive ? '#1976d2' : '#f8fafc',
                       transform: 'translateX(2px)',
                       boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
                     },
@@ -358,7 +358,7 @@ export default function Sidebar() {
                             opacity: 1,
                             animation: active ? 'slideIn 0.3s ease' : 'none',
                             '&:hover': {
-                              bgcolor: active ? '#2563eb' : '#f1f5f9',
+                              bgcolor: active ? '#1976d2' : '#f1f5f9',
                               transform: 'translateX(4px)',
                               boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
                             },
@@ -415,7 +415,7 @@ export default function Sidebar() {
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                 transform: 'translateX(0)',
                 '&:hover': {
-                  bgcolor: active ? '#2563eb' : '#f8fafc',
+                  bgcolor: active ? '#1976d2' : '#f8fafc',
                   transform: 'translateX(2px)',
                   boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
                 },
