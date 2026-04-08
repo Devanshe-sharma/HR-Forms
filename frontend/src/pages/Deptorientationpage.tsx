@@ -1043,7 +1043,7 @@ export default function DeptOrientationPage() {
         <main style={{padding:'24px',paddingTop:'88px'}}>
 
           {/* Banner */}
-          <Box sx={{mb:3,p:3.5,borderRadius:'20px',background:'linear-gradient(135deg,#0F172A 0%,#1E3A5F 65%,#334155 100%)',color:'white',position:'relative',overflow:'hidden'}}>
+          <Box sx={{mb:3,p:3.5,borderRadius:'20px',background:'linear-gradient(135deg, #1E3A5F 0%, #3B82F6 100%)',color:'white',position:'relative',overflow:'hidden'}}>
             <Box sx={{position:'absolute',top:-40,right:-20,width:180,height:180,borderRadius:'50%',bgcolor:'rgba(255,255,255,0.04)'}}/>
             <Box sx={{display:'flex',alignItems:'center',gap:2,position:'relative',zIndex:1}}>
               <Box sx={{width:52,height:52,borderRadius:'14px',bgcolor:'rgba(255,255,255,0.1)',display:'flex',alignItems:'center',justifyContent:'center'}}><ApartmentIcon sx={{fontSize:28}}/></Box>

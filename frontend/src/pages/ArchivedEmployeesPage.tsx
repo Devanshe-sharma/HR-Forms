@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -23,7 +22,6 @@ import {
   Phone as PhoneIcon,
   BadgeOutlined as BadgeIcon,
   PeopleAltOutlined as PeopleIcon,
-  ArchiveOutlined as ArchiveIcon,
   UnarchiveOutlined as UnarchiveIcon,
 } from '@mui/icons-material';
 import Sidebar from '../components/Sidebar';
@@ -75,8 +73,7 @@ const getInitials = (name?: string) => {
   return name.split(' ').map(w => w.charAt(0)).join('').toUpperCase().slice(0, 2);
 };
 
-const EmployeesPage: React.FC = () => {
-  const nav = useNavigate();
+const ArchivedEmployeesPage: React.FC = () => {
   const theme = useTheme();
   const isLight = theme.palette.mode === 'light';
 
@@ -88,7 +85,7 @@ const EmployeesPage: React.FC = () => {
   const [selectedDesignation, setSelectedDesignation] = useState('');
 
   useEffect(() => {
-    fetchEmployees();
+    fetchArchivedEmployees();
     fetchDepartments();
   }, []);
 
@@ -111,18 +108,18 @@ const EmployeesPage: React.FC = () => {
     }
   };
 
-  const fetchEmployees = async () => {
+  const fetchArchivedEmployees = async () => {
     try {
       const token = localStorage.getItem('token') || '';
-      console.log('Fetching employees from:', `${API_BASE}/employees`);
-      const res = await fetch(`${API_BASE}/employees`, {
+      console.log('Fetching archived employees from:', `${API_BASE}/employees/archived`);
+      const res = await fetch(`${API_BASE}/employees/archived`, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       });
-      console.log('Employees response status:', res.status);
+      console.log('Archived employees response status:', res.status);
       
       if (res.ok) {
         const data = await res.json();
-        console.log('Employees data:', data);
+        console.log('Archived employees data:', data);
         if (data.success && data.data) {
           setEmployees(data.data.map((emp: any) => ({
             _id: emp._id, employee_id: emp.employee_id, full_name: emp.full_name,
@@ -132,32 +129,32 @@ const EmployeesPage: React.FC = () => {
           })));
         }
       } else {
-        console.error('Failed to fetch employees:', res.statusText);
+        console.error('Failed to fetch archived employees:', res.statusText);
       }
     } catch (error) {
-      console.error('Error fetching employees:', error);
+      console.error('Error fetching archived employees:', error);
+      // Demo data for archived employees
       setEmployees([
-        { _id: '1', employee_id: 'EMP001', full_name: 'John Doe', official_email: 'john.doe@company.com', personal_email: 'john@gmail.com', mobile: '+91 98765 43210', designation: 'Senior Software Engineer', department: 'Engineering' },
-        { _id: '2', employee_id: 'EMP002', full_name: 'Jane Smith', official_email: 'jane.smith@company.com', personal_email: 'jane@yahoo.com', mobile: '+91 87654 32109', designation: 'HR Manager', department: 'Human Resources' },
-        { _id: '3', employee_id: 'EMP003', full_name: 'Mike Johnson', official_email: 'mike.j@company.com', personal_email: 'mike@outlook.com', mobile: '+91 76543 21098', designation: 'Product Designer', department: 'Design' },
+        { _id: '4', employee_id: 'EMP004', full_name: 'Sarah Wilson', official_email: 'sarah.w@company.com', personal_email: 'sarah@gmail.com', mobile: '+91 65432 10987', designation: 'Marketing Manager', department: 'Marketing' },
+        { _id: '5', employee_id: 'EMP005', full_name: 'David Brown', official_email: 'david.b@company.com', personal_email: 'david@yahoo.com', mobile: '+91 54321 09876', designation: 'QA Engineer', department: 'Engineering' },
       ]);
     } finally {
       setLoading(false);
     }
   };
 
-  const archiveEmployee = async (employeeId: string) => {
+  const unarchiveEmployee = async (employeeId: string) => {
     try {
       const token = localStorage.getItem('token') || '';
-      console.log('Attempting to archive employee:', employeeId);
+      console.log('Attempting to unarchive employee:', employeeId);
       
-      const response = await fetch(`${API_BASE}/employees/${employeeId}/archive`, {
+      const response = await fetch(`${API_BASE}/employees/${employeeId}/unarchive`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       });
       
-      console.log('Archive response status:', response.status);
-      console.log('Archive response headers:', response.headers);
+      console.log('Unarchive response status:', response.status);
+      console.log('Unarchive response headers:', response.headers);
       
       // Check if response is HTML (server error page) instead of JSON
       const contentType = response.headers.get('content-type');
@@ -180,19 +177,19 @@ const EmployeesPage: React.FC = () => {
         return;
       }
       
-      console.log('Archive response data:', responseData);
+      console.log('Unarchive response data:', responseData);
       
       if (response.ok) {
-        // Remove employee from the list only if API call succeeded
+        // Remove employee from archived list only if API call succeeded
         setEmployees(prev => prev.filter(emp => emp._id !== employeeId));
-        console.log('Employee successfully archived and removed from list');
+        console.log('Employee successfully unarchived and removed from archived list');
       } else {
-        console.error('Failed to archive employee:', responseData.error || response.statusText);
-        alert(`Failed to archive employee: ${responseData.error || response.statusText}`);
+        console.error('Failed to unarchive employee:', responseData.error || response.statusText);
+        alert(`Failed to unarchive employee: ${responseData.error || response.statusText}`);
       }
     } catch (error) {
-      console.error('Error archiving employee:', error);
-      alert('Error archiving employee. Please check your connection and ensure backend server is running.');
+      console.error('Error unarchiving employee:', error);
+      alert('Error unarchiving employee. Please check your connection and ensure backend server is running.');
     }
   };
 
@@ -253,50 +250,25 @@ const EmployeesPage: React.FC = () => {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
               <Box sx={{
                 width: 40, height: 40, borderRadius: '10px',
-                background: `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.primary.dark || theme.palette.primary.main})`,
+                background: `linear-gradient(135deg, #EF4444, #DC2626)`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: `0 4px 12px ${theme.palette.primary.main}40`,
+                boxShadow: `0 4px 12px #EF444440`,
                 flexShrink: 0,
               }}>
                 <PeopleIcon sx={{ color: '#fff', fontSize: 20 }} />
               </Box>
               <Box>
                 <Typography variant="h5" fontWeight={700} color={theme.palette.text.primary} lineHeight={1.2}>
-                  Employees List
+                  Archived Employees
                 </Typography>
                 <Typography variant="caption" color={theme.palette.text.secondary}>
-                  {employees.length} total members
+                  {employees.length} archived members
                 </Typography>
               </Box>
             </Box>
-            
-            {/* Archive Folder Button */}
-            <Button
-              onClick={() => nav('/employees/archive')}
-              variant="outlined"
-              startIcon={<ArchiveIcon />}
-              sx={{
-                borderRadius: '8px',
-                textTransform: 'none',
-                fontSize: '0.875rem',
-                fontWeight: 600,
-                px: 2.5,
-                py: 1,
-                borderColor: isLight ? '#E5E7EB' : 'rgba(255,255,255,0.2)',
-                color: theme.palette.text.primary,
-                backgroundColor: theme.palette.background.paper,
-                '&:hover': {
-                  backgroundColor: isLight ? '#F9FAFB' : 'rgba(255,255,255,0.05)',
-                  borderColor: theme.palette.primary.main,
-                  color: theme.palette.primary.main,
-                },
-              }}
-            >
-              Archive Folder
-            </Button>
           </Box>
 
-          {/* ── Search + Filters bar ── */}
+          {/* Search + Filters bar */}
           <Box sx={{
             mb: 2.5, p: 1.5, borderRadius: '12px',
             border: `1px solid ${isLight ? '#E9EEF5' : 'rgba(255,255,255,0.08)'}`,
@@ -354,7 +326,7 @@ const EmployeesPage: React.FC = () => {
             </Stack>
           </Box>
 
-          {/* ── Loading ── */}
+          {/* Loading */}
           {loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
               <CircularProgress size={32} />
@@ -417,9 +389,9 @@ const EmployeesPage: React.FC = () => {
                           </Box>
                         </Box>
                         
-                        {/* Archive Button */}
+                        {/* Unarchive Button */}
                         <Box
-                          onClick={() => archiveEmployee(employee._id)}
+                          onClick={() => unarchiveEmployee(employee._id)}
                           sx={{
                             cursor: 'pointer',
                             p: 1,
@@ -429,12 +401,12 @@ const EmployeesPage: React.FC = () => {
                             justifyContent: 'center',
                             transition: 'all 0.2s ease',
                             '&:hover': {
-                              backgroundColor: isLight ? 'rgba(239, 68, 68, 0.1)' : 'rgba(239, 68, 68, 0.2)',
-                              color: '#EF4444',
+                              backgroundColor: isLight ? 'rgba(34, 197, 94, 0.1)' : 'rgba(34, 197, 94, 0.2)',
+                              color: '#22C55E',
                             },
                           }}
                         >
-                          <ArchiveIcon sx={{ fontSize: 18, color: theme.palette.text.secondary }} />
+                          <UnarchiveIcon sx={{ fontSize: 18, color: theme.palette.text.secondary }} />
                         </Box>
                       </Box>
 
@@ -494,7 +466,7 @@ const EmployeesPage: React.FC = () => {
             </Box>
           )}
 
-          {/* ── Empty state ── */}
+          {/* Empty state */}
           {!loading && sortedFiltered.length === 0 && (
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', py: 12, textAlign: 'center' }}>
               <Box sx={{
@@ -506,7 +478,7 @@ const EmployeesPage: React.FC = () => {
                 <PersonIcon sx={{ fontSize: 32, color: theme.palette.text.disabled }} />
               </Box>
               <Typography variant="subtitle1" fontWeight={600} color={theme.palette.text.secondary} mb={0.5}>
-                No employees found
+                No archived employees found
               </Typography>
               <Typography variant="body2" color={theme.palette.text.disabled}>
                 Try adjusting your search or filter criteria
@@ -526,4 +498,4 @@ const EmployeesPage: React.FC = () => {
   );
 };
 
-export default EmployeesPage;
+export default ArchivedEmployeesPage;

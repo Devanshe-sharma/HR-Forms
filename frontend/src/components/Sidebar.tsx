@@ -123,7 +123,7 @@ export default function Sidebar() {
 
   const menuItems: MenuItem[] = [
     { to: '/company-orientation', text: 'Company Orientation', icon: <CorporateFareIcon /> },
-    { to: '/dept-orientation', text: 'Dept Orientation', icon: <ApartmentIcon /> },
+    { to: '/dept-orientation', text: 'Deptartment Orientation', icon: <ApartmentIcon /> },
     { to: '/hr-dashboard', text: 'Dashboard', icon: <DashboardIcon /> },
     { to: '/employees', text: 'Employees List', icon: <PeopleIcon /> },
 
@@ -135,9 +135,9 @@ export default function Sidebar() {
       onClick: () => setOpenTrainings(p => !p),
       open: openTrainings,
       subItems: [
-        { to: '/training-page?tab=HR', text: 'HR Training', icon: <PeopleIcon /> },
-        { to: '/training-page?tab=manager', text: 'Manager', icon: <AssignmentIcon /> },
-        { to: '/training-page?tab=management', text: 'Management Approval', icon: <ApprovalIcon /> },
+        { to: '/training-page?tab=HR', text: 'HR', icon: <PeopleIcon /> },
+        { to: '/training-page?tab=manager', text: 'Managers', icon: <AssignmentIcon /> },
+        { to: '/training-page?tab=management', text: 'Management', icon: <ApprovalIcon /> },
         { to: '/training-page?tab=employee', text: 'Employee', icon: <AssignmentIcon /> },
         { to: '/training-page?tab=scorecard', text: 'Scorecard', icon: <EmojiEventsIcon /> },
       ],
@@ -190,7 +190,7 @@ export default function Sidebar() {
 
     // { to: '/checklist-delegation', text: 'Check List & Delegation', icon: <AssignmentTurnedInIcon /> },
     // { to: '/requisition', text: 'Requisition', icon: <RequestPageIcon /> },
-    // { to: '/onboarding', text: 'Onboarding', icon: <BusinessCenterIcon /> },
+    { to: '/onboarding', text: 'Onboarding', icon: <BusinessCenterIcon /> },
     { to: '/profile', text: 'Profile', icon: <AccountCircleIcon /> },
     { to: '/configuration', text: 'Configuration', icon: <SettingsIcon /> },
   ];

@@ -16,7 +16,7 @@ export default {
   mode,
 
   devServer: {
-    port: 5173,
+    port: 3000,
     historyApiFallback: true,
     hot: true,
   },

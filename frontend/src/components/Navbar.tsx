@@ -5,8 +5,9 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 
 import Brightness4Icon from '@mui/icons-material/Brightness4';
-
 import Brightness7Icon from '@mui/icons-material/Brightness7';
+import ArchiveOutlined from '@mui/icons-material/ArchiveOutlined';
+
 
 
 
@@ -34,7 +35,7 @@ const pageTitles: Record<string, string> = {
 
   '/onboarding':           'Onboarding',
 
-  '/training-page':        'Training Management',
+  '/training-page':        'Trainings',
 
   '/outing':               'Outing / Event',
 
@@ -92,7 +93,7 @@ const TRAINING_TABS = [
 
   { label: 'Skill Gap',           value: 'skillgap' },
 
-  { label: 'Management Approval', value: 'management' },
+  { label: 'Management', value: 'management' },
 
   { label: 'Employee',            value: 'employee' },
 
@@ -314,7 +315,7 @@ export default function Navbar() {
 
         textColor="inherit"
 
-        TabIndicatorProps={{ style: { backgroundColor: '#3B82F6', height: 3 } }}
+        TabIndicatorProps={{ style: { backgroundColor: '#186FCB', height: 3 } }}
 
         sx={WHITE_TAB_STYLES}
 
@@ -357,39 +358,22 @@ export default function Navbar() {
           <Typography variant="h6" fontWeight={700} color="white">{pageTitle}</Typography>
 
           <Box
-
             onClick={toggleDarkMode}
-
             sx={{ 
-
               cursor: 'pointer', 
-
               display: 'flex', 
-
               alignItems: 'center',
-
               gap: 1,
-
               padding: '4px 8px',
-
               borderRadius: '4px',
-
               '&:hover': { backgroundColor: 'rgba(255,255,255,0.1)' }
-
             }}
-
           >
-
             {darkMode ? (
-
               <Brightness7Icon sx={{ color: 'white', fontSize: 20 }} />
-
             ) : (
-
               <Brightness4Icon sx={{ color: 'white', fontSize: 20 }} />
-
             )}
-
           </Box>
 
         </Toolbar>

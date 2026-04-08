@@ -10,7 +10,7 @@ const Employee = require('../models/Employee');
 router.get('/', async (req, res) => {
   try {
     if (req.query.lightweight === 'true') {
-      const employees = await Employee.find()
+      const employees = await Employee.find({ isArchived: { $ne: true } })
         .select('_id full_name department designation official_email score')
         .sort({ full_name: 1 })
         .lean();
@@ -27,7 +27,7 @@ router.get('/', async (req, res) => {
       return res.json({ success: true, data: formatted });
     }
 
-    const employees = await Employee.find();
+    const employees = await Employee.find({ isArchived: { $ne: true } });
     return res.json({ success: true, data: employees });
 
   } catch (err) {
@@ -66,6 +66,71 @@ router.get('/review-period', async (req, res) => {
   } catch (err) {
     console.error('Error fetching review period employees:', err);
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/employees/archived - Get archived employees
+router.get('/archived', async (req, res) => {
+  try {
+    const employees = await Employee.find({ isArchived: true })
+      .sort({ archivedAt: -1 });
+    return res.json({ success: true, data: employees });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PUT /api/employees/:id/archive - Archive an employee
+router.put('/:id/archive', async (req, res) => {
+  try {
+    console.log(`Archiving employee with ID: ${req.params.id}`);
+    
+    const employee = await Employee.findByIdAndUpdate(
+      req.params.id,
+      { 
+        isArchived: true,
+        archivedAt: new Date()
+      },
+      { new: true }
+    );
+    
+    if (!employee) {
+      console.log(`Employee not found with ID: ${req.params.id}`);
+      return res.status(404).json({ success: false, error: 'Employee not found' });
+    }
+    
+    console.log(`Successfully archived employee: ${employee.full_name} (${employee.employee_id})`);
+    return res.json({ success: true, data: employee });
+  } catch (err) {
+    console.error('Error archiving employee:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// PUT /api/employees/:id/unarchive - Unarchive an employee
+router.put('/:id/unarchive', async (req, res) => {
+  try {
+    console.log(`Unarchiving employee with ID: ${req.params.id}`);
+    
+    const employee = await Employee.findByIdAndUpdate(
+      req.params.id,
+      { 
+        isArchived: false,
+        archivedAt: null
+      },
+      { new: true }
+    );
+    
+    if (!employee) {
+      console.log(`Employee not found with ID: ${req.params.id}`);
+      return res.status(404).json({ success: false, error: 'Employee not found' });
+    }
+    
+    console.log(`Successfully unarchived employee: ${employee.full_name} (${employee.employee_id})`);
+    return res.json({ success: true, data: employee });
+  } catch (err) {
+    console.error('Error unarchiving employee:', err);
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 

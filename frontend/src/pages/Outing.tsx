@@ -662,10 +662,10 @@ const Outing: React.FC = () => {
   return (
     <div className="flex min-h-screen bg-[#f4f6f2]">
       <Sidebar />
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col md:ml-0">
         <Navbar />
 
-        <main className="p-3 sm:p-4 mt-16 sm:mt-20 max-w-7xl mx-auto w-full relative">
+        <main className="p-3 sm:p-4 mt-16 sm:mt-20 md:mt-20 max-w-7xl mx-auto w-full relative">
           {/* Floating + Button - HR tab */}
           {currentTab === 'HR' && (
             <button

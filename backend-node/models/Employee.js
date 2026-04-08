@@ -53,7 +53,11 @@ const EmployeeSchema = new mongoose.Schema(
         equivalent_monthly_ctc: String,
 
         created_at: String,
-        updated_at: String
+        updated_at: String,
+
+        // Archive fields
+        isArchived: { type: Boolean, default: false },
+        archivedAt: { type: Date, default: null }
     },
     {
         collection: 'Employee'
