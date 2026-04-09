@@ -20,6 +20,8 @@ import Outing from "./pages/Outing";
 import PMSDashboard from "./pages/PMSDashboard";
 import Requisition from "./pages/Requisition";
 import Onboarding from "./pages/Onboarding";
+import NewOnboarding from "./pages/onboarding/NewOnboarding";
+import OnboardingDashboard from "./pages/onboarding/Dashboard";
 import Exit from "./pages/Exit";
 import Confirmationspage from "./pages/Confirmationspage";
 import DeptOrientationPage from "./pages/Deptorientationpage";
@@ -55,7 +57,9 @@ export default function App() {
           <Route path="/training-page" element={<TrainingPage />} />
           <Route path="/outing" element={<Outing />} />
           <Route path="/requisition" element={<Requisition />} />
-          <Route path="/onboarding" element={<Onboarding />} />
+          <Route path="/onboarding" element={<OnboardingDashboard />} />
+          <Route path="/onboarding/dashboard" element={<OnboardingDashboard />} />
+          <Route path="/new-onboarding" element={<NewOnboarding />} />
           <Route path="/exits" element={<Exit />} />
 
           <Route path="/company-orientation" element={<Companyorientationpage />} />

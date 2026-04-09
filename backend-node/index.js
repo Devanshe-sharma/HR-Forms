@@ -48,7 +48,7 @@ app.use('/api/training-feedback',  require('./routes/trainingFeedback'));
 app.use('/api/training-assessments', require('./routes/trainingAssessments'));
 app.use('/api/employee-scores',    require('./routes/employeeScores'));
 app.use('/api/requisition',        require('./routes/requisition'));
-app.use('/api/onboarding',         require('./routes/onboarding'));
+app.use('/api/onboarding',         require('./routes/onboardingroutes'));
 app.use('/api/exit',               require('./routes/exit'));
 app.use('/api/outing',             require('./routes/outing'));
 app.use('/api/dept-kpi',           require('./routes/dept-kpi'));

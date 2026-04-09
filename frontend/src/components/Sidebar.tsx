@@ -190,7 +190,7 @@ export default function Sidebar() {
 
     // { to: '/checklist-delegation', text: 'Check List & Delegation', icon: <AssignmentTurnedInIcon /> },
     // { to: '/requisition', text: 'Requisition', icon: <RequestPageIcon /> },
-    { to: '/onboarding', text: 'Onboarding', icon: <BusinessCenterIcon /> },
+    { to: '/onboarding/dashboard', text: 'Onboarding', icon: <BusinessCenterIcon /> },
     { to: '/profile', text: 'Profile', icon: <AccountCircleIcon /> },
     { to: '/configuration', text: 'Configuration', icon: <SettingsIcon /> },
   ];
