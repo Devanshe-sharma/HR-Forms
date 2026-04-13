@@ -148,7 +148,7 @@ const OnboardingDashboard: React.FC = () => {
         <Sidebar />
         <Box sx={{ flexGrow: 1 }}>
           <Navbar />
-          <Box sx={{ p: 3 }}>
+          <Box sx={{ p: 3, marginTop: "56px" }}>
             <LinearProgress />
             <Typography variant="h6" sx={{ mt: 2 }}>Loading dashboard...</Typography>
           </Box>
@@ -314,12 +314,11 @@ const OnboardingDashboard: React.FC = () => {
                         size="small"
                         startIcon={<Visibility />}
                         onClick={() => {
-                          // Navigate to update onboarding page (to be created)
-                          // navigate(`/onboarding/update/${item._id}`);
-                          toast("Update page coming soon!", { icon: "ℹ️" });
+                          // Navigate to update onboarding page
+                          navigate(`/onboarding/update/${item._id}`);
                         }}
                       >
-                        View
+                        Update
                       </Button>
                     </TableCell>
                   </TableRow>
