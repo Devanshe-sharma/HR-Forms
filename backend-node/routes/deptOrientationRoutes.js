@@ -2,8 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
-const Designation = require('../models/Designation');
 const Department = require('../models/Departmentorientation');
+const RoleMaster = require('../models/role_master');
 const { requireRole } = require('../config/roles');
 
 // ── MULTER CONFIG ─────────────────────────────────────────────
@@ -32,7 +32,7 @@ async function findDept(nameOrId) {
 // ── GET ALL ───────────────────────────────────────────────────
 router.get('/', async (req, res) => {
   try {
-    const raw = await Designation.distinct('department');
+    const raw = await RoleMaster.distinct('department', { department: { $ne: '' } });
 
     const validNames = [...new Set(
       raw.map(n => n?.trim()).filter(Boolean)

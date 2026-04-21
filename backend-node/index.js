@@ -32,8 +32,7 @@ app.get('/', (req, res) => res.send('Backend server is alive!'));
 
 app.use('/api/employees',          require('./routes/employees'));
 app.use('/api/confirmations',      require('./routes/confirmations'));
-app.use('/api/departments',        require('./routes/departments'));
-app.use('/api/designations',       require('./routes/designations'));
+app.use('/api/roles',              require('./routes/roles'));
 app.use('/api/hiringrequisitions', require('./routes/hiringRequisitions'));
 app.use('/api/ctc-components',     require('./routes/ctcComponents'));
 // app.use('/api/trainings',          require('./routes/training'));

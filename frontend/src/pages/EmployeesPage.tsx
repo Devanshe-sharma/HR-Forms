@@ -41,14 +41,9 @@ interface Employee {
   photo?: string;
 }
 
-interface Department {
+interface RoleDepartment {
   _id: string;
   department: string;
-  dept_head_email: string;
-  dept_group_email: string;
-  Id: number;
-  parent_department: string;
-  department_type: string;
 }
 
 const API_BASE = process.env.API_BASE_URL || 'http://localhost:5000/api';
@@ -81,7 +76,8 @@ const EmployeesPage: React.FC = () => {
   const isLight = theme.palette.mode === 'light';
 
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
+  const [departments, setDepartments] = useState<RoleDepartment[]>([]);
+  const [roles, setRoles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState('');
@@ -90,26 +86,57 @@ const EmployeesPage: React.FC = () => {
   useEffect(() => {
     fetchEmployees();
     fetchDepartments();
-  }, []);
+    if (selectedDepartment) {
+    setSelectedDesignation('');
+  }
+}, [selectedDepartment]);
+
+
+
 
   const fetchDepartments = async () => {
-    try {
-      const token = localStorage.getItem('token') || '';
-      const res = await fetch(`${API_BASE}/departments`, {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.data) setDepartments(data.data);
+  try {
+    const token = localStorage.getItem('token') || '';
+    console.log('Fetching roles from:', `${API_BASE}/roles`);
+    const res = await fetch(`${API_BASE}/roles`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    console.log('Roles response status:', res.status);
+
+    if (res.ok) {
+      const data = await res.json();
+      console.log('Roles data:', data);
+
+      if (data.success && data.data) {
+        const rolesData = data.data;
+
+        // Store roles
+        setRoles(rolesData);
+
+        // Extract unique departments - NOTE: API uses capital 'D' in 'Department'
+        const uniqueDepartments = Array.from(
+          new Map<string, RoleDepartment>(
+            rolesData.map((r: any) => [
+              r.Dept_Id,  // Changed from r.dept_id
+              {
+                _id: r.Dept_Id,  // Changed from r.dept_id
+                department: r.Department,  // Changed from r.department
+              } as RoleDepartment,
+            ])
+          ).values()
+        );
+
+        setDepartments(uniqueDepartments);
+        console.log('Unique departments:', uniqueDepartments);
       }
-    } catch {
-      setDepartments([
-        { _id: '1', department: 'Engineering', dept_head_email: '', dept_group_email: '', Id: 1, parent_department: 'Technology', department_type: 'Technical' },
-        { _id: '2', department: 'Human Resources', dept_head_email: '', dept_group_email: '', Id: 2, parent_department: 'Administration', department_type: 'Support' },
-        { _id: '3', department: 'Design', dept_head_email: '', dept_group_email: '', Id: 3, parent_department: 'Technology', department_type: 'Creative' },
-      ]);
+    } else {
+      console.error('Failed to fetch roles:', res.statusText);
     }
-  };
+  } catch (err) {
+    console.error('Error fetching departments:', err);
+  }
+};
 
   const fetchEmployees = async () => {
     try {
@@ -209,8 +236,16 @@ const EmployeesPage: React.FC = () => {
     const matchDesig = !selectedDesignation || emp.designation === selectedDesignation;
     return matchSearch && matchDept && matchDesig;
   });
-
-  const uniqueDesignations = Array.from(new Set(employees.map(e => e.designation).filter(Boolean))).sort();
+   
+  // Replace the uniqueDesignations computation with this:
+const uniqueDesignations = Array.from(
+  new Set(
+    roles
+      .filter(r => !selectedDepartment || r.Department === selectedDepartment)  // Filter by selected department
+      .map(r => r.Designation?.trim())
+      .filter((d): d is string => !!d)
+  )
+);
   const sortedDepartments = [...departments].sort((a, b) => a.department.localeCompare(b.department));
   const sortedFiltered = [...filteredEmployees].sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
   const hasFilters = !!(searchTerm || selectedDepartment || selectedDesignation);
@@ -333,7 +368,7 @@ const EmployeesPage: React.FC = () => {
 
               <TextField select label="Designation" size="small" value={selectedDesignation} onChange={e => setSelectedDesignation(e.target.value)} sx={filterSx}>
                 <MenuItem value="" sx={{ fontSize: '0.8rem', color: theme.palette.text.secondary }}>All</MenuItem>
-                {uniqueDesignations.map(d => <MenuItem key={d} value={d} sx={{ fontSize: '0.8rem' }}>{d}</MenuItem>)}
+                {uniqueDesignations.map((d) => ( <MenuItem key={d} value={d} sx={{ fontSize: '0.8rem' }}> {d} </MenuItem> ))}
               </TextField>
 
               <Stack direction="row" alignItems="center" spacing={0.75} sx={{ ml: { sm: 'auto' } }}>

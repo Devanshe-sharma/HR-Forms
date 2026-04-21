@@ -1,38 +1,56 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  Box, Typography, Chip, CircularProgress, Alert, Collapse,
+  Box, Typography, Chip, CircularProgress, Alert,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, Button, TextField, Select, MenuItem, FormControl, InputLabel,
-  Avatar, Divider, Stack, IconButton,
+  Avatar, Stack, IconButton, Tooltip, Dialog, DialogTitle, DialogContent, 
+  DialogActions, RadioGroup, FormControlLabel, Radio,
 } from '@mui/material';
 import ArrowBackIcon      from '@mui/icons-material/ArrowBack';
 import CheckCircleIcon    from '@mui/icons-material/CheckCircle';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
+import FilterListIcon     from '@mui/icons-material/FilterList';
 import axios              from 'axios';
 
-// ─── Layout components ───────────────────────────────────────────────────────
-import Sidebar from '../components/Sidebar';   // ← adjust path if needed
-import Navbar   from '../components/Navbar';   // ← adjust path if needed
+import Sidebar from '../components/Sidebar';
+import Navbar   from '../components/Navbar';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Types ─────────────────────────────────────────────────────────────────────
 
-type CurrentStatus = 'probation' | 'confirmed' | 'extended' | 'not_confirmed';
-type Stage         = 'pending_manager' | 'pending_management' | 'completed' | 'on_hold';
+type CurrentStatus   = 'probation' | 'confirmed' | 'extended' | 'not_confirmed' | 'pip';
+type Stage           = 'hr_pending' | 'pending_manager' | 'pending_management' | 'completed' | 'closed';
+type ProbationStatus = 'probation' | 'confirmed' | 'not_applicable' | null;
+type UserRole        = 'hr' | 'manager' | 'management' | 'admin';
 
 interface HistoryEntry {
+  stage         : Stage;
   status        : CurrentStatus;
   reason        : string;
   monthsExtended: number | null;
+  newReviewDate : string | null;
   changedBy     : string;
   changedByName : string;
+  changedByRole : UserRole;
   date          : string;
 }
 
 interface Decision {
+  stage         : Stage;
   status        : CurrentStatus | null;
   reason        : string;
   monthsExtended: number | null;
+  newReviewDate : string | null;
   submittedAt   : string | null;
+  submittedBy   : string;
+  submittedByRole: UserRole;
+}
+
+interface PIPDetails {
+  duration      : number; // months
+  startDate     : string;
+  endDate       : string;
+  reviewDate    : string;
+  reason        : string;
 }
 
 interface Confirmation {
@@ -45,16 +63,18 @@ interface Confirmation {
   level             : number;
   email             : string;
   reportingManager  : string;
-  pmsScore          : number | null;
   currentStatus     : CurrentStatus;
   stage             : Stage;
-  managerDecision   : Decision;
-  managementDecision: Decision;
+  hrDecision        : Decision | null;
+  managerDecision   : Decision | null;
+  managementDecision: Decision | null;
   history           : HistoryEntry[];
+  pipDetails        : PIPDetails | null;
   extendedMonths    : number | null;
   extendedTill      : string | null;
   reviewDate        : string | null;
   createdAt         : string;
+  updatedAt         : string;
 }
 
 interface Employee {
@@ -67,27 +87,42 @@ interface Employee {
   joining_date     : string | null;
   employee_category: string;
   level            : number;
-  reporting_manager : string;
+  reporting_manager: string;
+  probation_status : ProbationStatus;
 }
 
-// ─── Config ───────────────────────────────────────────────────────────────────
+// Role Master interface for fetching reporting managers
+interface RoleMaster {
+  _id              : string;
+  dept_id          : number;
+  department       : string;
+  desig_id         : number;
+  designation      : string;
+  reporting_manager: string;
+  // ... other fields
+}
 
-const API_BASE = process.env.API_BASE_URL || 'http://3.110.162.1:5000/api';
+// ─── Config ────────────────────────────────────────────────────────────────────
+
+const API_BASE = process.env.API_BASE_URL || 'http://localhost:5000/api';
 const API      = API_BASE + '/confirmations';
 const EMP_API  = API_BASE + '/employees';
+const ROLES_API = API_BASE + '/roles';
 
 const STATUS_CFG: Record<CurrentStatus, { label: string; color: string; bg: string }> = {
-  probation    : { label: 'Probation',     color: '#6B7280', bg: '#F3F4F6' },
-  confirmed    : { label: 'Confirmed',     color: '#059669', bg: '#ECFDF5' },
-  extended     : { label: 'Extended',      color: '#D97706', bg: '#FFFBEB' },
-  not_confirmed: { label: 'Not Confirmed', color: '#DC2626', bg: '#FEF2F2' },
+  probation     : { label: 'On Probation'      , color: '#D97706', bg: '#FEF3C7' },
+  confirmed     : { label: 'Confirmed'        , color: '#059669', bg: '#ECFDF5' },
+  extended      : { label: 'Extended'         , color: '#2563EB', bg: '#EFF6FF' },
+  not_confirmed : { label: 'Not Confirmed'    , color: '#DC2626', bg: '#FEF2F2' },
+  pip           : { label: 'On PIP'           , color: '#7C3AED', bg: '#F3E8FF' },
 };
 
 const STAGE_CFG: Record<Stage, { label: string }> = {
+  hr_pending         : { label: 'HR Pending'         },
   pending_manager    : { label: 'Pending Manager'    },
   pending_management : { label: 'Pending Management' },
   completed          : { label: 'Completed'          },
-  on_hold            : { label: 'On Hold'            },
+  closed             : { label: 'Closed'             },
 };
 
 const STATUS_OPTIONS: { value: CurrentStatus; label: string }[] = [
@@ -97,9 +132,12 @@ const STATUS_OPTIONS: { value: CurrentStatus; label: string }[] = [
   { value: 'not_confirmed', label: 'Not Confirmed'      },
 ];
 
-const TH = { fontWeight: 700, fontSize: 12, color: 'text.secondary', bgcolor: '#f9fafb', whiteSpace: 'nowrap' as const };
+const TH = {
+  fontWeight: 700, fontSize: 12, color: 'text.secondary',
+  bgcolor: '#f9fafb', whiteSpace: 'nowrap' as const,
+};
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Helpers ───────────────────────────────────────────────────────────────────
 
 const initials = (name: string) =>
   name.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
@@ -110,42 +148,25 @@ const fmtDate = (d?: string | null) => {
   catch { return d; }
 };
 
+/** Full months between joining date and today. Negative = future joiner. */
+const monthsAgo = (joiningDate: string): number => {
+  const joined = new Date(joiningDate);
+  const now    = new Date();
+  return (now.getFullYear() - joined.getFullYear()) * 12
+       + (now.getMonth()    - joined.getMonth());
+};
+
 const calculateReviewDate = (joiningDate?: string | null) => {
   if (!joiningDate) return null;
   try {
-    const joined = new Date(joiningDate);
-    if (isNaN(joined.getTime())) return null;
-    const reviewDate = new Date(joined);
-    reviewDate.setMonth(reviewDate.getMonth() + 6);
-    return reviewDate;
-  } catch {
-    return null;
-  }
+    const d = new Date(joiningDate);
+    if (isNaN(d.getTime())) return null;
+    d.setMonth(d.getMonth() + 6);
+    return d;
+  } catch { return null; }
 };
 
-/**
- * Check if employee is currently on probation (within first 6 months)
- */
-const isOnProbation = (joiningDate: string): boolean => {
-  const joined = new Date(joiningDate);
-  const now    = new Date();
-  const months = (now.getFullYear() - joined.getFullYear()) * 12
-               + (now.getMonth()    - joined.getMonth());
-  return months < 6;
-};
-
-/**
- * Check if confirmation is due this month (exactly 6 months from joining)
- */
-const isConfirmationDueThisMonth = (joiningDate: string): boolean => {
-  const joined = new Date(joiningDate);
-  const now    = new Date();
-  const months = (now.getFullYear() - joined.getFullYear()) * 12
-               + (now.getMonth()    - joined.getMonth());
-  return months >= 6 && months < 7;
-};
-
-// ─── Status / Stage chips ─────────────────────────────────────────────────────
+// ─── Sub-components ────────────────────────────────────────────────────────────
 
 function StatusChip({ status }: { status: CurrentStatus }) {
   const c = STATUS_CFG[status] ?? STATUS_CFG.probation;
@@ -156,27 +177,24 @@ function StatusChip({ status }: { status: CurrentStatus }) {
 }
 
 function StageChip({ stage }: { stage: Stage }) {
-  const done = stage === 'completed';
-  const onHold = stage === 'on_hold';
+  const done   = stage === 'completed';
+  const closed = stage === 'closed';
   return (
     <Chip
       size="small"
-      icon={done ? <CheckCircleIcon fontSize="small" /> : <HourglassEmptyIcon fontSize="small" />}
-      label={STAGE_CFG[stage]?.label ?? stage}
+      label={STAGE_CFG[stage]?.label || stage}
       sx={{
-        bgcolor : done ? '#ECFDF5' : onHold ? '#FEF3C7' : '#EFF6FF',
-        color   : done ? '#059669' : onHold ? '#D97706' : '#2563EB',
+        bgcolor   : done ? '#ECFDF5' : closed ? '#F3F4F6' : '#EFF6FF',
+        color     : done ? '#059669' : closed ? '#6B7280' : '#2563EB',
         fontWeight: 600, fontSize: 11,
-        border  : `1px solid ${done ? '#6EE7B7' : onHold ? '#FCD34D' : '#BFDBFE'}`,
+        border    : `1px solid ${done ? '#6EE7B7' : closed ? '#D1D5DB' : '#BFDBFE'}`,
         '& .MuiChip-icon': { color: 'inherit', ml: '6px' },
       }}
     />
   );
 }
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
-
-function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error'; onClose: () => void }) {
+function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error' | 'info'; onClose: () => void }) {
   useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, [onClose]);
   return (
     <Box sx={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, minWidth: 300 }}>
@@ -187,120 +205,265 @@ function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error';
   );
 }
 
-// ─── Dashboard View ─────────────────────────────────────────────────────────--
+// ─── Probation Confirmation Dialog ────────────────────────────────────────────
 
-function DashboardView({ records, employees, loading, onSelect }: {
-  records : Confirmation[];
-  employees: Employee[];
-  loading : boolean;
-  onSelect: (r: Confirmation) => void;
+function HRDecisionDialog({ 
+  employee, 
+  open, 
+  onClose, 
+  onConfirm 
+}: {
+  employee: Employee | null;
+  open: boolean;
+  onClose: () => void;
+  onConfirm: (isOnProbation: boolean, reason: string) => void;
 }) {
-  // Filter states
-  const [employeeSearch, setEmployeeSearch] = useState('');
-  const [showAllProbation, setShowAllProbation] = useState(false); // Toggle state
-  
-  // Get current date info
-  const currentDate = new Date();
-  const currentMonth = currentDate.getMonth();
-  const currentYear = currentDate.getFullYear();
-  
-  // Create combined list of employees with existing confirmation records
-  const allEmployeeData = React.useMemo(() => {
-    const employeeMap = new Map(employees.map(emp => [emp._id, emp]));
+  const [selection, setSelection] = useState<'yes' | 'no' | ''>('');
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleConfirm = async () => {
+    if (!selection) return;
     
-    // Add employees from confirmation records
-    records.forEach(record => {
-      if (!employeeMap.has(record._id)) {
-        employeeMap.set(record._id, {
-          _id: record._id,
-          employee_id: record.employeeCode,
-          full_name: record.employeeName,
-          department: record.department,
-          designation: record.designation,
-          email: record.email,
-          joining_date: record.joiningDate,
-          employee_category: '',
-          level: record.level,
-          reporting_manager: record.reportingManager
+    setSubmitting(true);
+    try {
+      await onConfirm(selection === 'yes', reason);
+      onClose();
+    } catch (error) {
+      console.error('Error updating probation status:', error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!employee) return null;
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ fontWeight: 700, fontSize: '1.1rem' }}>
+        HR Probation Decision
+      </DialogTitle>
+      <DialogContent>
+        <Box sx={{ py: 2 }}>
+          <Typography sx={{ mb: 3, fontSize: '0.95rem' }}>
+            Is <strong>{employee.full_name}</strong> ({employee.designation}) currently on probation?
+          </Typography>
+          
+          <RadioGroup value={selection} onChange={(e) => setSelection(e.target.value as 'yes' | 'no')}>
+            <FormControlLabel 
+              value="yes" 
+              control={<Radio />} 
+              label="Yes, employee is on probation (joined in last 6 months)" 
+              sx={{ mb: 1 }}
+            />
+            <FormControlLabel 
+              value="no" 
+              control={<Radio />} 
+              label="No, employee is not on probation" 
+            />
+          </RadioGroup>
+
+          <TextField
+            fullWidth
+            label="Reason/Notes"
+            multiline
+            rows={3}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            sx={{ mt: 2 }}
+            placeholder="Provide reason for this decision..."
+          />
+
+          {selection === 'no' && (
+            <Alert severity="info" sx={{ mt: 2, fontSize: '0.85rem' }}>
+              This employee's confirmation entry will be closed and marked as non-editable.
+            </Alert>
+          )}
+        </Box>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2.5 }}>
+        <Button onClick={onClose} sx={{ textTransform: 'none' }} disabled={submitting}>
+          Cancel
+        </Button>
+        <Button 
+          variant="contained" 
+          onClick={handleConfirm} 
+          disabled={!selection || submitting}
+          sx={{ textTransform: 'none', px: 3 }}
+        >
+          {submitting ? <CircularProgress size={20} /> : 'Submit Decision'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// ─── Dashboard View ────────────────────────────────────────────────────────────
+
+function DashboardView({ 
+  records, 
+  employees, 
+  roles,
+  loading, 
+  onSelect 
+}: {
+  records  : Confirmation[];
+  employees: Employee[];
+  roles    : RoleMaster[];
+  loading  : boolean;
+  onSelect : (emp: Employee) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [quarterFilter, setQuarterFilter] = useState('current'); // 'current' | 'all'
+
+  // Get reporting manager from role master based on designation
+  const getReportingManager = (designation: string): string => {
+    const role = roles.find(r => r.designation === designation);
+    return role?.reporting_manager || '—';
+  };
+
+  /**
+   * Unified employee list: merge /employees with any confirmation records
+   * that don't have a matching employee document (legacy data).
+   */
+  const allEmployees = React.useMemo(() => {
+    const map = new Map();
+    
+    // First add all employees
+    employees.forEach(e => {
+      map.set(e._id, e);
+    });
+    
+    // Then add confirmation records that don't have matching employees
+    records.forEach(r => {
+      if (!map.has(r._id)) {
+        map.set(r._id, {
+          _id: r._id, 
+          employee_id: r.employeeCode, 
+          full_name: r.employeeName,
+          department: r.department, 
+          designation: r.designation, 
+          email: r.email,
+          joining_date: r.joiningDate, 
+          employee_category: '', 
+          level: r.level,
+          reporting_manager: r.reportingManager,
+          probation_status: null,
         } as Employee);
       }
     });
     
-    return Array.from(employeeMap.values());
+    // Convert to array and deduplicate by employee_id
+    const result = Array.from(map.values());
+    
+    // Strong deduplication: keep first occurrence of each employee_id
+    const deduplicated = result.filter((emp, index) => 
+      result.findIndex(e => e.employee_id === emp.employee_id) === index
+    );
+    
+    // Debug logging
+    if (deduplicated.length < result.length) {
+      console.log('DEBUG: Removed duplicates:', {
+        original: result.length,
+        deduplicated: deduplicated.length,
+        duplicates: result.length - deduplicated.length
+      });
+    }
+    
+    return deduplicated;
   }, [employees, records]);
-  
-  // Filter records - based on toggle state
-  const filteredEmployees = allEmployeeData.filter(emp => {
-    if (!emp.joining_date || !isOnProbation(emp.joining_date)) return false;
-    
-    const isPendingThisMonth = isConfirmationDueThisMonth(emp.joining_date);
-    const shouldShow = showAllProbation 
-      ? isOnProbation(emp.joining_date) // All employees within first 6 months
-      : isPendingThisMonth; // Only pending this month
-    
-    const matchesSearch = !employeeSearch || 
-      emp.full_name.toLowerCase().includes(employeeSearch.toLowerCase()) ||
-      emp.employee_id.toLowerCase().includes(employeeSearch.toLowerCase());
-    
-    return shouldShow && matchesSearch;
-  });
-  
-  const filteredRecords = records.filter(record => {
-    const isPendingThisMonth = isConfirmationDueThisMonth(record.joiningDate);
-    const shouldShow = showAllProbation 
-      ? isOnProbation(record.joiningDate) // All employees within first 6 months
-      : isPendingThisMonth; // Only pending this month
-    
-    const matchesSearch = !employeeSearch || 
-      record.employeeName.toLowerCase().includes(employeeSearch.toLowerCase()) ||
-      record.employeeCode.toLowerCase().includes(employeeSearch.toLowerCase());
-    
-    return shouldShow && matchesSearch;
-  });
 
-  const counts = {
-    total       : filteredEmployees.length,
-    probation   : filteredEmployees.length,
-    confirmed   : filteredRecords.filter(r => r.currentStatus === 'confirmed').length,
-    extended    : filteredRecords.filter(r => r.currentStatus === 'extended').length,
-    notConfirmed: filteredRecords.filter(r => r.currentStatus === 'not_confirmed').length,
-    onHold      : filteredRecords.filter(r => r.stage === 'on_hold').length,
-  };
+  /** Apply filters - only show current quarter (0-6 months) or all */
+  const filtered = React.useMemo(() => {
+    console.log('DEBUG: Filtering employees - total employees:', allEmployees.length, 'total records:', records.length);
+      console.log('DEBUG: Records details:', records.map(r => ({ 
+        name: r.employeeName, 
+        status: r.currentStatus, 
+        stage: r.stage,
+        employeeCode: r.employeeCode 
+      })));
+      console.log('DEBUG: Employees with confirmed status:', allEmployees.filter(e => e.probation_status === 'confirmed').map(e => e.full_name));
+    
+    const result = allEmployees.filter(emp => {
+      if (!emp.joining_date) return false;
+
+      // Only exclude employees that have completed the HR stage and are in active workflow
+      const hasActiveWorkflow = records.some(r => 
+        (r._id === emp._id || r.employeeCode === emp.employee_id) &&
+        r.stage !== 'hr_pending' && 
+        r.stage !== 'closed' &&
+        r.stage !== 'completed'
+      );
+      if (hasActiveWorkflow) {
+        console.log('DEBUG: Employee excluded - has active workflow:', emp.full_name, 'stage:', records.find(r => (r._id === emp._id || r.employeeCode === emp.employee_id))?.stage);
+        return false;
+      }
+
+      const mo = monthsAgo(emp.joining_date);
+      if (mo < 0) return false; // skip future joiners
+
+      // Quarter filter: current quarter = 0-6 months ago (all employees in last 6 months)
+      if (quarterFilter === 'current') {
+        if (mo < 0 || mo > 6) return false;
+      }
+
+      // Text search
+      const q = search.toLowerCase();
+      if (q && !emp.full_name.toLowerCase().includes(q) && !emp.employee_id.toLowerCase().includes(q))
+        return false;
+
+      return true;
+    }).sort((a, b) => {
+      // Sort by joining date ascending (oldest first = probation due first)
+      const dateA = a.joining_date ? new Date(a.joining_date).getTime() : 0;
+      const dateB = b.joining_date ? new Date(b.joining_date).getTime() : 0;
+      return dateA - dateB;
+    });
+    
+    console.log('DEBUG: Filtered result:', result.length, 'employees');
+    return result;
+  }, [allEmployees, quarterFilter, search, records]);
+
+  const counts = React.useMemo(() => ({
+    total       : filtered.length,
+    confirmed   : records.filter(r => r.currentStatus === 'confirmed').length,
+    extended    : records.filter(r => r.currentStatus === 'extended').length,
+    notConfirmed: records.filter(r => r.currentStatus === 'not_confirmed').length,
+    pending     : filtered.length - records.filter(r => 
+      r.currentStatus === 'confirmed' || 
+      r.currentStatus === 'not_confirmed'
+    ).length,
+  }), [filtered, records]);
 
   const STATS = [
-    { 
-      label: showAllProbation ? 'All Probation' : 'Pending This Month', 
-      value: counts.total,        
-      color: '#3B82F6', 
-      bg: '#EFF6FF' 
-    },
-    { label: 'On Probation',  value: counts.probation,    color: '#6B7280', bg: '#F3F4F6' },
-    { label: 'Confirmed',     value: counts.confirmed,    color: '#059669', bg: '#ECFDF5' },
-    { label: 'Extended',      value: counts.extended,     color: '#D97706', bg: '#FFFBEB' },
-    { label: 'Not Confirmed', value: counts.notConfirmed, color: '#DC2626', bg: '#FEF2F2' },
+    { label: 'Total Employees', value: counts.total,        color: '#3B82F6', bg: '#EFF6FF' },
+    { label: 'Pending Review',  value: counts.pending,      color: '#7C3AED', bg: '#F5F3FF' },
+    { label: 'Confirmed',       value: counts.confirmed,    color: '#059669', bg: '#ECFDF5' },
+    { label: 'Extended',        value: counts.extended,     color: '#D97706', bg: '#FFFBEB' },
+    { label: 'Not Confirmed',   value: counts.notConfirmed, color: '#DC2626', bg: '#FEF2F2' },
   ];
 
   return (
     <Box sx={{ p: 3, maxWidth: 1400, mx: 'auto' }}>
-      {/* Header */}
-      <Typography variant="h5" fontWeight={700} sx={{ mb: 3, color: '#1F2937' }}>
-        Probation Confirmations - {showAllProbation ? 'All Employees' : currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-      </Typography>
 
-      {/* Stats Cards */}
+      {/* ── Header ── */}
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h5" fontWeight={700} color="#1F2937">Probation Confirmations</Typography>
+        <Typography fontSize={13} color="text.secondary" mt={0.5}>
+          {quarterFilter === 'current' 
+            ? 'Employees who joined in the last 6 months' 
+            : 'All employees'}
+        </Typography>
+      </Box>
+
+      {/* ── Stats ── */}
       <Box sx={{ display: 'flex', gap: 2, mb: 4, flexWrap: 'wrap' }}>
         {STATS.map(s => (
-          <Box key={s.label} sx={{ 
-            flex: '1 1 140px', 
-            p: 2, 
-            borderRadius: 2, 
-            bgcolor: s.bg, 
+          <Box key={s.label} sx={{
+            flex: '1 1 130px', p: 2, borderRadius: 2, bgcolor: s.bg,
             border: `1px solid ${s.color}30`,
-            transition: 'all 0.3s ease',
-            '&:hover': {
-              transform: 'translateY(-2px)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-            }
+            transition: 'transform 0.2s, box-shadow 0.2s',
+            '&:hover': { transform: 'translateY(-2px)', boxShadow: '0 4px 12px rgba(0,0,0,0.09)' },
           }}>
             <Typography fontSize={28} fontWeight={800} color={s.color} lineHeight={1}>{s.value}</Typography>
             <Typography fontSize={12} color="text.secondary" mt={0.5}>{s.label}</Typography>
@@ -308,109 +471,52 @@ function DashboardView({ records, employees, loading, onSelect }: {
         ))}
       </Box>
 
-      {/* Filters */}
-      <Box sx={{ 
-        display: 'flex', 
-        gap: 2, 
-        mb: 3, 
-        flexWrap: 'wrap',
-        p: 2,
-        bgcolor: 'white',
-        borderRadius: 2,
-        border: '1px solid #E5E7EB',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-        alignItems: 'center',
-      }}>
+      {/* ── Filters ── */}
+      <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center', flexWrap: 'wrap' }}>
+        
+        <FormControl size="small" sx={{ minWidth: 200 }}>
+          <InputLabel sx={{ fontSize: 13 }}>Time Filter</InputLabel>
+          <Select
+            value={quarterFilter}
+            label="Time Filter"
+            onChange={e => setQuarterFilter(e.target.value)}
+            sx={{ fontSize: 13 }}
+          >
+            <MenuItem value="current" sx={{ fontSize: 13 }}>Last 6 Months</MenuItem>
+            <MenuItem value="all" sx={{ fontSize: 13 }}>All Employees</MenuItem>
+          </Select>
+        </FormControl>
+
         <TextField
           size="small"
-          placeholder="Search employee..."
-          value={employeeSearch}
-          onChange={(e) => setEmployeeSearch(e.target.value)}
+          placeholder="Search by name or ID…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
           sx={{ minWidth: 200 }}
-          InputProps={{
-            sx: { fontSize: 14 }
-          }}
+          InputProps={{ sx: { fontSize: 13 } }}
         />
 
-        {/* Toggle Button */}
         <Button
-          variant={showAllProbation ? "contained" : "outlined"}
           size="small"
-          onClick={() => setShowAllProbation(!showAllProbation)}
-          sx={{ 
-            fontSize: 14, 
-            textTransform: 'none',
-            bgcolor: showAllProbation ? '#3B82F6' : 'transparent',
-            color: showAllProbation ? 'white' : '#3B82F6',
-            borderColor: '#3B82F6',
-            '&:hover': {
-              bgcolor: showAllProbation ? '#2563EB' : '#EFF6FF',
-            }
-          }}
-        >
-          {showAllProbation ? 'Show This Month Only' : 'Show All Probation'}
-        </Button>
-
-        <Button
-          variant="outlined"
-          size="small"
+          variant="text"
           onClick={() => {
-            setEmployeeSearch('');
-            setShowAllProbation(false);
+            setSearch('');
+            setQuarterFilter('current');
           }}
-          sx={{ fontSize: 14, textTransform: 'none' }}
+          sx={{ fontSize: 13, textTransform: 'none' }}
         >
-          Reset All
+          Reset Filters
         </Button>
       </Box>
 
-      {/* Info Banner */}
-      {!showAllProbation && (
-        <Box sx={{ 
-          mb: 3,
-          p: 2,
-          bgcolor: '#EFF6FF',
-          border: '1px solid #BFDBFE',
-          borderRadius: 2,
-          fontSize: 13,
-          color: '#1E40AF',
-        }}>
-          <strong>Current View:</strong> Showing employees whose probation confirmation is pending for {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}. 
-          Click "Show All Probation" to view all employees currently on probation (within first 6 months of joining).
-        </Box>
-      )}
-
-      {showAllProbation && (
-        <Box sx={{ 
-          mb: 3,
-          p: 2,
-          bgcolor: '#F0FDF4',
-          border: '1px solid #BBF7D0',
-          borderRadius: 2,
-          fontSize: 13,
-          color: '#166534',
-        }}>
-          <strong>Current View:</strong> Showing all employees currently on probation (within their first 6 months of employment). 
-          Click "Show This Month Only" to view only pending confirmations for {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.
-        </Box>
-      )}
-
-      {/* Table Container */}
-      <Box sx={{ 
-        bgcolor: 'white', 
-        borderRadius: 2, 
-        border: '1px solid #E5E7EB',
-        overflow: 'hidden',
-        maxHeight: '600px', // Fixed height for scrollable table
-        display: 'flex',
-        flexDirection: 'column',
-      }}>
+      {/* ── Table ── */}
+      <Box sx={{ bgcolor: 'white', borderRadius: 2, border: '1px solid #E5E7EB', overflow: 'hidden' }}>
         {loading ? (
           <Box display="flex" justifyContent="center" alignItems="center" py={10}>
             <CircularProgress size={40} />
           </Box>
         ) : (
-          <TableContainer sx={{ maxHeight: 550, overflow: 'auto' }}>
+          <TableContainer sx={{ maxHeight: 560, overflow: 'auto' }}>
             <Table size="small" stickyHeader>
               <TableHead>
                 <TableRow sx={{ '& th': TH }}>
@@ -419,110 +525,117 @@ function DashboardView({ records, employees, loading, onSelect }: {
                   <TableCell>Designation</TableCell>
                   <TableCell>Reporting Manager</TableCell>
                   <TableCell>Joining Date</TableCell>
-                  <TableCell>PMS Score</TableCell>
-                  <TableCell>Status</TableCell>
+                  <TableCell>Months In</TableCell>
+                  <TableCell>Confirmation Status</TableCell>
                   <TableCell>Stage</TableCell>
                   <TableCell>Review Due</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredRecords.length === 0 && (
+                {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} align="center" sx={{ py: 8, color: 'text.secondary', fontSize: 14 }}>
-                      {showAllProbation 
-                        ? 'No employees found on probation (within first 6 months)'
-                        : `No pending confirmations found for ${currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`
-                      }
+                    <TableCell colSpan={9} align="center" sx={{ py: 6, color: 'text.disabled', fontSize: 13 }}>
+                      No employees match the current filters
                     </TableCell>
                   </TableRow>
+                ) : (
+                  filtered.map(emp => {
+                    const confirmationRecord = records.find(r => r._id === emp._id);
+                    const mo = emp.joining_date ? monthsAgo(emp.joining_date) : null;
+                    // Highlight rows where confirmation is imminent (5-7 months in)
+                    const isDue = mo !== null && mo >= 5 && mo <= 7;
+
+                    return (
+                      <TableRow
+                        key={emp._id}
+                        hover
+                        onClick={() => onSelect(emp)}
+                        sx={{
+                          cursor: 'pointer',
+                          bgcolor: isDue ? '#FEF9C3' : 'inherit',
+                          '&:hover': { bgcolor: isDue ? '#FEF08A' : '#F0F9FF' },
+                        }}
+                      >
+                        {/* Employee name + ID */}
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                            <Avatar sx={{ width: 30, height: 30, bgcolor: '#E0E7FF', color: '#4338CA', fontSize: 11, fontWeight: 700 }}>
+                              {initials(emp.full_name)}
+                            </Avatar>
+                            <Box>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                                <Typography sx={{ fontWeight: 600, fontSize: 13, color: '#111827' }}>
+                                  {emp.full_name}
+                                </Typography>
+                                {emp.probation_status === 'confirmed' && (
+                                  <Chip size="small" label="Confirmed"
+                                    sx={{ bgcolor: '#059669', color: '#fff', fontWeight: 700, fontSize: 10,
+                                          height: 18, '& .MuiChip-label': { px: 0.8 } }} />
+                                )}
+                                {isDue && (
+                                  <Chip size="small" label="Due"
+                                    sx={{ bgcolor: '#F59E0B', color: '#fff', fontWeight: 700, fontSize: 10,
+                                          height: 18, '& .MuiChip-label': { px: 0.8 } }} />
+                                )}
+                              </Box>
+                              <Typography sx={{ fontSize: 11, color: '#9CA3AF' }}>{emp.employee_id}</Typography>
+                            </Box>
+                          </Box>
+                        </TableCell>
+
+                        <TableCell sx={{ fontSize: 12, color: '#4B5563' }}>{emp.department}</TableCell>
+                        <TableCell sx={{ fontSize: 12, color: '#4B5563' }}>{emp.designation}</TableCell>
+                        
+                        {/* Reporting Manager from Role Master */}
+                        <TableCell sx={{ fontSize: 12, color: '#4B5563' }}>
+                          {getReportingManager(emp.designation)}
+                        </TableCell>
+
+                        {/* Joining Date */}
+                        <TableCell sx={{ fontSize: 12, color: '#4B5563' }}>
+                          {emp.joining_date ? fmtDate(emp.joining_date) : '—'}
+                        </TableCell>
+
+                        {/* Months In — colour-coded by urgency */}
+                        <TableCell>
+                          {mo !== null ? (
+                            <Box sx={{
+                              display: 'inline-block', px: 1, py: 0.3,
+                              bgcolor: mo >= 6 ? '#FEF2F2' : mo >= 5 ? '#FEF9C3' : '#F0FDF4',
+                              color  : mo >= 6 ? '#DC2626' : mo >= 5 ? '#CA8A04' : '#16A34A',
+                              borderRadius: 1, fontSize: 12, fontWeight: 600,
+                            }}>
+                              {mo} mo
+                            </Box>
+                          ) : '—'}
+                        </TableCell>
+
+                        {/* Confirmation workflow status */}
+                        <TableCell>
+                          {confirmationRecord
+                            ? <StatusChip status={confirmationRecord.currentStatus} />
+                            : <Chip size="small" label="Not Started"
+                                sx={{ bgcolor: '#F9FAFB', color: '#6B7280', fontWeight: 600, fontSize: 11, border: '1px solid #E5E7EB' }} />
+                          }
+                        </TableCell>
+
+                        {/* Stage */}
+                        <TableCell>
+                          {confirmationRecord ? <StageChip stage={confirmationRecord.stage} /> : '—'}
+                        </TableCell>
+
+                        {/* Review Due */}
+                        <TableCell sx={{ fontSize: 12, color: '#4B5563' }}>
+                          {confirmationRecord?.reviewDate
+                            ? fmtDate(confirmationRecord.reviewDate)
+                            : emp.joining_date
+                              ? fmtDate(calculateReviewDate(emp.joining_date)?.toISOString())
+                              : '—'}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
-                {filteredRecords.map(r => (
-                  <TableRow 
-                    key={r._id} 
-                    sx={{ 
-                      cursor: 'pointer',
-                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                      position: 'relative',
-                      '&:hover': {
-                        bgcolor: '#E0F2FE', // Pastel blue
-                        transform: 'translateX(2px)',
-                        '& td': {
-                          color: '#0C4A6E',
-                        }
-                      },
-                      '& td': {
-                        transition: 'all 0.3s ease',
-                        position: 'relative',
-                        overflow: 'hidden',
-                      }
-                    }} 
-                    onClick={() => onSelect(r)}
-                  >
-                    <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                        <Avatar sx={{ 
-                          width: 32, 
-                          height: 32, 
-                          bgcolor: '#3B82F6', 
-                          fontSize: 12, 
-                          fontWeight: 700,
-                          transition: 'all 0.3s ease',
-                        }}>
-                          {initials(r.employeeName)}
-                        </Avatar>
-                        <Box>
-                          <Typography fontSize={13} fontWeight={600}>{r.employeeName}</Typography>
-                          <Typography fontSize={11} color="text.secondary">{r.employeeCode}</Typography>
-                        </Box>
-                        {/* Click to proceed overlay */}
-                        <Box
-                          sx={{
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            bgcolor: 'rgba(2, 132, 199, 0.95)',
-                            color: 'white',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: 12,
-                            fontWeight: 600,
-                            opacity: 0,
-                            visibility: 'hidden',
-                            transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-                            transform: 'scale(0.9)',
-                            borderRadius: 1,
-                            zIndex: 10,
-                            pointerEvents: 'none',
-                            '&::before': {
-                              content: '"Click to proceed"',
-                            }
-                          }}
-                          className="hover-overlay"
-                        />
-                      </Box>
-                    </TableCell>
-                    <TableCell sx={{ fontSize: 13 }}>{r.department   || '—'}</TableCell>
-                    <TableCell sx={{ fontSize: 13 }}>{r.designation  || '—'}</TableCell>
-                    <TableCell sx={{ fontSize: 13 }}>{r.reportingManager || '—'}</TableCell>
-                    <TableCell sx={{ fontSize: 13 }}>{fmtDate(r.joiningDate)}</TableCell>
-                    <TableCell>
-                      {r.pmsScore != null
-                        ? <Chip label={r.pmsScore} size="small" sx={{ fontWeight: 700, bgcolor: '#EFF6FF', color: '#2563EB' }} />
-                        : '—'}
-                    </TableCell>
-                    <TableCell><StatusChip status={r.currentStatus} /></TableCell>
-                    <TableCell><StageChip  stage={r.stage} /></TableCell>
-                    <TableCell sx={{ fontSize: 13 }}>
-                      {r.stage === 'on_hold' && r.reviewDate
-                        ? fmtDate(r.reviewDate)
-                        : fmtDate(calculateReviewDate(r.joiningDate)?.toISOString())
-                      }
-                    </TableCell>
-                  </TableRow>
-                ))}
               </TableBody>
             </Table>
           </TableContainer>
@@ -532,12 +645,12 @@ function DashboardView({ records, employees, loading, onSelect }: {
   );
 }
 
-// ─── Detail View ──────────────────────────────────────────────────────────────
+// ─── Detail View ───────────────────────────────────────────────────────────────
 
 function DetailView({ record, onBack, onChangeStatus }: {
-  record          : Confirmation;
-  onBack          : () => void;
-  onChangeStatus  : () => void;
+  record        : Confirmation;
+  onBack        : () => void;
+  onChangeStatus: () => void;
 }) {
   const INFO = [
     ['Employee Code',     record.employeeCode      || '—'],
@@ -546,15 +659,14 @@ function DetailView({ record, onBack, onChangeStatus }: {
     ['Designation',       record.designation       || '—'],
     ['Level',             `L${record.level || 1}`        ],
     ['Joining Date',      fmtDate(record.joiningDate)    ],
-    ['Review Due',        record.stage === 'on_hold' && record.reviewDate 
-                          ? fmtDate(record.reviewDate) 
-                          : fmtDate(calculateReviewDate(record.joiningDate)?.toISOString())],
+    ['Review Due',        record.stage === 'completed' && record.reviewDate
+                            ? fmtDate(record.reviewDate)
+                            : fmtDate(calculateReviewDate(record.joiningDate)?.toISOString())],
     ['Reporting Manager', record.reportingManager  || '—'],
-    ['PMS Score',         record.pmsScore != null ? String(record.pmsScore) : '—'],
   ];
 
   return (
-    <Box>
+    <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4, flexWrap: 'wrap' }}>
         <IconButton onClick={onBack} size="small" sx={{ bgcolor: '#F3F4F6', borderRadius: 1.5 }}>
           <ArrowBackIcon fontSize="small" />
@@ -568,7 +680,7 @@ function DetailView({ record, onBack, onChangeStatus }: {
         </Box>
         <StatusChip status={record.currentStatus} />
         <StageChip  stage={record.stage} />
-        {record.stage !== 'completed' && record.stage !== 'on_hold' && (
+        {record.stage !== 'completed' && record.stage !== 'closed' && (
           <Button variant="contained" size="small" onClick={onChangeStatus}
             sx={{ bgcolor: '#2563EB', textTransform: 'none', fontWeight: 600, px: 3 }}>
             Update Status
@@ -590,8 +702,7 @@ function DetailView({ record, onBack, onChangeStatus }: {
         </Paper>
 
         <Paper variant="outlined" sx={{ flex: '1 1 260px', borderRadius: 2, p: 3 }}>
-          <Typography fontWeight={700} mb={2}>Final Decision </Typography>
-
+          <Typography fontWeight={700} mb={2}>Final Decision</Typography>
           <Stack spacing={2}>
             <Box sx={{ p: 2, bgcolor: '#F9FAFB', borderRadius: 1.5, border: '1px solid #E5E7EB' }}>
               <Typography fontSize={11} fontWeight={700} color="text.secondary" mb={1}>Manager Decision</Typography>
@@ -628,18 +739,12 @@ function DetailView({ record, onBack, onChangeStatus }: {
             </Box>
           </Stack>
 
-          {record.stage === 'on_hold' && record.extendedMonths && (
+          {record.stage === 'completed' && record.extendedMonths && (
             <Box sx={{ mt: 2, p: 2, bgcolor: '#FEF3C7', borderRadius: 1.5, border: '1px solid #FCD34D' }}>
               <Typography fontSize={11} fontWeight={700} color="#D97706" mb={1}>Extension Details</Typography>
               <Stack spacing={1}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography fontSize={12} color="text.secondary">Extended Till:</Typography>
-                  <Typography fontSize={12} fontWeight={600}>{fmtDate(record.extendedTill)}</Typography>
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography fontSize={12} color="text.secondary">Review Due:</Typography>
-                  <Typography fontSize={12} fontWeight={600}>{fmtDate(record.reviewDate)}</Typography>
-                </Box>
+                <Typography fontSize={11} color="#92400E">Extended for {record.extendedMonths} months</Typography>
+                {record.extendedTill && <Typography fontSize={11} color="#92400E">Till {fmtDate(record.extendedTill)}</Typography>}
               </Stack>
             </Box>
           )}
@@ -656,7 +761,8 @@ function DetailView({ record, onBack, onChangeStatus }: {
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
                     <StatusChip status={h.status} />
                     {h.monthsExtended && (
-                      <Chip label={`Extended for ${h.monthsExtended} months`} size="small" sx={{ bgcolor: '#FFFBEB', color: '#D97706' }} />
+                      <Chip label={`Extended for ${h.monthsExtended} months`} size="small"
+                        sx={{ bgcolor: '#FFFBEB', color: '#D97706' }} />
                     )}
                   </Box>
                   <Typography fontSize={13} mt={0.8}>{h.reason || '—'}</Typography>
@@ -673,17 +779,17 @@ function DetailView({ record, onBack, onChangeStatus }: {
   );
 }
 
-// ─── Status Change View ───────────────────────────────────────────────────────
+// ─── Status Change View ────────────────────────────────────────────────────────
 
 function StatusChangeView({ record, onBack, onSuccess, showToast }: {
-  record    : Confirmation;
-  onBack    : () => void;
-  onSuccess : (updated: Confirmation) => void;
-  showToast : (msg: string, type: 'success' | 'error') => void;
+  record   : Confirmation;
+  onBack   : () => void;
+  onSuccess: (updated: Confirmation) => void;
+  showToast: (msg: string, type: 'success' | 'error') => void;
 }) {
   const isManagerTurn    = record.stage === 'pending_manager';
   const isManagementTurn = record.stage === 'pending_management';
-  const isOnHold         = record.stage === 'on_hold';
+  const isHrPending     = record.stage === 'hr_pending';
   const endpoint         = isManagerTurn ? 'manager' : 'management';
   const roleLabel        = isManagerTurn ? 'Manager' : 'Management';
 
@@ -692,42 +798,33 @@ function StatusChangeView({ record, onBack, onSuccess, showToast }: {
   const [monthsExtended, setMonthsExtended] = useState(3);
   const [submitting,     setSubmitting]     = useState(false);
 
-  if (isOnHold) {
+  if (isHrPending) {
     return (
-      <Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-          <IconButton onClick={onBack}><ArrowBackIcon /></IconButton>
-          <Typography variant="h6">On Hold</Typography>
-        </Box>
-        <Alert severity="warning">
-          This probation confirmation is currently on hold due to extension. It will automatically re-open for re-evaluation on <strong>{fmtDate(record.reviewDate)}</strong>.
-        </Alert>
+      <Box sx={{ p: 3, textAlign: 'center' }}>
+        <Typography color="text.secondary" mb={2}>This confirmation is pending HR decision.</Typography>
+        <Button variant="outlined" onClick={onBack}>Back</Button>
       </Box>
     );
   }
 
   if (!isManagerTurn && !isManagementTurn) {
     return (
-      <Box>
+      <Box sx={{ p: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
           <IconButton onClick={onBack}><ArrowBackIcon /></IconButton>
           <Typography variant="h6">Confirmation Completed</Typography>
         </Box>
-        <Alert severity="info">
-          This employee's probation confirmation process is already completed.
-        </Alert>
+        <Alert severity="info">This employee's probation confirmation process is already completed.</Alert>
       </Box>
     );
   }
 
   const submit = async () => {
     if (!reason.trim()) return showToast('Please provide a reason', 'error');
-
     try {
       setSubmitting(true);
       const payload: any = { status, reason };
       if (status === 'extended') payload.monthsExtended = monthsExtended;
-
       const { data } = await axios.put(`${API}/${record._id}/${endpoint}`, payload);
       if (data.success) {
         showToast('Decision submitted successfully', 'success');
@@ -743,11 +840,9 @@ function StatusChangeView({ record, onBack, onSuccess, showToast }: {
   };
 
   return (
-    <Box>
+    <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
-        <IconButton onClick={onBack} sx={{ bgcolor: '#f1f5f9' }}>
-          <ArrowBackIcon />
-        </IconButton>
+        <IconButton onClick={onBack} sx={{ bgcolor: '#f1f5f9' }}><ArrowBackIcon /></IconButton>
         <Box>
           <Typography variant="h6">{roleLabel} Decision</Typography>
           <Typography variant="body2" color="text.secondary">
@@ -768,11 +863,7 @@ function StatusChangeView({ record, onBack, onSuccess, showToast }: {
         <Stack spacing={3}>
           <FormControl fullWidth>
             <InputLabel>Decision</InputLabel>
-            <Select
-              value={status}
-              label="Decision"
-              onChange={e => setStatus(e.target.value as CurrentStatus)}
-            >
+            <Select value={status} label="Decision" onChange={e => setStatus(e.target.value as CurrentStatus)}>
               {STATUS_OPTIONS.map(opt => (
                 <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
               ))}
@@ -781,41 +872,25 @@ function StatusChangeView({ record, onBack, onSuccess, showToast }: {
 
           {status === 'extended' && (
             <TextField
-              label="Extend by (months)"
-              type="number"
+              label="Extend by (months)" type="number"
               value={monthsExtended}
-              onChange={e => {
-                const v = Number(e.target.value);
-                setMonthsExtended(Math.max(1, Math.min(12, v || 1)));
-              }}
+              onChange={e => setMonthsExtended(Math.max(1, Math.min(12, Number(e.target.value) || 1)))}
               inputProps={{ min: 1, max: 12 }}
-              fullWidth
-              helperText="1–12 months"
+              fullWidth helperText="1–12 months"
             />
           )}
 
           <TextField
-            label="Reason / Comments *"
-            multiline
-            rows={4}
-            value={reason}
-            onChange={e => setReason(e.target.value)}
-            fullWidth
-            placeholder="Please explain your decision..."
+            label="Reason / Comments *" multiline rows={4}
+            value={reason} onChange={e => setReason(e.target.value)}
+            fullWidth placeholder="Please explain your decision…"
           />
 
           <Box sx={{ display: 'flex', gap: 2, pt: 2 }}>
-            <Button
-              variant="contained"
-              onClick={submit}
-              disabled={submitting || !reason.trim()}
-              sx={{ minWidth: 140 }}
-            >
+            <Button variant="contained" onClick={submit} disabled={submitting || !reason.trim()} sx={{ minWidth: 140 }}>
               {submitting ? <CircularProgress size={24} /> : `Submit ${roleLabel} Decision`}
             </Button>
-            <Button variant="outlined" onClick={onBack}>
-              Cancel
-            </Button>
+            <Button variant="outlined" onClick={onBack}>Cancel</Button>
           </Box>
         </Stack>
       </Paper>
@@ -823,55 +898,278 @@ function StatusChangeView({ record, onBack, onSuccess, showToast }: {
   );
 }
 
-// ─── Root Component ───────────────────────────────────────────────────────────
+// ─── Root ──────────────────────────────────────────────────────────────────────
 
 type View = 'dashboard' | 'detail' | 'status-change';
 
 export default function ConfirmationsPage() {
-  const [records,  setRecords]  = useState<Confirmation[]>([]);
-  const [selected, setSelected] = useState<Confirmation | null>(null);
-  const [view,     setView]     = useState<View>('dashboard');
-  const [loading,  setLoading]  = useState(true);
-  const [toastMsg, setToastMsg] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [records,   setRecords]   = useState<Confirmation[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [roles,     setRoles]     = useState<RoleMaster[]>([]);
+  const [selected,  setSelected]  = useState<Confirmation | null>(null);
+  const [view,      setView]      = useState<View>('dashboard');
+  const [loading,   setLoading]   = useState(true);
+  const [toastMsg,  setToastMsg]  = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
+  
+  // HR decision dialog state
+  const [hrDialog, setHrDialog] = useState<{
+    open: boolean;
+    employee: Employee | null;
+  }>({ open: false, employee: null });
 
-  const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
+  const showToast = (msg: string, type: 'success' | 'error' | 'info' = 'success') =>
     setToastMsg({ msg, type });
-  };
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await axios.get(API);
-      const data = res.data;
-      setRecords(Array.isArray(data) ? data : data?.data || []);
-    } catch (err) {
-      showToast('Failed to load confirmation records', 'error');
+      
+      // Test localStorage functionality
+      try {
+        localStorage.setItem('test', 'test');
+        const testResult = localStorage.getItem('test');
+        console.log('DEBUG: localStorage test passed:', testResult === 'test');
+        localStorage.removeItem('test');
+        
+        // Check if confirmed employees are in localStorage
+        const confirmedEmployeesStr = localStorage.getItem('confirmedEmployees');
+        console.log('DEBUG: Confirmed employees in localStorage:', confirmedEmployeesStr);
+        const confirmedEmployees = confirmedEmployeesStr ? JSON.parse(confirmedEmployeesStr) : [];
+        console.log('DEBUG: Parsed confirmed employees:', confirmedEmployees);
+      } catch (e) {
+        console.error('DEBUG: localStorage test failed:', e);
+      }
+      
+      // Fetch employees (excluding archived), roles, and confirmation records in parallel
+      const [empRes, rolesRes, confRes] = await Promise.all([
+        axios.get(EMP_API + '?archived=false'),
+        axios.get(ROLES_API),
+        axios.get(API),
+      ]);
+      const empData   = empRes.data;
+      const rolesData = rolesRes.data;
+      const confData  = confRes.data;
+      
+      const apiRecords = Array.isArray(confData)  ? confData  : confData?.data  || [];
+      console.log('DEBUG: API records loaded:', apiRecords.length);
+      
+      // Load local confirmation records from localStorage
+      const localRecordsStr = localStorage.getItem('localConfirmationRecords');
+      console.log('DEBUG: localStorage raw data:', localRecordsStr);
+      const localRecords = localRecordsStr ? JSON.parse(localRecordsStr) : [];
+      console.log('DEBUG: Local records parsed:', localRecords.length);
+      
+      // Merge API records with local records (local records take precedence)
+      const allRecords = [...apiRecords, ...localRecords];
+      console.log('DEBUG: Total records after merge:', allRecords.length);
+      
+      const apiEmployees = Array.isArray(empData)   ? empData   : empData?.data   || [];
+      
+      // Restore confirmed employees from localStorage
+      const confirmedEmployeesStr = localStorage.getItem('confirmedEmployees');
+      const confirmedEmployees = confirmedEmployeesStr ? JSON.parse(confirmedEmployeesStr) : [];
+      
+      // Merge API employees with confirmed status updates
+      const allEmployees = apiEmployees.map((emp: Employee) => {
+        const confirmed = confirmedEmployees.find((c: Employee) => c._id === emp._id || c.employee_id === emp.employee_id);
+        return confirmed ? { ...emp, probation_status: 'confirmed' as ProbationStatus } : emp;
+      });
+      
+      console.log('DEBUG: Restored confirmed employees:', confirmedEmployees.length);
+      
+      setEmployees(allEmployees);
+      setRoles    (Array.isArray(rolesData) ? rolesData : rolesData?.data || []);
+      setRecords  (allRecords);
+    } catch {
+      showToast('Failed to load data', 'error');
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  const handleSelect = (record: Confirmation) => {
-    setSelected(record);
-    setView('detail');
+  const handleEmployeeSelect = (employee: Employee) => {
+    // Check if employee is already confirmed
+    if (employee.probation_status === 'confirmed') {
+      showToast(`${employee.full_name} is already confirmed`, 'info');
+      return;
+    }
+    
+    // Check if employee already has confirmation record
+    const existingRecord = records.find(r => r._id === employee._id || r.employeeCode === employee.employee_id);
+    if (existingRecord) {
+      setSelected(existingRecord);
+      setView('detail');
+      return;
+    }
+    
+    // Open HR decision dialog
+    setHrDialog({ open: true, employee });
   };
 
-  const handleBack = () => {
-    if (view === 'status-change') {
-      setView('detail');
-    } else {
-      setView('dashboard');
-      setSelected(null);
+  const handleHRDecision = async (isOnProbation: boolean, reason: string) => {
+    const employee = hrDialog.employee;
+    setHrDialog({ open: false, employee: null });
+    
+    if (!employee) return;
+    
+    try {
+      if (isOnProbation) {
+        // Employee is on probation - create confirmation record and proceed to manager stage
+        const newRecord = {
+          _id: employee._id,
+          employeeCode: employee.employee_id,
+          employeeName: employee.full_name,
+          department: employee.department,
+          designation: employee.designation,
+          email: employee.email,
+          joiningDate: employee.joining_date || new Date().toISOString(),
+          level: employee.level,
+          reportingManager: employee.reporting_manager,
+          currentStatus: 'probation' as CurrentStatus,
+          stage: 'pending_manager' as Stage,
+          hrDecision: {
+            stage: 'hr_pending' as Stage,
+            status: 'probation' as CurrentStatus,
+            reason: reason,
+            monthsExtended: null,
+            newReviewDate: null,
+            submittedAt: new Date().toISOString(),
+            submittedBy: 'HR User',
+            submittedByRole: 'hr' as UserRole,
+          },
+          managerDecision: null,
+          managementDecision: null,
+          history: [{
+            stage: 'hr_pending' as Stage,
+            status: 'probation' as CurrentStatus,
+            reason: reason,
+            monthsExtended: null,
+            newReviewDate: null,
+            changedBy: 'HR User',
+            changedByName: 'HR User',
+            changedByRole: 'hr' as UserRole,
+            date: new Date().toISOString(),
+          }],
+          pipDetails: null,
+          reviewDate: calculateReviewDate(employee.joining_date)?.toISOString() || null,
+          extendedMonths: null,
+          extendedTill: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        
+        // Try to create the confirmation record via API
+        try {
+          const { data } = await axios.post(API, newRecord);
+          if (data.success) {
+            const confirmationRecord = data.data;
+            setRecords(prev => [...prev, confirmationRecord]);
+            setSelected(confirmationRecord);
+            setView('detail');
+            showToast('Employee marked as on probation - sent to manager for decision', 'success');
+          } else {
+            throw new Error('Failed to create confirmation record');
+          }
+        } catch (apiError) {
+          console.warn('API not available, creating local record:', apiError);
+          // Fallback: Create local confirmation record without backend
+          setRecords(prev => [...prev, newRecord]);
+          setSelected(newRecord);
+          setView('detail');
+          
+          // Save to localStorage for persistence
+          const existingLocalStr = localStorage.getItem('localConfirmationRecords');
+          const existingLocal = existingLocalStr ? JSON.parse(existingLocalStr) : [];
+          const updatedLocal = [...existingLocal, newRecord];
+          localStorage.setItem('localConfirmationRecords', JSON.stringify(updatedLocal));
+          
+          showToast('Employee marked as on probation - sent to manager for decision (local)', 'info');
+        }
+        
+      } else {
+        // Employee is not on probation - close the entry
+        const newRecord = {
+          _id: employee._id,
+          employeeCode: employee.employee_id,
+          employeeName: employee.full_name,
+          department: employee.department,
+          designation: employee.designation,
+          email: employee.email,
+          joiningDate: employee.joining_date || new Date().toISOString(),
+          level: employee.level,
+          reportingManager: employee.reporting_manager,
+          currentStatus: 'not_confirmed' as CurrentStatus,
+          stage: 'closed' as Stage,
+          hrDecision: {
+            stage: 'hr_pending' as Stage,
+            status: 'not_confirmed' as CurrentStatus,
+            reason: reason,
+            monthsExtended: null,
+            newReviewDate: null,
+            submittedAt: new Date().toISOString(),
+            submittedBy: 'HR User',
+            submittedByRole: 'hr' as UserRole,
+          },
+          managerDecision: null,
+          managementDecision: null,
+          history: [{
+            stage: 'hr_pending' as Stage,
+            status: 'not_confirmed' as CurrentStatus,
+            reason: reason,
+            monthsExtended: null,
+            newReviewDate: null,
+            changedBy: 'HR User',
+            changedByName: 'HR User',
+            changedByRole: 'hr' as UserRole,
+            date: new Date().toISOString(),
+          }],
+          pipDetails: null,
+          reviewDate: null,
+          extendedMonths: null,
+          extendedTill: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        
+        // Try to create the confirmation record via API
+        try {
+          const { data } = await axios.post(API, newRecord);
+          if (data.success) {
+            setRecords(prev => [...prev, data.data]);
+            showToast('Employee marked as not on probation - entry closed', 'success');
+          } else {
+            throw new Error('Failed to create confirmation record');
+          }
+        } catch (apiError) {
+          console.warn('API not available, creating local record:', apiError);
+          // Fallback: Create local confirmation record without backend
+          setRecords(prev => [...prev, newRecord]);
+          
+          // Save to localStorage for persistence
+          const existingLocalStr = localStorage.getItem('localConfirmationRecords');
+          const existingLocal = existingLocalStr ? JSON.parse(existingLocalStr) : [];
+          const updatedLocal = [...existingLocal, newRecord];
+          localStorage.setItem('localConfirmationRecords', JSON.stringify(updatedLocal));
+          
+          showToast('Employee marked as not on probation - entry closed (local)', 'info');
+        }
+      }
+    } catch (error) {
+      console.error('Error in HR decision:', error);
+      showToast('Failed to process HR decision', 'error');
     }
   };
 
-  const handleStatusUpdate = (updatedRecord: Confirmation) => {
-    setRecords(prev => prev.map(r => r._id === updatedRecord._id ? updatedRecord : r));
-    setSelected(updatedRecord);
+  const handleBack = () => {
+    if (view === 'status-change') setView('detail');
+    else { setView('dashboard'); setSelected(null); }
+  };
+
+  const handleStatusUpdate = (updated: Confirmation) => {
+    setRecords(prev => prev.map(r => r._id === updated._id ? updated : r));
+    setSelected(updated);
     setView('detail');
   };
 
@@ -891,53 +1189,40 @@ export default function ConfirmationsPage() {
 
   return (
     <div className="flex min-h-screen bg-gray-50">
-
-      {/* Sidebar */}
       <Sidebar />
-
-      {/* Main content area */}
       <div className="flex-1 flex flex-col">
-
-        {/* Navbar */}
         <Navbar />
-
-        {/* Fixed height content area - no page scroll */}
         <main className="flex-1 overflow-hidden pt-16 md:pt-20">
+          <Box sx={{ maxWidth: 1400, mx: 'auto', width: '100%', height: '100%', overflow: 'hidden' }}>
 
-          <Box sx={{ maxWidth: 1400, mx: "auto", width: "100%", height: "100%", overflow: "hidden" }}>
-
-            {/* Toast */}
             {toastMsg && (
-              <Toast
-                msg={toastMsg.msg}
-                type={toastMsg.type}
-                onClose={() => setToastMsg(null)}
-              />
+              <Toast msg={toastMsg.msg} type={toastMsg.type} onClose={() => setToastMsg(null)} />
             )}
 
-            {/* Active view - takes full height */}
+            {/* HR Decision Dialog */}
+            <HRDecisionDialog
+              employee={hrDialog.employee}
+              open={hrDialog.open}
+              onClose={() => setHrDialog({ open: false, employee: null })}
+              onConfirm={handleHRDecision}
+            />
+
             {view === 'dashboard' && (
               <DashboardView
                 records={records}
+                employees={employees}
+                roles={roles}
                 loading={loading}
-                onSelect={handleSelect} employees={[]}              />
+                onSelect={handleEmployeeSelect}
+              />
             )}
 
             {view === 'detail' && selected && (
-              <DetailView
-                record={selected}
-                onBack={handleBack}
-                onChangeStatus={() => setView('status-change')}
-              />
+              <DetailView record={selected} onBack={handleBack} onChangeStatus={() => setView('status-change')} />
             )}
 
             {view === 'status-change' && selected && (
-              <StatusChangeView
-                record={selected}
-                onBack={handleBack}
-                onSuccess={handleStatusUpdate}
-                showToast={showToast}
-              />
+              <StatusChangeView record={selected} onBack={handleBack} onSuccess={handleStatusUpdate} showToast={showToast} />
             )}
 
           </Box>

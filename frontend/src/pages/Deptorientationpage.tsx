@@ -34,7 +34,7 @@ const API_BASE = process.env.API_BASE_URL;
 const getToken = () => localStorage.getItem('token') || '';
 const getRole  = () => localStorage.getItem('role')  || 'Admin';
 const isHR = getRole() === 'HR' || getRole() === 'Admin';
-
+ 
 // ── Clipboard helper — works on HTTP (no HTTPS required) ─────────────────────
 function copyToClipboard(text: string): void {
   if (navigator.clipboard) {
@@ -52,16 +52,29 @@ function fallbackCopy(text: string): void {
   document.execCommand('copy');
   document.body.removeChild(el);
 }
-
+ 
 // ── Types ─────────────────────────────────────────────────────────────────────
+// Updated Designation interface to match Role Master schema (capital field names)
 interface Designation {
   _id: string;
-  department: string;
-  designation: string;
-  role_document_link: string;
-  jd_link: string;
-  remarks: string;
-  role_document: string;
+  Dept_Id: number;
+  Department: string;
+  dept_page_link?: string;
+  dept_head_email?: string;
+  dept_group_email?: string;
+  parent_department?: string;
+  department_type?: string;
+  department_head?: string;
+  department_deputy?: string;
+  Desig_Id: number;
+  Designation: string;
+  emp_id?: string;
+  emp_name?: string;
+  role_document_link?: string;
+  jd_link?: string;
+  remarks?: string;
+  management_level?: string;
+  reporting_manager?: string;
 }
 interface QuarterPPT {
   id: string; fy: string; quarter: 'Q1'|'Q2'|'Q3'|'Q4'; name: string; url: string;
@@ -78,7 +91,7 @@ interface DeptData {
   roleDocs?: Array<{ id: string; role: string; jdUrl?: string; roleDocUrl?: string; }>;
 }
 interface ApiResponse<T = unknown> { success: boolean; data?: T; message?: string; }
-
+ 
 // ── API helpers ───────────────────────────────────────────────────────────────
 const authH = () => ({
   'Content-Type': 'application/json',
@@ -104,7 +117,7 @@ async function apiDel<T>(p: string): Promise<ApiResponse<T>> {
   const r = await fetch(`${API_BASE}${p}`, { method:'DELETE', headers:authH() });
   if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json();
 }
-
+ 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function getCurrentFY() {
   const y = new Date().getMonth() >= 3 ? new Date().getFullYear() : new Date().getFullYear() - 1;
@@ -115,11 +128,11 @@ function getFYList() {
   return Array.from({length:4},(_,i)=>`FY${String(y-i).slice(2)}-${String(y-i+1).slice(2)}`);
 }
 const QUARTERS: Array<'Q1'|'Q2'|'Q3'|'Q4'> = ['Q1','Q2','Q3','Q4'];
-
+ 
 function slugify(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9\s]/g,'').trim().replace(/\s+/g,'_');
 }
-
+ 
 const COLOR_POOL = ['#3B82F6','#10B981','#EC4899','#F59E0B','#8B5CF6','#0EA5E9','#EF4444','#F97316','#14B8A6','#6366F1'];
 const colorCache: Record<string,string> = {};
 function deptColor(n: string) {
@@ -137,7 +150,7 @@ function notionStyle(n: string) {
   if (!notionCache[n]) notionCache[n] = NOTION_STYLES[Object.keys(notionCache).length % NOTION_STYLES.length];
   return notionCache[n];
 }
-
+ 
 // ══════════════════════════════════════════════════════════════════════════════
 // Shared components
 // ══════════════════════════════════════════════════════════════════════════════
@@ -149,7 +162,7 @@ function EmptyState({icon,text}:{icon:React.ReactNode;text:string}) {
     </Box>
   );
 }
-
+ 
 // CopyBadge — uses copyToClipboard (HTTP-safe)
 function CopyBadge({text}:{text:string}) {
   const [copied,setCopied] = useState(false);
@@ -163,7 +176,7 @@ function CopyBadge({text}:{text:string}) {
     </Tooltip>
   );
 }
-
+ 
 function LinkRow({link,accentColor,sysName}:{link:LinkItem|null;accentColor:string;sysName:string}) {
   const [copied,setCopied] = useState(false);
   if (!link?.url) return <Typography fontSize="0.82rem" color="#9CA3AF" fontStyle="italic">No file added yet.</Typography>;
@@ -186,7 +199,7 @@ function LinkRow({link,accentColor,sysName}:{link:LinkItem|null;accentColor:stri
     </Box>
   );
 }
-
+ 
 function LinkEditor({currentUrl,sysName,c,onSave}:{currentUrl:string;sysName:string;c:string;onSave:(name:string,url:string)=>Promise<void>;}) {
   const [editing,setEditing] = useState(false);
   const [url,setUrl]         = useState(currentUrl);
@@ -219,7 +232,7 @@ function LinkEditor({currentUrl,sysName,c,onSave}:{currentUrl:string;sysName:str
     </Stack>
   );
 }
-
+ 
 function SectionCard({num,label,icon,children}:{num:number;label:string;icon:React.ReactNode;children:React.ReactNode}) {
   const [open,setOpen] = useState(false);
   return (
@@ -238,9 +251,9 @@ function SectionCard({num,label,icon,children}:{num:number;label:string;icon:Rea
     </Box>
   );
 }
-
+ 
 // ══════════════════════════════════════════════════════════════════════════════
-// Section 1 — Presentations
+// Section 1 — Presentations (no changes needed, just keeping for completeness)
 // ══════════════════════════════════════════════════════════════════════════════
 function DeptPresentations({dept,dd,c,onUpdate}:{dept:string;dd:DeptData|undefined;c:string;onUpdate:(n:string,d:Partial<DeptData>)=>void}) {
   const [tab,setTab]     = useState(0);
@@ -249,13 +262,13 @@ function DeptPresentations({dept,dd,c,onUpdate}:{dept:string;dd:DeptData|undefin
   const [addDlg,setDlg]  = useState(false);
   const [saving,setSaving]= useState(false);
   const [newP,setNewP]   = useState({fy:getCurrentFY(),quarter:'Q1' as 'Q1'|'Q2'|'Q3'|'Q4',url:''});
-
+ 
   const onbSys  = `${slugify(dept)}_onboarding_ppt`;
   const mastSys = `${slugify(dept)}_master_ppt`;
-
+ 
   const saveOnb  = async(name:string,url:string)=>{const r=await apiPut(`/dept-orientation/${dd?.id}/onboarding-ppt`,{name,url});if(r.success)onUpdate(dept,{onboardingPPT:{id:'ppt',name,url}});};
   const saveMast = async(name:string,url:string)=>{const r=await apiPut(`/dept-orientation/${dd?.id}/master-ppt`,{name,url});if(r.success)onUpdate(dept,{masterPPT:{id:'master',name,url}});};
-
+ 
   const addReview = async()=>{
     if (!newP.url) return; setSaving(true);
     const fySlug = newP.fy.toLowerCase().replace('-','_');
@@ -268,9 +281,9 @@ function DeptPresentations({dept,dd,c,onUpdate}:{dept:string;dd:DeptData|undefin
     await apiDel(`/dept-orientation/${dd?.id}/review-ppts/${id}`);
     onUpdate(dept,{reviewPPTs:(dd?.reviewPPTs||[]).filter(p=>p.id!==id)});
   };
-
+ 
   const filtered = (dd?.reviewPPTs||[]).filter(p=>p.fy===fy&&(q==='all'||p.quarter===q));
-
+ 
   return (
     <Box>
       <Box sx={{display:'flex',gap:0.5,mb:2,p:0.5,bgcolor:'#F1F5F9',borderRadius:'10px',width:'fit-content'}}>
@@ -279,9 +292,9 @@ function DeptPresentations({dept,dd,c,onUpdate}:{dept:string;dd:DeptData|undefin
             sx={{textTransform:'none',fontSize:'0.8rem',fontWeight:700,borderRadius:'8px',px:1.8,py:0.5,minHeight:32,bgcolor:tab===i?'white':'transparent',boxShadow:tab===i?'0 1px 4px rgba(0,0,0,0.1)':'none',color:tab===i?c:'#6B7280'}}>{t}</Button>
         ))}
       </Box>
-
+ 
       {tab===0&&<Stack spacing={1.2}><LinkRow link={dd?.onboardingPPT||null} accentColor={c} sysName={onbSys}/><LinkEditor currentUrl={dd?.onboardingPPT?.url||''} sysName={onbSys} c={c} onSave={saveOnb}/></Stack>}
-
+ 
       {tab===1&&(
         <Stack spacing={1.5}>
           <Box sx={{display:'flex',gap:1.5,alignItems:'center',p:1.5,bgcolor:'#F8FAFC',borderRadius:'10px',border:'1px solid #E5E7EB',flexWrap:'wrap'}}>
@@ -300,7 +313,7 @@ function DeptPresentations({dept,dd,c,onUpdate}:{dept:string;dd:DeptData|undefin
               </Select>
             </FormControl>
           </Box>
-
+ 
           {filtered.length===0
             ?<EmptyState icon={<SlideshowIcon sx={{fontSize:36}}/>} text={`No PPTs for ${fy}${q!=='all'?' · '+q:''}`}/>
             :filtered.map(p=>{
@@ -320,7 +333,7 @@ function DeptPresentations({dept,dd,c,onUpdate}:{dept:string;dd:DeptData|undefin
             })
           }
           {isHR&&<Button size="small" startIcon={<AddIcon sx={{fontSize:14}}/>} onClick={()=>setDlg(true)} sx={{textTransform:'none',color:c,bgcolor:`${c}10`,border:`1px dashed ${c}40`,borderRadius:'8px',px:2,py:0.8,alignSelf:'flex-start'}}>Add Review PPT</Button>}
-
+ 
           <Dialog open={addDlg} onClose={()=>setDlg(false)} maxWidth="xs" fullWidth PaperProps={{sx:{borderRadius:'16px'}}}>
             <DialogTitle sx={{fontWeight:700,fontSize:'0.95rem'}}>Add Review PPT — {dept}</DialogTitle>
             <DialogContent>
@@ -349,14 +362,14 @@ function DeptPresentations({dept,dd,c,onUpdate}:{dept:string;dd:DeptData|undefin
           </Dialog>
         </Stack>
       )}
-
+ 
       {tab===2&&<Stack spacing={1.2}><LinkRow link={dd?.masterPPT||null} accentColor={c} sysName={mastSys}/><LinkEditor currentUrl={dd?.masterPPT?.url||''} sysName={mastSys} c={c} onSave={saveMast}/></Stack>}
     </Box>
   );
 }
-
+ 
 // ══════════════════════════════════════════════════════════════════════════════
-// Section 2 — JD & Role Docs  (read-only from Designation model)
+// Section 2 — JD & Role Docs (Updated to use lowercase field names from Role Master schema)
 // ══════════════════════════════════════════════════════════════════════════════
 function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;designations:Designation[];dd:DeptData|undefined;onUpdate:(n:string,d:Partial<DeptData>)=>void}) {
   const [active,setActive] = useState<string|null>(null);
@@ -377,8 +390,9 @@ function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;desi
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const roles = designations.filter(d=>d.department===dept);
-
+  // Filter roles by department using capital field name
+  const roles = designations.filter(d=>d.Department===dept);
+ 
   const openUploadDialog = (type: 'jd' | 'role_doc', designation: string) => {
     console.log('Opening upload dialog:', { type, designation, dept });
     setUploadDialog({
@@ -391,7 +405,7 @@ function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;desi
     setDriveLink('');
     setSelectedFile(null);
   };
-
+ 
   const handleFileUpload = async () => {
     console.log('Starting upload:', uploadDialog);
     if (!uploadDialog.designation || !uploadDialog.dept) {
@@ -420,7 +434,7 @@ function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;desi
       } else {
         throw new Error('Please provide either a file or Google Drive link');
       }
-
+ 
       const response = await fetch(`${API_BASE}/dept-orientation/upload-designation-doc`, {
         method: 'POST',
         headers: {
@@ -429,7 +443,7 @@ function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;desi
         },
         body: formData,
       });
-
+ 
       console.log('Upload response status:', response.status);
       
       if (!response.ok) {
@@ -437,7 +451,7 @@ function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;desi
         console.error('Upload error response:', error);
         throw new Error(error.message || 'Upload failed');
       }
-
+ 
       const result = await response.json();
       console.log('Upload success:', result);
       
@@ -479,29 +493,31 @@ function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;desi
       setUploading(false);
     }
   };
-
+ 
   return (
     <Box>
       {roles.length===0
         ?<EmptyState icon={<WorkIcon sx={{fontSize:36}}/>} text={`No designations found for ${dept}`}/>
         :<Stack spacing={0.8}>
           {roles.map(r=>{
-            const jdSys   = `${slugify(dept)}_${slugify(r.designation)}_jd`;
-            const roleSys = `${slugify(dept)}_${slugify(r.designation)}_role_doc`;
+            // Use capital field names from Role Master schema
+            const jdSys   = `${slugify(dept)}_${slugify(r.Designation)}_jd`;
+            const roleSys = `${slugify(dept)}_${slugify(r.Designation)}_role_doc`;
             const hasJD   = !!r.jd_link;
-            const hasRole = !!(r.role_document_link||r.role_document);
+            const hasRole = !!r.role_document_link;
             
             // Check for uploaded documents in department data
-            const uploadedDoc = dd?.roleDocs?.find(doc => doc.role === r.designation);
+            const uploadedDoc = dd?.roleDocs?.find(doc => doc.role === r.Designation);
             const uploadedJD = uploadedDoc?.jdUrl;
             const uploadedRole = uploadedDoc?.roleDocUrl;
+            
             return(
               <Box key={r._id}>
                 <Box onClick={()=>setActive(a=>a===r._id?null:r._id)}
                   sx={{display:'flex',alignItems:'center',gap:1.5,p:1.3,bgcolor:active===r._id?`${c}08`:'white',borderRadius:'10px',border:`1px solid ${active===r._id?c+'35':'#E5E7EB'}`,cursor:'pointer',transition:'all 0.15s','&:hover':{bgcolor:`${c}05`}}}>
                   <Box sx={{width:34,height:34,borderRadius:'8px',bgcolor:`${c}12`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><Person sx={{fontSize:16,color:c}}/></Box>
                   <Box flex={1}>
-                    <Typography fontSize="0.88rem" fontWeight={700} color="#1F2937">{r.designation}</Typography>
+                    <Typography fontSize="0.88rem" fontWeight={700} color="#1F2937">{r.Designation}</Typography>
                     {r.remarks&&<Typography fontSize="0.72rem" color="#9CA3AF">{r.remarks}</Typography>}
                   </Box>
                   <Stack direction="row" spacing={0.5}>
@@ -523,12 +539,17 @@ function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;desi
                         </Box>
                         {(uploadedJD || hasJD)?(
                           <Stack direction="row" spacing={1}>
-                            <Button href={uploadedJD || r.jd_link} target="_blank" startIcon={<OpenInNewIcon sx={{fontSize:14}}/>}
-                              sx={{textTransform:'none',fontWeight:700,fontSize:'0.82rem',color:'white',bgcolor:c,borderRadius:'8px',px:2,py:0.7,'&:hover':{opacity:0.88}}}>Open</Button>
+                            <Button 
+                            href={uploadedJD || r.jd_link || '#'} 
+                            target="_blank" 
+                            startIcon={<OpenInNewIcon sx={{fontSize:14}}/>}
+                            disabled={!uploadedJD && !r.jd_link}
+                            sx={{textTransform:'none',fontWeight:700,fontSize:'0.82rem',color:'white',bgcolor:c,borderRadius:'8px',px:2,py:0.7,'&:hover':{opacity:0.88}}}
+                          >Open</Button>
                             <Tooltip title="Download"><IconButton component="a" href={uploadedJD || r.jd_link} download={jdSys} sx={{color:'#6B7280',bgcolor:'#F3F4F6',borderRadius:'7px',width:32,height:32}}><DownloadIcon sx={{fontSize:15}}/></IconButton></Tooltip>
                             {isHR && (
                               <Tooltip title="Upload New JD">
-                                <IconButton onClick={() => openUploadDialog('jd', r.designation)} sx={{color:c,bgcolor:`${c}12`,borderRadius:'7px',width:32,height:32}}>
+                                <IconButton onClick={() => openUploadDialog('jd', r.Designation)} sx={{color:c,bgcolor:`${c}12`,borderRadius:'7px',width:32,height:32}}>
                                   <EditIcon sx={{fontSize:15}}/>
                                 </IconButton>
                               </Tooltip>
@@ -538,7 +559,7 @@ function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;desi
                           <Stack direction="row" spacing={1} alignItems="center">
                             <Typography fontSize="0.78rem" color="#9CA3AF" fontStyle="italic" flex={1}>No JD linked in designation record.</Typography>
                             {isHR && (
-                              <Button size="small" startIcon={<EditIcon sx={{fontSize:14}}/>} onClick={() => openUploadDialog('jd', r.designation)}
+                              <Button size="small" startIcon={<EditIcon sx={{fontSize:14}}/>} onClick={() => openUploadDialog('jd', r.Designation)}
                                 sx={{textTransform:'none',fontWeight:600,fontSize:'0.78rem',color:c,bgcolor:`${c}10`,border:`1px solid ${c}30`,borderRadius:'6px',px:1.5,py:0.5}}>
                                 Upload JD
                               </Button>
@@ -555,12 +576,17 @@ function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;desi
                         </Box>
                         {(uploadedRole || hasRole)?(
                           <Stack direction="row" spacing={1}>
-                            <Button href={uploadedRole || r.role_document_link||r.role_document} target="_blank" startIcon={<OpenInNewIcon sx={{fontSize:14}}/>}
-                              sx={{textTransform:'none',fontWeight:700,fontSize:'0.82rem',color:c,bgcolor:`${c}12`,border:`1px solid ${c}30`,borderRadius:'8px',px:2,py:0.7,'&:hover':{bgcolor:`${c}20`}}}>Open</Button>
-                            <Tooltip title="Download"><IconButton component="a" href={uploadedRole || r.role_document_link||r.role_document} download={roleSys} sx={{color:'#6B7280',bgcolor:'#F3F4F6',borderRadius:'7px',width:32,height:32}}><DownloadIcon sx={{fontSize:15}}/></IconButton></Tooltip>
+                            <Button 
+                            href={uploadedRole || r.role_document_link || '#'} 
+                            target="_blank" 
+                            startIcon={<OpenInNewIcon sx={{fontSize:14}}/>}
+                            disabled={!uploadedRole && !r.role_document_link}
+                            sx={{textTransform:'none',fontWeight:700,fontSize:'0.82rem',color:c,bgcolor:`${c}12`,border:`1px solid ${c}30`,borderRadius:'8px',px:2,py:0.7,'&:hover':{bgcolor:`${c}20`}}}
+                          >Open</Button>
+                            <Tooltip title="Download"><IconButton component="a" href={uploadedRole || r.role_document_link} download={roleSys} sx={{color:'#6B7280',bgcolor:'#F3F4F6',borderRadius:'7px',width:32,height:32}}><DownloadIcon sx={{fontSize:15}}/></IconButton></Tooltip>
                             {isHR && (
                               <Tooltip title="Upload New Role Doc">
-                                <IconButton onClick={() => openUploadDialog('role_doc', r.designation)} sx={{color:'#6B7280',bgcolor:'#F3F4F6',borderRadius:'7px',width:32,height:32}}>
+                                <IconButton onClick={() => openUploadDialog('role_doc', r.Designation)} sx={{color:'#6B7280',bgcolor:'#F3F4F6',borderRadius:'7px',width:32,height:32}}>
                                   <EditIcon sx={{fontSize:15}}/>
                                 </IconButton>
                               </Tooltip>
@@ -570,7 +596,7 @@ function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;desi
                           <Stack direction="row" spacing={1} alignItems="center">
                             <Typography fontSize="0.78rem" color="#9CA3AF" fontStyle="italic" flex={1}>No role document linked in designation record.</Typography>
                             {isHR && (
-                              <Button size="small" startIcon={<EditIcon sx={{fontSize:14}}/>} onClick={() => openUploadDialog('role_doc', r.designation)}
+                              <Button size="small" startIcon={<EditIcon sx={{fontSize:14}}/>} onClick={() => openUploadDialog('role_doc', r.Designation)}
                                 sx={{textTransform:'none',fontWeight:600,fontSize:'0.78rem',color:'#6B7280',bgcolor:'#F3F4F6',border:'1px solid #D1D5DB',borderRadius:'6px',px:1.5,py:0.5}}>
                                 Upload Role Doc
                               </Button>
@@ -625,7 +651,7 @@ function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;desi
                 Google Drive Link
               </Button>
             </Stack>
-
+ 
             {uploadType === 'file' ? (
               <>
                 <TextField
@@ -692,7 +718,7 @@ function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;desi
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Section 3 — Notes
+// Section 3 — Notes (no changes needed for Role Master schema)
 // ══════════════════════════════════════════════════════════════════════════════
 function DeptNotes({dept,c,dd,onUpdate}:{dept:string;c:string;dd:DeptData|undefined;onUpdate:(n:string,d:Partial<DeptData>)=>void}) {
   const [expanded,setExpanded] = useState<string|null>(null);
@@ -703,7 +729,6 @@ function DeptNotes({dept,c,dd,onUpdate}:{dept:string;c:string;dd:DeptData|undefi
   const [selectedFile,setSelectedFile] = useState<File|null>(null);
   const [saving,setSaving]     = useState(false);
 
-  // Generate system name based on department and timestamp
   const generateSystemName = () => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     return `${dept.toLowerCase().replace(/\s+/g, '_')}_note_${timestamp}`;
@@ -783,15 +808,11 @@ function DeptNotes({dept,c,dd,onUpdate}:{dept:string;c:string;dd:DeptData|undefi
               </Box>
               <Collapse in={expanded===note.id}>
                 <Box sx={{px:2.5,py:2,bgcolor:'#FAFAFA',borderTop:`1px solid ${c}12`}}>
-                  
-                  {/* Show system name if available */}
                   {note.systemName && (
                     <Typography fontSize="0.72rem" color="#6B7280" sx={{mb:1,fontStyle:'italic'}}>
                       System Name: {note.systemName}
                     </Typography>
                   )}
-                  
-                  {/* Show link if available */}
                   {note.link && (
                     <Box sx={{mb:1}}>
                       <Typography fontSize="0.75rem" color="#6B7280" sx={{mb:0.5}}>External Link:</Typography>
@@ -805,8 +826,6 @@ function DeptNotes({dept,c,dd,onUpdate}:{dept:string;c:string;dd:DeptData|undefi
                       </Button>
                     </Box>
                   )}
-                  
-                  {/* Show attachment if available */}
                   {note.attachment && (
                     <Box sx={{mb:1}}>
                       <Typography fontSize="0.75rem" color="#6B7280" sx={{mb:0.5}}>Attachment:</Typography>
@@ -830,11 +849,8 @@ function DeptNotes({dept,c,dd,onUpdate}:{dept:string;c:string;dd:DeptData|undefi
         <DialogTitle sx={{fontWeight:700,fontSize:'0.95rem'}}>Add Note — {dept}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} mt={0.5}>
-            {/* Link/Upload Section */}
             <Box sx={{border:'1px solid #E5E7EB',borderRadius:'10px',p:2}}>
               <Typography fontSize="0.85rem" fontWeight={600} color="#374151" sx={{mb:1.5}}>Add Link or Attachment (Optional)</Typography>
-              
-              {/* Upload Type Selector */}
               <Stack direction="row" spacing={1} sx={{mb:2}}>
                 <Button 
                   size="small" 
@@ -853,8 +869,6 @@ function DeptNotes({dept,c,dd,onUpdate}:{dept:string;c:string;dd:DeptData|undefi
                   Upload File
                 </Button>
               </Stack>
-
-              {/* Link Input */}
               {uploadType === 'link' ? (
                 <TextField
                   size="small"
@@ -892,8 +906,6 @@ function DeptNotes({dept,c,dd,onUpdate}:{dept:string;c:string;dd:DeptData|undefi
                   )}
                 </Stack>
               )}
-              
-              {/* System Name Display */}
               <Typography fontSize="0.72rem" color="#9CA3AF" sx={{mt:1,fontStyle:'italic'}}>
                 System Name: {generateSystemName()}
               </Typography>
@@ -918,7 +930,7 @@ function DeptNotes({dept,c,dd,onUpdate}:{dept:string;c:string;dd:DeptData|undefi
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Section 4 — Tests
+// Section 4 — Tests (no changes needed for Role Master schema)
 // ══════════════════════════════════════════════════════════════════════════════
 function DeptTests({dept,c,dd,onUpdate}:{dept:string;c:string;dd:DeptData|undefined;onUpdate:(n:string,d:Partial<DeptData>)=>void}) {
   const recSys=`${slugify(dept)}_recruitment_test`;
@@ -949,7 +961,7 @@ function DeptTests({dept,c,dd,onUpdate}:{dept:string;c:string;dd:DeptData|undefi
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Department picker
+// Department picker (no changes needed for Role Master schema)
 // ══════════════════════════════════════════════════════════════════════════════
 function DeptPicker({departments,value,onChange}:{departments:string[];value:string;onChange:(d:string)=>void}) {
   const [open,setOpen]=useState(false);
@@ -984,7 +996,7 @@ function DeptPicker({departments,value,onChange}:{departments:string[];value:str
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Page root
+// Page root (Updated to use lowercase field names from Role Master schema)
 // ══════════════════════════════════════════════════════════════════════════════
 export default function DeptOrientationPage() {
   const [designations,setDesignations] = useState<Designation[]>([]);
@@ -998,7 +1010,7 @@ export default function DeptOrientationPage() {
     setLoading(true);
     try{
       const [desRes,deptRes] = await Promise.all([
-        apiGet<Designation[]>('/designations'),
+        apiGet<Designation[]>('/roles'),
         apiGet<DeptData[]>('/dept-orientation'),
       ]);
       // Build map from orientation model
@@ -1009,11 +1021,11 @@ export default function DeptOrientationPage() {
           map[name]={...d,id:(d as any).id||(d as any)._id?.toString()||''};
         });
       }
-      // Seed departments that only exist in Designation model
+      // Seed departments that only exist in Designation model (using capital field names)
       if (desRes.success&&Array.isArray(desRes.data)){
         setDesignations(desRes.data);
         desRes.data.forEach(des=>{
-          const dn=des.department?.trim();
+          const dn=des.Department?.trim(); // Using capital 'Department' from Role Master schema
           if (dn&&!map[dn]) map[dn]={id:'',name:dn,onboardingPPT:null,reviewPPTs:[],masterPPT:null,notes:[],recruitmentTest:null,onboardingTest:null};
         });
       }

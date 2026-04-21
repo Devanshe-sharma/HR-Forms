@@ -40,12 +40,20 @@ interface CapabilitySkill {
 
 interface Department {
   _id: string;
-  department: string; // field name from Department model
+  department: string;
 }
 
 interface Designation {
   _id: string;
-  designation: string; // field name from Designation model
+  designation: string;
+}
+
+interface RoleMasterRecord {
+  _id: string;
+  dept_id?: string;
+  department?: string;
+  desig_id?: string;
+  designation?: string;
 }
 
 interface Employee {
@@ -175,21 +183,41 @@ export default function TrainingTopicManagement() {
 
   const loadDepartments = async () => {
     try {
-      // GET /departments → { success, data: [{ _id, department, ... }] }
-      const res = await api.get('/departments');
-      setDepartments(res.data?.data || []);
+      const res = await api.get('/roles');
+      const roles: RoleMasterRecord[] = res.data?.data || [];
+      const uniqueDepartments = Array.from(
+        new Map(
+          roles
+            .filter(role => role.department)
+            .map(role => [role.dept_id || role.department || role._id, {
+              _id: role.dept_id || role._id,
+              department: role.department || '',
+            }])
+        ).values()
+      );
+      setDepartments(uniqueDepartments);
     } catch (err: any) {
-      console.error('Failed to load departments:', err);
+      console.error('Failed to load roles for departments:', err);
     }
   };
 
   const loadDesignations = async () => {
     try {
-      // GET /designations → { success, data: [{ _id, designation, ... }] }
-      const res = await api.get('/designations');
-      setDesignations(res.data?.data || []);
+      const res = await api.get('/roles');
+      const roles: RoleMasterRecord[] = res.data?.data || [];
+      const uniqueDesignations = Array.from(
+        new Map(
+          roles
+            .filter(role => role.designation)
+            .map(role => [role.desig_id || role._id, {
+              _id: role.desig_id || role._id,
+              designation: role.designation || '',
+            }])
+        ).values()
+      );
+      setDesignations(uniqueDesignations);
     } catch (err: any) {
-      console.error('Failed to load designations:', err);
+      console.error('Failed to load roles for designations:', err);
     }
   };
 

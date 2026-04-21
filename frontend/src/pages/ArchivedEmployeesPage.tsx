@@ -44,9 +44,19 @@ interface Department {
   department: string;
   dept_head_email: string;
   dept_group_email: string;
-  Id: number;
+  dept_id?: string;
   parent_department: string;
   department_type: string;
+}
+
+interface RoleMasterRecord {
+  _id: string;
+  dept_id?: string;
+  department?: string;
+  dept_head_email?: string;
+  dept_group_email?: string;
+  parent_department?: string;
+  department_type?: string;
 }
 
 const API_BASE = process.env.API_BASE_URL || 'http://localhost:5000/api';
@@ -92,18 +102,35 @@ const ArchivedEmployeesPage: React.FC = () => {
   const fetchDepartments = async () => {
     try {
       const token = localStorage.getItem('token') || '';
-      const res = await fetch(`${API_BASE}/departments`, {
+      const res = await fetch(`${API_BASE}/roles`, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.success && data.data) setDepartments(data.data);
+        if (data.success && data.data) {
+          const uniqueDepartments = Array.from(
+            new Map(
+              (data.data as RoleMasterRecord[])
+                .filter(role => role.department)
+                .map(role => [role.dept_id || role.department || role._id, {
+                  _id: role.dept_id || role._id,
+                  department: role.department || '',
+                  dept_head_email: role.dept_head_email || '',
+                  dept_group_email: role.dept_group_email || '',
+                  dept_id: role.dept_id || '',
+                  parent_department: role.parent_department || '',
+                  department_type: role.department_type || '',
+                }])
+            ).values()
+          );
+          setDepartments(uniqueDepartments);
+        }
       }
     } catch {
       setDepartments([
-        { _id: '1', department: 'Engineering', dept_head_email: '', dept_group_email: '', Id: 1, parent_department: 'Technology', department_type: 'Technical' },
-        { _id: '2', department: 'Human Resources', dept_head_email: '', dept_group_email: '', Id: 2, parent_department: 'Administration', department_type: 'Support' },
-        { _id: '3', department: 'Design', dept_head_email: '', dept_group_email: '', Id: 3, parent_department: 'Technology', department_type: 'Creative' },
+        { _id: '1', department: 'Engineering', dept_head_email: '', dept_group_email: '', dept_id: '1', parent_department: 'Technology', department_type: 'Support' },
+        { _id: '2', department: 'Human Resources', dept_head_email: '', dept_group_email: '', dept_id: '2', parent_department: 'Administration', department_type: 'Support' },
+        { _id: '3', department: 'Design', dept_head_email: '', dept_group_email: '', dept_id: '3', parent_department: 'Technology', department_type: 'Delivery' },
       ]);
     }
   };

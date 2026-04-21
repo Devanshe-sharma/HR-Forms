@@ -18,7 +18,13 @@ api.interceptors.request.use((config) => {
 
 interface Department {
   _id: string;
-  name: string;
+  department: string;
+}
+
+interface RoleMasterRecord {
+  _id: string;
+  dept_id?: string;
+  department?: string;
 }
 
 interface TrainingSchedule {
@@ -125,8 +131,19 @@ export default function FinalTrainingScheduling() {
 
   const loadDepartments = async () => {
     try {
-      const res = await api.get('/departments');
-      setDepartments(res.data?.data || []);
+      const res = await api.get('/roles');
+      const roles: RoleMasterRecord[] = res.data?.data || [];
+      const uniqueDepartments = Array.from(
+        new Map(
+          roles
+            .filter(role => role.department)
+            .map(role => [role.dept_id || role.department || role._id, {
+              _id: role.dept_id || role._id,
+              department: role.department || '',
+            }])
+        ).values()
+      );
+      setDepartments(uniqueDepartments);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to load departments');
     }
@@ -448,7 +465,7 @@ export default function FinalTrainingScheduling() {
                               : scheduleForm.targetDepartments.filter(id => id !== dept._id)
                           )}
                           className="rounded border-gray-300 text-blue-600" />
-                        {dept.name}
+                        {dept.department}
                       </label>
                     ))}
                   </div>
