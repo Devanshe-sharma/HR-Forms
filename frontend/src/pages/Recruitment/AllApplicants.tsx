@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ExternalLink, Video, Mail, Phone, Loader2, CheckCircle2 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast'; // New import
-import Sidebar from '../components/Sidebar';
-import Navbar from '../components/Navbar';
+import Sidebar from '../../components/Sidebar';
+import Navbar from '../../components/Navbar';
 
 type StatusType = 
 

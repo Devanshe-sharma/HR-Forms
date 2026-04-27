@@ -6,7 +6,17 @@ const EmployeeSchema = new mongoose.Schema(
         full_name: String,
         official_email: String,
         department: String,
+        parent_department: String,
         designation: String,
+        dept_id: Number,
+        desig_id: Number,
+        dept_head_email: String,
+        dept_group_email: String,
+        department_type: String,
+        department_head: String,
+        department_deputy: String,
+        management_level: String,
+        reporting_manager: String,
         joining_date: String,
         gender: String,
         personal_email: String,
@@ -63,5 +73,14 @@ const EmployeeSchema = new mongoose.Schema(
         collection: 'Employee'
     }
 );
+
+// Add indexes for common queries
+EmployeeSchema.index({ employee_id: 1 });
+EmployeeSchema.index({ department: 1 });
+EmployeeSchema.index({ parent_department: 1 });
+EmployeeSchema.index({ dept_id: 1 });
+EmployeeSchema.index({ desig_id: 1 });
+EmployeeSchema.index({ management_level: 1 });
+EmployeeSchema.index({ reporting_manager: 1 });
 
 module.exports = mongoose.model('Employee', EmployeeSchema);

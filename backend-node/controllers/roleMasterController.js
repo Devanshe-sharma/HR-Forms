@@ -1,52 +1,93 @@
-const RoleMaster = require('../models/role_master');
+const mongoose = require('mongoose');
 
-function escapeRegex(value = '') {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Use the raw collection directly via mongoose.connection so we are NOT
+// constrained by the schema field names — the actual MongoDB documents use
+// keys with spaces and mixed casing that differ from the Mongoose schema.
+// ─────────────────────────────────────────────────────────────────────────────
 
-function normalizeString(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
+const COLLECTION = 'role_master';
 
-function buildRoleFilters(query = {}) {
-  const filters = {};
+/**
+ * Returns the raw role_master collection handle.
+ * Safe to call after mongoose is connected.
+ */
+const getCollection = () => mongoose.connection.collection(COLLECTION);
 
-  const deptId = normalizeString(query.dept_id);
-  const department = normalizeString(query.department);
-  const managementLevel = normalizeString(query.management_level);
-  const reportingManager = normalizeString(query.reporting_manager);
+/**
+ * Map one raw MongoDB document → clean normalised object.
+ *
+ * Actual field names in the DB (from the live document):
+ *   Dept_Id
+ *   Department
+ *   'Dept Page Link (BO Internal Site)'
+ *   'Dept Head Email'
+ *   'Dept Group Email'
+ *   'Parent Department'
+ *   'Department Type (Delivery or Support)'
+ *   'Department Head'
+ *   Desig_id
+ *   Designation
+ *   Emp_id          ← note lowercase 'd'
+ *   Emp_name        ← note lowercase 'n'
+ *   'desig Email Id'
+ *   'JD Link'
+ *   'Reporting Manager'
+ */
+const normaliseDoc = (doc) => ({
+  _id:              doc._id,
+  Dept_Id:          doc.Dept_Id          ?? null,
+  Department:       doc.Department        ?? '',
+  DeptPageLink:     doc['Dept Page Link (BO Internal Site)'] ?? '',
+  DeptHeadEmail:    doc['Dept Head Email']                   ?? '',
+  DeptGroupEmail:   doc['Dept Group Email']                  ?? '',
+  ParentDepartment: doc['Parent Department']                 ?? '',
+  DepartmentType:   doc['Department Type (Delivery or Support)'] ?? '',
+  DepartmentHead:   doc['Department Head']                   ?? '',
+  Desig_id:         doc.Desig_id         ?? null,
+  Designation:      doc.Designation       ?? '',
+  Emp_id:           doc.Emp_id            ?? '',   // number or string in DB
+  Emp_name:         doc.Emp_name          ?? '',
+  DesigEmailId:     doc['desig Email Id'] ?? '',
+  JDLink:           doc['JD Link']        ?? '',
+  ReportingManager: doc['Reporting Manager'] ?? '',
+});
 
-  if (deptId) {
-    filters.dept_id = deptId;
-  }
-
-  if (department) {
-    filters.department = new RegExp(`^${escapeRegex(department)}$`, 'i');
-  }
-
-  if (managementLevel) {
-    filters.management_level = new RegExp(`^${escapeRegex(managementLevel)}$`, 'i');
-  }
-
-  if (reportingManager) {
-    filters.reporting_manager = new RegExp(escapeRegex(reportingManager), 'i');
-  }
-
-  return filters;
-}
-
-async function getRoles(req, res) {
-  try {
-    const filters = buildRoleFilters(req.query);
-    const roles = await RoleMaster.find(filters).sort({ department: 1, designation: 1, desig_id: 1 }).lean();
-
-    res.json({ success: true, data: roles });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-}
-
-module.exports = {
-  buildRoleFilters,
-  getRoles,
+/**
+ * Build a mongo filter from optional query params.
+ * We match against the ACTUAL field names in the collection.
+ */
+const buildRoleFilters = ({ department, designation, dept_id } = {}) => {
+  const filter = {};
+  if (department)  filter['Department']  = { $regex: new RegExp(`^${department}$`,  'i') };
+  if (designation) filter['Designation'] = { $regex: new RegExp(`^${designation}$`, 'i') };
+  if (dept_id)     filter['Dept_Id']     = Number(dept_id);
+  return filter;
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/roles
+// Query params (all optional):
+//   ?department=Manufacturing
+//   ?designation=Mechanical Design Engineer
+//   ?dept_id=17
+// ─────────────────────────────────────────────────────────────────────────────
+const getRoles = async (req, res) => {
+  try {
+    const col    = getCollection();
+    const filter = buildRoleFilters(req.query);
+    const docs   = await col.find(filter).toArray();
+    const data   = docs.map(normaliseDoc);
+
+    return res.status(200).json({ success: true, count: data.length, data });
+  } catch (error) {
+    console.error('getRoles error:', error);
+    return res.status(500).json({
+      success: false,
+      error:   'Failed to fetch roles',
+      details: error.message,
+    });
+  }
+};
+
+module.exports = { buildRoleFilters, getRoles };

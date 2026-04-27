@@ -66,8 +66,22 @@ app.use('/api/orientation',        require('./routes/orientationRoutes'));
 app.use('/api/salary-revisions',   require('./routes/salaryRevisions')); 
 
 /* ─────────────────── DATABASE ─────────────────── */
+
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('✅ MongoDB connected successfully'))
+  .then(async () => {
+    console.log('✅ MongoDB connected successfully');
+
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
+
+    // ✅ safe: DB is ready
+    console.log('🧪 Testing upcoming outing reminder...');
+    const result = await require('./emails/emailUpcomingOutingReminder')
+      .sendUpcomingOutingReminder();
+    console.log('Test result:', result);
+
+  })
   .catch(err => {
     console.error('❌ MongoDB connection error:', err.message);
   });
@@ -124,17 +138,5 @@ cron.schedule(
 
 /* ─────────────────── SERVER START ─────────────────── */
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
-/* ─────────────────── DEV TEST (Optional) ─────────────────── */
-// Comment this out in production
-(async () => {
-  try {
-    console.log('🧪 Testing upcoming outing reminder...');
-    const result = await require('./emails/emailUpcomingOutingReminder')
-      .sendUpcomingOutingReminder();
-    console.log('Test result:', result);
-  } catch (err) {
-    console.error('Reminder test failed:', err.message);
-  }
-})();
+

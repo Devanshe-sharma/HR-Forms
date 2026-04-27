@@ -7,8 +7,8 @@ import {
   Filter, Download, RefreshCcw
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import Sidebar from '../components/Sidebar';
-import Navbar from '../components/Navbar';
+import Sidebar from '../../components/Sidebar';
+import Navbar from '../../components/Navbar';
 
 // Interface updated to match your Django Model exactly
 interface Requisition {
