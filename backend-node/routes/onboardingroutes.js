@@ -1,5 +1,5 @@
 const express = require("express");
-const Onboarding = require("../models/onboardingmodel");
+const Onboarding = require('../models/Onboardingmodel');
 const { triggerNewOnboarding, triggerUpdateOnboarding } = require("../emails");
 
 const router = express.Router();
