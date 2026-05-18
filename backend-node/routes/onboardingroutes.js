@@ -281,15 +281,13 @@ router.post("/", async (req, res) => {
       fmsStatus: finalStatus,
     });
 
-    await doc.save();
+  await doc.save();
+    triggerNewOnboarding(doc).catch(console.error); // fire-and-forget
     res.status(201).json({ success: true, data: doc });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: err.message });
   }
-  await doc.save();
-    triggerNewOnboarding(doc).catch(console.error); // fire-and-forget
-    res.status(201).json({ success: true, data: doc });
 });
 
 // ─── GET /api/onboarding  — List all (open first) ─────────────────────────
