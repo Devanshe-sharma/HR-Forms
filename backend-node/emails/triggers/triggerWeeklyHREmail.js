@@ -1,5 +1,5 @@
 const transporter = require("../mailer");
-const Onboarding  = require("../../models/onboardingmodel");
+const Onboarding  = require("../../models/onboardingModel");
 
 async function triggerWeeklyHREmail() {
   try {
