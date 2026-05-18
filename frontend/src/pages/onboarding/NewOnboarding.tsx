@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useForm, Controller, SubmitHandler } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -84,6 +84,35 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+type RoleEmployee = {
+  emp_id: string;
+  full_name: string;
+  official_email: string;
+  department: string;
+  designation: string;
+};
+
+type RoleDepartment = {
+  dept_id: number | string;
+  department: string;
+  dept_page_link?: string;
+};
+
+type RoleDesignation = {
+  desig_id: number | string;
+  designation: string;
+  department: string;
+  role_document_link?: string;
+  jd_link?: string;
+};
+
+type OnboardingFormData = {
+  employees: RoleEmployee[];
+  departments: RoleDepartment[];
+  designations: RoleDesignation[];
+};
+const API_BASE = process.env.API_BASE_URL || "http://localhost:5000/api";
+
 // ─── Checklist definitions (must match backend order exactly) ───────────────
 const CHECKLIST_DEFS = [
   {
@@ -167,6 +196,7 @@ const NewOnboarding: React.FC = () => {
     control,
     handleSubmit,
     watch,
+    setValue,
     reset,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
@@ -187,6 +217,11 @@ const NewOnboarding: React.FC = () => {
   const [confirmationDueDate, setConfirmationDueDate] = useState<Dayjs | null>(null);
   const [salRevisionDueDate, setSalRevisionDueDate] = useState<Dayjs | null>(null);
   const [employeesInCc, setEmployeesInCc] = useState<string[]>([]);
+  const [formData, setFormData] = useState<OnboardingFormData>({
+    employees: [],
+    departments: [],
+    designations: [],
+  });
 
   // Checklist state: array of arrays of booleans
   const [checkStates, setCheckStates] = useState<boolean[][]>(
@@ -195,17 +230,36 @@ const NewOnboarding: React.FC = () => {
 
   const joiningStatus = watch("joiningStatus");
   const employeeCategory = watch("employeeCategory");
+  const selectedDept = watch("dept");
 
   const totalChecked = checkStates.flat().filter(Boolean).length;
   const progress = Math.round((totalChecked / TOTAL_TASKS) * 100);
 
-  // Dummy CC options – replace with real API data
-  const ccOptions = [
-    { value: "sunil.prem@briskolive.com", label: "Sunil Prem" },
-    { value: "admin@briskolive.com", label: "Admin" },
-    { value: "accounts@briskolive.com", label: "Accounts" },
-    { value: "dme@briskolive.com", label: "DME" },
-  ];
+  useEffect(() => {
+    axios
+      .get(`${API_BASE}/rolemaster/all`)
+      .then((res) => setFormData(res.data.data))
+      .catch(() => toast.error("Failed to load role master data"));
+  }, []);
+
+  useEffect(() => {
+    setValue("designation", "");
+  }, [selectedDept, setValue]);
+
+  const filteredDesignations = useMemo(
+    () =>
+      formData.designations.filter(
+        (item) => item.department.toLowerCase() === (selectedDept || "").toLowerCase()
+      ),
+    [formData.designations, selectedDept]
+  );
+
+  const ccOptions = formData.employees
+    .filter((employee) => employee.official_email)
+    .map((employee) => ({
+      value: employee.official_email,
+      label: employee.full_name,
+    }));
 
   const toggleCheck = (listIdx: number, itemIdx: number) => {
     setCheckStates((prev) => {
@@ -220,6 +274,13 @@ const NewOnboarding: React.FC = () => {
       const payload = {
         ...data,
         name: [data.firstName, data.lastName].filter(Boolean).join(" "),
+        deptLink:
+          formData.departments.find((dept) => dept.department === data.dept)?.dept_page_link ?? "",
+        designationLink:
+          formData.designations.find(
+            (designation) =>
+              designation.department === data.dept && designation.designation === data.designation
+          )?.role_document_link ?? "",
         offerAcceptedDate: offerAcceptedDate?.toISOString(),
         plannedJoiningDate: plannedJoiningDate?.toISOString(),
         joinedDate: joinedDate?.toISOString(),
@@ -237,7 +298,7 @@ const NewOnboarding: React.FC = () => {
       };
 
       await axios.post(
-        `${import.meta.env.VITE_API_URL ?? ""}/api/onboarding`,
+        `${API_BASE}/onboarding`,
         payload
       );
       toast.success("Onboarding created successfully!");
@@ -368,17 +429,43 @@ const NewOnboarding: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className={labelClass}>Department *</label>
-                    <input {...register("dept")} className={inputClass} placeholder="Engineering" />
+                    <select {...register("dept")} className={inputClass}>
+                      <option value="">Select department</option>
+                      {formData.departments.map((dept) => (
+                        <option key={`${dept.dept_id}-${dept.department}`} value={dept.department}>
+                          {dept.department}
+                        </option>
+                      ))}
+                    </select>
                     {errors.dept && <p className={errorClass}>{errors.dept.message}</p>}
                   </div>
                   <div>
                     <label className={labelClass}>Designation *</label>
-                    <input {...register("designation")} className={inputClass} placeholder="Software Engineer" />
+                    <select {...register("designation")} className={inputClass} disabled={!selectedDept}>
+                      <option value="">
+                        {selectedDept ? "Select designation" : "Select department first"}
+                      </option>
+                      {filteredDesignations.map((designation) => (
+                        <option
+                          key={`${designation.department}-${designation.desig_id}-${designation.designation}`}
+                          value={designation.designation}
+                        >
+                          {designation.designation}
+                        </option>
+                      ))}
+                    </select>
                     {errors.designation && <p className={errorClass}>{errors.designation.message}</p>}
                   </div>
                   <div>
                     <label className={labelClass}>Name of Buddy</label>
-                    <input {...register("nameOfBuddy")} className={inputClass} placeholder="Buddy Name" />
+                    <select {...register("nameOfBuddy")} className={inputClass}>
+                      <option value="">Select employee</option>
+                      {formData.employees.map((employee) => (
+                        <option key={employee.emp_id || employee.full_name} value={employee.full_name}>
+                          {employee.full_name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className={labelClass}>Authorised System</label>

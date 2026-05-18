@@ -6,7 +6,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const cron = require('node-cron');
 const trainingRoutes = require('./routes/trainingTopic');
-
+const hiringFormRoutes = require('./routes/hiringFormData');
 const app = express();
 
 /* ─────────────────── MIDDLEWARE ─────────────────── */
@@ -36,12 +36,15 @@ app.use('/api/roles',              require('./routes/roles'));
 app.use('/api/hiringrequisitions', require('./routes/hiringRequisitions'));
 app.use('/api/ctc-components',     require('./routes/ctcComponents'));
 // app.use('/api/trainings',          require('./routes/training'));
+app.use("/api/rolemaster", require("./routes/roles"));
+app.use('/api/hiring-form',        require('./routes/hiringFormData'));
 app.use('/api/required-score-by-level', require('./routes/requiredScoreByLevel'));
 app.use('/api/capability-areas',    require('./routes/capabilityAreas'));
 app.use('/api/capability-skills',   require('./routes/capabilitySkills'));
 app.use('/api/capability-evaluations', require('./routes/capabilityEvaluations'));
 app.use('/api/training-topics',    require('./routes/trainingTopic'));
 app.use('/api/training-schedules',  require('./routes/trainingSchedules'));
+app.use('/api/hiring-form', hiringFormRoutes);
 // app.use('/api/training-materials', require('./routes/trainingMaterials'));
 app.use('/api/training-feedback',  require('./routes/trainingFeedback'));
 app.use('/api/training-assessments', require('./routes/trainingAssessments'));

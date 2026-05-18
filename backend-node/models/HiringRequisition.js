@@ -1,55 +1,31 @@
-const mongoose = require('mongoose');
+const express = require('express');
+const router = express.Router();
+const HiringRequisition = require('../models/HiringRequisition');
 
-const HiringRequisitionSchema = new mongoose.Schema({
-  ser: { type: String, unique: true },
-
-  // Requester Details
-  request_date: String,
-  requisitioner_name: String,
-  requisitioner_email: String,
-
-  // Position to Hire
-  hiring_dept: String,
-  hiring_dept_email: String,
-  dept_group_email: String,
-
-  // Designation Logic
-  designation_type: String, // existing | new
-  designation_existing: String,
-  designation_new: String,
-  designation: String, // computed
-
-  role_link: String,
-  jd_link: String,
-
-  // Days & Hiring Plan
-  select_joining_days: String,
-  plan_start_sharing_cvs: String,
-  planned_interviews_started: String,
-  planned_offer_accepted: String,
-  planned_joined: String,
-
-  // Additional Info
-  special_instructions: String,
-  hiring_status: String,
-
-  // CC Emails
-  employees_in_cc: [String],
-
-  // Checklist
-  role_n_jd_exist: String,
-  role_n_jd_read: String,
-  role_n_jd_good: String,
-  days_well_thought: String,
-
-  // Timestamps
-  created_at: String,
-  updated_at: String,
-}, {
-  collection: 'hiring_requisitions'
+// GET /api/hiringrequisitions/ — fetch all for dashboard
+router.get('/', async (req, res) => {
+  try {
+    const data = await HiringRequisition.find({}).sort({ createdAt: -1 });
+    res.status(200).json(data);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch hiring requisitions' });
+  }
 });
 
-module.exports = mongoose.model(
-  'HiringRequisition',
-  HiringRequisitionSchema
-);
+// POST /api/hiringrequisitions/ — save new requisition from form
+router.post('/', async (req, res) => {
+  try {
+    const newRequisition = new HiringRequisition(req.body);
+    await newRequisition.save();
+    res.status(201).json({
+      message: 'Hiring requisition saved successfully!',
+      data: newRequisition,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to save hiring requisition' });
+  }
+});
+
+module.exports = router;

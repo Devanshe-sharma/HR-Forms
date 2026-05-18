@@ -1,62 +1,146 @@
 const mongoose = require("mongoose");
-const { Schema } = mongoose;
 
-// ─── Sub-schema: a single checklist item ───────────────────────────────────
-const CheckItemSchema = new Schema(
+// ============================================================
+// CHECKLIST ITEM SCHEMA
+// ============================================================
+
+const checklistItemSchema = new mongoose.Schema(
   {
-    doneHeader: { type: String, required: true },
-    planDate: Date,
-    doneDate: Date,
-    score: Number,
-    status: String,
-    daysLeft: Schema.Types.Mixed,
+    name: {
+      type: String,
+      default: "",
+    },
+
+    planDate: {
+      type: Date,
+      default: null,
+    },
+
+    doneDate: {
+      type: Date,
+      default: null,
+    },
+
+    score: {
+      type: Number,
+      default: 0,
+    },
+
+    status: {
+      type: String,
+      default: "Pending",
+    },
+
+    daysLeft: {
+      type: Number,
+      default: 0,
+    },
+
+    checked: {
+      type: Boolean,
+      default: false,
+    },
+
+    // column refs
+    planCol: Number,
+    doneCol: Number,
+    scoreCol: Number,
+    statusCol: Number,
+    daysLeftCol: Number,
   },
   { _id: false }
 );
 
-// ─── Sub-schema: a checklist group ────────────────────────────────────────
-const CheckListSchema = new Schema(
+// ============================================================
+// CHECKLIST GROUP SCHEMA
+// ============================================================
+
+const checklistGroupSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true },
-    planDate: Date,
-    items: [CheckItemSchema],
+    name: {
+      type: String,
+      default: "",
+    },
+
+    planDate: {
+      type: Date,
+      default: null,
+    },
+
+    itemsList: {
+      type: [checklistItemSchema],
+      default: [],
+    },
   },
   { _id: false }
 );
 
-// ─── Main Onboarding document ──────────────────────────────────────────────
-const OnboardingSchema = new Schema(
+// ============================================================
+// MAIN ONBOARDING SCHEMA
+// ============================================================
+
+const onboardingSchema = new mongoose.Schema(
   {
-    // Basic
-    name: { type: String, required: true, trim: true },
-    persEmail: { type: String, trim: true },
-    mobile: { type: String, trim: true },
+    rowNo: Number,
+
+    // ============================================================
+    // SECTION 1: BASIC INFO (1-9)
+    // ============================================================
+
+    name: String,
     gender: String,
-    officialEmail: { type: String, trim: true },
+    persEmail: String,
+    mobile: String,
+    officialEmail: String,
+    dept: String,
+    designation: String,
+    employeeCategory: String,
     nameOfBuddy: String,
 
-    // Official
-    dept: String,
-    deptLink: String,
-    designation: String,
-    designationLink: String,
-    laptopPc: String,
-    employeeCategory: { type: String, enum: ["Employee", "Consultant"] },
-    employeesInCc: String,
+    // ============================================================
+    // SECTION 2: JOINING INFO (10-15)
+    // ============================================================
 
-    // Joining
     offerAcceptedDate: Date,
     plannedJoiningDate: Date,
-    joiningStatus: {
-      type: String,
-      enum: ["Yet To Join Office", "Joined", "Not Joining"],
-    },
+    joiningStatus: String,
+    exitStatus: String,
     joinedDate: Date,
     notJoinedReason: String,
 
-    // Salary
-    salSerialNo: Number,
+    // ============================================================
+    // SECTION 3: CONFIRMATION (16-23)
+    // ============================================================
+
+    confirmationStatus: String,
+    confirmationSerialNo: String,
+    reasonForNotApplicable: String,
+    probationType: String,
+    applicableFrom: Date,
+    probationDuration: Number,
+    confirmationDueDate: Date,
+    confirmationHistory: String,
+
+    // ============================================================
+    // SECTION 4: REVIEWER (24-25)
+    // ============================================================
+
+    reviewerName: String,
+    reviewerEmail: String,
+
+    // ============================================================
+    // SECTION 5: SALARY REVISION HEADER (26-28)
+    // ============================================================
+
+    salSerialNo: String,
+    salType: String,
     salApplicableFrom: Date,
+
+    // ============================================================
+    // SECTION 6: SALARY STRUCTURE (29-52)
+    // ============================================================
+
+    annualCtc: Number,
     basicSal: Number,
     hraSal: Number,
     travelAllowance: Number,
@@ -66,6 +150,7 @@ const OnboardingSchema = new Schema(
     empEpf: Number,
     empEsic: Number,
     monthlyCtc: Number,
+
     medicalReimbursement: Number,
     vehicleReimbursement: Number,
     driverReimbursement: Number,
@@ -73,43 +158,143 @@ const OnboardingSchema = new Schema(
     mealsReimbursement: Number,
     uniformReimbursement: Number,
     leaveTravelAllowance: Number,
+
     annualBonus: Number,
     annualPerformanceIncentive: Number,
-    gratuity: Number,
     medicalPremium: Number,
-    annualCtc: Number,
+    gratuity: Number,
 
-    // Contract
-    contractPeriod: Number,
     contractAmount: Number,
+    contractPeriod: Number,
     equivalentMonthlyCtc: Number,
 
-    // Probation
-    confirmationDueDate: Date,
+    // ============================================================
+    // SECTION 7: NEXT SALARY REVIEW (53-56)
+    // ============================================================
 
-    // Salary revision
     salReviewStatus: String,
-    reasonForSalReview: String,
     salReviewType: String,
+    reasonForSalReview: String,
     salRevisionDueDate: Date,
 
-    // Misc
+    // ============================================================
+    // SECTION 8: EXIT FIELDS (57-63)
+    // ============================================================
+
+    resignationEmailSentOn: Date,
+    noticePeriod: String,
+    leftDate: Date,
+    exitType: String,
+    plannedExitDate: Date,
+    knowledgeTransferTo: String,
+    nextPerformanceReviewDate: Date,
+
+    // ============================================================
+    // SECTION 9: MISC (64-65)
+    // ============================================================
+
+    laptopPc: String,
     remarks: String,
 
-    // Checklists
-    checkLists: [CheckListSchema],
+    // ============================================================
+    // SECTION 10: CALCULATED (66-75)
+    // ============================================================
 
-    // Scoring / calculated
-    totalTasks: { type: Number, default: 0 },
-    doneInTime: { type: Number, default: 0 },
-    doneButDelayed: { type: Number, default: 0 },
-    tasksOverdue: { type: Number, default: 0 },
-    tasksDue: { type: Number, default: 0 },
-    notYetDue: { type: Number, default: 0 },
-    fmsScore: { type: Number, default: 0 },
-    fmsStatus: { type: String, enum: ["Open", "Closed"], default: "Open" },
+    totalTasks: {
+      type: Number,
+      default: 0,
+    },
+
+    doneInTime: {
+      type: Number,
+      default: 0,
+    },
+
+    doneButDelayed: {
+      type: Number,
+      default: 0,
+    },
+
+    tasksDue: {
+      type: Number,
+      default: 0,
+    },
+
+    tasksOverdue: {
+      type: Number,
+      default: 0,
+    },
+
+    notYetDue: {
+      type: Number,
+      default: 0,
+    },
+
+    fmsStatus: {
+      type: String,
+      default: "Open",
+    },
+
+    employeeStatus: String,
+
+    employmentType: String,
+
+    fmsScore: {
+      type: Number,
+      default: 0,
+    },
+
+    // ============================================================
+    // SECTION 11: LINKS & CC (286-288)
+    // ============================================================
+
+    deptLink: String,
+    designationLink: String,
+    employeesInCc: {
+  type: [String],
+  default: [],
+},
+
+    // ============================================================
+    // AUTO EMAILS
+    // ============================================================
+
+    autoWelcomeEmail: {
+      type: Boolean,
+      default: false,
+    },
+
+    autoReminderEmail: {
+      type: Boolean,
+      default: false,
+    },
+
+    autoInstructionsToAllEmail: {
+      type: Boolean,
+      default: false,
+    },
+
+    employeeConfirmationEmail: {
+      type: Boolean,
+      default: false,
+    },
+
+    // ============================================================
+    // CHECKLISTS
+    // ============================================================
+
+    checkLists: {
+      type: [checklistGroupSchema],
+      default: [],
+    },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
 
-module.exports = mongoose.model("Onboarding", OnboardingSchema);
+// ============================================================
+// EXPORT
+// ============================================================
+
+module.exports = mongoose.model("Onboarding", onboardingSchema);

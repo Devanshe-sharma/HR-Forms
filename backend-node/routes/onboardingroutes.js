@@ -1,5 +1,6 @@
 const express = require("express");
-const Onboarding = require("../models/Onboardingmodel");
+const Onboarding = require("../models/onboardingmodel");
+const { triggerNewOnboarding, triggerUpdateOnboarding } = require("../emails");
 
 const router = express.Router();
 
@@ -13,7 +14,7 @@ function scoreChecklist(list, today) {
     fmsScore = 0,
     tasksNotDone = 0;
 
-  for (const item of list.items) {
+  for (const item of list.itemsList) {
     const planDate = item.planDate instanceof Date ? item.planDate : null;
     const doneDate = item.doneDate instanceof Date ? item.doneDate : null;
 
@@ -27,7 +28,7 @@ function scoreChecklist(list, today) {
           (planDate.getTime() - doneDate.getTime()) / 86_400_000
         );
         item.score = score;
-        item.daysLeft = "NA";
+        item.daysLeft = null;
 
         if (score < 0) {
           item.status = "DONE (DELAYED)";
@@ -57,12 +58,12 @@ function scoreChecklist(list, today) {
       if (doneDate) {
         item.score = 0;
         item.status = "DONE";
-        item.daysLeft = "NA";
+        item.daysLeft = null;
         doneInTime++;
       } else {
         item.score = 0;
         item.status = "NOT YET DUE";
-        item.daysLeft = "NA";
+        item.daysLeft = null;
         notYetDue++;
         tasksNotDone++;
       }
@@ -85,7 +86,7 @@ function buildDefaultCheckLists() {
   return [
     {
       name: "PRE-JOINING TASKS",
-      items: [
+      itemsList: [
         { doneHeader: "Welcome Email Done?" },
         { doneHeader: "Reminder Email Done?" },
         { doneHeader: "Blood Gp Reminder Done?" },
@@ -97,7 +98,7 @@ function buildDefaultCheckLists() {
     },
     {
       name: "JOINING-DAY TASKS",
-      items: [
+      itemsList: [
         { doneHeader: "New BO Email Done?" },
         { doneHeader: "Odoo Profile Photo Done?" },
         { doneHeader: "Odoo Blood Gp Entry Done?" },
@@ -114,7 +115,7 @@ function buildDefaultCheckLists() {
     },
     {
       name: "POST-JOINING TASKS",
-      items: [
+      itemsList: [
         { doneHeader: "T-Shirt Issue Done?" },
         { doneHeader: "Welcome Kit Issue Done?" },
         { doneHeader: "Odoo Eqpt Entry Done?" },
@@ -140,7 +141,7 @@ function buildDefaultCheckLists() {
     },
     {
       name: "FINAL-JOINING TASKS",
-      items: [
+      itemsList: [
         { doneHeader: "Medical Insurance Card Issued if Applicable Done?" },
         { doneHeader: "First Salary Transfer Done?" },
       ],
@@ -171,7 +172,7 @@ function assignPlanDates(checkLists, joiningStatus, offerAcceptedDate, joinedDat
 
     if (planDate) {
       list.planDate = planDate;
-      for (const item of list.items) {
+      for (const item of list.itemsList) {
         item.planDate = planDate;
       }
     }
@@ -186,18 +187,33 @@ router.post("/", async (req, res) => {
     // 1. Build checklist structure
     const checkLists = buildDefaultCheckLists();
 
-    // 2. Map submitted done-states (array of booleans per list) onto items
-    //    Frontend sends: checkLists: [ { items: [true, false, ...] }, ... ]
+    // 2. Map submitted done-states (array of booleans per list) onto itemsList
+    //    Frontend sends: checkLists: [ { itemsList: [true, false, ...] }, ... ]
     if (Array.isArray(body.checkLists)) {
-      body.checkLists.forEach((submittedList, listIdx) => {
-        if (!Array.isArray(submittedList.items)) return;
-        submittedList.items.forEach((checked, itemIdx) => {
-          if (checked && checkLists[listIdx].items[itemIdx]) {
-            checkLists[listIdx].items[itemIdx].doneDate = new Date();
-          }
-        });
-      });
-    }
+  body.checkLists.forEach((submittedList, listIdx) => {
+    const submittedItems =
+      submittedList.items ||
+      submittedList.itemsList ||
+      [];
+
+    submittedItems.forEach((item, itemIdx) => {
+      const target = checkLists[listIdx]?.itemsList?.[itemIdx];
+
+      if (!target) return;
+
+      // frontend may send boolean OR object
+      const isChecked =
+        typeof item === "boolean"
+          ? item
+          : item?.checked;
+
+      if (isChecked) {
+        target.checked = true;
+        target.doneDate = new Date();
+      }
+    });
+  });
+}
 
     // 3. Assign plan dates
     assignPlanDates(
@@ -217,7 +233,7 @@ router.post("/", async (req, res) => {
       fmsScore = 0,
       tasksNotDone = 0;
 
-    const totalTasks = checkLists.reduce((s, l) => s + l.items.length, 0);
+    const totalTasks = checkLists.reduce((s, l) => s + l.itemsList.length, 0);
 
     for (const list of checkLists) {
       const r = scoreChecklist(list, today);
@@ -272,6 +288,9 @@ router.post("/", async (req, res) => {
     console.error(err);
     res.status(500).json({ success: false, message: err.message });
   }
+  await doc.save();
+    triggerNewOnboarding(doc).catch(console.error); // fire-and-forget
+    res.status(201).json({ success: true, data: doc });
 });
 
 // ─── GET /api/onboarding  — List all (open first) ─────────────────────────
@@ -310,18 +329,22 @@ router.put("/:id", async (req, res) => {
         .status(404)
         .json({ success: false, message: "Not found" });
 
-    // Re-use existing checklist structure; only update doneDate on newly ticked items
+    // Re-use existing checklist structure; only update doneDate on newly ticked itemsList
     const checkLists = existing.checkLists.map((l) => ({
       name: l.name,
       planDate: l.planDate,
-      items: l.items.map((it) => ({ ...it })),
+      itemsList: l.itemsList.map((it) => ({ ...it })),
     }));
 
     if (Array.isArray(body.checkLists)) {
       body.checkLists.forEach((submittedList, listIdx) => {
-        if (!Array.isArray(submittedList.items)) return;
-        submittedList.items.forEach((item, itemIdx) => {
-          const target = checkLists[listIdx].items[itemIdx];
+        const submittedItems =
+            submittedList.items ||
+            submittedList.itemsList ||
+            [];
+
+          submittedItems.forEach((item, itemIdx) => {
+          const target = checkLists[listIdx].itemsList[itemIdx];
           if (!target) return;
           // Only mark done if newly ticked ("new") and not already done
           if (item.checked && item.name === "new" && !target.doneDate) {
@@ -403,8 +426,9 @@ router.put("/:id", async (req, res) => {
       },
       { new: true, runValidators: true }
     );
-
+    triggerUpdateOnboarding(updated).catch(console.error); // fire-and-forget
     res.json({ success: true, data: updated });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: err.message });

@@ -1,18 +1,12 @@
 const express = require('express');
-const router = express.Router();
+const router  = express.Router();
 
-const controller = require('../controllers/roleMasterController');
-console.log('controller:', controller);
+const { getRoles, getAllFormData } = require('../controllers/roleMasterController');
 
-const getRoles = controller.getRoles;
-
-if (typeof getRoles !== 'function') {
-  throw new Error(
-    `roleMasterController does not export getRoles. Exported keys: ${Object.keys(controller).join(', ')}`
-  );
-}
-
-// GET /api/roles
+// GET /api/roles        — existing, unchanged
 router.get('/', getRoles);
+
+// GET /api/rolemaster/all  — new, for NewOnboarding.tsx dropdowns
+router.get('/all', getAllFormData);
 
 module.exports = router;

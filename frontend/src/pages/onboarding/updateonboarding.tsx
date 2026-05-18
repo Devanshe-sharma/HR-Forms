@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useForm, Controller, SubmitHandler } from "react-hook-form";
+import { useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import axios from "axios";
@@ -42,7 +43,7 @@ interface CheckItemState {
 interface CheckListState {
   name: string;
   planDate?: string;
-  items: CheckItemState[];
+  itemsList: CheckItemState[];
 }
 
 interface OnboardingDetail {
@@ -59,7 +60,7 @@ interface OnboardingDetail {
   designationLink?: string;
   laptopPc?: string;
   employeeCategory?: string;
-  employeesInCc?: string;
+  employeesInCc?: string[];
   offerAcceptedDate?: string;
   plannedJoiningDate?: string;
   joiningStatus?: string;
@@ -202,11 +203,13 @@ const STATUS_BADGE: Record<string, string> = {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 const UpdateOnboarding: React.FC = () => {
-  const API = import.meta.env.VITE_API_URL ?? "";
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const API = process.env.API_BASE_URL ?? "";
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [joineeList, setJoineeList] = useState<OnboardingListItem[]>([]);
-  const [selectedId, setSelectedId] = useState<string>("");
+  const [selectedId, setSelectedId] = useState<string>(id ?? "");
   const [loadingJoinee, setLoadingJoinee] = useState(false);
   const [detail, setDetail] = useState<OnboardingDetail | null>(null);
 
@@ -237,7 +240,7 @@ const UpdateOnboarding: React.FC = () => {
 
   // ── Load joinee list on mount ───────────────────────────────────────────
   useEffect(() => {
-    axios.get<{ data: OnboardingListItem[] }>(`${API}/api/onboarding`)
+    axios.get<{ data: OnboardingListItem[] }>(`${API}/onboarding`)
       .then((r) => setJoineeList(r.data.data))
       .catch(() => toast.error("Failed to load joinee list"));
   }, []);
@@ -246,7 +249,7 @@ const UpdateOnboarding: React.FC = () => {
   useEffect(() => {
     if (!selectedId) { setDetail(null); return; }
     setLoadingJoinee(true);
-    axios.get<{ data: OnboardingDetail }>(`${API}/api/onboarding/${selectedId}`)
+    axios.get<{ data: OnboardingDetail }>(`${API}/onboarding/${selectedId}`)
       .then((r) => {
         const d = r.data.data;
         setDetail(d);
@@ -292,7 +295,7 @@ const UpdateOnboarding: React.FC = () => {
         setNewConfirmationDueDate(d.confirmationDueDate ? dayjs(d.confirmationDueDate) : null);
         setNewSalApplicableFrom(d.salApplicableFrom ? dayjs(d.salApplicableFrom) : null);
         setNewSalRevisionDueDate(d.salRevisionDueDate ? dayjs(d.salRevisionDueDate) : null);
-        setEmployeesInCc(d.employeesInCc?.split(",").filter(Boolean) ?? []);
+        setEmployeesInCc(d.employeesInCc ?? []); 
 
         // Init newTicks — all false (only pending items can be ticked)
         setNewTicks(CHECKLIST_DEFS.map((l) => l.items.map(() => false)));
@@ -303,15 +306,15 @@ const UpdateOnboarding: React.FC = () => {
 
   // ── Helpers ────────────────────────────────────────────────────────────
   const getItemState = (listIdx: number, itemIdx: number): CheckItemState | undefined =>
-    detail?.checkLists?.[listIdx]?.items?.[itemIdx];
+     detail?.checkLists?.[listIdx]?.itemsList?.[itemIdx]; 
 
   const isAlreadyDone = (listIdx: number, itemIdx: number) =>
     !!getItemState(listIdx, itemIdx)?.doneDate;
 
   const totalNewlyTicked = newTicks.flat().filter(Boolean).length;
   const totalAlreadyDone = detail?.checkLists
-    .flatMap((l) => l.items)
-    .filter((it) => !!it.doneDate).length ?? 0;
+  .flatMap((l) => l.itemsList)   // itemsList not items
+  .filter((it) => !!it.doneDate).length ?? 0;
   const progress = Math.round(((totalAlreadyDone + totalNewlyTicked) / TOTAL_TASKS) * 100);
 
   const toggleNewTick = (listIdx: number, itemIdx: number) => {
@@ -372,7 +375,7 @@ const UpdateOnboarding: React.FC = () => {
       confirmationDueDate: newConfirmationDueDate?.toISOString(),
       salApplicableFrom: newSalApplicableFrom?.toISOString(),
       salRevisionDueDate: newSalRevisionDueDate?.toISOString(),
-      employeesInCc: employeesInCc.join(","),
+      employeesInCc: employeesInCc,
       // Checklists: send name + item state (checked + name "new"/"old")
       checkLists: CHECKLIST_DEFS.map((listDef, listIdx) => ({
         name: listDef.name,
@@ -386,7 +389,7 @@ const UpdateOnboarding: React.FC = () => {
     };
 
     try {
-      await axios.put(`${API}/api/onboarding/${selectedId}`, payload);
+      await axios.put(`${API}/onboarding/${selectedId}`, payload);
       toast.success("Onboarding updated successfully!");
       setSelectedId("");
       setDetail(null);

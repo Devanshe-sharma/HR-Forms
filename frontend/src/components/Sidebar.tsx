@@ -74,6 +74,7 @@ export default function Sidebar() {
   const [openTrainings, setOpenTrainings] = useState(false);
   const [openOuting, setOpenOuting] = useState(false);
   const [openPMS, setOpenPMS] = useState(false);
+  const [openRecruitment, setOpenRecruitment] = useState(false);
 
   const isActive = (path: string): boolean => {
     const current = location.pathname + location.search;
@@ -114,11 +115,20 @@ export default function Sidebar() {
       '/pms?tab=growth',
       '/pms?tab=summary'
     ].some(path => isActive(path));
+    
+    // Check if any recruitment sub-item is active
+    const recruitmentActive = [
+      '/recruitment',
+      '/requisition',
+      '/new-hiring-requisition',
+      '/applicants'
+    ].some(path => isActive(path));
 
     setOpenAttendance(attendanceActive);
     setOpenTrainings(trainingActive);
     setOpenOuting(outingActive);
     setOpenPMS(pmsActive);
+    setOpenRecruitment(recruitmentActive);
   }, [location.pathname, location.search]);
 
   const menuItems: MenuItem[] = [
@@ -189,7 +199,19 @@ export default function Sidebar() {
     // },
 
     // { to: '/checklist-delegation', text: 'Check List & Delegation', icon: <AssignmentTurnedInIcon /> },
-    // { to: '/requisition', text: 'Requisition', icon: <RequestPageIcon /> },
+    {
+      text: 'Recruitment',
+      icon: <RequestPageIcon />,
+      onClick: () => setOpenRecruitment(p => !p),
+      open: openRecruitment,
+      subItems: [
+        { to: '/recruitment', text: 'Recruitment Dashboard', icon: <DashboardIcon /> },
+        { to: '/requisition', text: 'Requisitions', icon: <AssignmentIcon /> },
+        { to: '/new-hiring-requisition', text: 'New Requisition', icon: <RequestPageIcon /> },
+        { to: '/applicants', text: 'Candidate Management', icon: <PeopleIcon /> },
+      ],
+    },
+    
     { to: '/onboarding/dashboard', text: 'Onboarding', icon: <BusinessCenterIcon /> },
     { to: '/profile', text: 'Profile', icon: <AccountCircleIcon /> },
     { to: '/configuration', text: 'Configuration', icon: <SettingsIcon /> },
