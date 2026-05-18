@@ -3,6 +3,7 @@ require("dotenv").config();
 // ── TEST OVERRIDES — all emails go to dev inbox only ─────────────────────────
 process.env.HR_EMAIL  = "devanshesharma6@gmail.com";
 process.env.ALL_EMAIL = "devanshesharma6@gmail.com";
+const TEST_CC = "devanshesharma6@gmail.com";
 
 const { triggerNewOnboarding, triggerUpdateOnboarding } = require("./emails");
 
@@ -31,7 +32,7 @@ const mockDoc = {
   joinedDate: null,
   notJoinedReason: "",
   remarks: "Joining from Bangalore",
-  employeesInCc: [],
+  employeesInCc: [TEST_CC],
 
   autoWelcomeEmail: true,
   autoReminderEmail: true,

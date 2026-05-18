@@ -87,68 +87,67 @@ function buildDefaultCheckLists() {
     {
       name: "PRE-JOINING TASKS",
       itemsList: [
-        { doneHeader: "Welcome Email Done?" },
-        { doneHeader: "Reminder Email Done?" },
-        { doneHeader: "Blood Gp Reminder Done?" },
-        { doneHeader: "Photos Reminder Done?" },
-        { doneHeader: "Photo Formal Dress Done?" },
-        { doneHeader: "Reminder Email ToAll Done?" },
-        { doneHeader: "Verification Of Document Done?" },
+        { name: "Welcome Email Done?" },        // ✅ was doneHeader
+        { name: "Reminder Email Done?" },
+        { name: "Blood Gp Reminder Done?" },
+        { name: "Photos Reminder Done?" },
+        { name: "Photo Formal Dress Done?" },
+        { name: "Reminder Email ToAll Done?" },
+        { name: "Verification Of Document Done?" },
       ],
     },
     {
       name: "JOINING-DAY TASKS",
       itemsList: [
-        { doneHeader: "New BO Email Done?" },
-        { doneHeader: "Odoo Profile Photo Done?" },
-        { doneHeader: "Odoo Blood Gp Entry Done?" },
-        { doneHeader: "Odoo Profile 100% Done?" },
-        { doneHeader: "Odoo Salary/Contract Done?" },
-        { doneHeader: "EFP Forms 2/11 Done?" },
-        { doneHeader: "Employees List Done?" },
-        { doneHeader: "Seating Done?" },
-        { doneHeader: "System Issued if Applicable Done?" },
-        { doneHeader: "BO Presentation Done?" },
-        { doneHeader: "Employees Hullo Done?" },
-        { doneHeader: "Employee PAN Card Done?" },
+        { name: "New BO Email Done?" },
+        { name: "Odoo Profile Photo Done?" },
+        { name: "Odoo Blood Gp Entry Done?" },
+        { name: "Odoo Profile 100% Done?" },
+        { name: "Odoo Salary/Contract Done?" },
+        { name: "EFP Forms 2/11 Done?" },
+        { name: "Employees List Done?" },
+        { name: "Seating Done?" },
+        { name: "System Issued if Applicable Done?" },
+        { name: "BO Presentation Done?" },
+        { name: "Employees Hullo Done?" },
+        { name: "Employee PAN Card Done?" },
       ],
     },
     {
       name: "POST-JOINING TASKS",
       itemsList: [
-        { doneHeader: "T-Shirt Issue Done?" },
-        { doneHeader: "Welcome Kit Issue Done?" },
-        { doneHeader: "Odoo Eqpt Entry Done?" },
-        { doneHeader: "Contract/Appt Issue Done?" },
-        { doneHeader: "Employee File Done?" },
-        { doneHeader: "Biometric Done?" },
-        { doneHeader: "Dept Onboarding Done?" },
-        { doneHeader: "Role Briefing Done?" },
-        { doneHeader: "Amend LinkedIn Profile Done?" },
-        { doneHeader: "Add Email for Google Contacts Sharing if Applicable Done?" },
-        { doneHeader: "Taken Over from Exiting Employee, If Applicable Done?" },
-        { doneHeader: "DME: Checklists/ Delegation Passwords Done?" },
-        { doneHeader: "Dept: Allocate Checklist/ Delegation Done?" },
-        { doneHeader: "Allocate Buddy Done?" },
-        { doneHeader: "Employee Confirms All OK Done?" },
-        { doneHeader: "Onboarding Test Done?" },
-        { doneHeader: "Emailed All Clients New Member Has Joined if Applicable Done?" },
-        { doneHeader: "Coffee With Directors Done?" },
-        { doneHeader: "Check if UAN Applicable Done?" },
-        { doneHeader: "UAN (PF) if applicable completed Done?" },
-        { doneHeader: "KYC (PF) if applicable completed Done?" },
+        { name: "T-Shirt Issue Done?" },
+        { name: "Welcome Kit Issue Done?" },
+        { name: "Odoo Eqpt Entry Done?" },
+        { name: "Contract/Appt Issue Done?" },
+        { name: "Employee File Done?" },
+        { name: "Biometric Done?" },
+        { name: "Dept Onboarding Done?" },
+        { name: "Role Briefing Done?" },
+        { name: "Amend LinkedIn Profile Done?" },
+        { name: "Add Email for Google Contacts Sharing if Applicable Done?" },
+        { name: "Taken Over from Exiting Employee, If Applicable Done?" },
+        { name: "DME: Checklists/ Delegation Passwords Done?" },
+        { name: "Dept: Allocate Checklist/ Delegation Done?" },
+        { name: "Allocate Buddy Done?" },
+        { name: "Employee Confirms All OK Done?" },
+        { name: "Onboarding Test Done?" },
+        { name: "Emailed All Clients New Member Has Joined if Applicable Done?" },
+        { name: "Coffee With Directors Done?" },
+        { name: "Check if UAN Applicable Done?" },
+        { name: "UAN (PF) if applicable completed Done?" },
+        { name: "KYC (PF) if applicable completed Done?" },
       ],
     },
     {
       name: "FINAL-JOINING TASKS",
       itemsList: [
-        { doneHeader: "Medical Insurance Card Issued if Applicable Done?" },
-        { doneHeader: "First Salary Transfer Done?" },
+        { name: "Medical Insurance Card Issued if Applicable Done?" },
+        { name: "First Salary Transfer Done?" },
       ],
     },
   ];
 }
-
 // ─── Assign plan dates (mirrors Apps Script logic) ─────────────────────────
 function assignPlanDates(checkLists, joiningStatus, offerAcceptedDate, joinedDate) {
   for (const list of checkLists) {
@@ -298,7 +297,7 @@ router.get("/", async (req, res) => {
   try {
     const docs = await Onboarding.find()
       .sort({ fmsStatus: 1, createdAt: -1 })
-      .select("-checkLists"); // lighter list view
+       // lighter list view
     res.json({ success: true, data: docs });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -314,6 +313,38 @@ router.get("/:id", async (req, res) => {
         .status(404)
         .json({ success: false, message: "Not found" });
     res.json({ success: true, data: doc });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── ONE-TIME MIGRATION: backfill task names ──────────────────────────────
+router.post("/migrate/fix-names", async (req, res) => {
+  try {
+    const template = buildDefaultCheckLists();
+    const docs = await Onboarding.find();
+    let updated = 0;
+
+    for (const doc of docs) {
+      let changed = false;
+      doc.checkLists.forEach((list, li) => {
+        const templateList = template[li];
+        if (!templateList) return;
+        list.itemsList.forEach((item, ii) => {
+          const templateItem = templateList.itemsList[ii];
+          if (templateItem && !item.name) {
+            item.name = templateItem.name;
+            changed = true;
+          }
+        });
+      });
+      if (changed) {
+        await doc.save();
+        updated++;
+      }
+    }
+
+    res.json({ success: true, message: `Updated ${updated} records` });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
