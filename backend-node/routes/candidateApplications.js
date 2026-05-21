@@ -1,7 +1,7 @@
 // routes/candidateApplications.js
 const express = require('express');
 const router  = express.Router();
-const CandidateApplication = require('../models/CandidateApplication');
+const CandidateApplication = require('../models/Candidateapplication');
 
 // POST /api/candidate-applications  — submit form
 router.post('/', async (req, res) => {
@@ -15,19 +15,19 @@ router.post('/', async (req, res) => {
 });
 
 // GET /api/candidate-applications  — dashboard list
-// ?page=1&limit=20&status=New&search=john
 router.get('/', async (req, res) => {
   try {
-    const { page = 1, limit = 20, status, search, designation } = req.query;
+    const { page = 1, limit = 100, status, search, designation } = req.query;
 
     const filter = {};
     if (status)      filter.status      = status;
     if (designation) filter.designation = designation;
     if (search) {
       filter.$or = [
-        { full_name: { $regex: search, $options: 'i' } },
-        { email:     { $regex: search, $options: 'i' } },
-        { phone:     { $regex: search, $options: 'i' } },
+        { full_name:   { $regex: search, $options: 'i' } },
+        { email:       { $regex: search, $options: 'i' } },
+        { phone:       { $regex: search, $options: 'i' } },
+        { designation: { $regex: search, $options: 'i' } },
       ];
     }
 
@@ -56,7 +56,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// PATCH /api/candidate-applications/:id/status  — update status from dashboard
+// PATCH /api/candidate-applications/:id/status  — status-only update from table row
 router.patch('/:id/status', async (req, res) => {
   try {
     const { status } = req.body;
@@ -64,6 +64,24 @@ router.patch('/:id/status', async (req, res) => {
       req.params.id,
       { status },
       { new: true }
+    );
+    if (!doc) return res.status(404).json({ success: false, message: 'Not found' });
+    res.json({ success: true, data: doc });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PATCH /api/candidate-applications/:id  — full update from modal
+router.patch('/:id', async (req, res) => {
+  try {
+    // Strip fields that shouldn't be overwritten
+    const { _id, __v, createdAt, updatedAt, ...updates } = req.body;
+
+    const doc = await CandidateApplication.findByIdAndUpdate(
+      req.params.id,
+      { $set: updates },
+      { new: true, runValidators: true }
     );
     if (!doc) return res.status(404).json({ success: false, message: 'Not found' });
     res.json({ success: true, data: doc });
