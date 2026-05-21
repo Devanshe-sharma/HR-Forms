@@ -68,7 +68,7 @@ app.use('/api/candidate-applications', require('./routes/candidateApplications')
 app.use('/api/rbac', require('./routes/rbac'));
 app.use('/api/geo', geoRoutes);
 
-
+app.use('/api/applicant-records', require('./routes/applicantRecords'));
 app.use('/api/dept-orientation',   require('./routes/deptOrientationRoutes'));
 app.use('/api/orientation',        require('./routes/orientationRoutes'));
 app.use('/api/salary-revisions',   require('./routes/salaryRevisions')); 

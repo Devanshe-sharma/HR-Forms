@@ -2,11 +2,33 @@
 const express = require('express');
 const router  = express.Router();
 const CandidateApplication = require('../models/Candidateapplication');
+const ApplicantRecord      = require('../models/ApplicantRecord');
+
+const FIELDS_TO_COPY = [
+  'full_name', 'email', 'phone', 'whatsapp_same', 'dob',
+  'country', 'state', 'city', 'pin_code', 'relocation',
+  'designation', 'designation_id', 'highest_qualification',
+  'experience', 'total_experience', 'current_ctc', 'notice_period',
+  'expected_monthly_ctc',
+  'hindi_read', 'hindi_write', 'hindi_speak',
+  'english_read', 'english_write', 'english_speak',
+  'facebookLink', 'linkedin', 'short_video_url',
+];
 
 // POST /api/candidate-applications  — submit form
 router.post('/', async (req, res) => {
   try {
     const doc = await CandidateApplication.create(req.body);
+
+    // Seed an ApplicantRecord for the HR dashboard (fire-and-forget)
+    const recordPayload = { applicationRef: doc._id };
+    for (const field of FIELDS_TO_COPY) {
+      recordPayload[field] = doc[field] ?? '';
+    }
+    ApplicantRecord.create(recordPayload).catch((e) =>
+      console.error('[ApplicantRecord seed] failed:', e.message),
+    );
+
     res.status(201).json({ success: true, data: doc });
   } catch (err) {
     console.error('Candidate application error:', err);
@@ -75,7 +97,6 @@ router.patch('/:id/status', async (req, res) => {
 // PATCH /api/candidate-applications/:id  — full update from modal
 router.patch('/:id', async (req, res) => {
   try {
-    // Strip fields that shouldn't be overwritten
     const { _id, __v, createdAt, updatedAt, ...updates } = req.body;
 
     const doc = await CandidateApplication.findByIdAndUpdate(
