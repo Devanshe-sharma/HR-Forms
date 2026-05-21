@@ -8,6 +8,9 @@ const cron = require('node-cron');
 const trainingRoutes = require('./routes/trainingTopic');
 const hiringFormRoutes = require('./routes/hiringFormData');
 const app = express();
+const geoRoutes = require('./routes/geo');
+
+
 
 /* ─────────────────── MIDDLEWARE ─────────────────── */
 app.use(cors());
@@ -61,7 +64,9 @@ app.use('/api/hygiene',            require('./routes/hygiene'));
 app.use('/api/growth',             require('./routes/growth'));
 app.use('/api',                    require('./routes/sheetWebhook'));
 app.use('/api/sync',               require('./routes/syncFms'));
+app.use('/api/candidate-applications', require('./routes/candidateApplications'));
 app.use('/api/rbac', require('./routes/rbac'));
+app.use('/api/geo', geoRoutes);
 
 
 app.use('/api/dept-orientation',   require('./routes/deptOrientationRoutes'));

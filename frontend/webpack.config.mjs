@@ -16,10 +16,15 @@ export default {
   mode,
 
   devServer: {
-    port: 3000,
-    historyApiFallback: true,
-    hot: true,
-  },
+  historyApiFallback: true,
+  proxy: [
+    {
+      context: ['/api'],
+      target: 'http://localhost:5000',
+      changeOrigin: true,
+    },
+  ],
+},
 
   resolve: {
     extensions: ['.ts', '.tsx', '.js'],
