@@ -6,6 +6,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import Select from 'react-select';
 import * as z from 'zod';
 
+const API_BASE = process.env.API_BASE_URL || 'http://localhost:5000/api';
+
 // ── Schema ────────────────────────────────────────────────────────────────────
 const formSchema = z.object({
   full_name:             z.string().min(1, 'Full name is required'),
@@ -92,7 +94,7 @@ export default function CandidateApplicationPage() {
   // ── Countries ───────────────────────────────────────────────────────────────
   useEffect(() => {
     setLoadingCountries(true);
-    fetch('/api/geo/countries')
+    fetch(`${API_BASE}/geo/countries`)
       .then((r) => r.json())
       .then((data: Country[]) => { setCountries(data); setLoadingCountries(false); })
       .catch(() => setLoadingCountries(false));
@@ -101,7 +103,7 @@ export default function CandidateApplicationPage() {
   // ── States ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     setLoadingStates(true);
-    fetch('/api/geo/states')
+    fetch(`${API_BASE}/geo/states`)
       .then((r) => r.json())
       .then((data: GeoItem[]) => { setStates(data); setLoadingStates(false); })
       .catch(() => setLoadingStates(false));
@@ -111,7 +113,7 @@ export default function CandidateApplicationPage() {
   useEffect(() => {
     if (!watchedState) { setCities([]); setValue('city', ''); return; }
     setLoadingCities(true);
-    fetch(`/api/geo/cities?state=${encodeURIComponent(watchedState)}`)
+    fetch(`${API_BASE}/geo/cities?state=${encodeURIComponent(watchedState)}`)
       .then((r) => r.json())
       .then((data: GeoItem[]) => { setCities(data); setLoadingCities(false); })
       .catch(() => setLoadingCities(false));
@@ -120,7 +122,7 @@ export default function CandidateApplicationPage() {
   // ── Designations from RoleMaster ─────────────────────────────────────────────
   useEffect(() => {
     setLoadingDesignations(true);
-    fetch('/api/rolemaster/all')
+    fetch(`${API_BASE}/rolemaster/all`)
       .then((r) => r.json())
       .then((res) => {
         const raw: Designation[] = res?.data?.designations ?? [];
@@ -176,7 +178,7 @@ export default function CandidateApplicationPage() {
         short_video_url:       data.short_video_url   || '',
       };
 
-      const res = await fetch('/api/candidate-applications', {
+      const res = await fetch(`${API_BASE}/candidate-applications`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(payload),
