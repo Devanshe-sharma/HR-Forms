@@ -136,6 +136,7 @@ export default function Sidebar() {
     { to: '/dept-orientation', text: 'Deptartment Orientation', icon: <ApartmentIcon /> },
     { to: '/hr-dashboard', text: 'Dashboard', icon: <DashboardIcon /> },
     { to: '/employees', text: 'Employees List', icon: <PeopleIcon /> },
+    { to: '/dept-designation-master', text: 'Dept & Designation Master', icon: <BusinessCenterIcon /> },
 
     
 

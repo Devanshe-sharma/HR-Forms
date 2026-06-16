@@ -98,6 +98,10 @@ const onboardingSchema = new mongoose.Schema(
     nameOfBuddy: String,
 
     // ============================================================
+    dept_id:  { type: Number, default: null },
+    desig_id: { type: Number, default: null },
+
+
     // SECTION 2: JOINING INFO (10-15)
     // ============================================================
 

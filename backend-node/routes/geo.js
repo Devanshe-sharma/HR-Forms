@@ -4,6 +4,7 @@ const router  = express.Router();
 
 // In-memory cache so we don't hammer external APIs on every request
 const cache = {};
+const countriesData = require('world-countries');
 
 async function cached(key, fetcher) {
   if (cache[key]) return cache[key];
@@ -13,25 +14,23 @@ async function cached(key, fetcher) {
 }
 
 // GET /api/geo/countries
-router.get('/countries', async (req, res) => {
+router.get('/countries', (req, res) => {
   try {
-    const data = await cached('countries', async () => {
-      const r = await fetch('https://restcountries.com/v3.1/all?fields=name,idd');
-      const raw = await r.json();
-      return raw
-        .filter((c) => c.idd?.root)
-        .map((c) => ({
-          name:     c.name.common,
-          dialCode: c.idd.root + (c.idd.suffixes?.length === 1 ? c.idd.suffixes[0] : ''),
-        }))
-        .filter((c) => c.dialCode)
-        .sort((a, b) => a.name.localeCompare(b.name));
-    });
+    const data = countriesData
+      .filter((c) => c.idd?.root)
+      .map((c) => ({
+        name:     c.name.common,
+        dialCode: c.idd.root + (c.idd.suffixes?.length === 1 ? c.idd.suffixes[0] : ''),
+      }))
+      .filter((c) => c.dialCode)
+      .sort((a, b) => a.name.localeCompare(b.name));
     res.json(data);
   } catch (err) {
-    res.status(502).json({ error: 'Failed to fetch countries' });
+    console.error('[geo/countries] failed:', err.message);
+    res.status(500).json({ error: 'Failed to load countries' });
   }
 });
+
 
 // GET /api/geo/states
 router.get('/states', async (req, res) => {

@@ -1,6 +1,7 @@
 const express = require("express");
 const Onboarding = require('../models/onboardingModel');
 const { triggerNewOnboarding, triggerUpdateOnboarding } = require("../emails");
+const Employee = require('../models/Employee');
 
 const router = express.Router();
 
@@ -348,114 +349,120 @@ router.post("/migrate/fix-names", async (req, res) => {
   }
 });
 
+
+
 // ─── PUT /api/onboarding/:id  — Update onboarding ─────────────────────────
 router.put("/:id", async (req, res) => {
   try {
     const body = req.body;
     const existing = await Onboarding.findById(req.params.id);
-    if (!existing)
-      return res
-        .status(404)
-        .json({ success: false, message: "Not found" });
+    if (!existing) return res.status(404).json({ success: false, message: "Not found" });
 
-    // Re-use existing checklist structure; only update doneDate on newly ticked itemsList
+    // ─── Sync to Employee when joiningStatus flips to "Joined" ───────────────
+    const newStatus = body.joiningStatus;
+    const wasNotJoined = existing.joiningStatus !== 'Joined';
+
+    if (newStatus === 'Joined' && wasNotJoined) {
+      const empExists = await Employee.findOne({
+        $or: [
+          { official_email: existing.officialEmail },
+          { employee_id:    body.emp_id || existing.emp_id || '' },
+        ].filter(c => Object.values(c)[0]) // skip empty string matches
+      });
+
+      if (!empExists) {
+        await Employee.create({
+          employee_id:       body.emp_id        || existing.emp_id        || '',
+          full_name:         body.name          || existing.name          || '',
+          official_email:    existing.officialEmail                       || '',
+          personal_email:    existing.persEmail                           || '',
+          mobile:            existing.mobile                              || '',
+          department:        body.dept          || existing.dept          || '',
+          designation:       body.designation   || existing.designation   || '',
+          dept_id:           body.dept_id       || existing.dept_id       || null,
+          desig_id:          body.desig_id      || existing.desig_id      || null,
+          gender:            existing.gender                              || '',
+          joining_date:      body.joinedDate    || existing.joinedDate    || '',
+          employee_category: existing.employeeCategory                    || '',
+          name_of_buddy:     existing.nameOfBuddy                        || '',
+          joining_status:    'Joined',
+          isArchived:        false,
+        });
+        console.log(`[Onboarding] ✅ Employee record created for ${existing.name}`);
+      } else {
+        // Already exists — just update joining status
+        await Employee.findByIdAndUpdate(empExists._id, {
+          joining_status: 'Joined',
+          joining_date:   body.joinedDate || existing.joinedDate || empExists.joining_date,
+        });
+        console.log(`[Onboarding] ✅ Employee record updated for ${existing.name}`);
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // Re-use existing checklist structure
     const checkLists = existing.checkLists.map((l) => ({
-      name: l.name,
-      planDate: l.planDate,
+      name:      l.name,
+      planDate:  l.planDate,
       itemsList: l.itemsList.map((it) => ({ ...it })),
     }));
 
     if (Array.isArray(body.checkLists)) {
       body.checkLists.forEach((submittedList, listIdx) => {
-        const submittedItems =
-            submittedList.items ||
-            submittedList.itemsList ||
-            [];
-
-          submittedItems.forEach((item, itemIdx) => {
-          const target = checkLists[listIdx].itemsList[itemIdx];
+        const submittedItems = submittedList.items || submittedList.itemsList || [];
+        submittedItems.forEach((item, itemIdx) => {
+          const target = checkLists[listIdx]?.itemsList?.[itemIdx];
           if (!target) return;
-          // Only mark done if newly ticked ("new") and not already done
           if (item.checked && item.name === "new" && !target.doneDate) {
             target.doneDate = new Date();
-            // Reset computed fields so scoring recalculates
           }
         });
       });
     }
 
-    // Reassign plan dates with potentially updated joining info
     assignPlanDates(
       checkLists,
-      body.joiningStatus ?? existing.joiningStatus ?? "",
-      body.offerAcceptedDate
-        ? new Date(body.offerAcceptedDate)
-        : existing.offerAcceptedDate,
-      body.joinedDate ? new Date(body.joinedDate) : existing.joinedDate
+      body.joiningStatus        ?? existing.joiningStatus        ?? "",
+      body.offerAcceptedDate    ? new Date(body.offerAcceptedDate)    : existing.offerAcceptedDate,
+      body.joinedDate           ? new Date(body.joinedDate)           : existing.joinedDate
     );
 
-    // Score
     const today = new Date();
-    let doneInTime = 0,
-      doneButDelayed = 0,
-      tasksOverdue = 0,
-      tasksDue = 0,
-      notYetDue = 0,
-      fmsScore = 0,
-      tasksNotDone = 0;
+    let doneInTime = 0, doneButDelayed = 0, tasksOverdue = 0,
+        tasksDue = 0, notYetDue = 0, fmsScore = 0, tasksNotDone = 0;
 
     for (const list of checkLists) {
       const r = scoreChecklist(list, today);
-      doneInTime += r.doneInTime;
+      doneInTime     += r.doneInTime;
       doneButDelayed += r.doneButDelayed;
-      tasksOverdue += r.tasksOverdue;
-      tasksDue += r.tasksDue;
-      notYetDue += r.notYetDue;
-      fmsScore += r.fmsScore;
-      tasksNotDone += r.tasksNotDone;
+      tasksOverdue   += r.tasksOverdue;
+      tasksDue       += r.tasksDue;
+      notYetDue      += r.notYetDue;
+      fmsScore       += r.fmsScore;
+      tasksNotDone   += r.tasksNotDone;
     }
 
-    const fmsStatus =
-      body.joiningStatus === "Not Joining"
-        ? "Closed"
-        : tasksNotDone === 0
-        ? "Closed"
-        : "Open";
+    const fmsStatus = body.joiningStatus === "Not Joining" || tasksNotDone === 0
+      ? "Closed" : "Open";
 
     const updated = await Onboarding.findByIdAndUpdate(
       req.params.id,
       {
         ...body,
-        offerAcceptedDate: body.offerAcceptedDate
-          ? new Date(body.offerAcceptedDate)
-          : existing.offerAcceptedDate,
-        plannedJoiningDate: body.plannedJoiningDate
-          ? new Date(body.plannedJoiningDate)
-          : existing.plannedJoiningDate,
-        joinedDate: body.joinedDate
-          ? new Date(body.joinedDate)
-          : existing.joinedDate,
-        salApplicableFrom: body.salApplicableFrom
-          ? new Date(body.salApplicableFrom)
-          : existing.salApplicableFrom,
-        confirmationDueDate: body.confirmationDueDate
-          ? new Date(body.confirmationDueDate)
-          : existing.confirmationDueDate,
-        salRevisionDueDate: body.salRevisionDueDate
-          ? new Date(body.salRevisionDueDate)
-          : existing.salRevisionDueDate,
+        offerAcceptedDate:   body.offerAcceptedDate   ? new Date(body.offerAcceptedDate)   : existing.offerAcceptedDate,
+        plannedJoiningDate:  body.plannedJoiningDate  ? new Date(body.plannedJoiningDate)  : existing.plannedJoiningDate,
+        joinedDate:          body.joinedDate          ? new Date(body.joinedDate)           : existing.joinedDate,
+        salApplicableFrom:   body.salApplicableFrom   ? new Date(body.salApplicableFrom)   : existing.salApplicableFrom,
+        confirmationDueDate: body.confirmationDueDate ? new Date(body.confirmationDueDate) : existing.confirmationDueDate,
+        salRevisionDueDate:  body.salRevisionDueDate  ? new Date(body.salRevisionDueDate)  : existing.salRevisionDueDate,
         checkLists,
-        doneInTime,
-        doneButDelayed,
-        tasksOverdue,
-        tasksDue,
-        notYetDue,
-        fmsScore,
-        fmsStatus,
+        doneInTime, doneButDelayed, tasksOverdue,
+        tasksDue, notYetDue, fmsScore, fmsStatus,
       },
       { new: true, runValidators: true }
     );
-    triggerUpdateOnboarding(updated).catch(console.error); // fire-and-forget
+
+    triggerUpdateOnboarding(updated).catch(console.error);
     res.json({ success: true, data: updated });
 
   } catch (err) {

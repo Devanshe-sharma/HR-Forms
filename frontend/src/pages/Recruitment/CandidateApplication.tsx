@@ -93,31 +93,68 @@ export default function CandidateApplicationPage() {
 
   // ── Countries ───────────────────────────────────────────────────────────────
   useEffect(() => {
-    setLoadingCountries(true);
-    fetch(`${API_BASE}/geo/countries`)
-      .then((r) => r.json())
-      .then((data: Country[]) => { setCountries(data); setLoadingCountries(false); })
-      .catch(() => setLoadingCountries(false));
-  }, []);
+  fetch(`${API_BASE}/geo/countries`)
+    .then((r) => r.json())
+    .then((data) => {
+      setCountries(Array.isArray(data) ? data : []);
+      setLoadingCountries(false);
+    })
+    .catch((err) => {
+      console.error(err);
+      setCountries([]);
+      setLoadingCountries(false);
+    });
+}, []);
 
   // ── States ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    setLoadingStates(true);
-    fetch(`${API_BASE}/geo/states`)
-      .then((r) => r.json())
-      .then((data: GeoItem[]) => { setStates(data); setLoadingStates(false); })
-      .catch(() => setLoadingStates(false));
-  }, []);
+  setLoadingStates(true);
+  fetch(`${API_BASE}/geo/states`)
+    .then((r) => r.json())
+    .then((data) => {
+      setStates(Array.isArray(data) ? data : []);
+      setLoadingStates(false);
+    })
+    .catch(() => {
+      setStates([]);
+      setLoadingStates(false);
+    });
+}, []);
 
-  // ── Cities (on state change) ─────────────────────────────────────────────────
-  useEffect(() => {
-    if (!watchedState) { setCities([]); setValue('city', ''); return; }
-    setLoadingCities(true);
-    fetch(`${API_BASE}/geo/cities?state=${encodeURIComponent(watchedState)}`)
-      .then((r) => r.json())
-      .then((data: GeoItem[]) => { setCities(data); setLoadingCities(false); })
-      .catch(() => setLoadingCities(false));
-  }, [watchedState, setValue]);
+// ── Cities (on state change) ─────────────────────────────────────────────────
+useEffect(() => {
+  if (!watchedState) { setCities([]); setValue('city', ''); return; }
+  setLoadingCities(true);
+  fetch(`${API_BASE}/geo/cities?state=${encodeURIComponent(watchedState)}`)
+    .then((r) => r.json())
+    .then((data) => {
+      setCities(Array.isArray(data) ? data : []);
+      setLoadingCities(false);
+    })
+    .catch(() => {
+      setCities([]);
+      setLoadingCities(false);
+    });
+}, [watchedState, setValue]);
+
+// ── Designations from RoleMaster ─────────────────────────────────────────────
+useEffect(() => {
+  setLoadingDesignations(true);
+  fetch(`${API_BASE}/rolemaster/all`)
+    .then((r) => r.json())
+    .then((res) => {
+      const raw: Designation[] = Array.isArray(res?.data?.designations) ? res.data.designations : [];
+      const seen = new Set<string>();
+      const unique = raw.filter((d) => {
+        if (seen.has(d.designation)) return false;
+        seen.add(d.designation);
+        return true;
+      });
+      setDesignations(unique.sort((a, b) => a.designation.localeCompare(b.designation)));
+      setLoadingDesignations(false);
+    })
+    .catch(() => setLoadingDesignations(false));
+}, []);
 
   // ── Designations from RoleMaster ─────────────────────────────────────────────
   useEffect(() => {

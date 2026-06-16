@@ -30,6 +30,8 @@ import Companyorientationpage from "./pages/Companyorientationpage";
 import EmployeesPage from "./pages/EmployeesPage";
 import ArchivedEmployeesPage from "./pages/ArchivedEmployeesPage";
 import SalaryRevisionNew from "./pages/SalaryRevisionNew";
+import DeptDesignationMaster from "./pages/deptdesignationmaster"; // 👈 ADD THIS
+
 import { ThemeProvider } from "./contexts/ThemeContext";
 
 export default function App() {
@@ -73,6 +75,12 @@ export default function App() {
           <Route path="/configuration" element={<Configuration />} />
           <Route path="/salary-sheet" element={<ComingSoon />} />
           <Route path="/pms" element={<PMSDashboard />} />
+
+          {/* NEW ROUTE */}
+          <Route
+            path="/dept-designation-master"
+            element={<DeptDesignationMaster />}
+          />
 
           {/* Catch-all */}
           <Route path="*" element={<ComingSoon />} />

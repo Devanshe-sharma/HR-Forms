@@ -2,6 +2,7 @@ const express      = require('express');
 const router       = express.Router();
 const SalaryRevision = require('../models/SalaryRevision');
 const asyncHandler = require('express-async-handler');
+const Employee = require('../models/Employee');
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
@@ -332,6 +333,18 @@ router.put('/:id/hr', asyncHandler(async (req, res) => {
   revision.updatedBy        = caller(req);
 
   await revision.save();
+
+  // ─── Write final CTC back to Employee ──────────────────────────────────────
+
+  await Employee.findOneAndUpdate(
+    { employee_id: revision.employeeCode },
+    {
+      annual_ctc:            String(finalCtc),
+      sal_applicable_from:   appDate ? appDate.toISOString().split('T')[0] : '',
+      next_sal_review_status: 'Revised',
+    }
+  );
+  // ───────────────────────────────────────────────────────────────────────────
 
   res.status(200).json({ success: true, data: revision, message: 'Revision finalised successfully' });
 }));

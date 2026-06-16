@@ -59,7 +59,7 @@ async function getEligibleEmployees() {
   return allEmployees.filter(emp => {
     const joined = parseJoiningDate(emp.joining_date);
     if (!joined) return false;
-    return joined >= sixMonthsAgo && joined <= now;
+    return joined <= now;
   });
 }
 
@@ -293,10 +293,21 @@ router.put('/:id/manager', async (req, res) => {
       date           : new Date(),
     });
 
+  
     await record.save();
+
+    // ─── ADD THIS RIGHT HERE ──────────────────────────────────────────────────
+    if (status === 'confirmed' || status === 'not_confirmed') {
+      await Employee.findByIdAndUpdate(record.employeeId, {
+        joining_status: status === 'confirmed' ? 'Confirmed' : 'Not Confirmed',
+      });
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // this already exists in your file:
     res.json({ success: true, data: record });
   } catch (e) {
-    err(res, 500, 'Failed to submit manager decision');
+    err(res, 500, 'Failed to submit management decision');
   }
 });
 
