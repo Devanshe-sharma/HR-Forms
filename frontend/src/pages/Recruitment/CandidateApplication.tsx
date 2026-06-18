@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import Select from 'react-select';
 import * as z from 'zod';
 
-const API_BASE = process.env.API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 const formSchema = z.object({
@@ -48,9 +48,24 @@ const formSchema = z.object({
 type FormData = z.infer<typeof formSchema>;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type Country     = { name: string; dialCode: string };
-type GeoItem     = { name: string };
-type Designation = { desig_id: number | string; designation: string };
+type Country = { name: string; dialCode: string };
+type GeoItem = { name: string };
+
+type Department = {
+  dept_id: number | string;
+  department: string;
+  dept_head_email: string;
+  dept_group_email: string;
+};
+
+type Designation = {
+  dept_id: number | string;
+  department: string;
+  desig_id: number | string;
+  designation: string;
+  role_document_link?: string;
+  jd_link?: string;
+};
 
 const PROFICIENCY = ['Beginner', 'Intermediate', 'Professional'];
 
@@ -60,6 +75,8 @@ export default function CandidateApplicationPage() {
   const [states,       setStates]       = useState<GeoItem[]>([]);
   const [cities,       setCities]       = useState<GeoItem[]>([]);
   const [designations, setDesignations] = useState<Designation[]>([]);
+  const [departments,  setDepartments]  = useState<Department[]>([]);
+  const [selectedRole, setSelectedRole] = useState<Designation | null>(null);
 
   const [loadingCountries,    setLoadingCountries]    = useState(true);
   const [loadingStates,       setLoadingStates]       = useState(true);
@@ -93,83 +110,68 @@ export default function CandidateApplicationPage() {
 
   // ── Countries ───────────────────────────────────────────────────────────────
   useEffect(() => {
-  fetch(`${API_BASE}/geo/countries`)
-    .then((r) => r.json())
-    .then((data) => {
-      setCountries(Array.isArray(data) ? data : []);
-      setLoadingCountries(false);
-    })
-    .catch((err) => {
-      console.error(err);
-      setCountries([]);
-      setLoadingCountries(false);
-    });
-}, []);
+    fetch(`${API_BASE}/geo/countries`)
+      .then((r) => r.json())
+      .then((data) => {
+        setCountries(Array.isArray(data) ? data : []);
+        setLoadingCountries(false);
+      })
+      .catch((err) => {
+        console.error(err);
+        setCountries([]);
+        setLoadingCountries(false);
+      });
+  }, []);
 
   // ── States ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-  setLoadingStates(true);
-  fetch(`${API_BASE}/geo/states`)
-    .then((r) => r.json())
-    .then((data) => {
-      setStates(Array.isArray(data) ? data : []);
-      setLoadingStates(false);
-    })
-    .catch(() => {
-      setStates([]);
-      setLoadingStates(false);
-    });
-}, []);
-
-// ── Cities (on state change) ─────────────────────────────────────────────────
-useEffect(() => {
-  if (!watchedState) { setCities([]); setValue('city', ''); return; }
-  setLoadingCities(true);
-  fetch(`${API_BASE}/geo/cities?state=${encodeURIComponent(watchedState)}`)
-    .then((r) => r.json())
-    .then((data) => {
-      setCities(Array.isArray(data) ? data : []);
-      setLoadingCities(false);
-    })
-    .catch(() => {
-      setCities([]);
-      setLoadingCities(false);
-    });
-}, [watchedState, setValue]);
-
-// ── Designations from RoleMaster ─────────────────────────────────────────────
-useEffect(() => {
-  setLoadingDesignations(true);
-  fetch(`${API_BASE}/rolemaster/all`)
-    .then((r) => r.json())
-    .then((res) => {
-      const raw: Designation[] = Array.isArray(res?.data?.designations) ? res.data.designations : [];
-      const seen = new Set<string>();
-      const unique = raw.filter((d) => {
-        if (seen.has(d.designation)) return false;
-        seen.add(d.designation);
-        return true;
+    setLoadingStates(true);
+    fetch(`${API_BASE}/geo/states`)
+      .then((r) => r.json())
+      .then((data) => {
+        setStates(Array.isArray(data) ? data : []);
+        setLoadingStates(false);
+      })
+      .catch(() => {
+        setStates([]);
+        setLoadingStates(false);
       });
-      setDesignations(unique.sort((a, b) => a.designation.localeCompare(b.designation)));
-      setLoadingDesignations(false);
-    })
-    .catch(() => setLoadingDesignations(false));
-}, []);
+  }, []);
 
-  // ── Designations from RoleMaster ─────────────────────────────────────────────
+  // ── Cities (on state change) ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!watchedState) { setCities([]); setValue('city', ''); return; }
+    setLoadingCities(true);
+    fetch(`${API_BASE}/geo/cities?state=${encodeURIComponent(watchedState)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setCities(Array.isArray(data) ? data : []);
+        setLoadingCities(false);
+      })
+      .catch(() => {
+        setCities([]);
+        setLoadingCities(false);
+      });
+  }, [watchedState, setValue]);
+
+  // ── Departments + Designations from RoleMaster (single source) ──────────────
   useEffect(() => {
     setLoadingDesignations(true);
     fetch(`${API_BASE}/rolemaster/all`)
       .then((r) => r.json())
       .then((res) => {
-        const raw: Designation[] = res?.data?.designations ?? [];
+        const rawDesigs: Designation[] = Array.isArray(res?.data?.designations) ? res.data.designations : [];
+        const rawDepts:  Department[]  = Array.isArray(res?.data?.departments)  ? res.data.departments  : [];
+
         const seen = new Set<string>();
-        const unique = raw.filter((d) => {
+        const unique = rawDesigs.filter((d) => {
           if (seen.has(d.designation)) return false;
           seen.add(d.designation);
           return true;
         });
+
         setDesignations(unique.sort((a, b) => a.designation.localeCompare(b.designation)));
+        setDepartments(rawDepts);
         setLoadingDesignations(false);
       })
       .catch(() => setLoadingDesignations(false));
@@ -387,7 +389,7 @@ useEffect(() => {
               </div>
 
               <div>
-                <label className={labelCls}>Open to relocate to Noida Sector 63? *</label>
+                <label className={labelCls}>Open to relocate to Noida? *</label>
                 <div className="flex gap-6 mt-2">
                   {(['Yes', 'No'] as const).map((v) => (
                     <label key={v} className="flex items-center gap-2 text-sm cursor-pointer">
@@ -418,9 +420,11 @@ useEffect(() => {
                     if (selected) {
                       setValue('designation',    selected.designation,      { shouldValidate: true });
                       setValue('designation_id', Number(selected.desig_id), { shouldValidate: true });
+                      setSelectedRole(selected);
                     } else {
                       setValue('designation',    '', { shouldValidate: true });
                       setValue('designation_id', undefined);
+                      setSelectedRole(null);
                     }
                   }}
                 >
@@ -433,6 +437,38 @@ useEffect(() => {
                 <input type="hidden" {...register('designation_id')} />
                 {errors.designation && <p className={errCls}>{errors.designation.message}</p>}
               </div>
+
+              {/* Company / role info card — shown once a designation is picked */}
+              {selectedRole && (() => {
+                const dept = departments.find((d) => d.dept_id === selectedRole.dept_id);
+                return (
+                  <div className="md:col-span-2 bg-lime-50 border border-lime-200 rounded-lg p-4">
+                    <p className="text-sm font-semibold text-lime-800 mb-2">About this role</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-700">
+                      <p><span className="text-gray-500">Department:</span> {selectedRole.department || '—'}</p>
+                      <p><span className="text-gray-500">Designation:</span> {selectedRole.designation}</p>
+                      <p><span className="text-gray-500">Department contact:</span> {dept?.dept_head_email || '—'}</p>
+                      <p><span className="text-gray-500">Group email:</span> {dept?.dept_group_email || '—'}</p>
+                    </div>
+                    {(selectedRole.role_document_link || selectedRole.jd_link) && (
+                      <div className="flex gap-4 mt-3 text-sm">
+                        {selectedRole.role_document_link && (
+                          <a href={selectedRole.role_document_link} target="_blank" rel="noopener noreferrer"
+                            className="text-lime-700 underline font-medium">
+                            View role document
+                          </a>
+                        )}
+                        {selectedRole.jd_link && (
+                          <a href={selectedRole.jd_link} target="_blank" rel="noopener noreferrer"
+                            className="text-lime-700 underline font-medium">
+                            View job description
+                          </a>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div className="md:col-span-2">
                 <label className={labelCls}>Highest Qualification *</label>
@@ -471,8 +507,8 @@ useEffect(() => {
               )}
 
               <div>
-                <label className={labelCls}>Expected Annual CTC (₹) *</label>
-                <input type="text" {...register('expected_monthly_ctc')} className={inputCls} placeholder="8,00,000" />
+                <label className={labelCls}>Expected Annual CTC </label>
+                <input type="text" {...register('expected_monthly_ctc')} className={inputCls}  />
                 {errors.expected_monthly_ctc && <p className={errCls}>{errors.expected_monthly_ctc.message}</p>}
               </div>
 

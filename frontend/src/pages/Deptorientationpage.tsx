@@ -30,7 +30,7 @@ import {
   ContentCopy as CopyIcon,
   Check as CheckIcon,
 } from '@mui/icons-material';
-const API_BASE = process.env.API_BASE_URL;
+const API_BASE = process.env.REACT_APP_API_BASE_URL;
 const getToken = () => localStorage.getItem('token') || '';
 const getRole  = () => localStorage.getItem('role')  || 'Admin';
 const isHR = getRole() === 'HR' || getRole() === 'Admin';

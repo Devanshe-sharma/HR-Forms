@@ -3,6 +3,7 @@ const express = require('express');
 const router  = express.Router();
 const CandidateApplication = require('../models/Candidateapplication');
 const ApplicantRecord      = require('../models/ApplicantRecord');
+const { triggerCandidateApplication } = require('../emails');
 
 const FIELDS_TO_COPY = [
   'full_name', 'email', 'phone', 'whatsapp_same', 'dob',
@@ -28,6 +29,9 @@ router.post('/', async (req, res) => {
     ApplicantRecord.create(recordPayload).catch((e) =>
       console.error('[ApplicantRecord seed] failed:', e.message),
     );
+
+    // Send confirmation + HR notification emails (fire-and-forget)
+    triggerCandidateApplication(doc);
 
     res.status(201).json({ success: true, data: doc });
   } catch (err) {

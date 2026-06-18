@@ -205,7 +205,7 @@ const STATUS_BADGE: Record<string, string> = {
 const UpdateOnboarding: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const API = process.env.API_BASE_URL ?? "";
+  const API = process.env.REACT_APP_API_BASE_URL ?? "";
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [joineeList, setJoineeList] = useState<OnboardingListItem[]>([]);

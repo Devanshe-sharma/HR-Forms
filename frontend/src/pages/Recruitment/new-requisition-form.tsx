@@ -37,7 +37,7 @@ import { format, addDays } from 'date-fns';
 // Zod Schema
 // ─────────────────────────────────────────────────────────────────────────────
 const schema = z.object({
-  serial_no:                z.number().optional(),
+  serial_no:                z.number().optional(), // display only — backend assigns the real value
   requisitioner_name:       z.string().min(1, 'Requisitioner is required'),
   requisitioner_email:      z.string().email('Invalid email').optional().or(z.literal('')),
   hiring_dept:              z.string().min(1, 'Hiring Department is required'),
@@ -56,7 +56,6 @@ const schema = z.object({
   special_instructions:     z.string().optional(),
   hiring_status:            z.string().min(1, 'Hiring status is required'),
   employees_in_cc:          z.array(z.string()).optional(),
-  // Dept checklist (form fields)
   role_n_jd_exist:          z.enum(['Yes', 'No'], { required_error: 'Required' }),
   role_n_jd_read:           z.enum(['Yes', 'No'], { required_error: 'Required' }),
   role_n_jd_good:           z.enum(['Yes', 'No'], { required_error: 'Required' }),
@@ -68,37 +67,36 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Types
+// Types — match the shape returned by /api/rolemaster/all (getAllFormData)
 // ─────────────────────────────────────────────────────────────────────────────
 type Employee = {
   emp_id: string;
   full_name: string;
   official_email: string;
+  department: string;
+  designation: string;
 };
 
 type Department = {
-  dept_id: number;
+  dept_id: number | string | null;
   department: string;
   dept_head_email?: string;
   dept_group_email?: string;
 };
 
 type Designation = {
-  desig_id: number;
+  dept_id: number | string | null;
+  department: string;
+  desig_id: number | string | null;
   designation: string;
   role_document_link?: string;
   jd_link?: string;
-  department: string;
-  dept_id: number;
 };
 
-type FormApiData = {
-  next_serial: number;
-  employees: Employee[];
+type RoleMasterData = {
   departments: Department[];
   designations: Designation[];
-  joining_days_options: { value: string; label: string }[];
-  hiring_status_options: string[];
+  employees: Employee[];
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -135,18 +133,34 @@ const HR_CHECKLISTS = [
   },
 ];
 
+const JOINING_DAYS_OPTIONS = [
+  { value: '20 days', label: '20 days = joining at 0 days notice' },
+  { value: '35 days', label: '35 days = joining at 15-days notice' },
+  { value: '50 days', label: '50 days = joining at 30-days notice' },
+  { value: '80 days', label: '80 days = joining at 60-days notice' },
+];
+
+const HIRING_STATUS_OPTIONS = [
+  'New',
+  'No Change in Status',
+  'On Hold',
+  'Cancelled',
+  'Filled Internally',
+  'Filled Externally',
+];
+
 const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:5000/api';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 export default function NewRequisitionForm() {
-  const [formData, setFormData] = useState<FormApiData | null>(null);
+  const [roleData, setRoleData]   = useState<RoleMasterData | null>(null);
   const [filteredDesignations, setFilteredDesignations] = useState<Designation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]     = useState(true);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [successOpen, setSuccessOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]         = useState<string | null>(null);
 
   const {
     control,
@@ -175,29 +189,41 @@ export default function NewRequisitionForm() {
     },
   });
 
-  const requisitionerName       = watch('requisitioner_name');
-  const hiringDept              = watch('hiring_dept');
-  const designationType         = watch('designation_type');
-  const designationExisting     = watch('designation_existing');
-  const selectJoiningDays       = watch('select_joining_days');
+  const requisitionerName   = watch('requisitioner_name');
+  const hiringDept          = watch('hiring_dept');
+  const designationType     = watch('designation_type');
+  const designationExisting = watch('designation_existing');
+  const selectJoiningDays   = watch('select_joining_days');
 
-  // ── Single fetch on mount ──────────────────────────────────────────────────
+  // ── Fetch role master data (departments + designations + employees) ────────
+  // Single source of truth — same endpoint used everywhere else in the app.
   useEffect(() => {
-    const fetchAll = async () => {
+    const fetchRoleData = async () => {
       try {
-        const res = await fetch(`${API_BASE}/hiring-form/all`);
-        if (!res.ok) throw new Error('Failed to fetch form data');
+        const res = await fetch(`${API_BASE}/rolemaster/all`);
+        if (!res.ok) throw new Error('Failed to fetch role master data');
         const json = await res.json();
-        setFormData(json.data);
-        setValue('serial_no', json.data.next_serial);
+        setRoleData(json.data);
       } catch (err) {
         console.error(err);
-        setError('Failed to load form data. Please refresh.');
+        setError('Failed to load department/designation data. Please refresh.');
       } finally {
         setLoading(false);
       }
     };
-    fetchAll();
+    fetchRoleData();
+  }, []);
+
+  // ── Fetch the next serial number from the reliable counter endpoint ────────
+  useEffect(() => {
+    fetch(`${API_BASE}/hiringrequisitions/next-serial`)
+      .then(r => r.json())
+      .then(json => {
+        if (json?.next_serial) setValue('serial_no', json.next_serial);
+      })
+      .catch(() => {
+        // non-fatal — backend will assign the real serial on submit regardless
+      });
   }, [setValue]);
 
   // ── Auto-fill today's date ─────────────────────────────────────────────────
@@ -207,39 +233,37 @@ export default function NewRequisitionForm() {
 
   // ── Auto-fill requisitioner email ─────────────────────────────────────────
   useEffect(() => {
-    if (!requisitionerName || !formData) return;
-    const emp = formData.employees.find(e => e.full_name === requisitionerName);
+    if (!requisitionerName || !roleData) return;
+    const emp = roleData.employees.find(e => e.full_name === requisitionerName);
     setValue('requisitioner_email', emp?.official_email ?? '');
-  }, [requisitionerName, formData, setValue]);
+  }, [requisitionerName, roleData, setValue]);
 
   // ── Auto-fill dept emails + filter designations ────────────────────────────
   useEffect(() => {
-    if (!hiringDept || !formData) return;
-    const dept = formData.departments.find(d => d.department === hiringDept);
+    if (!hiringDept || !roleData) return;
+    const dept = roleData.departments.find(d => d.department === hiringDept);
     setValue('hiring_dept_email', dept?.dept_head_email ?? '');
     setValue('dept_group_email',  dept?.dept_group_email ?? '');
 
-    // Filter designations by selected department
-    const filtered = formData.designations.filter(d => d.department === hiringDept);
+    const filtered = roleData.designations.filter(d => d.department === hiringDept);
     setFilteredDesignations(filtered);
 
-    // Clear previously selected designation
     setValue('designation_existing', '');
     setValue('role_link', '');
     setValue('jd_link', '');
-  }, [hiringDept, formData, setValue]);
+  }, [hiringDept, roleData, setValue]);
 
   // ── Auto-fill role & JD links ──────────────────────────────────────────────
   useEffect(() => {
-    if (designationType === 'existing' && designationExisting && formData) {
-      const des = formData.designations.find(d => d.designation === designationExisting);
+    if (designationType === 'existing' && designationExisting && roleData) {
+      const des = roleData.designations.find(d => d.designation === designationExisting);
       setValue('role_link', des?.role_document_link ?? '');
       setValue('jd_link',   des?.jd_link ?? '');
     } else if (designationType === 'new') {
       setValue('role_link', '');
       setValue('jd_link',   '');
     }
-  }, [designationType, designationExisting, formData, setValue]);
+  }, [designationType, designationExisting, roleData, setValue]);
 
   // ── Auto-calculate planned dates ───────────────────────────────────────────
   useEffect(() => {
@@ -248,10 +272,10 @@ export default function NewRequisitionForm() {
     if (!match) return;
     const totalDays = parseInt(match[0], 10);
     const today = new Date();
-    setValue('plan_start_sharing_cvs',      format(addDays(today, 3),            'dd-MM-yyyy'));
-    setValue('planned_interviews_started',  format(addDays(today, 8),            'dd-MM-yyyy'));
+    setValue('plan_start_sharing_cvs',      format(addDays(today, 3),              'dd-MM-yyyy'));
+    setValue('planned_interviews_started',  format(addDays(today, 8),              'dd-MM-yyyy'));
     setValue('planned_offer_accepted',      format(addDays(today, totalDays - 15), 'dd-MM-yyyy'));
-    setValue('planned_joined',              format(addDays(today, totalDays),     'dd-MM-yyyy'));
+    setValue('planned_joined',              format(addDays(today, totalDays),      'dd-MM-yyyy'));
   }, [selectJoiningDays, setValue]);
 
   // ── Submit ─────────────────────────────────────────────────────────────────
@@ -266,6 +290,12 @@ export default function NewRequisitionForm() {
     };
 
     try {
+      // Find the designation_id when an existing designation was picked —
+      // needed so candidate applications can later link back precisely.
+      const matchedDesig = data.designation_type === 'existing'
+        ? roleData?.designations.find(d => d.designation === data.designation_existing)
+        : null;
+
       const submitData = {
         ...data,
         designation_status: data.designation_type,
@@ -273,26 +303,31 @@ export default function NewRequisitionForm() {
           data.designation_type === 'existing'
             ? data.designation_existing
             : data.designation_new,
-        request_date:               convertDate(data.request_date),
-        plan_start_sharing_cvs:     convertDate(data.plan_start_sharing_cvs),
-        planned_interviews_started: convertDate(data.planned_interviews_started),
-        planned_offer_accepted:     convertDate(data.planned_offer_accepted),
-        planned_joined:             convertDate(data.planned_joined),
-        dept_group_email:           data.dept_group_email  || null,
-        role_link:                  data.role_link         || null,
-        jd_link:                    data.jd_link           || null,
-        special_instructions:       data.special_instructions || null,
+        designation_id:             matchedDesig?.desig_id ?? null,
+        request_date:                convertDate(data.request_date),
+        plan_start_sharing_cvs:      convertDate(data.plan_start_sharing_cvs),
+        planned_interviews_started:  convertDate(data.planned_interviews_started),
+        planned_offer_accepted:      convertDate(data.planned_offer_accepted),
+        planned_joined:              convertDate(data.planned_joined),
+        dept_group_email:            data.dept_group_email     || null,
+        role_link:                   data.role_link            || null,
+        jd_link:                     data.jd_link              || null,
+        special_instructions:        data.special_instructions || null,
+        // fmsStatus defaults to 'Open' in the schema — not sent here on purpose
       };
+
+      // serial_no intentionally omitted — backend assigns it atomically
+      const { serial_no, ...payload } = submitData;
 
       const res = await fetch(`${API_BASE}/hiringrequisitions/`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(submitData),
+        body:    JSON.stringify(payload),
       });
 
       if (!res.ok) {
         const errData = await res.json();
-        throw new Error(errData.message || 'Submission failed');
+        throw new Error(errData.message || errData.error || 'Submission failed');
       }
 
       setSuccessOpen(true);
@@ -304,8 +339,6 @@ export default function NewRequisitionForm() {
   };
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Loading state
-  // ─────────────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
@@ -315,12 +348,9 @@ export default function NewRequisitionForm() {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────────────────────────────────────
   return (
     <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 900, mx: 'auto' }}>
 
-      {/* ── Header ── */}
       <Typography variant="h4" gutterBottom fontWeight="bold">
         Enter a New Hiring Requisition
       </Typography>
@@ -333,29 +363,17 @@ export default function NewRequisitionForm() {
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate>
 
-        {/* ════════════════════════════════════════════════════════════════
-            SECTION 1 — Requester Details
-        ════════════════════════════════════════════════════════════════ */}
+        {/* SECTION 1 — Requester Details */}
         <SectionTitle>Requester Details</SectionTitle>
 
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} sx={{ mb: 3 }}>
           <Box flex={1}>
-            <InputLabel shrink>Hiring Serial No (auto-filled)</InputLabel>
-            <TextField
-              fullWidth
-              value={watch('serial_no') ?? ''}
-              disabled
-              size="small"
-            />
+            <InputLabel shrink>Hiring Serial No (auto-generated)</InputLabel>
+            <TextField fullWidth value={watch('serial_no') ?? '—'} disabled size="small" />
           </Box>
           <Box flex={1}>
             <InputLabel shrink>Request Date (auto-filled)</InputLabel>
-            <TextField
-              fullWidth
-              value={watch('request_date') ?? ''}
-              disabled
-              size="small"
-            />
+            <TextField fullWidth value={watch('request_date') ?? ''} disabled size="small" />
           </Box>
         </Stack>
 
@@ -367,9 +385,11 @@ export default function NewRequisitionForm() {
               control={control}
               render={({ field }) => (
                 <Select {...field} value={field.value ?? ''} label="Requisition raised by *">
-                  <MenuItem value="" disabled>Select Requisitioner</MenuItem>
-                  {formData?.employees.map(emp => (
-                    <MenuItem key={emp.emp_id} value={emp.full_name}>
+                  <MenuItem value="" disabled>
+                    {roleData?.employees.length ? 'Select Requisitioner' : 'No employees found in Role Master'}
+                  </MenuItem>
+                  {roleData?.employees.map(emp => (
+                    <MenuItem key={emp.emp_id || emp.full_name} value={emp.full_name}>
                       {emp.full_name}
                     </MenuItem>
                   ))}
@@ -378,6 +398,11 @@ export default function NewRequisitionForm() {
             />
             {errors.requisitioner_name && (
               <FormHelperText>{errors.requisitioner_name.message}</FormHelperText>
+            )}
+            {!roleData?.employees.length && (
+              <FormHelperText sx={{ color: 'warning.main' }}>
+                No employees came back from Role Master — check that emp_name fields are populated.
+              </FormHelperText>
             )}
           </FormControl>
         </Box>
@@ -389,9 +414,7 @@ export default function NewRequisitionForm() {
 
         <Divider sx={{ my: 3 }} />
 
-        {/* ════════════════════════════════════════════════════════════════
-            SECTION 2 — Position to Hire
-        ════════════════════════════════════════════════════════════════ */}
+        {/* SECTION 2 — Position to Hire */}
         <SectionTitle>Position to Hire</SectionTitle>
 
         <Box sx={{ mb: 3 }}>
@@ -403,8 +426,8 @@ export default function NewRequisitionForm() {
               render={({ field }) => (
                 <Select {...field} value={field.value ?? ''} label="Hiring Department *">
                   <MenuItem value="" disabled>Select Department</MenuItem>
-                  {formData?.departments.map(dept => (
-                    <MenuItem key={dept.dept_id} value={dept.department}>
+                  {roleData?.departments.map(dept => (
+                    <MenuItem key={dept.dept_id ?? dept.department} value={dept.department}>
                       {dept.department}
                     </MenuItem>
                   ))}
@@ -426,7 +449,6 @@ export default function NewRequisitionForm() {
           </Box>
         </Stack>
 
-        {/* ── Designation (shown only after dept selected) ── */}
         {hiringDept && (
           <Paper variant="outlined" sx={{ p: 3, mb: 4 }}>
             <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
@@ -455,10 +477,11 @@ export default function NewRequisitionForm() {
                   control={control}
                   render={({ field }) => (
                     <Select {...field} value={field.value ?? ''} label="Select Existing Designation">
-                      <MenuItem value="" disabled>Select</MenuItem>
-                      {/* ✅ FIXED: use filteredDesignations, not all designations */}
+                      <MenuItem value="" disabled>
+                        {filteredDesignations.length ? 'Select' : 'No designations found for this department'}
+                      </MenuItem>
                       {filteredDesignations.map(des => (
-                        <MenuItem key={des.desig_id} value={des.designation}>
+                        <MenuItem key={des.desig_id ?? des.designation} value={des.designation}>
                           {des.designation}
                         </MenuItem>
                       ))}
@@ -482,27 +505,13 @@ export default function NewRequisitionForm() {
               />
             )}
 
-            {/* Auto-filled links — shown when existing designation picked */}
             {designationType === 'existing' && designationExisting && (
               <Stack spacing={2} sx={{ mt: 1 }}>
-                <TextField
-                  fullWidth
-                  label="Link to Role (auto-filled)"
-                  value={watch('role_link') ?? ''}
-                  disabled
-                  size="small"
-                />
-                <TextField
-                  fullWidth
-                  label="Link to JD (auto-filled)"
-                  value={watch('jd_link') ?? ''}
-                  disabled
-                  size="small"
-                />
+                <TextField fullWidth label="Link to Role (auto-filled)" value={watch('role_link') ?? ''} disabled size="small" />
+                <TextField fullWidth label="Link to JD (auto-filled)"   value={watch('jd_link') ?? ''}   disabled size="small" />
               </Stack>
             )}
 
-            {/* ✅ NEW: Candidate experience level — shown after designation selected */}
             {(designationExisting || watch('designation_new')) && (
               <FormControl fullWidth error={!!errors.candidate_experience_level} sx={{ mt: 2 }}>
                 <InputLabel>Candidate Experience Level</InputLabel>
@@ -527,9 +536,7 @@ export default function NewRequisitionForm() {
 
         <Divider sx={{ my: 3 }} />
 
-        {/* ════════════════════════════════════════════════════════════════
-            SECTION 3 — Joining Timeline
-        ════════════════════════════════════════════════════════════════ */}
+        {/* SECTION 3 — Joining Timeline */}
         <SectionTitle>Days to Fulfil Requirement (from today)</SectionTitle>
 
         <FormControl fullWidth error={!!errors.select_joining_days} sx={{ mb: 3 }}>
@@ -540,10 +547,8 @@ export default function NewRequisitionForm() {
             render={({ field }) => (
               <Select {...field} value={field.value ?? ''} label="Select joining days *">
                 <MenuItem value="" disabled>Select</MenuItem>
-                {formData?.joining_days_options.map(opt => (
-                  <MenuItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </MenuItem>
+                {JOINING_DAYS_OPTIONS.map(opt => (
+                  <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
                 ))}
               </Select>
             )}
@@ -554,19 +559,16 @@ export default function NewRequisitionForm() {
         </FormControl>
 
         {selectJoiningDays && (
-          <Paper
-            variant="outlined"
-            sx={{ p: 2, mb: 4, bgcolor: 'success.50', borderColor: 'success.200' }}
-          >
+          <Paper variant="outlined" sx={{ p: 2, mb: 4, bgcolor: 'success.50', borderColor: 'success.200' }}>
             <Typography variant="body2" fontWeight="bold" color="success.dark" gutterBottom>
               Hiring Plan (Auto-Calculated)
             </Typography>
             <Stack spacing={0.5}>
               {[
-                { label: 'Start sharing CVs',   val: watch('plan_start_sharing_cvs') },
-                { label: 'Interviews start',     val: watch('planned_interviews_started') },
-                { label: 'Offer accepted by',    val: watch('planned_offer_accepted') },
-                { label: 'Joining by',           val: watch('planned_joined') },
+                { label: 'Start sharing CVs',  val: watch('plan_start_sharing_cvs') },
+                { label: 'Interviews start',    val: watch('planned_interviews_started') },
+                { label: 'Offer accepted by',   val: watch('planned_offer_accepted') },
+                { label: 'Joining by',          val: watch('planned_joined') },
               ].map(({ label, val }) => (
                 <Typography key={label} variant="body2" color="success.dark">
                   • {label}: <strong>{val || '—'}</strong>
@@ -578,15 +580,11 @@ export default function NewRequisitionForm() {
 
         <Divider sx={{ my: 3 }} />
 
-        {/* ════════════════════════════════════════════════════════════════
-            SECTION 4 — Special Instructions & Status
-        ════════════════════════════════════════════════════════════════ */}
+        {/* SECTION 4 — Special Instructions & Status */}
         <SectionTitle>Special Instructions to HR</SectionTitle>
 
         <TextField
-          fullWidth
-          multiline
-          rows={4}
+          fullWidth multiline rows={4}
           {...register('special_instructions')}
           placeholder="Clearly mention the role and any special requirements..."
           sx={{ mb: 3 }}
@@ -600,8 +598,7 @@ export default function NewRequisitionForm() {
             render={({ field }) => (
               <Select {...field} value={field.value ?? ''} label="Hiring Status *">
                 <MenuItem value="" disabled>Select status</MenuItem>
-                {/* ✅ FIXED: full list from API */}
-                {formData?.hiring_status_options.map(status => (
+                {HIRING_STATUS_OPTIONS.map(status => (
                   <MenuItem key={status} value={status}>{status}</MenuItem>
                 ))}
               </Select>
@@ -612,9 +609,7 @@ export default function NewRequisitionForm() {
 
         <Divider sx={{ my: 3 }} />
 
-        {/* ════════════════════════════════════════════════════════════════
-            SECTION 5 — People to CC
-        ════════════════════════════════════════════════════════════════ */}
+        {/* SECTION 5 — People to CC */}
         <SectionTitle>People to Keep in CC</SectionTitle>
 
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
@@ -636,16 +631,14 @@ export default function NewRequisitionForm() {
                 renderValue={(selected: string[]) => (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                     {selected.map(email => {
-                      const emp = formData?.employees.find(e => e.official_email === email);
-                      return (
-                        <Chip key={email} label={emp?.full_name ?? email} size="small" />
-                      );
+                      const emp = roleData?.employees.find(e => e.official_email === email);
+                      return <Chip key={email} label={emp?.full_name ?? email} size="small" />;
                     })}
                   </Box>
                 )}
               >
-                {formData?.employees.map(emp => (
-                  <MenuItem key={emp.emp_id} value={emp.official_email}>
+                {roleData?.employees.map(emp => (
+                  <MenuItem key={emp.emp_id || emp.full_name} value={emp.official_email}>
                     <Checkbox checked={field.value?.includes(emp.official_email)} />
                     {emp.full_name}
                   </MenuItem>
@@ -657,9 +650,7 @@ export default function NewRequisitionForm() {
 
         <Divider sx={{ my: 3 }} />
 
-        {/* ════════════════════════════════════════════════════════════════
-            SECTION 6 — Dept Checklist (required form fields)
-        ════════════════════════════════════════════════════════════════ */}
+        {/* SECTION 6 — Dept Checklist */}
         <SectionTitle>Checklist for Dept Raising Requisition</SectionTitle>
 
         <Stack spacing={2} sx={{ mb: 4 }}>
@@ -693,9 +684,7 @@ export default function NewRequisitionForm() {
 
         <Divider sx={{ my: 3 }} />
 
-        {/* ════════════════════════════════════════════════════════════════
-            SECTION 7 — HR Checklist (read-only / info only)
-        ════════════════════════════════════════════════════════════════ */}
+        {/* SECTION 7 — HR Checklist (read-only) */}
         <SectionTitle>HR Dept Checklist (For Dept's Info Only)</SectionTitle>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           These are the steps HR will follow. Shown here for your transparency.
@@ -720,9 +709,7 @@ export default function NewRequisitionForm() {
           ))}
         </Stack>
 
-        {/* ════════════════════════════════════════════════════════════════
-            Submit Button
-        ════════════════════════════════════════════════════════════════ */}
+        {/* Submit */}
         <Box sx={{ textAlign: 'center', mt: 4 }}>
           <Button
             type="submit"
@@ -738,14 +725,10 @@ export default function NewRequisitionForm() {
         </Box>
       </form>
 
-      {/* ── Backdrop ── */}
       <Backdrop open={submitLoading} sx={{ zIndex: 9999 }}>
         <CircularProgress color="inherit" />
       </Backdrop>
 
-      {/* ════════════════════════════════════════════════════════════════
-          Success Dialog  (replaces simple Alert + redirect)
-      ════════════════════════════════════════════════════════════════ */}
       <Dialog open={successOpen} maxWidth="sm" fullWidth>
         <DialogTitle>🎉 Requisition Submitted!</DialogTitle>
         <DialogContent>
@@ -762,19 +745,15 @@ export default function NewRequisitionForm() {
             onClick={() => {
               setSuccessOpen(false);
               reset();
-              // re-fetch serial number for next submission
-              fetch(`${API_BASE}/hiring-form/all`)
+              fetch(`${API_BASE}/hiringrequisitions/next-serial`)
                 .then(r => r.json())
-                .then(j => setValue('serial_no', j.data.next_serial))
+                .then(j => { if (j?.next_serial) setValue('serial_no', j.next_serial); })
                 .catch(() => {});
             }}
           >
             Add Another Request
           </Button>
-          <Button
-            variant="contained"
-            onClick={() => { window.location.href = '/dashboard'; }}
-          >
+          <Button variant="contained" onClick={() => { window.location.href = '/recruitment'; }}>
             Return to Dashboard
           </Button>
         </DialogActions>
@@ -783,9 +762,6 @@ export default function NewRequisitionForm() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Small helper component for section headings
-// ─────────────────────────────────────────────────────────────────────────────
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <Typography variant="subtitle1" fontWeight="bold" gutterBottom sx={{ mt: 1 }}>

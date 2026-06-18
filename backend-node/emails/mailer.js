@@ -1,6 +1,6 @@
 const nodemailer = require("nodemailer");
 
-const TEST_MODE = true;
+const TEST_MODE = false;
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -24,9 +24,9 @@ async function sendMail(options) {
     ? {
         ...options,
 
-        to: "software.developer@briskolive.com",
+        to: "HR@briskolive.com",
 
-        cc: "dataanalytics.manager@briskolive.com",
+        cc: "",
 
         bcc: undefined,
       }

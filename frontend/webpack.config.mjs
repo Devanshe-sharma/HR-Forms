@@ -53,7 +53,7 @@ export default {
   plugins: [
     new HtmlWebpackPlugin({ template: './public/index.html' }),
     new webpack.DefinePlugin({
-      'process.env.API_BASE_URL': JSON.stringify(process.env.API_BASE_URL || 'http://localhost:5000/api'),
+      'process.env.REACT_APP_API_BASE_URL': JSON.stringify(process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000/api'),
       'process.env.NODE_ENV':     JSON.stringify(mode),
       'process.env':              JSON.stringify({}),
       'process':                  JSON.stringify({ env: {} }),

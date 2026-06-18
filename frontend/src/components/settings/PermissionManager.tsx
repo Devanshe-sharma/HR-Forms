@@ -369,7 +369,7 @@ export default function PermissionManager() {
     setSaving(true);
     try {
       await axios.put(
-        `${process.env.API_BASE_URL}/rbac/permissions`,
+        `${process.env.REACT_APP_API_BASE_URL}/rbac/permissions`,
         { permissions },
         { headers: { 'x-user-role': 'HR' } }
       );

@@ -63,7 +63,7 @@ interface OnboardingRow {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const API = process.env.API_BASE_URL ?? "";
+const API = process.env.REACT_APP_API_BASE_URL ?? "";
 const fmt  = (d?: string | null) => d ? dayjs(d).format("DD MMM") : "—";
 const fmtY = (d?: string | null) => d ? dayjs(d).format("DD MMM YY") : "—";
 

@@ -2,7 +2,8 @@ import { Routes, Route } from "react-router-dom";
 
 import Home from "./pages/Home";
 import HRDashboard from "./pages/HRDashboard";
-import OutsiderDashboard from "./pages/OutsiderDashboard";
+import OutsiderDashboard from "./pages/outsider/OutsiderDashboard";
+import CareersPage from "./pages/outsider/CareersPage";
 import CandidateApplicationPage from "./pages/Recruitment/CandidateApplication";
 import EmployeeLetter from "./pages/EmployeeLetter";
 import Profile from "./pages/Profile";
@@ -42,6 +43,7 @@ export default function App() {
         {/* Public Routes */}
         <Route path="/" element={<Home />} />
         <Route path="/outsider-dashboard" element={<OutsiderDashboard />} />
+        <Route path="/careers" element={<CareersPage />} />
         <Route path="/candidate-application" element={<CandidateApplicationPage />} />
 
         {/* Protected Routes */}
@@ -65,7 +67,6 @@ export default function App() {
           <Route path="/new-onboarding" element={<NewOnboarding />} />
           <Route path="/onboarding/update/:id" element={<UpdateOnboarding />} />
           <Route path="/exits" element={<Exit />} />
-
           <Route path="/company-orientation" element={<Companyorientationpage />} />
           <Route path="/dept-orientation" element={<DeptOrientationPage />} />
           <Route path="/attendance" element={<ComingSoon />} />
