@@ -7,7 +7,7 @@ import Modal from '../../components/Modal';
 import NewRequisitionForm from './new-requisition-form';
 import UpdateRequisition  from './UpdateRequisition';
 
-const API_BASE = process.env.API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
 
 type Requisition = {
   _id: string;

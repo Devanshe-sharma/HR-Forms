@@ -71,7 +71,7 @@ const JOINING_DAYS_OPTIONS = [
 
 const HIRING_STATUS_OPTIONS = ['New', 'No Change in Status', 'On Hold', 'Cancelled', 'Filled Internally', 'Filled Externally'];
 
-const API_BASE = process.env.API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
 
 const inputCls   = 'w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-400';
 const labelCls   = 'block text-xs font-medium text-gray-600 mb-1';

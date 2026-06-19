@@ -7,7 +7,7 @@ import { ArrowLeft, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 
-const API_BASE = process.env.API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
 
 const HIRING_STATUS_OPTIONS = [
   'New', 'No Change in Status', 'CVs Shortlisting Started', 'Interviews Started',
