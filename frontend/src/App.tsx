@@ -3,7 +3,7 @@ import { Routes, Route } from "react-router-dom";
 import Home from "./pages/Home";
 import HRDashboard from "./pages/HRDashboard";
 import OutsiderDashboard from "./pages/outsider/OutsiderDashboard";
-import CareersPage from "./pages/outsider/CareersPage";
+import CareersPage from "./pages/outsider/Careerspage";
 import CandidateApplicationPage from "./pages/Recruitment/CandidateApplication";
 import EmployeeLetter from "./pages/EmployeeLetter";
 import Profile from "./pages/Profile";
@@ -19,7 +19,6 @@ import NewRequisitionForm from "./pages/Recruitment/new-requisition-form";
 import TrainingPage from "./pages/TrainingPageNew";
 import Outing from "./pages/Outing";
 import PMSDashboard from "./pages/PMSDashboard";
-import Requisition from "./pages/Recruitment/Requisition";
 import Onboarding from "./pages/Onboarding";
 import NewOnboarding from "./pages/onboarding/NewOnboarding";
 import OnboardingDashboard from "./pages/onboarding/Dashboard";
@@ -60,8 +59,7 @@ export default function App() {
           <Route path="/applicants" element={<AllApplicants />} />
           <Route path="/new-hiring-requisition" element={<NewRequisitionForm />} />
           <Route path="/training-page" element={<TrainingPage />} />
-          <Route path="/outing" element={<Outing />} />
-          <Route path="/requisition" element={<Requisition />} />
+          <Route path="/outing" element={<Outing/>}/>
           <Route path="/onboarding" element={<OnboardingDashboard />} />
           <Route path="/onboarding/dashboard" element={<OnboardingDashboard />} />
           <Route path="/new-onboarding" element={<NewOnboarding />} />

@@ -89,17 +89,6 @@ router.get('/all', async (req, res) => {
 
     // ── 4. NEXT SERIAL ────────────────────────────────────────────────────────
     let nextSerial = 1;
-    try {
-      const reqCol = mongoose.connection.collection('hiring_requisitions');
-      const latest = await reqCol
-        .find({}, { projection: { serial_no: 1 } })
-        .sort({ serial_no: -1 })
-        .limit(1)
-        .toArray();
-      if (latest.length > 0 && latest[0].serial_no) {
-        nextSerial = Number(latest[0].serial_no) + 1;
-      }
-    } catch (_) { /* collection may not exist yet */ }
 
     // ── 5. STATIC OPTIONS ─────────────────────────────────────────────────────
     const joiningDaysOptions = [

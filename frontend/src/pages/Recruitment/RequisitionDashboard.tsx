@@ -10,16 +10,19 @@ import { Link } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 
-// Interface updated to match your Django Model exactly
+const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
+
+// Matches the real HiringRequisition Mongoose schema
 interface Requisition {
-  id: number;
-  ser: string; // The Serial Number field from your backend
+  _id: string;
+  serial_no: number;
   requisitioner_name: string;
   hiring_dept: string;
-  designation: string; // Combined field from your perform_create logic
+  designation: string;
   request_date: string;
   planned_joined: string;
   hiring_status: string;
+  fmsStatus: 'Open' | 'Closed';
 }
 
 const RequisitionDashboard: React.FC = () => {
@@ -27,15 +30,20 @@ const RequisitionDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchRequisitions = async () => {
     setIsRefreshing(true);
+    setError(null);
     try {
-      const res = await fetch('https://hr-forms.onrender.com/api/hiring-requisitions/');
+      const res = await fetch(`${API_BASE}/hiringrequisitions`);
+      if (!res.ok) throw new Error('Failed to load requisitions');
       const data = await res.json();
-      setRequisitions(data);
+      setRequisitions(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("Error loading requisitions:", err);
+      console.error('Error loading requisitions:', err);
+      setError('Could not load requisitions. Check your connection and try again.');
+      setRequisitions([]);
     } finally {
       setLoading(false);
       setIsRefreshing(false);
@@ -48,10 +56,10 @@ const RequisitionDashboard: React.FC = () => {
 
   const getStatusStyle = (status: string) => {
     const s = status?.toLowerCase() || '';
-    if (s.includes('joined') || s.includes('fulfilled')) return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+    if (s.includes('joined') || s.includes('fulfilled') || s.includes('filled')) return 'bg-emerald-100 text-emerald-700 border-emerald-200';
     if (s.includes('started') || s.includes('progress')) return 'bg-blue-100 text-blue-700 border-blue-200';
     if (s.includes('new')) return 'bg-purple-100 text-purple-700 border-purple-200';
-    if (s.includes('stopped') || s.includes('cancel')) return 'bg-rose-100 text-rose-700 border-rose-200';
+    if (s.includes('stopped') || s.includes('cancel') || s.includes('hold')) return 'bg-rose-100 text-rose-700 border-rose-200';
     return 'bg-slate-100 text-slate-700 border-slate-200';
   };
 
@@ -68,9 +76,10 @@ const RequisitionDashboard: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Navbar />
 
-        <main className="flex-1 overflow-y-auto p-6  lg:p-8">
-          {/* TOP HEADER */}
+        <main className="flex-1 overflow-y-auto p-6 lg:p-8">
           <div className="max-w-7xl pt-10 mx-auto">
+
+            {/* TOP HEADER */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
               <div>
                 <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Hiring Pipeline</h1>
@@ -93,15 +102,20 @@ const RequisitionDashboard: React.FC = () => {
                   <Plus size={20} />
                   New Requisition
                 </Link>
-
               </div>
             </div>
+
+            {error && (
+              <div className="mb-6 px-4 py-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-sm">
+                {error}
+              </div>
+            )}
 
             {/* STATS OVERVIEW */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
               <StatCard title="Total Requests" value={requisitions.length} icon={<FileText />} color="text-indigo-600" bg="bg-indigo-50" />
-              <StatCard title="Active Hiring" value={requisitions.filter(r => !r.hiring_status?.includes('Joined')).length} icon={<Clock />} color="text-amber-600" bg="bg-amber-50" />
-              <StatCard title="Success Hires" value={requisitions.filter(r => r.hiring_status?.includes('Joined')).length} icon={<User />} color="text-emerald-600" bg="bg-emerald-50" />
+              <StatCard title="Active Hiring" value={requisitions.filter(r => r.fmsStatus === 'Open').length} icon={<Clock />} color="text-amber-600" bg="bg-amber-50" />
+              <StatCard title="Closed / Filled" value={requisitions.filter(r => r.fmsStatus === 'Closed').length} icon={<User />} color="text-emerald-600" bg="bg-emerald-50" />
               <StatCard title="Departments" value={new Set(requisitions.map(r => r.hiring_dept)).size} icon={<Building2 />} color="text-rose-600" bg="bg-rose-50" />
             </div>
 
@@ -144,11 +158,15 @@ const RequisitionDashboard: React.FC = () => {
                     {loading ? (
                       <TableSkeleton />
                     ) : filteredData.map((req) => (
-                      <tr key={req.id} className="hover:bg-indigo-50/30 transition-colors group">
+                      <tr key={req._id} className="hover:bg-indigo-50/30 transition-colors group">
                         <td className="px-6 py-4">
                           <div className="flex flex-col">
-                            <span className="text-[10px] font-bold text-indigo-500 mb-0.5">{req.ser || `REQ-${req.id}`}</span>
-                            <span className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">{req.designation}</span>
+                            <span className="text-[10px] font-bold text-indigo-500 mb-0.5">
+                              REQ-{req.serial_no}
+                            </span>
+                            <span className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">
+                              {req.designation}
+                            </span>
                           </div>
                         </td>
                         <td className="px-6 py-4">
@@ -170,10 +188,10 @@ const RequisitionDashboard: React.FC = () => {
                         <td className="px-6 py-4">
                           <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                              <Calendar size={12} /> Target: {req.planned_joined}
+                              <Calendar size={12} /> Target: {req.planned_joined || '—'}
                             </div>
                             <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                              <div className="h-full bg-indigo-500 w-2/3"></div>
+                              <div className={`h-full ${req.fmsStatus === 'Open' ? 'bg-indigo-500' : 'bg-emerald-500'} w-2/3`}></div>
                             </div>
                           </div>
                         </td>
@@ -183,9 +201,12 @@ const RequisitionDashboard: React.FC = () => {
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <button className="inline-flex items-center justify-center w-9 h-9 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all">
+                          <Link
+                            to={`/requisition/${req._id}`}
+                            className="inline-flex items-center justify-center w-9 h-9 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                          >
                             <ChevronRight size={20} />
-                          </button>
+                          </Link>
                         </td>
                       </tr>
                     ))}
@@ -199,7 +220,11 @@ const RequisitionDashboard: React.FC = () => {
                     <FileText size={32} />
                   </div>
                   <h3 className="text-slate-900 font-bold">No results found</h3>
-                  <p className="text-slate-500 text-sm mt-1">Try adjusting your search or filters to find what you're looking for.</p>
+                  <p className="text-slate-500 text-sm mt-1">
+                    {requisitions.length === 0
+                      ? 'No requisitions have been submitted yet.'
+                      : "Try adjusting your search to find what you're looking for."}
+                  </p>
                 </div>
               )}
             </div>
@@ -210,7 +235,6 @@ const RequisitionDashboard: React.FC = () => {
   );
 };
 
-// Sub-component for Stat Cards
 const StatCard = ({ title, value, icon, color, bg }: any) => (
   <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between transition-transform hover:-translate-y-1">
     <div>
@@ -223,7 +247,6 @@ const StatCard = ({ title, value, icon, color, bg }: any) => (
   </div>
 );
 
-// Sub-component for Skeleton Loading
 const TableSkeleton = () => (
   <>
     {[1, 2, 3, 4, 5].map((i) => (

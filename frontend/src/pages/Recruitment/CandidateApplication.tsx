@@ -3,6 +3,7 @@
 import { useEffect, useState, type ChangeEvent } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useSearchParams, Link } from 'react-router-dom';
 import Select from 'react-select';
 import * as z from 'zod';
 
@@ -23,8 +24,10 @@ const formSchema = z.object({
   pin_code:              z.string().length(6, 'Must be 6 digits'),
   relocation:            z.enum(['Yes', 'No']),
 
-  designation:           z.string().min(1, 'Profile is required'),
-  designation_id:        z.number().optional(),
+  // No longer user-selected — comes from the job posting URL params
+  job_id:                 z.union([z.string(), z.number()]).optional(),
+  designation:             z.string().min(1, 'No role selected — please apply from the careers page'),
+  designation_id:          z.number().optional(),
 
   highest_qualification: z.string().min(1, 'Required'),
   experience:            z.enum(['Yes', 'No']),
@@ -51,37 +54,37 @@ type FormData = z.infer<typeof formSchema>;
 type Country = { name: string; dialCode: string };
 type GeoItem = { name: string };
 
-type Department = {
-  dept_id: number | string;
-  department: string;
-  dept_head_email: string;
-  dept_group_email: string;
-};
-
-type Designation = {
-  dept_id: number | string;
-  department: string;
-  desig_id: number | string;
+type JobDetails = {
+  serial_no: number;
   designation: string;
-  role_document_link?: string;
+  hiring_dept: string;
+  hiring_dept_email?: string;
+  dept_group_email?: string;
+  candidate_experience_level?: string | null;
+  role_link?: string;
   jd_link?: string;
+  fmsStatus?: 'Open' | 'Closed';
 };
 
 const PROFICIENCY = ['Beginner', 'Intermediate', 'Professional'];
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function CandidateApplicationPage() {
+  const [searchParams] = useSearchParams();
+  const jobIdParam       = searchParams.get('job_id');
+  const designationParam = searchParams.get('designation');
+
   const [countries,    setCountries]    = useState<Country[]>([]);
   const [states,       setStates]       = useState<GeoItem[]>([]);
   const [cities,       setCities]       = useState<GeoItem[]>([]);
-  const [designations, setDesignations] = useState<Designation[]>([]);
-  const [departments,  setDepartments]  = useState<Department[]>([]);
-  const [selectedRole, setSelectedRole] = useState<Designation | null>(null);
 
-  const [loadingCountries,    setLoadingCountries]    = useState(true);
-  const [loadingStates,       setLoadingStates]       = useState(true);
-  const [loadingCities,       setLoadingCities]       = useState(false);
-  const [loadingDesignations, setLoadingDesignations] = useState(true);
+  const [job,         setJob]         = useState<JobDetails | null>(null);
+  const [loadingJob,   setLoadingJob]  = useState(true);
+  const [jobError,     setJobError]    = useState<string | null>(null);
+
+  const [loadingCountries, setLoadingCountries] = useState(true);
+  const [loadingStates,    setLoadingStates]    = useState(true);
+  const [loadingCities,    setLoadingCities]    = useState(false);
 
   const [dialCode,     setDialCode]     = useState('+91');
   const [resumeFile,   setResumeFile]   = useState<File | null>(null);
@@ -107,6 +110,61 @@ export default function CandidateApplicationPage() {
 
   const watchedState = watch('state');
   const experience   = watch('experience');
+
+  // ── Load job details from job_id in URL ──────────────────────────────────────
+  // This replaces the old "pick a profile from dropdown" flow entirely —
+  // the candidate already chose a job by clicking it on the careers page.
+  useEffect(() => {
+    if (!jobIdParam) {
+      setJobError('No job selected. Please apply from the careers page.');
+      setLoadingJob(false);
+      return;
+    }
+
+    fetch(`${API_BASE}/hiringrequisitions/open`)
+      .then((r) => r.json())
+      .then((res) => {
+        const jobs: JobDetails[] = Array.isArray(res?.data) ? res.data : [];
+        const matched = jobs.find((j) => String(j.serial_no) === String(jobIdParam));
+
+        if (matched) {
+          setJob(matched);
+          setValue('job_id', matched.serial_no, { shouldValidate: true });
+          setValue('designation', matched.designation, { shouldValidate: true });
+        } else if (designationParam) {
+          // Fallback: job no longer 'Open' (filled/closed) but we still have
+          // the designation passed from the click — let candidate proceed,
+          // but flag that this role may no longer be active.
+          setJob({
+            serial_no: Number(jobIdParam),
+            designation: designationParam,
+            hiring_dept: '',
+            fmsStatus: 'Closed',
+          });
+          setValue('job_id', Number(jobIdParam), { shouldValidate: true });
+          setValue('designation', designationParam, { shouldValidate: true });
+          setJobError('This position may no longer be accepting applications. You can still submit, and our team will review it.');
+        } else {
+          setJobError('This job posting could not be found. Please go back to the careers page and select a position.');
+        }
+        setLoadingJob(false);
+      })
+      .catch(() => {
+        // Network failure — fall back to URL params alone if present
+        if (designationParam) {
+          setJob({
+            serial_no: Number(jobIdParam),
+            designation: designationParam,
+            hiring_dept: '',
+          });
+          setValue('job_id', Number(jobIdParam), { shouldValidate: true });
+          setValue('designation', designationParam, { shouldValidate: true });
+        } else {
+          setJobError('Could not load job details. Please try again from the careers page.');
+        }
+        setLoadingJob(false);
+      });
+  }, [jobIdParam, designationParam, setValue]);
 
   // ── Countries ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -154,29 +212,6 @@ export default function CandidateApplicationPage() {
       });
   }, [watchedState, setValue]);
 
-  // ── Departments + Designations from RoleMaster (single source) ──────────────
-  useEffect(() => {
-    setLoadingDesignations(true);
-    fetch(`${API_BASE}/rolemaster/all`)
-      .then((r) => r.json())
-      .then((res) => {
-        const rawDesigs: Designation[] = Array.isArray(res?.data?.designations) ? res.data.designations : [];
-        const rawDepts:  Department[]  = Array.isArray(res?.data?.departments)  ? res.data.departments  : [];
-
-        const seen = new Set<string>();
-        const unique = rawDesigs.filter((d) => {
-          if (seen.has(d.designation)) return false;
-          seen.add(d.designation);
-          return true;
-        });
-
-        setDesignations(unique.sort((a, b) => a.designation.localeCompare(b.designation)));
-        setDepartments(rawDepts);
-        setLoadingDesignations(false);
-      })
-      .catch(() => setLoadingDesignations(false));
-  }, []);
-
   // ── Country code options for react-select ────────────────────────────────────
   const countryOptions = countries.map((c) => ({
     value: c.dialCode,
@@ -198,8 +233,9 @@ export default function CandidateApplicationPage() {
         city:                  data.city,
         pin_code:              data.pin_code,
         relocation:            data.relocation,
-        designation:           data.designation,
-        designation_id:        data.designation_id,
+        job_id:                 data.job_id,
+        designation:             data.designation,
+        designation_id:          data.designation_id,
         highest_qualification: data.highest_qualification,
         experience:            data.experience,
         total_experience:      data.total_experience  || '',
@@ -274,6 +310,21 @@ export default function CandidateApplicationPage() {
     );
   }
 
+  // ── No job selected at all — block the form entirely ────────────────────────
+  if (!loadingJob && !job) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="text-center p-10 max-w-md">
+          <p className="text-2xl font-bold text-gray-800 mb-3">No position selected</p>
+          <p className="text-gray-500 mb-6">{jobError}</p>
+          <Link to="/careers" className="inline-block px-8 py-3 bg-lime-600 hover:bg-lime-700 text-white font-bold rounded-xl transition">
+            View Open Positions
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-4">
       <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-lg overflow-hidden">
@@ -284,10 +335,51 @@ export default function CandidateApplicationPage() {
           <p className="text-lime-100 text-sm mt-1">Fill in your details to apply. All fields marked * are required.</p>
         </div>
 
+        {/* Job context banner — replaces the old profile dropdown */}
+        <div className="px-8 pt-6">
+          {loadingJob ? (
+            <div className="h-20 bg-gray-100 rounded-xl animate-pulse" />
+          ) : job && (
+            <div className="bg-lime-50 border border-lime-200 rounded-xl p-5">
+              <p className="text-xs font-bold text-lime-600 mb-1">
+                {job.serial_no ? `JOB ID: REQ-${job.serial_no}` : ''}
+              </p>
+              <h2 className="text-xl font-bold text-gray-800">{job.designation}</h2>
+              {job.hiring_dept && <p className="text-gray-500 text-sm mt-0.5">{job.hiring_dept}</p>}
+
+              {jobError && (
+                <p className="text-amber-700 text-sm mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  {jobError}
+                </p>
+              )}
+
+              {(job.role_link || job.jd_link) && (
+                <div className="flex gap-4 mt-3 text-sm">
+                  {job.role_link && (
+                    <a href={job.role_link} target="_blank" rel="noopener noreferrer" className="text-lime-700 underline font-medium">
+                      View role document
+                    </a>
+                  )}
+                  {job.jd_link && (
+                    <a href={job.jd_link} target="_blank" rel="noopener noreferrer" className="text-lime-700 underline font-medium">
+                      View job description
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <form
           onSubmit={handleSubmit(onSubmit, (e) => console.log('ERRORS', e))}
           className="px-8 py-8 space-y-8"
         >
+
+          {/* Hidden job context fields — locked, not user-editable */}
+          <input type="hidden" {...register('job_id')} />
+          <input type="hidden" {...register('designation')} />
+          {errors.designation && <p className={errCls}>{errors.designation.message}</p>}
 
           {/* ── Personal Info ── */}
           <section>
@@ -407,68 +499,6 @@ export default function CandidateApplicationPage() {
           <section>
             <h2 className="text-base font-bold text-gray-500 uppercase tracking-widest mb-5">Professional Details</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-
-              {/* Designation */}
-              <div className="md:col-span-2">
-                <label className={labelCls}>Profile Applying For *</label>
-                <select
-                  className={selectCls}
-                  disabled={loadingDesignations}
-                  defaultValue=""
-                  onChange={(e) => {
-                    const selected = designations.find((d) => String(d.desig_id) === e.target.value);
-                    if (selected) {
-                      setValue('designation',    selected.designation,      { shouldValidate: true });
-                      setValue('designation_id', Number(selected.desig_id), { shouldValidate: true });
-                      setSelectedRole(selected);
-                    } else {
-                      setValue('designation',    '', { shouldValidate: true });
-                      setValue('designation_id', undefined);
-                      setSelectedRole(null);
-                    }
-                  }}
-                >
-                  <option value="">{loadingDesignations ? 'Loading profiles…' : 'Select Designation'}</option>
-                  {designations.map((d) => (
-                    <option key={d.desig_id} value={String(d.desig_id)}>{d.designation}</option>
-                  ))}
-                </select>
-                <input type="hidden" {...register('designation')} />
-                <input type="hidden" {...register('designation_id')} />
-                {errors.designation && <p className={errCls}>{errors.designation.message}</p>}
-              </div>
-
-              {/* Company / role info card — shown once a designation is picked */}
-              {selectedRole && (() => {
-                const dept = departments.find((d) => d.dept_id === selectedRole.dept_id);
-                return (
-                  <div className="md:col-span-2 bg-lime-50 border border-lime-200 rounded-lg p-4">
-                    <p className="text-sm font-semibold text-lime-800 mb-2">About this role</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-700">
-                      <p><span className="text-gray-500">Department:</span> {selectedRole.department || '—'}</p>
-                      <p><span className="text-gray-500">Designation:</span> {selectedRole.designation}</p>
-                      <p><span className="text-gray-500">Department contact:</span> {dept?.dept_head_email || '—'}</p>
-                      <p><span className="text-gray-500">Group email:</span> {dept?.dept_group_email || '—'}</p>
-                    </div>
-                    {(selectedRole.role_document_link || selectedRole.jd_link) && (
-                      <div className="flex gap-4 mt-3 text-sm">
-                        {selectedRole.role_document_link && (
-                          <a href={selectedRole.role_document_link} target="_blank" rel="noopener noreferrer"
-                            className="text-lime-700 underline font-medium">
-                            View role document
-                          </a>
-                        )}
-                        {selectedRole.jd_link && (
-                          <a href={selectedRole.jd_link} target="_blank" rel="noopener noreferrer"
-                            className="text-lime-700 underline font-medium">
-                            View job description
-                          </a>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
 
               <div className="md:col-span-2">
                 <label className={labelCls}>Highest Qualification *</label>
@@ -596,7 +626,6 @@ export default function CandidateApplicationPage() {
               ) : 'Submit Application'}
             </button>
           </div>
-
         </form>
       </div>
     </div>
