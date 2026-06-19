@@ -16,7 +16,7 @@ import {
   Person, Group,
 } from '@mui/icons-material';
 
-const API_BASE = process.env.REACT_APP_API_BASE_URL;
+const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL;
 const BRAND    = '#3B82F6';
 
 // ─── Types ───────────────────────────────────────────────────────────────────

@@ -97,7 +97,7 @@ interface Employee {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const API_BASE = process.env.REACT_APP_API_URL || process.env.REACT_APP_API_BASE_URL || 'http://3.110.162.1:5000/api';
+const API_BASE = process.env.REACT_APP_API_URL || process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://3.110.162.1:5000/api';
 const API      = `${API_BASE}/salary-revisions`;
 const EMP_API  = `${API_BASE}/employees`;
 

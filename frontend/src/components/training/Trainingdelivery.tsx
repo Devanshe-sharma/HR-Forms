@@ -3,7 +3,7 @@ import axios from 'axios';
 import { Eye, X, FileText, Video, FileCheck } from 'lucide-react';
 import { getRole } from '../../config/rbac';
 
-const API_BASE = process.env.REACT_APP_API_BASE_URL;
+const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL;
 const api = axios.create({ baseURL: API_BASE });
 api.interceptors.request.use((config) => {
   const role = getRole();

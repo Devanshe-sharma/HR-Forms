@@ -4,7 +4,7 @@ import Select from 'react-select';
 import { Plus, X, Save } from 'lucide-react'; // removed Edit, Trash2, Eye since we use text now
 import { getRole, can } from '../../config/rbac';
 
-const API_BASE = process.env.REACT_APP_API_BASE_URL;
+const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL;
 const api = axios.create({ baseURL: API_BASE });
 api.interceptors.request.use((config) => {
   const role = getRole();

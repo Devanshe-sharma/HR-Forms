@@ -55,7 +55,7 @@ interface Employee {
 }
 
 const categories = ['All', 'Employee', 'Consultant', 'Intern', 'Temporary Staff', 'Contract Based'];
-const API_BASE = process.env.REACT_APP_API_BASE_URL;// change to production URL later
+const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL;// change to production URL later
 
 export default function EmployeeContractsPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
