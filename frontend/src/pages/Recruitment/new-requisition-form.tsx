@@ -1,136 +1,65 @@
-'use client';
-
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import {
-  Box,
-  Typography,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  FormHelperText,
-  Button,
-  CircularProgress,
-  Alert,
-  Divider,
-  Checkbox,
-  FormControlLabel,
-  Chip,
-  RadioGroup,
-  Radio,
-  FormLabel,
-  Backdrop,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Paper,
-  Stack,
-} from '@mui/material';
+import { Loader2 } from 'lucide-react';
 import { format, addDays } from 'date-fns';
+import Sidebar from '../../components/Sidebar';
+import Navbar from '../../components/Navbar';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Zod Schema
 // ─────────────────────────────────────────────────────────────────────────────
 const schema = z.object({
-  serial_no:                z.number().optional(), // display only — backend assigns the real value
-  requisitioner_name:       z.string().min(1, 'Requisitioner is required'),
-  requisitioner_email:      z.string().email('Invalid email').optional().or(z.literal('')),
-  hiring_dept:              z.string().min(1, 'Hiring Department is required'),
-  hiring_dept_email:        z.string().optional(),
-  dept_group_email:         z.string().optional(),
-  designation_type:         z.enum(['existing', 'new']),
-  designation_existing:     z.string().optional(),
-  designation_new:          z.string().optional(),
+  serial_no:                  z.number().optional(),
+  requisitioner_name:         z.string().min(1, 'Requisitioner is required'),
+  requisitioner_email:        z.string().email('Invalid email').optional().or(z.literal('')),
+  hiring_dept:                z.string().min(1, 'Hiring Department is required'),
+  hiring_dept_email:          z.string().optional(),
+  dept_group_email:           z.string().optional(),
+  designation_type:           z.enum(['existing', 'new']),
+  designation_existing:       z.string().optional(),
+  designation_new:            z.string().optional(),
   candidate_experience_level: z.enum(['Fresher', 'Experienced']).optional(),
-  request_date:             z.string().optional(),
-  select_joining_days:      z.string().min(1, 'Please select joining days'),
-  plan_start_sharing_cvs:   z.string().optional(),
+  request_date:               z.string().optional(),
+  select_joining_days:        z.string().min(1, 'Please select joining days'),
+  plan_start_sharing_cvs:     z.string().optional(),
   planned_interviews_started: z.string().optional(),
-  planned_offer_accepted:   z.string().optional(),
-  planned_joined:           z.string().optional(),
-  special_instructions:     z.string().optional(),
-  hiring_status:            z.string().min(1, 'Hiring status is required'),
-  employees_in_cc:          z.array(z.string()).optional(),
-  role_n_jd_exist:          z.enum(['Yes', 'No'], { required_error: 'Required' }),
-  role_n_jd_read:           z.enum(['Yes', 'No'], { required_error: 'Required' }),
-  role_n_jd_good:           z.enum(['Yes', 'No'], { required_error: 'Required' }),
-  days_well_thought:        z.enum(['Yes', 'No'], { required_error: 'Required' }),
-  role_link:                z.string().optional(),
-  jd_link:                  z.string().optional(),
+  planned_offer_accepted:     z.string().optional(),
+  planned_joined:             z.string().optional(),
+  special_instructions:       z.string().optional(),
+  hiring_status:              z.string().min(1, 'Hiring status is required'),
+  employees_in_cc:            z.array(z.string()).optional(),
+  role_n_jd_exist:            z.enum(['Yes', 'No'], { required_error: 'Required' }),
+  role_n_jd_read:             z.enum(['Yes', 'No'], { required_error: 'Required' }),
+  role_n_jd_good:             z.enum(['Yes', 'No'], { required_error: 'Required' }),
+  days_well_thought:          z.enum(['Yes', 'No'], { required_error: 'Required' }),
+  role_link:                  z.string().optional(),
+  jd_link:                    z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Types — match the shape returned by /api/rolemaster/all (getAllFormData)
-// ─────────────────────────────────────────────────────────────────────────────
-type Employee = {
-  emp_id: string;
-  full_name: string;
-  official_email: string;
-  department: string;
-  designation: string;
-};
-
-type Department = {
-  dept_id: number | string | null;
-  department: string;
-  dept_head_email?: string;
-  dept_group_email?: string;
-};
-
-type Designation = {
-  dept_id: number | string | null;
-  department: string;
-  desig_id: number | string | null;
-  designation: string;
-  role_document_link?: string;
-  jd_link?: string;
-};
-
-type RoleMasterData = {
-  departments: Department[];
-  designations: Designation[];
-  employees: Employee[];
-};
+type Employee    = { emp_id: string; full_name: string; official_email: string; department: string; designation: string };
+type Department  = { dept_id: number | string | null; department: string; dept_head_email?: string; dept_group_email?: string };
+type Designation = { dept_id: number | string | null; department: string; desig_id: number | string | null; designation: string; role_document_link?: string; jd_link?: string };
+type RoleMasterData = { departments: Department[]; designations: Designation[]; employees: Employee[] };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HR Read-only checklists (shown for dept's info only)
+// Props — asModal=true strips Sidebar/Navbar and fires callbacks
 // ─────────────────────────────────────────────────────────────────────────────
+interface Props {
+  asModal?:   boolean;
+  onSuccess?: () => void;
+  onClose?:   () => void;
+}
+
 const HR_CHECKLISTS = [
-  {
-    title: 'Shortlist CVs Checklist',
-    items: [
-      'Role And JD Checked Done?',
-      'Asked for Reference Done?',
-      'Checked Internal References Done?',
-      'Checked Internal Candidates Done?',
-      'Thanked All Applicants Done?',
-      'Emailed Shortlisted Candidates Done?',
-    ],
-  },
-  {
-    title: 'Interviews Checklist',
-    items: [
-      'All Interviews Logged Done?',
-      'Asked Interviewers To Use Role Doc Done?',
-      'Asked Interviewers To Use Tests Done?',
-      'Asked Interviewers Hire Only Best Done?',
-    ],
-  },
-  {
-    title: 'Offer Letter Checklist',
-    items: ['Asked Confirmation In 2 Days Done?'],
-  },
-  {
-    title: 'General Feedback',
-    items: ['Kept All Needed In Cc Done?'],
-  },
+  { title: 'Shortlist CVs Checklist', items: ['Role And JD Checked Done?', 'Asked for Reference Done?', 'Checked Internal References Done?', 'Checked Internal Candidates Done?', 'Thanked All Applicants Done?', 'Emailed Shortlisted Candidates Done?'] },
+  { title: 'Interviews Checklist',    items: ['All Interviews Logged Done?', 'Asked Interviewers To Use Role Doc Done?', 'Asked Interviewers To Use Tests Done?', 'Asked Interviewers Hire Only Best Done?'] },
+  { title: 'Offer Letter Checklist',  items: ['Asked Confirmation In 2 Days Done?'] },
+  { title: 'General Feedback',        items: ['Kept All Needed In Cc Done?'] },
 ];
 
 const JOINING_DAYS_OPTIONS = [
@@ -140,52 +69,51 @@ const JOINING_DAYS_OPTIONS = [
   { value: '80 days', label: '80 days = joining at 60-days notice' },
 ];
 
-const HIRING_STATUS_OPTIONS = [
-  'New',
-  'No Change in Status',
-  'On Hold',
-  'Cancelled',
-  'Filled Internally',
-  'Filled Externally',
-];
+const HIRING_STATUS_OPTIONS = ['New', 'No Change in Status', 'On Hold', 'Cancelled', 'Filled Internally', 'Filled Externally'];
 
-const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:5000/api';
+const API_BASE = process.env.API_BASE_URL || 'http://localhost:5000/api';
+
+const inputCls   = 'w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-400';
+const labelCls   = 'block text-xs font-medium text-gray-600 mb-1';
+const errCls     = 'text-xs text-red-600 mt-1';
+const sectionCls = 'text-sm font-bold text-gray-800 mt-6 mb-3';
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <h2 className={sectionCls}>{children}</h2>;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
-export default function NewRequisitionForm() {
-  const [roleData, setRoleData]   = useState<RoleMasterData | null>(null);
+export default function NewRequisitionForm({ asModal = false, onSuccess, onClose }: Props) {
+  const navigate = useNavigate();
+
+  const [roleData,             setRoleData]             = useState<RoleMasterData | null>(null);
   const [filteredDesignations, setFilteredDesignations] = useState<Designation[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [submitLoading, setSubmitLoading] = useState(false);
-  const [successOpen, setSuccessOpen] = useState(false);
-  const [error, setError]         = useState<string | null>(null);
+  const [loading,              setLoading]              = useState(true);
+  const [submitLoading,        setSubmitLoading]        = useState(false);
+  const [successOpen,          setSuccessOpen]          = useState(false);
+  const [error,                setError]                = useState<string | null>(null);
 
   const {
-    control,
-    watch,
-    setValue,
-    handleSubmit,
-    register,
-    reset,
+    control, watch, setValue, handleSubmit, register, reset,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      designation_type:    'existing',
-      designation_existing: '',
-      designation_new:     '',
-      employees_in_cc:     [],
-      role_n_jd_exist:     undefined,
-      role_n_jd_read:      undefined,
-      role_n_jd_good:      undefined,
-      days_well_thought:   undefined,
-      role_link:           '',
-      jd_link:             '',
-      hiring_status:       '',
-      dept_group_email:    '',
-      candidate_experience_level: undefined,
+      designation_type:           'existing',
+      designation_existing:       '',
+      designation_new:            '',
+      employees_in_cc:            [],
+      role_n_jd_exist:            '' as any,
+      role_n_jd_read:             '' as any,
+      role_n_jd_good:             '' as any,
+      days_well_thought:          '' as any,
+      candidate_experience_level: '' as any,
+      role_link:                  '',
+      jd_link:                    '',
+      hiring_status:              '',
+      dept_group_email:           '',
     },
   });
 
@@ -195,65 +123,40 @@ export default function NewRequisitionForm() {
   const designationExisting = watch('designation_existing');
   const selectJoiningDays   = watch('select_joining_days');
 
-  // ── Fetch role master data (departments + designations + employees) ────────
-  // Single source of truth — same endpoint used everywhere else in the app.
-  useEffect(() => {
-    const fetchRoleData = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/rolemaster/all`);
-        if (!res.ok) throw new Error('Failed to fetch role master data');
-        const json = await res.json();
-        setRoleData(json.data);
-      } catch (err) {
-        console.error(err);
-        setError('Failed to load department/designation data. Please refresh.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchRoleData();
-  }, []);
-
-  // ── Fetch the next serial number from the reliable counter endpoint ────────
-  useEffect(() => {
+  const fetchNextSerial = () =>
     fetch(`${API_BASE}/hiringrequisitions/next-serial`)
       .then(r => r.json())
-      .then(json => {
-        if (json?.next_serial) setValue('serial_no', json.next_serial);
-      })
-      .catch(() => {
-        // non-fatal — backend will assign the real serial on submit regardless
-      });
-  }, [setValue]);
+      .then(json => { if (json?.next_serial) setValue('serial_no', json.next_serial); })
+      .catch(() => {});
 
-  // ── Auto-fill today's date ─────────────────────────────────────────────────
   useEffect(() => {
-    setValue('request_date', format(new Date(), 'dd-MM-yyyy'));
-  }, [setValue]);
+    fetch(`${API_BASE}/rolemaster/all`)
+      .then(r => r.json())
+      .then(json => setRoleData(json.data))
+      .catch(() => setError('Failed to load department/designation data. Please refresh.'))
+      .finally(() => setLoading(false));
+  }, []);
 
-  // ── Auto-fill requisitioner email ─────────────────────────────────────────
+  useEffect(() => { fetchNextSerial(); }, [setValue]);
+  useEffect(() => { setValue('request_date', format(new Date(), 'dd-MM-yyyy')); }, [setValue]);
+
   useEffect(() => {
     if (!requisitionerName || !roleData) return;
     const emp = roleData.employees.find(e => e.full_name === requisitionerName);
     setValue('requisitioner_email', emp?.official_email ?? '');
   }, [requisitionerName, roleData, setValue]);
 
-  // ── Auto-fill dept emails + filter designations ────────────────────────────
   useEffect(() => {
     if (!hiringDept || !roleData) return;
     const dept = roleData.departments.find(d => d.department === hiringDept);
     setValue('hiring_dept_email', dept?.dept_head_email ?? '');
     setValue('dept_group_email',  dept?.dept_group_email ?? '');
-
-    const filtered = roleData.designations.filter(d => d.department === hiringDept);
-    setFilteredDesignations(filtered);
-
+    setFilteredDesignations(roleData.designations.filter(d => d.department === hiringDept));
     setValue('designation_existing', '');
     setValue('role_link', '');
-    setValue('jd_link', '');
+    setValue('jd_link',   '');
   }, [hiringDept, roleData, setValue]);
 
-  // ── Auto-fill role & JD links ──────────────────────────────────────────────
   useEffect(() => {
     if (designationType === 'existing' && designationExisting && roleData) {
       const des = roleData.designations.find(d => d.designation === designationExisting);
@@ -265,71 +168,53 @@ export default function NewRequisitionForm() {
     }
   }, [designationType, designationExisting, roleData, setValue]);
 
-  // ── Auto-calculate planned dates ───────────────────────────────────────────
   useEffect(() => {
     if (!selectJoiningDays) return;
     const match = selectJoiningDays.match(/\d+/);
     if (!match) return;
     const totalDays = parseInt(match[0], 10);
     const today = new Date();
-    setValue('plan_start_sharing_cvs',      format(addDays(today, 3),              'dd-MM-yyyy'));
-    setValue('planned_interviews_started',  format(addDays(today, 8),              'dd-MM-yyyy'));
-    setValue('planned_offer_accepted',      format(addDays(today, totalDays - 15), 'dd-MM-yyyy'));
-    setValue('planned_joined',              format(addDays(today, totalDays),      'dd-MM-yyyy'));
+    setValue('plan_start_sharing_cvs',     format(addDays(today, 3),              'dd-MM-yyyy'));
+    setValue('planned_interviews_started', format(addDays(today, 8),              'dd-MM-yyyy'));
+    setValue('planned_offer_accepted',     format(addDays(today, totalDays - 15), 'dd-MM-yyyy'));
+    setValue('planned_joined',             format(addDays(today, totalDays),      'dd-MM-yyyy'));
   }, [selectJoiningDays, setValue]);
 
-  // ── Submit ─────────────────────────────────────────────────────────────────
   const onSubmit = async (data: FormData) => {
     setSubmitLoading(true);
     setError(null);
-
     const convertDate = (dateStr?: string) => {
       if (!dateStr) return null;
       const [day, month, year] = dateStr.split('-');
       return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
     };
-
     try {
-      // Find the designation_id when an existing designation was picked —
-      // needed so candidate applications can later link back precisely.
       const matchedDesig = data.designation_type === 'existing'
         ? roleData?.designations.find(d => d.designation === data.designation_existing)
         : null;
-
-      const submitData = {
-        ...data,
-        designation_status: data.designation_type,
-        designation:
-          data.designation_type === 'existing'
-            ? data.designation_existing
-            : data.designation_new,
+      const { serial_no, designation_type, designation_existing, designation_new, ...rest } = data;
+      const payload = {
+        ...rest,
+        designation_status:         designation_type,
+        designation:                designation_type === 'existing' ? designation_existing : designation_new,
         designation_id:             matchedDesig?.desig_id ?? null,
-        request_date:                convertDate(data.request_date),
-        plan_start_sharing_cvs:      convertDate(data.plan_start_sharing_cvs),
-        planned_interviews_started:  convertDate(data.planned_interviews_started),
-        planned_offer_accepted:      convertDate(data.planned_offer_accepted),
-        planned_joined:              convertDate(data.planned_joined),
-        dept_group_email:            data.dept_group_email     || null,
-        role_link:                   data.role_link            || null,
-        jd_link:                     data.jd_link              || null,
-        special_instructions:        data.special_instructions || null,
-        // fmsStatus defaults to 'Open' in the schema — not sent here on purpose
+        request_date:               convertDate(data.request_date),
+        plan_start_sharing_cvs:     convertDate(data.plan_start_sharing_cvs),
+        planned_interviews_started: convertDate(data.planned_interviews_started),
+        planned_offer_accepted:     convertDate(data.planned_offer_accepted),
+        planned_joined:             convertDate(data.planned_joined),
+        dept_group_email:           data.dept_group_email    || null,
+        role_link:                  data.role_link           || null,
+        jd_link:                    data.jd_link             || null,
+        special_instructions:       data.special_instructions || null,
       };
-
-      // serial_no intentionally omitted — backend assigns it atomically
-      const { serial_no, ...payload } = submitData;
-
       const res = await fetch(`${API_BASE}/hiringrequisitions/`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       });
-
       if (!res.ok) {
         const errData = await res.json();
         throw new Error(errData.message || errData.error || 'Submission failed');
       }
-
       setSuccessOpen(true);
     } catch (err: any) {
       setError(err.message || 'Failed to submit requisition');
@@ -338,434 +223,435 @@ export default function NewRequisitionForm() {
     }
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
+  const handleAddAnother = () => {
+    setSuccessOpen(false);
+    reset();
+    fetchNextSerial();
+  };
+
+  const handleReturnToDashboard = () => {
+    if (asModal && onSuccess) {
+      onSuccess();
+    } else {
+      navigate('/recruitment');
+    }
+  };
+
+  // ── Loading state ──────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
-        <CircularProgress />
-      </Box>
+      <div className="flex items-center justify-center min-h-[40vh]">
+        <Loader2 size={32} className="animate-spin text-blue-500" />
+      </div>
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  return (
-    <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 900, mx: 'auto' }}>
+  // ── Form content (shared between modal and page) ───────────────────────────
+  const formContent = (
+    <div className={asModal ? '' : 'p-4 md:p-8 mt-10 max-w-3xl mx-auto'}>
+      {!asModal && (
+        <>
+          <h1 className="text-2xl font-bold text-gray-900">Enter a New Hiring Requisition</h1>
+          <p className="text-sm text-gray-500 mt-1 mb-4">Fill a separate form per person needed. Be practical with timelines.</p>
+          <hr className="border-gray-200 mb-4" />
+        </>
+      )}
 
-      <Typography variant="h4" gutterBottom fontWeight="bold">
-        Enter a New Hiring Requisition
-      </Typography>
-      <Typography variant="body1" color="text.secondary" paragraph>
-        Fill a separate form per person needed. Be practical with timelines.
-      </Typography>
-      <Divider sx={{ my: 3 }} />
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-md mb-4">{error}</div>
+      )}
 
-      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+      <form onSubmit={handleSubmit(onSubmit, e => console.log('FORM ERRORS', e))} noValidate>
 
-      <form onSubmit={handleSubmit(onSubmit)} noValidate>
-
-        {/* SECTION 1 — Requester Details */}
         <SectionTitle>Requester Details</SectionTitle>
 
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} sx={{ mb: 3 }}>
-          <Box flex={1}>
-            <InputLabel shrink>Hiring Serial No (auto-generated)</InputLabel>
-            <TextField fullWidth value={watch('serial_no') ?? '—'} disabled size="small" />
-          </Box>
-          <Box flex={1}>
-            <InputLabel shrink>Request Date (auto-filled)</InputLabel>
-            <TextField fullWidth value={watch('request_date') ?? ''} disabled size="small" />
-          </Box>
-        </Stack>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className={labelCls}>Hiring Serial No (auto-generated)</label>
+            <input className={inputCls} value={watch('serial_no') ?? '—'} disabled readOnly />
+          </div>
+          <div>
+            <label className={labelCls}>Request Date (auto-filled)</label>
+            <input className={inputCls} value={watch('request_date') ?? ''} disabled readOnly />
+          </div>
+        </div>
 
-        <Box sx={{ mb: 3 }}>
-          <FormControl fullWidth error={!!errors.requisitioner_name}>
-            <InputLabel>Requisition raised by *</InputLabel>
-            <Controller
-              name="requisitioner_name"
-              control={control}
-              render={({ field }) => (
-                <Select {...field} value={field.value ?? ''} label="Requisition raised by *">
-                  <MenuItem value="" disabled>
-                    {roleData?.employees.length ? 'Select Requisitioner' : 'No employees found in Role Master'}
-                  </MenuItem>
-                  {roleData?.employees.map(emp => (
-                    <MenuItem key={emp.emp_id || emp.full_name} value={emp.full_name}>
-                      {emp.full_name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              )}
-            />
-            {errors.requisitioner_name && (
-              <FormHelperText>{errors.requisitioner_name.message}</FormHelperText>
+        <div className="mb-4">
+          <label className={labelCls}>Requisition raised by *</label>
+          <Controller
+            name="requisitioner_name"
+            control={control}
+            render={({ field }) => (
+              <select {...field} className={`${inputCls} ${errors.requisitioner_name ? 'border-red-400' : ''}`}>
+                <option value="" disabled>
+                  {roleData?.employees.length ? 'Select Requisitioner' : 'No employees found in Role Master'}
+                </option>
+                {roleData?.employees.map(emp => (
+                  <option key={emp.emp_id || emp.full_name} value={emp.full_name}>{emp.full_name}</option>
+                ))}
+              </select>
             )}
-            {!roleData?.employees.length && (
-              <FormHelperText sx={{ color: 'warning.main' }}>
-                No employees came back from Role Master — check that emp_name fields are populated.
-              </FormHelperText>
-            )}
-          </FormControl>
-        </Box>
+          />
+          {errors.requisitioner_name && <p className={errCls}>{errors.requisitioner_name.message}</p>}
+        </div>
 
-        <Box sx={{ mb: 4 }}>
-          <InputLabel shrink>Requisitioner's Email (auto-filled)</InputLabel>
-          <TextField fullWidth value={watch('requisitioner_email') ?? ''} disabled size="small" />
-        </Box>
+        <div className="mb-4">
+          <label className={labelCls}>Requisitioner's Email (auto-filled)</label>
+          <input className={inputCls} value={watch('requisitioner_email') ?? ''} disabled readOnly />
+        </div>
 
-        <Divider sx={{ my: 3 }} />
-
-        {/* SECTION 2 — Position to Hire */}
+        <hr className="border-gray-200 my-5" />
         <SectionTitle>Position to Hire</SectionTitle>
 
-        <Box sx={{ mb: 3 }}>
-          <FormControl fullWidth error={!!errors.hiring_dept}>
-            <InputLabel>Hiring Department *</InputLabel>
-            <Controller
-              name="hiring_dept"
-              control={control}
-              render={({ field }) => (
-                <Select {...field} value={field.value ?? ''} label="Hiring Department *">
-                  <MenuItem value="" disabled>Select Department</MenuItem>
-                  {roleData?.departments.map(dept => (
-                    <MenuItem key={dept.dept_id ?? dept.department} value={dept.department}>
-                      {dept.department}
-                    </MenuItem>
-                  ))}
-                </Select>
-              )}
-            />
-            {errors.hiring_dept && <FormHelperText>{errors.hiring_dept.message}</FormHelperText>}
-          </FormControl>
-        </Box>
+        <div className="mb-4">
+          <label className={labelCls}>Hiring Department *</label>
+          <Controller
+            name="hiring_dept"
+            control={control}
+            render={({ field }) => (
+              <select {...field} className={`${inputCls} ${errors.hiring_dept ? 'border-red-400' : ''}`}>
+                <option value="" disabled>Select Department</option>
+                {roleData?.departments.map(dept => (
+                  <option key={dept.dept_id ?? dept.department} value={dept.department}>{dept.department}</option>
+                ))}
+              </select>
+            )}
+          />
+          {errors.hiring_dept && <p className={errCls}>{errors.hiring_dept.message}</p>}
+        </div>
 
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} sx={{ mb: 4 }}>
-          <Box flex={1}>
-            <InputLabel shrink>Dept Head Email (auto-filled)</InputLabel>
-            <TextField fullWidth value={watch('hiring_dept_email') ?? ''} disabled size="small" />
-          </Box>
-          <Box flex={1}>
-            <InputLabel shrink>Dept Group Email (auto-filled)</InputLabel>
-            <TextField fullWidth value={watch('dept_group_email') ?? ''} disabled size="small" />
-          </Box>
-        </Stack>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className={labelCls}>Dept Head Email (auto-filled)</label>
+            <input className={inputCls} value={watch('hiring_dept_email') ?? ''} disabled readOnly />
+          </div>
+          <div>
+            <label className={labelCls}>Dept Group Email (auto-filled)</label>
+            <input className={inputCls} value={watch('dept_group_email') ?? ''} disabled readOnly />
+          </div>
+        </div>
 
         {hiringDept && (
-          <Paper variant="outlined" sx={{ p: 3, mb: 4 }}>
-            <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
-              Designation
-            </Typography>
+          <div className="border border-gray-200 rounded-lg p-4 mb-4">
+            <p className="text-sm font-semibold text-gray-700 mb-3">Designation</p>
 
-            <FormControl component="fieldset" sx={{ mb: 2 }}>
-              <FormLabel component="legend">Existing or New?</FormLabel>
+            <div className="mb-3">
+              <p className={labelCls}>Existing or New?</p>
               <Controller
                 name="designation_type"
                 control={control}
                 render={({ field }) => (
-                  <RadioGroup row {...field}>
-                    <FormControlLabel value="existing" control={<Radio />} label="Existing" />
-                    <FormControlLabel value="new"      control={<Radio />} label="New" />
-                  </RadioGroup>
+                  <div className="flex gap-6">
+                    {(['existing', 'new'] as const).map(val => (
+                      <label key={val} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                          type="radio"
+                          value={val}
+                          checked={field.value === val}
+                          onChange={() => field.onChange(val)}
+                          className="text-blue-600 focus:ring-blue-500"
+                        />
+                        {val.charAt(0).toUpperCase() + val.slice(1)}
+                      </label>
+                    ))}
+                  </div>
                 )}
               />
-            </FormControl>
+            </div>
 
             {designationType === 'existing' && (
-              <FormControl fullWidth error={!!errors.designation_existing} sx={{ mb: 2 }}>
-                <InputLabel>Select Existing Designation</InputLabel>
+              <div className="mb-3">
+                <label className={labelCls}>Select Existing Designation</label>
                 <Controller
                   name="designation_existing"
                   control={control}
                   render={({ field }) => (
-                    <Select {...field} value={field.value ?? ''} label="Select Existing Designation">
-                      <MenuItem value="" disabled>
+                    <select {...field} className={`${inputCls} ${errors.designation_existing ? 'border-red-400' : ''}`}>
+                      <option value="" disabled>
                         {filteredDesignations.length ? 'Select' : 'No designations found for this department'}
-                      </MenuItem>
+                      </option>
                       {filteredDesignations.map(des => (
-                        <MenuItem key={des.desig_id ?? des.designation} value={des.designation}>
-                          {des.designation}
-                        </MenuItem>
+                        <option key={des.desig_id ?? des.designation} value={des.designation}>{des.designation}</option>
                       ))}
-                    </Select>
+                    </select>
                   )}
                 />
-                {errors.designation_existing && (
-                  <FormHelperText>{errors.designation_existing.message}</FormHelperText>
-                )}
-              </FormControl>
+                {errors.designation_existing && <p className={errCls}>{errors.designation_existing.message}</p>}
+              </div>
             )}
 
             {designationType === 'new' && (
-              <TextField
-                fullWidth
-                label="New Designation Name"
-                {...register('designation_new')}
-                error={!!errors.designation_new}
-                helperText={errors.designation_new?.message}
-                sx={{ mb: 2 }}
-              />
+              <div className="mb-3">
+                <label className={labelCls}>New Designation Name</label>
+                <input {...register('designation_new')} className={`${inputCls} ${errors.designation_new ? 'border-red-400' : ''}`} />
+                {errors.designation_new && <p className={errCls}>{errors.designation_new.message}</p>}
+              </div>
             )}
 
             {designationType === 'existing' && designationExisting && (
-              <Stack spacing={2} sx={{ mt: 1 }}>
-                <TextField fullWidth label="Link to Role (auto-filled)" value={watch('role_link') ?? ''} disabled size="small" />
-                <TextField fullWidth label="Link to JD (auto-filled)"   value={watch('jd_link') ?? ''}   disabled size="small" />
-              </Stack>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className={labelCls}>Link to Role (auto-filled)</label>
+                  <input className={inputCls} value={watch('role_link') ?? ''} disabled readOnly />
+                </div>
+                <div>
+                  <label className={labelCls}>Link to JD (auto-filled)</label>
+                  <input className={inputCls} value={watch('jd_link') ?? ''} disabled readOnly />
+                </div>
+              </div>
             )}
 
             {(designationExisting || watch('designation_new')) && (
-              <FormControl fullWidth error={!!errors.candidate_experience_level} sx={{ mt: 2 }}>
-                <InputLabel>Candidate Experience Level</InputLabel>
+              <div>
+                <label className={labelCls}>Candidate Experience Level</label>
                 <Controller
                   name="candidate_experience_level"
                   control={control}
                   render={({ field }) => (
-                    <Select {...field} value={field.value ?? ''} label="Candidate Experience Level">
-                      <MenuItem value="" disabled>Select</MenuItem>
-                      <MenuItem value="Fresher">Fresher</MenuItem>
-                      <MenuItem value="Experienced">Experienced</MenuItem>
-                    </Select>
+                    <select {...field} className={`${inputCls} ${errors.candidate_experience_level ? 'border-red-400' : ''}`}>
+                      <option value="" disabled>Select</option>
+                      <option value="Fresher">Fresher</option>
+                      <option value="Experienced">Experienced</option>
+                    </select>
                   )}
                 />
-                {errors.candidate_experience_level && (
-                  <FormHelperText>{errors.candidate_experience_level.message}</FormHelperText>
-                )}
-              </FormControl>
+                {errors.candidate_experience_level && <p className={errCls}>{errors.candidate_experience_level.message}</p>}
+              </div>
             )}
-          </Paper>
+          </div>
         )}
 
-        <Divider sx={{ my: 3 }} />
-
-        {/* SECTION 3 — Joining Timeline */}
+        <hr className="border-gray-200 my-5" />
         <SectionTitle>Days to Fulfil Requirement (from today)</SectionTitle>
 
-        <FormControl fullWidth error={!!errors.select_joining_days} sx={{ mb: 3 }}>
-          <InputLabel>Select joining days *</InputLabel>
+        <div className="mb-4">
+          <label className={labelCls}>Select joining days *</label>
           <Controller
             name="select_joining_days"
             control={control}
             render={({ field }) => (
-              <Select {...field} value={field.value ?? ''} label="Select joining days *">
-                <MenuItem value="" disabled>Select</MenuItem>
+              <select {...field} className={`${inputCls} ${errors.select_joining_days ? 'border-red-400' : ''}`}>
+                <option value="" disabled>Select</option>
                 {JOINING_DAYS_OPTIONS.map(opt => (
-                  <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
-              </Select>
+              </select>
             )}
           />
-          {errors.select_joining_days && (
-            <FormHelperText>{errors.select_joining_days.message}</FormHelperText>
-          )}
-        </FormControl>
+          {errors.select_joining_days && <p className={errCls}>{errors.select_joining_days.message}</p>}
+        </div>
 
         {selectJoiningDays && (
-          <Paper variant="outlined" sx={{ p: 2, mb: 4, bgcolor: 'success.50', borderColor: 'success.200' }}>
-            <Typography variant="body2" fontWeight="bold" color="success.dark" gutterBottom>
-              Hiring Plan (Auto-Calculated)
-            </Typography>
-            <Stack spacing={0.5}>
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+            <p className="text-sm font-semibold text-green-800 mb-2">Hiring Plan (Auto-Calculated)</p>
+            <ul className="space-y-1">
               {[
-                { label: 'Start sharing CVs',  val: watch('plan_start_sharing_cvs') },
-                { label: 'Interviews start',    val: watch('planned_interviews_started') },
-                { label: 'Offer accepted by',   val: watch('planned_offer_accepted') },
-                { label: 'Joining by',          val: watch('planned_joined') },
+                { label: 'Start sharing CVs', val: watch('plan_start_sharing_cvs') },
+                { label: 'Interviews start',  val: watch('planned_interviews_started') },
+                { label: 'Offer accepted by', val: watch('planned_offer_accepted') },
+                { label: 'Joining by',        val: watch('planned_joined') },
               ].map(({ label, val }) => (
-                <Typography key={label} variant="body2" color="success.dark">
-                  • {label}: <strong>{val || '—'}</strong>
-                </Typography>
+                <li key={label} className="text-sm text-green-700">• {label}: <strong>{val || '—'}</strong></li>
               ))}
-            </Stack>
-          </Paper>
+            </ul>
+          </div>
         )}
 
-        <Divider sx={{ my: 3 }} />
-
-        {/* SECTION 4 — Special Instructions & Status */}
+        <hr className="border-gray-200 my-5" />
         <SectionTitle>Special Instructions to HR</SectionTitle>
 
-        <TextField
-          fullWidth multiline rows={4}
-          {...register('special_instructions')}
-          placeholder="Clearly mention the role and any special requirements..."
-          sx={{ mb: 3 }}
-        />
+        <div className="mb-4">
+          <textarea {...register('special_instructions')} rows={4} placeholder="Clearly mention the role and any special requirements..." className={inputCls} />
+        </div>
 
-        <FormControl fullWidth error={!!errors.hiring_status} sx={{ mb: 4 }}>
-          <InputLabel>Hiring Status *</InputLabel>
+        <div className="mb-4">
+          <label className={labelCls}>Hiring Status *</label>
           <Controller
             name="hiring_status"
             control={control}
             render={({ field }) => (
-              <Select {...field} value={field.value ?? ''} label="Hiring Status *">
-                <MenuItem value="" disabled>Select status</MenuItem>
-                {HIRING_STATUS_OPTIONS.map(status => (
-                  <MenuItem key={status} value={status}>{status}</MenuItem>
-                ))}
-              </Select>
+              <select {...field} className={`${inputCls} ${errors.hiring_status ? 'border-red-400' : ''}`}>
+                <option value="" disabled>Select status</option>
+                {HIRING_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
             )}
           />
-          {errors.hiring_status && <FormHelperText>{errors.hiring_status.message}</FormHelperText>}
-        </FormControl>
+          {errors.hiring_status && <p className={errCls}>{errors.hiring_status.message}</p>}
+        </div>
 
-        <Divider sx={{ my: 3 }} />
-
-        {/* SECTION 5 — People to CC */}
+        <hr className="border-gray-200 my-5" />
         <SectionTitle>People to Keep in CC</SectionTitle>
 
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+        <p className="text-sm text-gray-500 mb-3">
           The following are automatically included in CC — no need to add them again:
           MD &amp; CEO, Head Ops, Deputy Ops, HR, Admin, Accounts, and DME.
-        </Typography>
+        </p>
 
-        <FormControl fullWidth sx={{ mb: 4 }}>
-          <InputLabel>Select additional CC recipients</InputLabel>
+        <div className="mb-4">
+          <label className={labelCls}>Select additional CC recipients</label>
           <Controller
             name="employees_in_cc"
             control={control}
             render={({ field }) => (
-              <Select
-                {...field}
-                multiple
-                value={field.value ?? []}
-                label="Select additional CC recipients"
-                renderValue={(selected: string[]) => (
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {selected.map(email => {
-                      const emp = roleData?.employees.find(e => e.official_email === email);
-                      return <Chip key={email} label={emp?.full_name ?? email} size="small" />;
-                    })}
-                  </Box>
-                )}
-              >
-                {roleData?.employees.map(emp => (
-                  <MenuItem key={emp.emp_id || emp.full_name} value={emp.official_email}>
-                    <Checkbox checked={field.value?.includes(emp.official_email)} />
-                    {emp.full_name}
-                  </MenuItem>
-                ))}
-              </Select>
+              <>
+                <div className="border border-gray-300 rounded-md max-h-48 overflow-y-auto divide-y divide-gray-100">
+                  {(roleData?.employees ?? []).map(emp => {
+                    const checked = (field.value ?? []).includes(emp.official_email);
+                    return (
+                      <label key={emp.emp_id || emp.full_name} className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            const current = field.value ?? [];
+                            field.onChange(checked ? current.filter(e => e !== emp.official_email) : [...current, emp.official_email]);
+                          }}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700">{emp.full_name}</span>
+                        <span className="text-xs text-gray-400 ml-auto">{emp.official_email}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <div className={`flex flex-wrap gap-1.5 mt-2 ${(field.value ?? []).length === 0 ? 'hidden' : ''}`}>
+                  {(field.value ?? []).map(email => {
+                    const emp = roleData?.employees.find(e => e.official_email === email);
+                    return (
+                      <span key={email} className="flex items-center gap-1 bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">
+                        {emp?.full_name ?? email}
+                        <button type="button" onClick={() => field.onChange((field.value ?? []).filter(e => e !== email))} className="hover:text-blue-900 leading-none">×</button>
+                      </span>
+                    );
+                  })}
+                </div>
+              </>
             )}
           />
-        </FormControl>
+        </div>
 
-        <Divider sx={{ my: 3 }} />
-
-        {/* SECTION 6 — Dept Checklist */}
+        <hr className="border-gray-200 my-5" />
         <SectionTitle>Checklist for Dept Raising Requisition</SectionTitle>
 
-        <Stack spacing={2} sx={{ mb: 4 }}>
+        <div className="space-y-3 mb-4">
           {(
             [
-              { name: 'role_n_jd_exist',  label: 'Do the Role & JD Documents exist?' },
-              { name: 'role_n_jd_read',   label: 'Have you read the Role & JD?' },
-              { name: 'role_n_jd_good',   label: 'Are the Role & JD suitable & well made?' },
-              { name: 'days_well_thought',label: 'Are the days to fulfil the requirement practical and realistic?' },
+              { name: 'role_n_jd_exist',   label: 'Do the Role & JD Documents exist?' },
+              { name: 'role_n_jd_read',    label: 'Have you read the Role & JD?' },
+              { name: 'role_n_jd_good',    label: 'Are the Role & JD suitable & well made?' },
+              { name: 'days_well_thought', label: 'Are the days to fulfil the requirement practical and realistic?' },
             ] as { name: keyof FormData; label: string }[]
           ).map(({ name, label }) => (
-            <FormControl key={name} fullWidth error={!!errors[name]}>
-              <InputLabel>{label} *</InputLabel>
+            <div key={name}>
+              <label className={labelCls}>{label} *</label>
               <Controller
                 name={name as any}
                 control={control}
                 render={({ field }) => (
-                  <Select {...field} value={field.value ?? ''} label={`${label} *`}>
-                    <MenuItem value="" disabled>Select</MenuItem>
-                    <MenuItem value="Yes">Yes</MenuItem>
-                    <MenuItem value="No">No</MenuItem>
-                  </Select>
+                  <select {...field} className={`${inputCls} ${errors[name] ? 'border-red-400' : ''}`}>
+                    <option value="" disabled>Select</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
                 )}
               />
-              {errors[name] && (
-                <FormHelperText>{(errors[name] as any)?.message ?? 'Required'}</FormHelperText>
-              )}
-            </FormControl>
+              {errors[name] && <p className={errCls}>{(errors[name] as any)?.message ?? 'Required'}</p>}
+            </div>
           ))}
-        </Stack>
+        </div>
 
-        <Divider sx={{ my: 3 }} />
-
-        {/* SECTION 7 — HR Checklist (read-only) */}
+        <hr className="border-gray-200 my-5" />
         <SectionTitle>HR Dept Checklist (For Dept's Info Only)</SectionTitle>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          These are the steps HR will follow. Shown here for your transparency.
-        </Typography>
+        <p className="text-sm text-gray-500 mb-3">These are the steps HR will follow. Shown here for your transparency.</p>
 
-        <Stack spacing={2} sx={{ mb: 5 }}>
+        <div className="space-y-3 mb-6">
           {HR_CHECKLISTS.map(section => (
-            <Paper key={section.title} variant="outlined" sx={{ p: 2 }}>
-              <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
-                {section.title}
-              </Typography>
-              <Stack spacing={0.5}>
+            <div key={section.title} className="border border-gray-200 rounded-lg p-4">
+              <p className="text-sm font-semibold text-gray-700 mb-2">{section.title}</p>
+              <ul className="space-y-1.5">
                 {section.items.map(item => (
-                  <FormControlLabel
-                    key={item}
-                    control={<Checkbox disabled size="small" />}
-                    label={<Typography variant="body2">{item}</Typography>}
-                  />
+                  <li key={item} className="flex items-center gap-2 text-sm text-gray-500">
+                    <input type="checkbox" disabled className="rounded border-gray-300" />
+                    {item}
+                  </li>
                 ))}
-              </Stack>
-            </Paper>
+              </ul>
+            </div>
           ))}
-        </Stack>
+        </div>
 
         {/* Submit */}
-        <Box sx={{ textAlign: 'center', mt: 4 }}>
-          <Button
+        <div className={`mt-6 ${asModal ? 'flex justify-end gap-2' : 'text-center'}`}>
+          {asModal && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-600 hover:bg-gray-50 transition"
+            >
+              Cancel
+            </button>
+          )}
+          <button
             type="submit"
-            variant="contained"
-            color="primary"
-            size="large"
             disabled={submitLoading}
-            startIcon={submitLoading ? <CircularProgress size={20} color="inherit" /> : null}
-            sx={{ minWidth: 220 }}
+            className="inline-flex items-center gap-2 px-8 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:opacity-50 transition min-w-[180px] justify-center"
           >
+            {submitLoading && <Loader2 size={16} className="animate-spin" />}
             {submitLoading ? 'Submitting...' : 'Submit Requisition'}
-          </Button>
-        </Box>
+          </button>
+        </div>
       </form>
 
-      <Backdrop open={submitLoading} sx={{ zIndex: 9999 }}>
-        <CircularProgress color="inherit" />
-      </Backdrop>
+      {/* Full-screen loading backdrop */}
+      {submitLoading && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-[60]">
+          <Loader2 size={40} className="animate-spin text-white" />
+        </div>
+      )}
 
-      <Dialog open={successOpen} maxWidth="sm" fullWidth>
-        <DialogTitle>🎉 Requisition Submitted!</DialogTitle>
-        <DialogContent>
-          <Typography gutterBottom>
-            A Hiring Requisition email has been sent to the HR Dept, with all concerned in CC.
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            HR will update hiring progress to you over email. You can add another request or return to the dashboard.
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ p: 2, gap: 1 }}>
-          <Button
-            variant="outlined"
-            onClick={() => {
-              setSuccessOpen(false);
-              reset();
-              fetch(`${API_BASE}/hiringrequisitions/next-serial`)
-                .then(r => r.json())
-                .then(j => { if (j?.next_serial) setValue('serial_no', j.next_serial); })
-                .catch(() => {});
-            }}
-          >
-            Add Another Request
-          </Button>
-          <Button variant="contained" onClick={() => { window.location.href = '/recruitment'; }}>
-            Return to Dashboard
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+      {/* Success Dialog */}
+      {successOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <h2 className="text-lg font-bold text-gray-900 mb-2">🎉 Requisition Submitted!</h2>
+            <p className="text-sm text-gray-700 mb-2">
+              A Hiring Requisition email has been sent to the HR Dept, with all concerned in CC.
+            </p>
+            <p className="text-sm text-gray-400 mb-6">
+              HR will update hiring progress to you over email. You can add another request or return to the dashboard.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={handleAddAnother}
+                className="px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-600 hover:bg-gray-50 transition"
+              >
+                Add Another Request
+              </button>
+              <button
+                onClick={handleReturnToDashboard}
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition"
+              >
+                Return to Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
-}
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
+  // ── Modal mode: return just the form content ───────────────────────────────
+  if (asModal) return formContent;
+
+  // ── Page mode: wrap with Sidebar + Navbar ─────────────────────────────────
   return (
-    <Typography variant="subtitle1" fontWeight="bold" gutterBottom sx={{ mt: 1 }}>
-      {children}
-    </Typography>
+    
+    <div className="min-h-screen bg-gray-100 flex">
+      <Sidebar />
+      <div className="flex-1 flex flex-col">
+        <Navbar />
+        {formContent}
+      </div>
+    </div>
   );
 }

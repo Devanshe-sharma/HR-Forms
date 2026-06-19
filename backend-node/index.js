@@ -47,12 +47,11 @@ app.use('/api/capability-skills',   require('./routes/capabilitySkills'));
 app.use('/api/capability-evaluations', require('./routes/capabilityEvaluations'));
 app.use('/api/training-topics',    require('./routes/trainingTopic'));
 app.use('/api/training-schedules',  require('./routes/trainingSchedules'));
-app.use('/api/hiring-form', hiringFormRoutes);
 // app.use('/api/training-materials', require('./routes/trainingMaterials'));
 app.use('/api/training-feedback',  require('./routes/trainingFeedback'));
 app.use('/api/training-assessments', require('./routes/trainingAssessments'));
 app.use('/api/employee-scores',    require('./routes/employeeScores'));
-app.use('/api/requisition',        require('./routes/requisition'));
+
 app.use('/api/onboarding',         require('./routes/onboardingroutes'));
 app.use('/api/exit',               require('./routes/exit'));
 app.use('/api/outing',             require('./routes/outing'));

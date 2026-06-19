@@ -5,9 +5,12 @@ declare module 'react/jsx-runtime' {
   export * from 'react';
 }
 
+declare module '*.css';
+declare module '*.scss';
+declare module '*.sass';
+
 interface ImportMetaEnv {
   readonly VITE_API_URL: string
-  // Add other environment variables here as needed
 }
 
 interface ImportMeta {

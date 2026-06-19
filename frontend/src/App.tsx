@@ -16,6 +16,7 @@ import LetterTemplate from "./pages/LetterTemplate";
 import ComingSoon from "./pages/ComingSoon";
 import AllApplicants from "./pages/Recruitment/AllApplicants";
 import NewRequisitionForm from "./pages/Recruitment/new-requisition-form";
+import UpdateRequisition from './pages/Recruitment/UpdateRequisition';
 import TrainingPage from "./pages/TrainingPageNew";
 import Outing from "./pages/Outing";
 import PMSDashboard from "./pages/PMSDashboard";
@@ -58,6 +59,7 @@ export default function App() {
           <Route path="/candidates" element={<ComingSoon />} />
           <Route path="/applicants" element={<AllApplicants />} />
           <Route path="/new-hiring-requisition" element={<NewRequisitionForm />} />
+          <Route path="/recruitment/update/:id" element={<UpdateRequisition />} />
           <Route path="/training-page" element={<TrainingPage />} />
           <Route path="/outing" element={<Outing/>}/>
           <Route path="/onboarding" element={<OnboardingDashboard />} />

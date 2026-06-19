@@ -1,265 +1,313 @@
-'use client';
-
-import React, { useState, useEffect } from 'react';
-import {
-  Plus, Search, FileText, User,
-  ChevronRight, Clock, Building2, Calendar,
-  Filter, Download, RefreshCcw
-} from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Search, Edit2, Plus, RefreshCw } from 'lucide-react';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
+import Modal from '../../components/Modal';
+import NewRequisitionForm from './new-requisition-form';
+import UpdateRequisition  from './UpdateRequisition';
 
-const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE = process.env.API_BASE_URL || 'http://localhost:5000/api';
 
-// Matches the real HiringRequisition Mongoose schema
-interface Requisition {
+type Requisition = {
   _id: string;
   serial_no: number;
-  requisitioner_name: string;
-  hiring_dept: string;
   designation: string;
+  hiring_dept: string;
+  requisitioner_name: string;
   request_date: string;
+  select_joining_days: string;
   planned_joined: string;
   hiring_status: string;
   fmsStatus: 'Open' | 'Closed';
-}
+  candidate_experience_level?: string;
+};
 
-const RequisitionDashboard: React.FC = () => {
-  const [requisitions, setRequisitions] = useState<Requisition[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+const HIRING_STATUS_OPTIONS = [
+  'New', 'No Change in Status', 'CVs Shortlisting Started', 'Interviews Started',
+  'Offer Sent', 'Offer Accepted', 'Joined', 'Not Accepted', 'Not Joined',
+  'On Hold', 'Cancelled', 'Filled Internally', 'Filled Externally',
+];
 
-  const fetchRequisitions = async () => {
-    setIsRefreshing(true);
+const STATUS_CHIP: Record<string, string> = {
+  'New':                      'bg-blue-100 text-blue-800',
+  'No Change in Status':      'bg-gray-100 text-gray-700',
+  'CVs Shortlisting Started': 'bg-blue-100 text-blue-800',
+  'Interviews Started':       'bg-blue-100 text-blue-800',
+  'Offer Sent':               'bg-amber-100 text-amber-800',
+  'Offer Accepted':           'bg-amber-100 text-amber-800',
+  'Joined':                   'bg-green-100 text-green-800',
+  'Not Accepted':             'bg-red-100 text-red-800',
+  'Not Joined':               'bg-red-100 text-red-800',
+  'On Hold':                  'bg-amber-100 text-amber-800',
+  'Cancelled':                'bg-red-100 text-red-800',
+  'Filled Internally':        'bg-green-100 text-green-800',
+  'Filled Externally':        'bg-green-100 text-green-800',
+};
+
+export default function RequisitionDashboard() {
+  const navigate                      = useNavigate();
+  const [searchParams]                = useSearchParams();
+
+  const [rows,     setRows]     = useState<Requisition[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  const [search,       setSearch]       = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterFms,    setFilterFms]    = useState('');
+
+  // ── Modal state driven by URL query params ─────────────────────────────────
+  const modal  = searchParams.get('modal');
+  const editId = searchParams.get('id');
+
+  const newModalOpen = modal === 'new';
+  const updateModalOpen = modal === 'update' && !!editId;
+
+  const openNew    = () => navigate('/recruitment?modal=new');
+  const openEdit   = (id: string) => navigate(`/recruitment?modal=update&id=${id}`);
+  const closeModal = () => navigate('/recruitment');
+
+  // ── Fetch ──────────────────────────────────────────────────────────────────
+  const fetchData = useCallback(async () => {
+    setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/hiringrequisitions`);
-      if (!res.ok) throw new Error('Failed to load requisitions');
-      const data = await res.json();
-      setRequisitions(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error('Error loading requisitions:', err);
-      setError('Could not load requisitions. Check your connection and try again.');
-      setRequisitions([]);
+      const params = new URLSearchParams();
+      if (search)       params.set('search',    search);
+      if (filterStatus) params.set('status',    filterStatus);
+      if (filterFms)    params.set('fmsStatus', filterFms);
+
+      const res  = await fetch(`${API_BASE}/hiringrequisitions?${params}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to load');
+      setRows(json.data);
+    } catch (err: any) {
+      setError(err.message);
     } finally {
       setLoading(false);
-      setIsRefreshing(false);
+    }
+  }, [search, filterStatus, filterFms]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  // ── Inline status save ─────────────────────────────────────────────────────
+  const saveStatus = async (id: string, field: 'hiring_status' | 'fmsStatus', value: string) => {
+    setSavingId(id);
+    try {
+      const res = await fetch(`${API_BASE}/hiringrequisitions/${id}/status`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ [field]: value }),
+      });
+      if (!res.ok) throw new Error('Save failed');
+      setRows(prev => prev.map(r => r._id === id ? { ...r, [field]: value } : r));
+    } catch {
+      setError('Failed to save — please try again');
+    } finally {
+      setSavingId(null);
     }
   };
 
-  useEffect(() => {
-    fetchRequisitions();
-  }, []);
-
-  const getStatusStyle = (status: string) => {
-    const s = status?.toLowerCase() || '';
-    if (s.includes('joined') || s.includes('fulfilled') || s.includes('filled')) return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-    if (s.includes('started') || s.includes('progress')) return 'bg-blue-100 text-blue-700 border-blue-200';
-    if (s.includes('new')) return 'bg-purple-100 text-purple-700 border-purple-200';
-    if (s.includes('stopped') || s.includes('cancel') || s.includes('hold')) return 'bg-rose-100 text-rose-700 border-rose-200';
-    return 'bg-slate-100 text-slate-700 border-slate-200';
-  };
-
-  const filteredData = requisitions.filter(req =>
-    req.designation?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    req.requisitioner_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    req.hiring_dept?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const anyModalOpen = newModalOpen || updateModalOpen;
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-[#F8FAFC]">
-      <Sidebar />
+    <>
+      {/* ── Page content — blurred when any modal is open ── */}
+      <div className={`min-h-screen bg-gray-100 flex transition-all duration-200 ${anyModalOpen ? 'blur-sm brightness-75 pointer-events-none select-none' : ''}`}>
+        <Sidebar />
+        <div className="flex-1 flex flex-col">
+          <Navbar />
+          <div className="p-4 md:p-6 mt-10 text-sm text-gray-800">
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Navbar />
-
-        <main className="flex-1 overflow-y-auto p-6 lg:p-8">
-          <div className="max-w-7xl pt-10 mx-auto">
-
-            {/* TOP HEADER */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-              <div>
-                <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Hiring Pipeline</h1>
-                <p className="text-slate-500 mt-1">Manage and track departmental recruitment requisitions</p>
-              </div>
-
-              <div className="flex items-center gap-3">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-5">
+              <h1 className="text-xl font-bold">Hiring Requisitions</h1>
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={fetchRequisitions}
-                  className={`p-2.5 bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-all ${isRefreshing ? 'animate-spin' : ''}`}
+                  onClick={fetchData}
+                  disabled={loading}
+                  title="Refresh"
+                  className="p-2 rounded-md border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-40 transition"
                 >
-                  <RefreshCcw size={20} />
+                  <RefreshCw size={16} />
                 </button>
-                <Link
-                  to="/new-hiring-requisition"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-5 rounded-xl shadow-indigo-200 shadow-lg transition-all active:scale-95"
+                <button
+                  onClick={openNew}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition"
                 >
-                  <Plus size={20} />
+                  <Plus size={16} />
                   New Requisition
-                </Link>
+                </button>
               </div>
             </div>
 
+            {/* Error */}
             {error && (
-              <div className="mb-6 px-4 py-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-sm">
+              <div className="flex items-center justify-between bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2.5 rounded-md mb-4">
                 {error}
+                <button onClick={() => setError(null)} className="ml-4 text-red-500 hover:text-red-700">✕</button>
               </div>
             )}
 
-            {/* STATS OVERVIEW */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-              <StatCard title="Total Requests" value={requisitions.length} icon={<FileText />} color="text-indigo-600" bg="bg-indigo-50" />
-              <StatCard title="Active Hiring" value={requisitions.filter(r => r.fmsStatus === 'Open').length} icon={<Clock />} color="text-amber-600" bg="bg-amber-50" />
-              <StatCard title="Closed / Filled" value={requisitions.filter(r => r.fmsStatus === 'Closed').length} icon={<User />} color="text-emerald-600" bg="bg-emerald-50" />
-              <StatCard title="Departments" value={new Set(requisitions.map(r => r.hiring_dept)).size} icon={<Building2 />} color="text-rose-600" bg="bg-rose-50" />
+            {/* Filters */}
+            <div className="flex flex-col sm:flex-row gap-3 mb-5">
+              <div className="relative flex-[2]">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search designation, dept, name…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <select
+                value={filterStatus}
+                onChange={e => setFilterStatus(e.target.value)}
+                className="flex-1 min-w-[160px] px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Hiring Statuses</option>
+                {HIRING_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <select
+                value={filterFms}
+                onChange={e => setFilterFms(e.target.value)}
+                className="flex-1 min-w-[130px] px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All FMS Statuses</option>
+                <option value="Open">Open</option>
+                <option value="Closed">Closed</option>
+              </select>
             </div>
 
-            {/* TABLE CONTAINER */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="p-5 border-b border-slate-100 bg-white flex flex-col sm:flex-row items-center gap-4">
-                <div className="relative flex-1 w-full">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                  <input
-                    type="text"
-                    placeholder="Search by role, department or name..."
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                </div>
-                <div className="flex gap-2 w-full sm:w-auto">
-                  <button className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50">
-                    <Filter size={16} /> Filter
-                  </button>
-                  <button className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50">
-                    <Download size={16} /> Export
-                  </button>
-                </div>
+            {/* Table */}
+            {loading ? (
+              <div className="flex justify-center py-16">
+                <span className="w-8 h-8 border-[3px] border-gray-200 border-t-blue-600 rounded-full animate-spin" />
               </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
+            ) : (
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <table className="w-full text-[0.813rem] border-collapse">
                   <thead>
-                    <tr className="bg-slate-50/50 text-slate-500 text-[11px] uppercase tracking-widest font-bold">
-                      <th className="px-6 py-4">Requisition Info</th>
-                      <th className="px-6 py-4">Department</th>
-                      <th className="px-6 py-4">Requester</th>
-                      <th className="px-6 py-4">Hiring Plan</th>
-                      <th className="px-6 py-4">Status</th>
-                      <th className="px-6 py-4 text-right">Action</th>
+                    <tr className="bg-gray-50 text-left">
+                      <th className="px-3 py-2.5 font-semibold w-10">#</th>
+                      <th className="px-3 py-2.5 font-semibold">Designation</th>
+                      <th className="px-3 py-2.5 font-semibold">Department</th>
+                      <th className="px-3 py-2.5 font-semibold">Raised By</th>
+                      <th className="px-3 py-2.5 font-semibold">Request Date</th>
+                      <th className="px-3 py-2.5 font-semibold">Planned Joining</th>
+                      <th className="px-3 py-2.5 font-semibold w-52">Hiring Status</th>
+                      <th className="px-3 py-2.5 font-semibold w-28">FMS</th>
+                      <th className="px-3 py-2.5 font-semibold w-20 text-center">Update</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {loading ? (
-                      <TableSkeleton />
-                    ) : filteredData.map((req) => (
-                      <tr key={req._id} className="hover:bg-indigo-50/30 transition-colors group">
-                        <td className="px-6 py-4">
-                          <div className="flex flex-col">
-                            <span className="text-[10px] font-bold text-indigo-500 mb-0.5">
-                              REQ-{req.serial_no}
+                  <tbody className="divide-y divide-gray-100">
+                    {rows.length === 0 && (
+                      <tr>
+                        <td colSpan={9} className="py-12 text-center text-gray-400">No requisitions found</td>
+                      </tr>
+                    )}
+                    {rows.map(row => (
+                      <tr key={row._id} onClick={() => openEdit(row._id)} className={`hover:bg-gray-50 transition cursor-pointer ${savingId === row._id ? 'opacity-50' : ''}`} >
+                        <td className="px-3 py-2.5">{row.serial_no}</td>
+                        <td className="px-3 py-2.5">
+                          <span className="block font-medium">{row.designation}</span>
+                          {row.candidate_experience_level && (
+                            <span className="text-xs text-gray-400">{row.candidate_experience_level}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5">{row.hiring_dept}</td>
+                        <td className="px-3 py-2.5">{row.requisitioner_name}</td>
+                        <td className="px-3 py-2.5">{row.request_date || '—'}</td>
+                        <td className="px-3 py-2.5">{row.planned_joined || '—'}</td>
+
+                        {/* Inline: Hiring Status */}
+                        <td className="px-3 py-2.5 relative" onClick={e => e.stopPropagation()}>
+                          {row.hiring_status && (
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CHIP[row.hiring_status] ?? 'bg-gray-100 text-gray-700'}`}>
+                              {row.hiring_status}
                             </span>
-                            <span className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">
-                              {req.designation}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2 text-slate-600">
-                            <div className="p-1.5 bg-slate-100 rounded-md text-slate-500">
-                              <Building2 size={14} />
-                            </div>
-                            <span className="text-sm font-medium">{req.hiring_dept}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white text-[10px] font-bold">
-                              {req.requisitioner_name?.substring(0, 2).toUpperCase()}
-                            </div>
-                            <span className="text-sm text-slate-700 font-medium">{req.requisitioner_name}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                              <Calendar size={12} /> Target: {req.planned_joined || '—'}
-                            </div>
-                            <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                              <div className={`h-full ${req.fmsStatus === 'Open' ? 'bg-indigo-500' : 'bg-emerald-500'} w-2/3`}></div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`px-3 py-1 rounded-lg text-[10px] font-bold border ${getStatusStyle(req.hiring_status)}`}>
-                            {req.hiring_status?.toUpperCase() || 'NEW'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <Link
-                            to={`/requisition/${req._id}`}
-                            className="inline-flex items-center justify-center w-9 h-9 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                          )}
+                          <select
+                            value={row.hiring_status || ''}
+                            onChange={e => saveStatus(row._id, 'hiring_status', e.target.value)}
+                            disabled={savingId === row._id}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                           >
-                            <ChevronRight size={20} />
-                          </Link>
+                            {HIRING_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </td>
+
+                        {/* Inline: FMS Status */}
+                        <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                          <button
+                            onClick={() => saveStatus(row._id, 'fmsStatus', row.fmsStatus === 'Open' ? 'Closed' : 'Open')}
+                            className={`px-2 py-0.5 rounded-full text-xs font-medium transition ${
+                              row.fmsStatus === 'Open'
+                                ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            {row.fmsStatus}
+                          </button>
+                        </td>
+
+                        {/* Update button */}
+                        <td className="px-3 py-2.5 text-center">
+                          <button
+                            title="Update this requisition"
+                            onClick={() => openEdit(row._id)}
+                            className="p-1.5 rounded-md text-blue-600 hover:bg-blue-50 transition"
+                          >
+                            <Edit2 size={15} />
+                          </button>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+            )}
 
-              {!loading && filteredData.length === 0 && (
-                <div className="py-24 text-center">
-                  <div className="inline-flex items-center justify-center w-16 h-16 bg-slate-50 rounded-2xl text-slate-300 mb-4">
-                    <FileText size={32} />
-                  </div>
-                  <h3 className="text-slate-900 font-bold">No results found</h3>
-                  <p className="text-slate-500 text-sm mt-1">
-                    {requisitions.length === 0
-                      ? 'No requisitions have been submitted yet.'
-                      : "Try adjusting your search to find what you're looking for."}
-                  </p>
-                </div>
-              )}
-            </div>
+            <p className="mt-2 text-xs text-gray-400">
+              {rows.length} record{rows.length !== 1 ? 's' : ''}
+              {(filterStatus || filterFms || search) ? ' (filtered)' : ''}
+            </p>
           </div>
-        </main>
+        </div>
       </div>
-    </div>
+
+      {/* ── Modals — outside the blur div so they stay sharp ── */}
+      <Modal
+        open={newModalOpen}
+        onClose={closeModal}
+        title="New Hiring Requisition"
+        maxWidth="max-w-3xl"
+      >
+        <NewRequisitionForm
+          asModal
+          onSuccess={() => { closeModal(); fetchData(); }}
+          onClose={closeModal}
+        />
+      </Modal>
+
+      <Modal
+        open={updateModalOpen}
+        onClose={closeModal}
+        title="Update Hiring Requisition"
+        maxWidth="max-w-4xl"
+      >
+        {editId && (
+          <UpdateRequisition
+            id={editId}
+            asModal
+            onSuccess={() => { closeModal(); fetchData(); }}
+            onClose={closeModal}
+          />
+        )}
+      </Modal>
+    </>
   );
-};
-
-const StatCard = ({ title, value, icon, color, bg }: any) => (
-  <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between transition-transform hover:-translate-y-1">
-    <div>
-      <p className="text-sm font-medium text-slate-500">{title}</p>
-      <p className="text-2xl font-black text-slate-900 mt-1">{value}</p>
-    </div>
-    <div className={`p-3 ${bg} ${color} rounded-2xl`}>
-      {React.cloneElement(icon, { size: 24 })}
-    </div>
-  </div>
-);
-
-const TableSkeleton = () => (
-  <>
-    {[1, 2, 3, 4, 5].map((i) => (
-      <tr key={i} className="animate-pulse">
-        <td className="px-6 py-6"><div className="h-4 bg-slate-100 rounded w-32"></div></td>
-        <td className="px-6 py-6"><div className="h-4 bg-slate-100 rounded w-24"></div></td>
-        <td className="px-6 py-6"><div className="h-4 bg-slate-100 rounded w-28"></div></td>
-        <td className="px-6 py-6"><div className="h-4 bg-slate-100 rounded w-20"></div></td>
-        <td className="px-6 py-6"><div className="h-4 bg-slate-100 rounded w-16"></div></td>
-        <td className="px-6 py-6"><div className="h-8 w-8 bg-slate-100 rounded-full ml-auto"></div></td>
-      </tr>
-    ))}
-  </>
-);
-
-export default RequisitionDashboard;
+}
