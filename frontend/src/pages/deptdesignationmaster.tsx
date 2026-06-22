@@ -102,7 +102,7 @@ export default function DeptDesignationMaster() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res  = await fetch(`${API_BASE}/api/rolemaster`);
+      const res  = await fetch(`${API_BASE}/rolemaster`);
       const json = await res.json();
       const raw  = Array.isArray(json) ? json : (json.data || []);
 
@@ -191,7 +191,7 @@ export default function DeptDesignationMaster() {
     setSaving(true);
     try {
       const method = editId ? 'PUT'  : 'POST';
-      const url    = editId ? `${API_BASE}/api/rolemaster/${editId}` : `${API_BASE}/api/rolemaster`;
+      const url    = editId ? `${API_BASE}/rolemaster/${editId}` : `${API_BASE}/rolemaster`;
       const res    = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
       const json   = await res.json();
       if (!res.ok) throw new Error(json.message || 'Save failed');
