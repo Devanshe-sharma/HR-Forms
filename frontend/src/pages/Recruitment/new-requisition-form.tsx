@@ -7,6 +7,9 @@ import { Loader2 } from 'lucide-react';
 import { format, addDays } from 'date-fns';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
+import { Box, Typography, Button } from '@mui/material';
+import DeptModal,        { type DeptResult }            from '../Recruitment/Deptmodal';
+import DesignationModal, { type NewDesignationResult }  from '../Recruitment/Designationmodal';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Zod Schema
@@ -94,6 +97,10 @@ export default function NewRequisitionForm({ asModal = false, onSuccess, onClose
   const [submitLoading,        setSubmitLoading]        = useState(false);
   const [successOpen,          setSuccessOpen]          = useState(false);
   const [error,                setError]                = useState<string | null>(null);
+  const [deptModalOpen,   setDeptModalOpen]   = useState(false);
+  const [desigModalOpen,  setDesigModalOpen]  = useState(false);
+  const [selectedDept,    setSelectedDept]    = useState<DeptResult | null>(null);
+  const [newDesigResult,  setNewDesigResult]  = useState<NewDesignationResult | null>(null);
 
   const {
     control, watch, setValue, handleSubmit, register, reset,
@@ -180,24 +187,38 @@ export default function NewRequisitionForm({ asModal = false, onSuccess, onClose
     setValue('planned_joined',             format(addDays(today, totalDays),      'dd-MM-yyyy'));
   }, [selectJoiningDays, setValue]);
 
+  
+
   const onSubmit = async (data: FormData) => {
     setSubmitLoading(true);
     setError(null);
+    if (data.designation_type === 'new' && !newDesigResult) {
+    setError('Please complete the new designation form before submitting.');
+    setSubmitLoading(false);
+    return;
+  }
     const convertDate = (dateStr?: string) => {
       if (!dateStr) return null;
       const [day, month, year] = dateStr.split('-');
       return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
     };
     try {
-      const matchedDesig = data.designation_type === 'existing'
-        ? roleData?.designations.find(d => d.designation === data.designation_existing)
-        : null;
-      const { serial_no, designation_type, designation_existing, designation_new, ...rest } = data;
-      const payload = {
+    const matchedDesig = data.designation_type === 'existing'
+      ? roleData?.designations.find(d => d.designation === data.designation_existing)
+      : null;
+
+    const { serial_no, designation_type, designation_existing, designation_new, ...rest } = data;
+
+    const payload = {
         ...rest,
         designation_status:         designation_type,
-        designation:                designation_type === 'existing' ? designation_existing : designation_new,
-        designation_id:             matchedDesig?.desig_id ?? null,
+        designation: data.designation_type === 'existing'
+        ? data.designation_existing
+        : newDesigResult?.designation ?? '',
+
+      designation_id: data.designation_type === 'existing'
+        ? matchedDesig?.desig_id ?? null
+        : newDesigResult?.desig_id ?? null,
         request_date:               convertDate(data.request_date),
         plan_start_sharing_cvs:     convertDate(data.plan_start_sharing_cvs),
         planned_interviews_started: convertDate(data.planned_interviews_started),
@@ -228,6 +249,27 @@ export default function NewRequisitionForm({ asModal = false, onSuccess, onClose
     reset();
     fetchNextSerial();
   };
+  const handleDeptConfirmed = (dept: DeptResult) => {
+  setSelectedDept(dept);
+  setDeptModalOpen(false);
+  setDesigModalOpen(true);
+};
+
+  const handleDesignationSaved = (result: NewDesignationResult) => {
+  setNewDesigResult(result);
+  setDesigModalOpen(false);
+  // Auto-fill the requisition form fields
+  setValue('designation_existing', result.designation);
+  setValue('role_link',            result.role_document_link);
+  setValue('jd_link',              result.jd_link);
+  setValue('hiring_dept_email',    result.dept_head_email);
+  setValue('dept_group_email',     result.dept_group_email);
+};
+
+const handleBackToDept = () => {
+  setDesigModalOpen(false);
+  setDeptModalOpen(true);
+};
 
   const handleReturnToDashboard = () => {
     if (asModal && onSuccess) {
@@ -381,11 +423,77 @@ export default function NewRequisitionForm({ asModal = false, onSuccess, onClose
             )}
 
             {designationType === 'new' && (
-              <div className="mb-3">
-                <label className={labelCls}>New Designation Name</label>
-                <input {...register('designation_new')} className={`${inputCls} ${errors.designation_new ? 'border-red-400' : ''}`} />
-                {errors.designation_new && <p className={errCls}>{errors.designation_new.message}</p>}
-              </div>
+              <Box>
+                {newDesigResult ? (
+                  // ── Confirmation card after both modals complete ──
+                  <Box sx={{
+                    p: 2, bgcolor: 'success.50', border: '1px solid',
+                    borderColor: 'success.200', borderRadius: 2,
+                    display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2,
+                  }}>
+                    <Box>
+                      <Typography variant="body2" fontWeight={700} color="success.dark" mb={0.5}>
+                        ✓ Saved to Role Master
+                      </Typography>
+                      <Typography variant="body2">
+                        <strong>{newDesigResult.designation}</strong>
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {newDesigResult.department} (Dept ID: {newDesigResult.dept_id} · Desig ID: {newDesigResult.desig_id})
+                      </Typography>
+                      {newDesigResult.deptWasNew && (
+                        <Typography variant="caption" color="warning.main">
+                          New department also created in Role Master
+                        </Typography>
+                      )}
+                      <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+                        {newDesigResult.role_document_link && (
+                          <Typography variant="caption">
+                            <a href={newDesigResult.role_document_link} target="_blank" rel="noopener noreferrer">
+                              Role document
+                            </a>
+                          </Typography>
+                        )}
+                        {newDesigResult.jd_link && (
+                          <Typography variant="caption">
+                            <a href={newDesigResult.jd_link} target="_blank" rel="noopener noreferrer">
+                              JD link
+                            </a>
+                          </Typography>
+                        )}
+                      </Box>
+                    </Box>
+                    <Button
+                      size="small" variant="outlined"
+                      onClick={() => {
+                        setNewDesigResult(null);
+                        setSelectedDept(null);
+                        setDeptModalOpen(true);
+                      }}
+                      sx={{ textTransform: 'none', whiteSpace: 'nowrap', flexShrink: 0 }}
+                    >
+                      Change
+                    </Button>
+                  </Box>
+                ) : (
+                  // ── Prompt to open the modal flow ──
+                  <Box sx={{
+                    p: 2.5, border: '1px dashed', borderColor: 'divider',
+                    borderRadius: 2, textAlign: 'center',
+                  }}>
+                    <Typography variant="body2" color="text.secondary" mb={1.5}>
+                      The designation will be added to Role Master first, then linked to this requisition.
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      onClick={() => setDeptModalOpen(true)}
+                      sx={{ textTransform: 'none' }}
+                    >
+                      Add designation →
+                    </Button>
+                  </Box>
+                )}
+              </Box>
             )}
 
             {designationType === 'existing' && designationExisting && (
@@ -401,7 +509,7 @@ export default function NewRequisitionForm({ asModal = false, onSuccess, onClose
               </div>
             )}
 
-            {(designationExisting || watch('designation_new')) && (
+            {(designationExisting || newDesigResult) && (
               <div>
                 <label className={labelCls}>Candidate Experience Level</label>
                 <Controller
@@ -637,6 +745,20 @@ export default function NewRequisitionForm({ asModal = false, onSuccess, onClose
           </div>
         </div>
       )}
+      {/* Modals */}
+      <DeptModal
+        open={deptModalOpen}
+        prefillDept={hiringDept}
+        onClose={() => setDeptModalOpen(false)}
+        onNext={handleDeptConfirmed}
+      />
+      <DesignationModal
+        open={desigModalOpen}
+        dept={selectedDept}
+        onClose={() => setDesigModalOpen(false)}
+        onBack={handleBackToDept}
+        onSaved={handleDesignationSaved}
+      />
     </div>
   );
 
@@ -651,6 +773,8 @@ export default function NewRequisitionForm({ asModal = false, onSuccess, onClose
       <div className="flex-1 flex flex-col">
         <Navbar />
         {formContent}
+
+
       </div>
     </div>
   );
