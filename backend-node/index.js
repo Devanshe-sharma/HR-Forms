@@ -13,7 +13,17 @@ const geoRoutes = require('./routes/geo');
 
 
 /* ─────────────────── MIDDLEWARE ─────────────────── */
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://3.110.162.1:3000',
+    'http://localhost:3000',
+  ],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-user-role'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+}));
+app.options('*', cors());
+
+
 app.use(express.json());
 
 // RBAC: set role from header for API routes (frontend sends x-user-role)
@@ -145,5 +155,3 @@ cron.schedule(
 
 /* ─────────────────── SERVER START ─────────────────── */
 const PORT = process.env.PORT || 5000;
-
-
