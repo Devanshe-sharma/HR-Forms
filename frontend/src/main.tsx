@@ -11,7 +11,15 @@ const clientId =
 // Temporary: auto-set Admin role for testing until login is built
 if (!localStorage.getItem('role')) localStorage.setItem('role', 'Admin');
 
-createRoot(document.getElementById("root")!).render(
+const rootElement = document.getElementById("root");
+
+console.log("ROOT =", rootElement);
+
+if (!rootElement) {
+  throw new Error("Root element not found");
+}
+
+createRoot(rootElement).render(
   <StrictMode>
     <BrowserRouter>
       <GoogleOAuthProvider clientId={clientId}>
