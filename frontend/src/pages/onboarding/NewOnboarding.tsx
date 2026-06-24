@@ -102,6 +102,8 @@ type RoleDesignation = {
   desig_id: number | string;
   designation: string;
   department: string;
+   Department?: string;        // ← add this
+  Designation?: string; 
   role_document_link?: string;
   jd_link?: string;
 };
@@ -247,12 +249,13 @@ const NewOnboarding: React.FC = () => {
   }, [selectedDept, setValue]);
 
   const filteredDesignations = useMemo(
-    () =>
-      formData.designations.filter(
-        (item) => item.department.toLowerCase() === (selectedDept || "").toLowerCase()
-      ),
-    [formData.designations, selectedDept]
-  );
+  () =>
+    formData.designations.filter((item) => {
+      const dept = (item.department || (item as any).Department || '').trim().toLowerCase();
+      return dept === (selectedDept || '').trim().toLowerCase();
+    }),
+  [formData.designations, selectedDept]
+);
 
   const ccOptions = formData.employees
     .filter((employee) => employee.official_email)

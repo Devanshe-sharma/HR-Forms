@@ -18,12 +18,11 @@ import {
 import Navbar from '../components/Navbar';
 import Sidebar from '../components/Sidebar';
 
-const BRAND_BLUE  = '#1976d2';
-const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
-const PAGE_SIZE   = 15;
-const SIDEBAR_W   = 25;   // must match Sidebar / Navbar drawerWidth
-const NAVBAR_H    = 56;    // must match Navbar TOOLBAR_H
-
+const BRAND_BLUE = '#1976d2';
+const API_BASE   = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
+const PAGE_SIZE  = 15;
+const SIDEBAR_W  = 25;
+const NAVBAR_H   = 56;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,7 +44,9 @@ interface RoleMasterRow {
   role_document_link: string;
   jd_link: string;
   remarks: string;
-  desig_email_id?: string;
+  desig_email_id: string;
+  emp_id: string;
+  emp_name: string;
 }
 
 const EMPTY_FORM: RoleMasterRow = {
@@ -53,7 +54,7 @@ const EMPTY_FORM: RoleMasterRow = {
   department_head: '', department_deputy: '', dept_head_email: '',
   dept_group_email: '', desig_id: '', designation: '', management_level: '',
   reporting_manager: '', dept_page_link: '', role_document_link: '',
-  jd_link: '', remarks: '',
+  jd_link: '', remarks: '', desig_email_id: '', emp_id: '', emp_name: '',
 };
 
 const DEPT_TYPES  = ['Delivery', 'Support'];
@@ -67,7 +68,9 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
       <CardContent sx={{ p: '14px !important', display: 'flex', alignItems: 'center', gap: 1.5 }}>
         <Box sx={{ color: BRAND_BLUE, display: 'flex' }}>{icon}</Box>
         <Box>
-          <Typography variant="h6" fontWeight={700} lineHeight={1}>{value}</Typography>
+          <Typography variant="h6" fontWeight={700} lineHeight={1} component="span" display="block">
+            {value}
+          </Typography>
           <Typography variant="caption" color="text.secondary">{label}</Typography>
         </Box>
       </CardContent>
@@ -78,10 +81,10 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function DeptDesignationMaster() {
-  const [rows,      setRows]      = useState<RoleMasterRow[]>([]);
-  const [filtered,  setFiltered]  = useState<RoleMasterRow[]>([]);
-  const [loading,   setLoading]   = useState(true);
-  const [page,      setPage]      = useState(1);
+  const [rows,     setRows]     = useState<RoleMasterRow[]>([]);
+  const [filtered, setFiltered] = useState<RoleMasterRow[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [page,     setPage]     = useState(1);
 
   const [search,      setSearch]      = useState('');
   const [filterType,  setFilterType]  = useState('');
@@ -97,34 +100,38 @@ export default function DeptDesignationMaster() {
     open: false, msg: '', severity: 'success',
   });
 
-  // ─── Fetch ───────────────────────────────────────────────────────────────────
+  // ─── Fetch ────────────────────────────────────────────────────────────────────
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const res  = await fetch(`${API_BASE}/rolemaster`);
       const json = await res.json();
-      const raw  = Array.isArray(json) ? json : (json.data || []);
+
+      // Backend returns an array directly (route uses .lean() → plain snake_case objects)
+      const raw: any[] = Array.isArray(json) ? json : (json.data || []);
 
       const mapped: RoleMasterRow[] = raw.map((item: any) => ({
-        _id:               item._id,
-        dept_id:           item.Dept_Id           || '',
-        department:        item.Department         || '',
-        department_type:   item['Department Type (Delivery or Support)'] || '',
-        parent_department: item['Parent Department']  || '',
-        department_head:   item['Department Head']    || '',
-        department_deputy: item['Department Deputy']  || '',
-        dept_head_email:   item['Dept Head Email']    || '',
-        dept_group_email:  item['Dept Group Email']   || '',
-        desig_id:          item.Desig_id              || '',
-        designation:       item.Designation            || '',
-        management_level:  item['Management Level']   || '',
-        reporting_manager: item['Reporting Manager']  || '',
-        dept_page_link:    item['Dept Page Link (BO Internal Site)'] || '',
-        role_document_link:item['Role Document Link'] || '',
-        jd_link:           item['JD Link']            || '',
-        remarks:           item.Remarks               || '',
-        desig_email_id:    item['desig Email Id']     || '',
+        _id:               item._id                                          ?? '',
+        dept_id:           item.dept_id            ?? item.Dept_Id           ?? '',
+        department:        item.department         ?? item.Department         ?? '',
+        department_type:   item.department_type    ?? item['Department Type (Delivery or Support)'] ?? '',
+        parent_department: item.parent_department  ?? item['Parent Department']  ?? '',
+        department_head:   item.department_head    ?? item['Department Head']    ?? '',
+        department_deputy: item.department_deputy  ?? item['Department Deputy']  ?? '',
+        dept_head_email:   item.dept_head_email    ?? item['Dept Head Email']    ?? '',
+        dept_group_email:  item.dept_group_email   ?? item['Dept Group Email']   ?? '',
+        desig_id:          item.desig_id           ?? item.Desig_id              ?? '',
+        designation:       item.designation        ?? item.Designation           ?? '',
+        management_level:  item.management_level   ?? item['Management Level']   ?? '',
+        reporting_manager: item.reporting_manager  ?? item['Reporting Manager']  ?? '',
+        dept_page_link:    item.dept_page_link     ?? item['Dept Page Link (BO Internal Site)'] ?? '',
+        role_document_link:item.role_document_link ?? item['Role Document Link'] ?? '',
+        jd_link:           item.jd_link            ?? item['JD Link']            ?? '',
+        remarks:           item.remarks            ?? item.Remarks               ?? '',
+        desig_email_id:    item.desig_email_id     ?? item['desig Email Id']     ?? '',
+        emp_id:            item.emp_id             ?? item.Emp_id                ?? '',
+        emp_name:          item.emp_name           ?? item.Emp_name              ?? '',
       }));
 
       setRows(mapped);
@@ -156,8 +163,8 @@ export default function DeptDesignationMaster() {
 
   const stats = {
     total:        rows.length,
-    departments:  new Set(rows.map(r => r.dept_id)).size,
-    designations: new Set(rows.map(r => r.desig_id)).size,
+    departments:  new Set(rows.map(r => r.dept_id).filter(Boolean)).size,
+    designations: new Set(rows.map(r => r.desig_id).filter(Boolean)).size,
     filled:       rows.filter(r => r.desig_email_id).length,
   };
 
@@ -168,7 +175,7 @@ export default function DeptDesignationMaster() {
 
   // ─── Form helpers ─────────────────────────────────────────────────────────────
 
-  const openAdd = () => { setForm(EMPTY_FORM); setEditId(null); setErrors({}); setOpen(true); };
+  const openAdd  = () => { setForm(EMPTY_FORM); setEditId(null); setErrors({}); setOpen(true); };
   const openEdit = (row: RoleMasterRow) => { setForm({ ...row }); setEditId(row._id || null); setErrors({}); setOpen(true); };
 
   const handleField = (field: keyof RoleMasterRow, value: string | number) => {
@@ -178,10 +185,10 @@ export default function DeptDesignationMaster() {
 
   const validate = () => {
     const e: Partial<Record<keyof RoleMasterRow, string>> = {};
-    if (!form.dept_id)           e.dept_id    = 'Required';
-    if (!form.department.trim()) e.department  = 'Required';
-    if (!form.desig_id)          e.desig_id   = 'Required';
-    if (!form.designation.trim())e.designation = 'Required';
+    if (!form.dept_id)            e.dept_id     = 'Required';
+    if (!form.department.trim())  e.department  = 'Required';
+    if (!form.desig_id)           e.desig_id    = 'Required';
+    if (!form.designation.trim()) e.designation = 'Required';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -192,8 +199,12 @@ export default function DeptDesignationMaster() {
     try {
       const method = editId ? 'PUT'  : 'POST';
       const url    = editId ? `${API_BASE}/rolemaster/${editId}` : `${API_BASE}/rolemaster`;
-      const res    = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
-      const json   = await res.json();
+      const res    = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      const json = await res.json();
       if (!res.ok) throw new Error(json.message || 'Save failed');
       showToast(editId ? 'Entry updated' : 'Entry added', 'success');
       setOpen(false);
@@ -208,19 +219,17 @@ export default function DeptDesignationMaster() {
   const showToast = (msg: string, severity: 'success' | 'error') =>
     setToast({ open: true, msg, severity });
 
-  // ─── Columns ─────────────────────────────────────────────────────────────────
-  // Keep only the most important columns to avoid horizontal scroll.
-  // Use minWidth so the table never forces the page to expand.
+  // ─── Columns ──────────────────────────────────────────────────────────────────
 
   const columns: { key: keyof RoleMasterRow; label: string; minWidth?: number }[] = [
-    { key: 'dept_id',           label: 'D-ID',        minWidth: 52  },
-    { key: 'department',        label: 'Department',   minWidth: 120 },
-    { key: 'department_type',   label: 'Type',         minWidth: 80  },
-    { key: 'desig_id',          label: 'R-ID',         minWidth: 52  },
-    { key: 'designation',       label: 'Designation',  minWidth: 130 },
-    { key: 'management_level',  label: 'Level',        minWidth: 110 },
-    { key: 'reporting_manager', label: 'Reports to',   minWidth: 110 },
-    { key: 'dept_head_email',   label: 'Head email',   minWidth: 140 },
+    { key: 'dept_id',           label: 'D-ID',       minWidth: 52  },
+    { key: 'department',        label: 'Department',  minWidth: 120 },
+    { key: 'department_type',   label: 'Type',        minWidth: 80  },
+    { key: 'desig_id',          label: 'R-ID',        minWidth: 52  },
+    { key: 'designation',       label: 'Designation', minWidth: 130 },
+    { key: 'management_level',  label: 'Level',       minWidth: 110 },
+    { key: 'reporting_manager', label: 'Reports to',  minWidth: 110 },
+    { key: 'dept_head_email',   label: 'Head email',  minWidth: 140 },
   ];
 
   const typeColor = (t: string) =>
@@ -231,22 +240,19 @@ export default function DeptDesignationMaster() {
   // ─── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    // Root: sidebar + main side by side, no overflow on root
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#f5f7fb', overflow: 'hidden' }}>
 
-      {/* Sidebar — fixed, so it doesn't participate in flex flow */}
       <Sidebar />
 
-      {/* Main area — offset left by sidebar width, offset top by navbar height */}
       <Box
         component="main"
         sx={{
           flexGrow: 1,
-          ml: `${SIDEBAR_W}px`,          // clear the fixed sidebar
-          mt: `${NAVBAR_H}px`,           // clear the fixed navbar
-          width: `calc(100% - ${SIDEBAR_W}px)`, // never wider than available space
-          minWidth: 0,                   // allow flex child to shrink
-          overflowX: 'hidden',           // no horizontal scroll on the page
+          ml: `${SIDEBAR_W}px`,
+          mt: `${NAVBAR_H}px`,
+          width: `calc(100% - ${SIDEBAR_W}px)`,
+          minWidth: 0,
+          overflowX: 'hidden',
           p: { xs: 2, md: 3 },
         }}
       >
@@ -275,10 +281,10 @@ export default function DeptDesignationMaster() {
 
         {/* Stat cards */}
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1.5, mb: 2.5 }}>
-          <StatCard icon={<BusinessIcon />} label="Total rows"    value={stats.total} />
-          <StatCard icon={<CategoryIcon />} label="Departments"   value={stats.departments} />
-          <StatCard icon={<WorkIcon />}     label="Designations"  value={stats.designations} />
-          <StatCard icon={<GroupsIcon />}   label="Filled roles"  value={stats.filled} />
+          <StatCard icon={<BusinessIcon />} label="Total rows"   value={stats.total} />
+          <StatCard icon={<CategoryIcon />} label="Departments"  value={stats.departments} />
+          <StatCard icon={<WorkIcon />}     label="Designations" value={stats.designations} />
+          <StatCard icon={<GroupsIcon />}   label="Filled roles" value={stats.filled} />
         </Box>
 
         {/* Filter row */}
@@ -313,7 +319,7 @@ export default function DeptDesignationMaster() {
           </FormControl>
         </Box>
 
-        {/* Table — scrollable only vertically; cols are capped so no h-scroll */}
+        {/* Table */}
         <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', width: '100%' }}>
           <TableContainer sx={{ maxHeight: 500, overflowX: 'auto' }}>
             <Table stickyHeader size="small" sx={{ tableLayout: 'fixed', width: '100%' }}>
@@ -323,8 +329,7 @@ export default function DeptDesignationMaster() {
                   {columns.map(col => (
                     <TableCell
                       key={col.key}
-                      sx={{ bgcolor: '#f5f5f5', fontWeight: 600, fontSize: '0.73rem',
-                            minWidth: col.minWidth, whiteSpace: 'nowrap' }}
+                      sx={{ bgcolor: '#f5f5f5', fontWeight: 600, fontSize: '0.73rem', minWidth: col.minWidth, whiteSpace: 'nowrap' }}
                     >
                       {col.label}
                     </TableCell>
@@ -371,24 +376,34 @@ export default function DeptDesignationMaster() {
                       }
 
                       if (col.key === 'department') {
-                        return <TableCell key={col.key} sx={{ fontWeight: 600, fontSize: '0.78rem',
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{val || '—'}</TableCell>;
+                        return (
+                          <TableCell key={col.key}
+                            sx={{ fontWeight: 600, fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {val || '—'}
+                          </TableCell>
+                        );
                       }
 
                       if (col.key === 'designation') {
-                        return <TableCell key={col.key} sx={{ fontSize: '0.78rem',
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{val || '—'}</TableCell>;
+                        return (
+                          <TableCell key={col.key}
+                            sx={{ fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {val || '—'}
+                          </TableCell>
+                        );
                       }
 
                       if (col.key === 'dept_id' || col.key === 'desig_id') {
-                        return <TableCell key={col.key}
-                          sx={{ color: 'text.secondary', fontSize: '0.73rem' }}>{val || '—'}</TableCell>;
+                        return (
+                          <TableCell key={col.key} sx={{ color: 'text.secondary', fontSize: '0.73rem' }}>
+                            {val || '—'}
+                          </TableCell>
+                        );
                       }
 
                       return (
                         <TableCell key={col.key}
-                          sx={{ color: 'text.secondary', fontSize: '0.75rem',
-                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          sx={{ color: 'text.secondary', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           <Tooltip title={String(val || '')} placement="top">
                             <span>{val || '—'}</span>
                           </Tooltip>
@@ -410,20 +425,21 @@ export default function DeptDesignationMaster() {
           </TableContainer>
 
           {/* Pagination footer */}
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            px: 2, py: 1, borderTop: '1px solid #e0e0e0' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2, py: 1, borderTop: '1px solid #e0e0e0' }}>
             <Typography variant="caption" color="text.secondary">
-              {filtered.length === 0 ? '0 results'
+              {filtered.length === 0
+                ? '0 results'
                 : `Showing ${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, filtered.length)} of ${filtered.length}`}
             </Typography>
             <Pagination count={pageCount} page={page} onChange={(_, v) => setPage(v)} size="small" color="primary" />
           </Box>
         </Paper>
 
-        {/* ── Add / Edit Dialog ───────────────────────────────────────────── */}
+        {/* ── Add / Edit Dialog ──────────────────────────────────────────────── */}
         <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth
           PaperProps={{ sx: { borderRadius: 3 } }}>
-          <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
+
+          <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
             <Typography variant="h6" fontWeight={700}>{editId ? 'Edit entry' : 'Add new entry'}</Typography>
             <IconButton onClick={() => setOpen(false)} size="small"><CloseIcon /></IconButton>
           </DialogTitle>
@@ -491,13 +507,18 @@ export default function DeptDesignationMaster() {
                 </FormControl>
               </Box>
 
-              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2 }}>
                 <TextField fullWidth size="small" label="Reporting manager"
                   value={form.reporting_manager} onChange={e => handleField('reporting_manager', e.target.value)} />
                 <TextField fullWidth size="small" label="Designation email"
-                  value={form.desig_email_id || ''}
-                  onChange={e => handleField('desig_email_id' as keyof RoleMasterRow, e.target.value)} />
+                  value={form.desig_email_id}
+                  onChange={e => handleField('desig_email_id', e.target.value)} />
+                <TextField fullWidth size="small" label="Employee ID"
+                  value={form.emp_id} onChange={e => handleField('emp_id', e.target.value)} />
               </Box>
+
+              <TextField fullWidth size="small" label="Employee name"
+                value={form.emp_name} onChange={e => handleField('emp_name', e.target.value)} />
 
               <Typography variant="overline" color="text.secondary" fontWeight={600}
                 sx={{ fontSize: '0.7rem', letterSpacing: 1, mt: 1 }}>Links &amp; misc</Typography>
@@ -513,6 +534,7 @@ export default function DeptDesignationMaster() {
 
               <TextField fullWidth size="small" label="Remarks" multiline rows={2}
                 value={form.remarks} onChange={e => handleField('remarks', e.target.value)} />
+
             </Box>
           </DialogContent>
 

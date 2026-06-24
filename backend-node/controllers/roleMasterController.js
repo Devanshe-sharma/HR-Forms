@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const COLLECTION = 'role_master';
 
 const getCollection = () => mongoose.connection.collection(COLLECTION);
+const g = (doc, capitalKey, snakeKey) => doc[capitalKey] ?? doc[snakeKey] ?? '';
+const gNum = (doc, capitalKey, snakeKey) => doc[capitalKey] ?? doc[snakeKey] ?? null;
 
 // ── Normalise a single raw doc ───────────────────────────────────────────────
 const normaliseDoc = (doc) => ({
@@ -58,57 +60,62 @@ const getAllFormData = async (req, res) => {
     const docs = await col.find({}).toArray();
 
     // ── 1. Unique departments ──────────────────────────────────────────────
-    const deptMap = new Map();
-    docs.forEach((doc) => {
-      const id = doc.Dept_Id;
-      if (id != null && !deptMap.has(id)) {
-        deptMap.set(id, {
-          dept_id:        id,
-          department:     doc.Department ?? '',
-          dept_page_link: doc['Dept Page Link (BO Internal Site)'] ?? '',
-          dept_head_email:doc['Dept Head Email'] ?? '',
-          dept_group_email:doc['Dept Group Email'] ?? '',
-        });
-      }
+    // ── 1. Unique departments ──────────────────────────────────────────────
+const deptMap = new Map();
+docs.forEach((doc) => {
+  const id = gNum(doc, 'Dept_Id', 'dept_id');
+  if (id != null && !deptMap.has(id)) {
+    deptMap.set(id, {
+      dept_id:          id,
+      department:       g(doc, 'Department', 'department'),
+      dept_page_link:   g(doc, 'Dept Page Link (BO Internal Site)', 'dept_page_link'),
+      dept_head_email:  g(doc, 'Dept Head Email', 'dept_head_email'),
+      dept_group_email: g(doc, 'Dept Group Email', 'dept_group_email'),
     });
-    const departments = Array.from(deptMap.values())
-      .sort((a, b) => a.department.localeCompare(b.department));
+  }
+});
+const departments = Array.from(deptMap.values())
+  .filter(d => d.department)   // skip blank
+  .sort((a, b) => a.department.localeCompare(b.department));
 
-    // ── 2. All designations with their department ──────────────────────────
-    // One entry per unique dept_id + desig_id combo
-    const desigMap = new Map();
-    docs.forEach((doc) => {
-      const key = `${doc.Dept_Id}_${doc.Desig_id}`;
-      if (!desigMap.has(key)) {
-        desigMap.set(key, {
-          dept_id:            doc.Dept_Id    ?? null,
-          department:         doc.Department ?? '',
-          desig_id:           doc.Desig_id   ?? null,
-          designation:        doc.Designation ?? '',
-          role_document_link: doc['Role Document Link'] ?? '',
-          jd_link:            doc['JD Link'] ?? '',
-        });
-      }
+// ── 2. All designations ────────────────────────────────────────────────
+const desigMap = new Map();
+docs.forEach((doc) => {
+  const deptId  = gNum(doc, 'Dept_Id', 'dept_id');
+  const desigId = gNum(doc, 'Desig_id', 'desig_id');
+  const key = `${deptId}_${desigId}`;
+  if (!desigMap.has(key)) {
+    desigMap.set(key, {
+      dept_id:            deptId,
+      department:         g(doc, 'Department', 'department'),
+      desig_id:           desigId,
+      designation:        g(doc, 'Designation', 'designation'),
+      role_document_link: g(doc, 'Role Document Link', 'role_document_link'),
+      jd_link:            g(doc, 'JD Link', 'jd_link'),
     });
-    const designations = Array.from(desigMap.values())
-      .sort((a, b) =>
-        a.department.localeCompare(b.department) ||
-        a.designation.localeCompare(b.designation)
-      );
+  }
+});
+const designations = Array.from(desigMap.values())
+  .filter(d => d.department && d.designation)  // skip blank rows
+  .sort((a, b) =>
+    a.department.localeCompare(b.department) ||
+    a.designation.localeCompare(b.designation)
+  );
 
-    // ── 3. Employees (rows that have a name) ───────────────────────────────
-    // Normalised to match RoleEmployee type in NewOnboarding.tsx:
-    // { emp_id, full_name, official_email, department, designation }
-    const employees = docs
-      .filter((doc) => doc.Emp_name && doc.Emp_name.trim() !== '')
-      .map((doc) => ({
-        emp_id:         String(doc.Emp_id   ?? ''),
-        full_name:      doc.Emp_name         ?? '',
-        official_email: doc['desig Email Id'] ?? '',
-        department:     doc.Department        ?? '',
-        designation:    doc.Designation       ?? '',
-      }))
-      .sort((a, b) => a.full_name.localeCompare(b.full_name));
+// ── 3. Employees ───────────────────────────────────────────────────────
+const employees = docs
+  .filter((doc) => {
+    const name = g(doc, 'Emp_name', 'emp_name');
+    return name && name.trim() !== '';
+  })
+  .map((doc) => ({
+    emp_id:         String(gNum(doc, 'Emp_id', 'emp_id') ?? ''),
+    full_name:      g(doc, 'Emp_name', 'emp_name'),
+    official_email: g(doc, 'desig Email Id', 'desig_email_id'),
+    department:     g(doc, 'Department', 'department'),
+    designation:    g(doc, 'Designation', 'designation'),
+  }))
+  .sort((a, b) => a.full_name.localeCompare(b.full_name));
 
     return res.status(200).json({
       data: { departments, designations, employees },
