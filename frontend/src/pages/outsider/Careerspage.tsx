@@ -49,9 +49,6 @@ export default function CareersPage() {
       <nav className="bg-lime-600 shadow-xl">
         <div className="container mx-auto px-6 py-6 flex justify-between items-center">
           <h1 className="text-white text-3xl sm:text-4xl font-bold">Brisk Olive Careers</h1>
-          <Link to="/" className="text-white text-lg hover:underline flex items-center gap-2">
-            ← Back to Home
-          </Link>
         </div>
       </nav>
 
