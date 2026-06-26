@@ -18,6 +18,7 @@ app.use(cors({
     'http://3.110.162.1:3000',
     'http://localhost:3000',
     'http://localhost:8080',
+    'http://hr.briskolive.com:3000'
   ],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-user-role'],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
