@@ -7,6 +7,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import Select from 'react-select';
 import * as z from 'zod';
 
+console.log("API_BASE =", process.env.REACT_APP_REACT_APP_API_BASE_URL);
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
 
 // ── Schema ────────────────────────────────────────────────────────────────────
