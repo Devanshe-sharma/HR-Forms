@@ -1,11 +1,13 @@
+﻿const signature = require("../utils/signature");
+
 function instructionsToAllTemplate({ name, email, mobile, dept, deptLink, designation, designationLink, plannedJoiningDate }) {
   const date = plannedJoiningDate
     ? (() => {
         const d = new Date(plannedJoiningDate);
-        return `${d.getDate()} ${d.toLocaleString("default", { month: "short" })} ${d.getFullYear()}`;
+        return `${d.getDate()} ${d.toLocaleString("default", { month: "short" })}${d.getFullYear()}`;
       })()
     : "Pending";
- 
+
   const html = `
     <p>Dear All,</p>
     <p>${name} will be joining Brisk Olive <b>at 9 am on ${date}</b></p>
@@ -37,12 +39,12 @@ function instructionsToAllTemplate({ name, email, mobile, dept, deptLink, design
       </li>
     </ul>
     <p>Please feel free to call me for any clarifications.</p>
+    ${signature()}
   `;
- 
   return {
     subject: `Hi All, Preparation for New Joinee: ${name} joining on ${date} ( ${email || ""} ${mobile || ""} )`,
     html,
   };
 }
- 
+
 module.exports = instructionsToAllTemplate;

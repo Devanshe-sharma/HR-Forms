@@ -1,11 +1,12 @@
-const dateToDD_MMM_YY = require("../utils/dateToDD_MMM_YY");
+﻿const dateToDD_MMM_YY = require("../utils/dateToDD_MMM_YY");
 const checklistTable  = require("../utils/checklistTable");
- 
+const signature       = require("../utils/signature");
+
 function newOnboardingStartedTemplate(doc) {
   const coloredScore = (doc.fmsScore ?? 0) < 0
     ? `<span style="color:red;">${doc.fmsScore}</span>`
     : doc.fmsScore ?? 0;
- 
+
   const html = `
     <p>Dear All,</p>
     <p>
@@ -22,12 +23,12 @@ function newOnboardingStartedTemplate(doc) {
       <li>HR Remarks: <b>${doc.remarks || "-"}</b></li>
     </ul>
     ${checklistTable(doc.checkLists || [])}
+    ${signature()}
   `;
- 
   return {
     subject: `New Onboarding Started for: ${doc.name}`,
     html,
   };
 }
- 
+
 module.exports = newOnboardingStartedTemplate;

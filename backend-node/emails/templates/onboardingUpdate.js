@@ -1,13 +1,14 @@
-const dateToDD_MMM_YY2 = require("../utils/dateToDD_MMM_YY");
+﻿const dateToDD_MMM_YY2 = require("../utils/dateToDD_MMM_YY");
 const checklistTable2  = require("../utils/checklistTable");
- 
+const signature        = require("../utils/signature");
+
 function onboardingUpdateTemplate(doc) {
   const coloredScore = (doc.fmsScore ?? 0) < 0
     ? `<span style="color:red;">${doc.fmsScore}</span>`
     : doc.fmsScore ?? 0;
- 
+
   const email = doc.officialEmail || doc.persEmail || "-";
- 
+
   let completionRow = "";
   if (doc.fmsStatus === "Closed") {
     completionRow = `
@@ -18,7 +19,7 @@ function onboardingUpdateTemplate(doc) {
       </tr>
     `;
   }
- 
+
   const html = `
     <p>Dear All,</p>
     <p>
@@ -35,12 +36,12 @@ function onboardingUpdateTemplate(doc) {
       <li>HR Remarks: <b>${doc.remarks || "-"}</b></li>
     </ul>
     ${completionRow ? `<table style="border:1px solid;border-collapse:collapse;">${completionRow}</table>` : checklistTable2(doc.checkLists || [])}
+    ${signature()}
   `;
- 
   return {
     subject: `Onboarding Update: ${doc.name}`,
     html,
   };
 }
- 
+
 module.exports = onboardingUpdateTemplate;

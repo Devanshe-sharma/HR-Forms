@@ -1,3 +1,5 @@
+﻿const signature = require("../utils/signature");
+
 function newCandidateApplicationTemplate(doc) {
   const html = `
     <p>Dear All,</p>
@@ -18,10 +20,10 @@ function newCandidateApplicationTemplate(doc) {
       ${doc.facebookLink ? `<li>Facebook: <a href="${doc.facebookLink}">${doc.facebookLink}</a></li>` : ""}
       ${doc.short_video_url ? `<li>Resume Video: <a href="${doc.short_video_url}">${doc.short_video_url}</a></li>` : ""}
     </ul>
+    ${signature()}
   `;
-
   return {
-    subject: `New Candidate Application: ${doc.full_name} — ${doc.designation}`,
+    subject: `New Candidate Application: ${doc.full_name} – ${doc.designation}`,
     html,
   };
 }

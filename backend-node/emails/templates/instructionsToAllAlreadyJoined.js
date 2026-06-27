@@ -1,11 +1,13 @@
+﻿const signature = require("../utils/signature");
+
 function instructionsToAllAlreadyJoinedTemplate({ name, email, mobile, dept, deptLink, designation, designationLink, joinedDate }) {
   const date = joinedDate
     ? (() => {
         const d = new Date(joinedDate);
-        return `${d.getDate()} ${d.toLocaleString("default", { month: "short" })} ${d.getFullYear()}`;
+        return `${d.getDate()} ${d.toLocaleString("default", { month: "short" })}${d.getFullYear()}`;
       })()
     : "Pending";
- 
+
   const html = `
     <p>Dear All,</p>
     <p>${name} joined Brisk Olive <b> on ${date}</b></p>
@@ -36,12 +38,12 @@ function instructionsToAllAlreadyJoinedTemplate({ name, email, mobile, dept, dep
       </li>
     </ul>
     <p>Please feel free to call me for any clarifications.</p>
+    ${signature()}
   `;
- 
   return {
     subject: `Hi All, Preparation for New Joinee: ${name} joined on ${date} ( ${email || ""} ${mobile || ""} )`,
     html,
   };
 }
- 
+
 module.exports = instructionsToAllAlreadyJoinedTemplate;
