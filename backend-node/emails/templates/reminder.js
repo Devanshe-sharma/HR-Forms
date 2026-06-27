@@ -22,3 +22,4 @@ function reminderTemplate({ name, plannedJoiningDate }) {
 }
 
 module.exports = reminderTemplate;
+

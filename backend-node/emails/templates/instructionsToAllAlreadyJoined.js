@@ -47,3 +47,4 @@ function instructionsToAllAlreadyJoinedTemplate({ name, email, mobile, dept, dep
 }
 
 module.exports = instructionsToAllAlreadyJoinedTemplate;
+

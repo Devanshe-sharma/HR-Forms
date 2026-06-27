@@ -48,3 +48,4 @@ function instructionsToAllTemplate({ name, email, mobile, dept, deptLink, design
 }
 
 module.exports = instructionsToAllTemplate;
+

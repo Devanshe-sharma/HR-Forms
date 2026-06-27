@@ -4,7 +4,7 @@ function welcomeYetToJoinTemplate({ name, dept, deptLink, designation, designati
   const date = plannedJoiningDate
     ? (() => {
         const d = new Date(plannedJoiningDate);
-        return `${d.getDate()} ${d.toLocaleString("default", { month: "short" })}${d.getFullYear()}`;
+        return `${d.getDate()} ${d.toLocaleString("default", { month: "short" })} ${d.getFullYear()}`;
       })()
     : "Pending";
 
@@ -61,3 +61,5 @@ function welcomeYetToJoinTemplate({ name, dept, deptLink, designation, designati
 }
 
 module.exports = welcomeYetToJoinTemplate;
+
+

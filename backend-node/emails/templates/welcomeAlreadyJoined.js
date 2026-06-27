@@ -53,3 +53,4 @@ function welcomeAlreadyJoinedTemplate({ name, dept, deptLink, designation, desig
 }
 
 module.exports = welcomeAlreadyJoinedTemplate;
+
