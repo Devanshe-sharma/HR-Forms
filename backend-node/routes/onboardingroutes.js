@@ -967,6 +967,32 @@ router.post("/migrate/legacy-import", async (req, res) => {
   }
 });
 
+// ─── ONE-TIME BULK ACTION: close every onboarding joined before a date ─────
+// Marks fmsStatus = "Closed" for anyone whose joinedDate is earlier than the
+// given cutoff. Doesn't touch checklist data or task counts — just flips
+// the status, since these are old joiners no longer being actively tracked.
+router.post("/close-before-date", async (req, res) => {
+  try {
+    const cutoff = req.body?.date ? new Date(req.body.date) : new Date("2026-01-01T00:00:00.000Z");
+    if (isNaN(cutoff.getTime())) {
+      return res.status(400).json({ success: false, message: "Invalid date" });
+    }
+
+    const result = await Onboarding.updateMany(
+      { joinedDate: { $lt: cutoff }, fmsStatus: { $ne: "Closed" } },
+      { $set: { fmsStatus: "Closed" } }
+    );
+
+    res.json({
+      success: true,
+      message: `Closed ${result.modifiedCount} onboarding(s) with joinedDate before ${cutoff.toISOString().slice(0, 10)}`,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // ─── DELETE /api/onboarding/:id ────────────────────────────────────────────
 router.delete("/:id", async (req, res) => {
   try {
