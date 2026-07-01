@@ -376,6 +376,53 @@ router.post("/", async (req, res) => {
   }
 });
 
+// ─── GET /api/onboarding/eligible-employees  — Salary Revision employee source ──
+// Salary Revision used to pull its employee picker from a separate Employee
+// collection. Onboarding is now the single source of truth for who's
+// actually joined, so this shapes Onboarding records into the same fields
+// Salary Revision's UI already expects. Uses the onboarding record's own
+// _id as "employee_id" so revisions can be linked straight back to it.
+router.get("/eligible-employees", async (req, res) => {
+  try {
+    const docs = await Onboarding.find({ joiningStatus: "Joined" })
+      .select(
+        "name dept designation officialEmail persEmail joinedDate employeeCategory " +
+        "annualCtc basicSal hraSal grossMonthly empEpf gratuity annualBonus " +
+        "annualPerformanceIncentive medicalPremium travelAllowance telephoneReimbursement reportingHead"
+      )
+      .lean();
+
+    const employees = docs.map((d) => ({
+      _id: String(d._id),
+      employee_id: String(d._id),
+      full_name: d.name || "",
+      department: d.dept || "",
+      designation: d.designation || "",
+      email: d.officialEmail || d.persEmail || "",
+      official_email: d.officialEmail || "",
+      joining_date: d.joinedDate || null,
+      employee_category: d.employeeCategory || "",
+      annual_ctc: d.annualCtc || 0,
+      basic: d.basicSal ?? "",
+      hra: d.hraSal ?? "",
+      gross_monthly: d.grossMonthly ?? "",
+      employer_pf: d.empEpf ?? "",
+      gratuity: d.gratuity ?? "",
+      annual_bonus: d.annualBonus ?? "",
+      annual_performance_incentive: d.annualPerformanceIncentive ?? "",
+      medical_premium: d.medicalPremium ?? "",
+      travel_allowance: d.travelAllowance ?? "",
+      telephone_allowance: d.telephoneReimbursement ?? "",
+      reporting_head: d.reportingHead || "",
+    }));
+
+    res.json({ success: true, data: employees });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // ─── GET /api/onboarding  — List all (open first) ─────────────────────────
 router.get("/", async (req, res) => {
   try {

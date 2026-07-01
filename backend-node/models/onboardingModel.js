@@ -199,6 +199,10 @@ const onboardingSchema = new mongoose.Schema(
 
     laptopPc: String,
     remarks: String,
+    // Additive field — supports Salary Revision syncing reporting-head
+    // changes back onto the onboarding record. Purely optional, defaults
+    // to empty so existing documents are unaffected.
+    reportingHead: { type: String, default: "" },
 
     // ============================================================
     // SECTION 10: CALCULATED (66-75)

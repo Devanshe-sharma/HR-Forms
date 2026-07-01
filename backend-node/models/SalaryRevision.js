@@ -30,7 +30,13 @@ const hrDecisionSchema = new mongoose.Schema({
 
 const salaryRevisionSchema = new mongoose.Schema({
 
-  // Employee info
+  // Link straight back to the Onboarding record this revision is for —
+  // Onboarding is the single source of truth for employee data now.
+  // employeeCode is kept as the Onboarding _id (string) for backward
+  // compatibility with existing lookups/filters.
+  onboardingId: { type: mongoose.Schema.Types.ObjectId, ref: 'Onboarding', default: null },
+
+  // Employee info (snapshotted at creation time, in case Onboarding changes later)
   employeeCode : { type: String, required: [true, 'employeeCode is required'], trim: true },
   employeeName : { type: String, required: [true, 'employeeName is required'], trim: true },
   department   : { type: String, required: [true, 'department is required'],   trim: true },
@@ -38,12 +44,23 @@ const salaryRevisionSchema = new mongoose.Schema({
   email        : { type: String, required: [true, 'email is required'], trim: true, lowercase: true },
   joiningDate  : { type: Date,   required: [true, 'joiningDate is required'] },
 
-  // Frontend sends: 'Employee' | 'Consultant' | 'Intern' | 'Temporary Staff' | 'Contract Based'
   category: {
     type   : String,
     enum   : ['Employee', 'Consultant', 'Intern', 'Temporary Staff', 'Contract Based'],
     default: 'Employee',
   },
+
+  // ── Designation change — independent of salary/increment decision ──────
+  // Not every revision changes designation. Sometimes only salary changes,
+  // sometimes only designation changes, sometimes both.
+  designationChanged  : { type: Boolean, default: false },
+  previousDesignation : { type: String,  default: '' },
+  newDesignation       : { type: String,  default: null },
+
+  // ── Reporting head change — also independent ────────────────────────────
+  reportingHeadChanged  : { type: Boolean, default: false },
+  previousReportingHead : { type: String,  default: '' },
+  newReportingHead       : { type: String,  default: null },
 
   // Salary
   previousCtc      : { type: Number, required: [true, 'previousCtc is required'], min: 0 },
@@ -70,11 +87,10 @@ const salaryRevisionSchema = new mongoose.Schema({
   reviewDate: { type: Date, default: null },
 
   // Audit — support BOTH old (created_by) and new (createdBy) names
-  // so the route works whether you deploy the new schema immediately or not
-  created_by: { type: String, default: 'System' },   // old name — NOT required
-  createdBy  : { type: String, default: 'System' },   // new name
-  updated_by : { type: String, default: 'System' },   // old name
-  updatedBy  : { type: String, default: 'System' },   // new name
+  created_by: { type: String, default: 'System' },
+  createdBy  : { type: String, default: 'System' },
+  updated_by : { type: String, default: 'System' },
+  updatedBy  : { type: String, default: 'System' },
 
 }, { timestamps: true });
 

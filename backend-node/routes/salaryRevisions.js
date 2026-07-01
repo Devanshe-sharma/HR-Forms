@@ -2,20 +2,30 @@ const express      = require('express');
 const router       = express.Router();
 const SalaryRevision = require('../models/SalaryRevision');
 const asyncHandler = require('express-async-handler');
-const Employee = require('../models/Employee');
+const Onboarding   = require('../models/onboardingModel');
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
 const caller = (req) => req.headers['x-user-name'] || 'System';
 
 // ─── GET /api/salary-revisions ────────────────────────────────────────────────
-// Returns all revisions sorted newest first.
-// Frontend reads: Array<SalaryRevision> or { data: Array<SalaryRevision> }
-// We return a plain array so the frontend Array.isArray() check passes.
+// Returns all revisions sorted newest first. Note: this includes every
+// revision ever made (history included) — the frontend picks out the latest
+// one per employee for the dashboard table and treats the rest as history.
 
 router.get('/', asyncHandler(async (req, res) => {
   const revisions = await SalaryRevision.find().sort({ createdAt: -1 });
   res.status(200).json(revisions);
+}));
+
+// ─── GET /api/salary-revisions/history/:employeeCode ─────────────────────────
+// All revisions for one employee, newest first — used to show past history
+// separately from whichever one is currently driving the dashboard.
+
+router.get('/history/:employeeCode', asyncHandler(async (req, res) => {
+  const revisions = await SalaryRevision.find({ employeeCode: req.params.employeeCode })
+    .sort({ createdAt: -1 });
+  res.status(200).json({ success: true, data: revisions });
 }));
 
 // ─── GET /api/salary-revisions/:id ───────────────────────────────────────────
@@ -29,26 +39,16 @@ router.get('/:id', asyncHandler(async (req, res) => {
 }));
 
 // ─── POST /api/salary-revisions ──────────────────────────────────────────────
-// Called by AddRevisionModal.
-//
-// Frontend payload (from AddRevisionModal.submit):
+// Frontend payload now also supports (all optional):
 // {
-//   employeeCode   : sel.employee_id,
-//   employeeName   : sel.full_name,
-//   department     : sel.department,
-//   designation    : sel.designation,
-//   email          : sel.email,
-//   joiningDate    : sel.joining_date,
-//   category       : cat,
-//   applicableDate : appDate | null,
-//   previousCtc    : sel.annual_ctc,
-//   pmsScores      : [{ period, score }],
+//   onboardingId, previousDesignation, newDesignation,
+//   previousReportingHead, newReportingHead,
 // }
-//
-// Response must have .success + .data so handleAdded() works.
+// designationChanged / reportingHeadChanged are derived, not sent directly.
 
 router.post('/', asyncHandler(async (req, res) => {
   const {
+    onboardingId,
     employeeCode,
     employeeName,
     department,
@@ -59,9 +59,12 @@ router.post('/', asyncHandler(async (req, res) => {
     applicableDate,
     previousCtc,
     pmsScores,
+    previousDesignation,
+    newDesignation,
+    previousReportingHead,
+    newReportingHead,
   } = req.body;
 
-  // Validate required fields upfront for cleaner error messages
   if (!employeeCode || !employeeName || !department || !designation || !email || !joiningDate || previousCtc == null) {
     return res.status(400).json({
       success: false,
@@ -71,9 +74,11 @@ router.post('/', asyncHandler(async (req, res) => {
 
   const user = caller(req);
 
-  // Build document — include BOTH old (snake_case) and new (camelCase) audit field
-  // names so this works whether the old or new schema version is deployed on the server.
+  const designationChanged   = !!newDesignation && newDesignation !== (previousDesignation || designation);
+  const reportingHeadChanged = !!newReportingHead && newReportingHead !== (previousReportingHead || '');
+
   const docData = {
+    onboardingId: onboardingId || null,
     employeeCode,
     employeeName,
     department,
@@ -85,13 +90,19 @@ router.post('/', asyncHandler(async (req, res) => {
     previousCtc   : Number(previousCtc),
     pmsScores     : Array.isArray(pmsScores) ? pmsScores.filter(p => p.period && p.period.trim()) : [],
     stage         : 'pending_manager',
-    // Old schema used snake_case required fields — include them so validation passes
+
+    designationChanged,
+    previousDesignation  : previousDesignation || designation || '',
+    newDesignation        : designationChanged ? newDesignation : null,
+
+    reportingHeadChanged,
+    previousReportingHead : previousReportingHead || '',
+    newReportingHead       : reportingHeadChanged ? newReportingHead : null,
+
     created_by    : user,
     updated_by    : user,
-    // New schema uses camelCase
     createdBy     : user,
     updatedBy     : user,
-    // Old schema also had flat decision/status fields — set safe defaults
     decision              : 'Increment',
     status                : 'Draft',
     final_increment_percentage: 0,
@@ -106,7 +117,6 @@ router.post('/', asyncHandler(async (req, res) => {
     await revision.save();
     return res.status(201).json({ success: true, data: revision });
   } catch (saveErr) {
-    // Log the real Mongoose error so you can see exactly what field failed
     console.error('SalaryRevision save error:', saveErr.message);
     if (saveErr.errors) {
       Object.entries(saveErr.errors).forEach(([field, err]) => {
@@ -122,38 +132,21 @@ router.post('/', asyncHandler(async (req, res) => {
 }));
 
 // ─── PUT /api/salary-revisions/:id/manager ───────────────────────────────────
-// Called by RevisionDetailView.postManager()
-//
-// Frontend payload:
-// {
-//   decision         : 'increment' | 'pip',
-//   reason           : string,
-//   pmsScores        : [{ period, score }],
-//
-//   // if increment:
-//   recommendedPct   : number,
-//
-//   // if pip:
-//   pipDurationMonths: number,
-//   pipNewDueDate    : 'YYYY-MM-DD' | null,
-// }
-//
-// After this call: stage moves to 'pending_management'
-// For PIP: also set reviewDate = pipNewDueDate
+// Manager can also propose a designation change and/or a reporting-head
+// change here, independently of whether they pick increment or PIP.
 
 router.put('/:id/manager', asyncHandler(async (req, res) => {
   const {
     decision,
     reason,
     pmsScores,
-    // increment fields
     recommendedPct,
-    // pip fields
     pipDurationMonths,
     pipNewDueDate,
-    // also allow updating top-level editable fields
     applicableDate,
     category,
+    newDesignation,
+    newReportingHead,
   } = req.body;
 
   const revision = await SalaryRevision.findById(req.params.id);
@@ -176,16 +169,27 @@ router.put('/:id/manager', asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'reason is required' });
   }
 
-  // Update PMS scores if provided
   if (Array.isArray(pmsScores)) {
     revision.pmsScores = pmsScores.filter(p => p.period && p.period.trim());
   }
 
-  // Update editable employee-level fields
   if (applicableDate !== undefined) revision.applicableDate = applicableDate ? new Date(applicableDate) : null;
   if (category)                     revision.category = category;
 
-  // Manager decision sub-document
+  // Designation change — independent toggle
+  if (newDesignation !== undefined) {
+    const changed = !!newDesignation && newDesignation !== revision.previousDesignation;
+    revision.designationChanged = changed;
+    revision.newDesignation = changed ? newDesignation : null;
+  }
+
+  // Reporting head change — independent toggle
+  if (newReportingHead !== undefined) {
+    const changed = !!newReportingHead && newReportingHead !== revision.previousReportingHead;
+    revision.reportingHeadChanged = changed;
+    revision.newReportingHead = changed ? newReportingHead : null;
+  }
+
   revision.managerDecision = {
     decision,
     reason        : reason.trim(),
@@ -195,10 +199,8 @@ router.put('/:id/manager', asyncHandler(async (req, res) => {
     submittedAt   : new Date(),
   };
 
-  // Advance stage
   revision.stage = 'pending_management';
 
-  // For PIP: set reviewDate so HR panel can show it
   if (decision === 'pip' && pipNewDueDate) {
     revision.reviewDate = new Date(pipNewDueDate);
   }
@@ -210,23 +212,6 @@ router.put('/:id/manager', asyncHandler(async (req, res) => {
 }));
 
 // ─── PUT /api/salary-revisions/:id/management ────────────────────────────────
-// Called by RevisionDetailView.postManagement()
-//
-// Frontend payload:
-// {
-//   reason     : string,
-//
-//   // if manager chose increment:
-//   finalPct   : number,
-//
-//   // if manager chose pip:
-//   pipApproved: boolean,
-// }
-//
-// After this call:
-//   - Increment path  → stage = 'pending_hr'
-//   - PIP approved    → stage = 'on_hold'
-//   - PIP re-evaluate → stage = 'pending_manager' (send it back)
 
 router.put('/:id/management', asyncHandler(async (req, res) => {
   const { reason, finalPct, pipApproved } = req.body;
@@ -256,20 +241,14 @@ router.put('/:id/management', asyncHandler(async (req, res) => {
     submittedAt: new Date(),
   };
 
-  // Determine next stage
   if (mgrDecision === 'increment') {
-    // Increment path — always goes to HR for finalisation
     revision.stage = 'pending_hr';
-    // Pre-fill finalIncrementPct so HR can see it immediately
     revision.finalIncrementPct = Number(finalPct) || 0;
-    // Pre-calculate newCtc so it shows in HR panel
     revision.newCtc = Math.round(revision.previousCtc * (1 + (Number(finalPct) || 0) / 100));
   } else {
-    // PIP path
     if (pipApproved) {
-      revision.stage = 'on_hold'; // PIP approved — employee goes on hold
+      revision.stage = 'on_hold';
     } else {
-      // Not approved → send back to manager for re-evaluation
       revision.stage = 'pending_manager';
       revision.managerDecision = {
         decision         : null,
@@ -289,16 +268,10 @@ router.put('/:id/management', asyncHandler(async (req, res) => {
 }));
 
 // ─── PUT /api/salary-revisions/:id/hr ────────────────────────────────────────
-// Called by RevisionDetailView.postHr()
-//
-// Frontend payload:
-// {
-//   notes         : string,
-//   applicableDate: 'YYYY-MM-DD' | null,
-//   newCtc        : number,
-// }
-//
-// After this call: stage = 'completed'
+// Finalises the revision AND syncs the latest values back onto the
+// Onboarding record — designation only if it actually changed, salary
+// numbers always (even a "0% increment" finalization still confirms the
+// current CTC as the latest figure), reporting head only if it changed.
 
 router.put('/:id/hr', asyncHandler(async (req, res) => {
   const { notes, applicableDate, newCtc } = req.body;
@@ -325,7 +298,6 @@ router.put('/:id/hr', asyncHandler(async (req, res) => {
     submittedAt   : new Date(),
   };
 
-  // Persist final values at top level for easy querying
   revision.newCtc           = finalCtc;
   revision.applicableDate   = appDate;
   revision.finalIncrementPct = revision.managementDecision?.finalPct ?? revision.finalIncrementPct ?? 0;
@@ -334,17 +306,32 @@ router.put('/:id/hr', asyncHandler(async (req, res) => {
 
   await revision.save();
 
-  // ─── Write final CTC back to Employee ──────────────────────────────────────
-
-  await Employee.findOneAndUpdate(
-    { employee_id: revision.employeeCode },
-    {
-      annual_ctc:            String(finalCtc),
-      sal_applicable_from:   appDate ? appDate.toISOString().split('T')[0] : '',
-      next_sal_review_status: 'Revised',
+  // ─── Sync latest values back onto the Onboarding record ────────────────
+  // Onboarding is the dashboard's source of truth — it should always show
+  // the CURRENT designation/salary, while this revision stays in history.
+  try {
+    const onboardingUpdate = {
+      annualCtc: finalCtc,
+      salApplicableFrom: appDate,
+      salReviewStatus: 'Revised',
+    };
+    if (revision.designationChanged && revision.newDesignation) {
+      onboardingUpdate.designation = revision.newDesignation;
     }
-  );
-  // ───────────────────────────────────────────────────────────────────────────
+    if (revision.reportingHeadChanged && revision.newReportingHead) {
+      onboardingUpdate.reportingHead = revision.newReportingHead;
+    }
+
+    const onboardingTarget = revision.onboardingId || revision.employeeCode;
+    if (onboardingTarget) {
+      await Onboarding.findByIdAndUpdate(onboardingTarget, { $set: onboardingUpdate });
+    }
+  } catch (syncErr) {
+    // Don't fail the whole request if the sync-back has an issue — the
+    // revision itself is already saved and correct; log for follow-up.
+    console.error('Onboarding sync-back failed:', syncErr.message);
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   res.status(200).json({ success: true, data: revision, message: 'Revision finalised successfully' });
 }));
