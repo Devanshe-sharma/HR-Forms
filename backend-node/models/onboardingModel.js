@@ -261,26 +261,46 @@ const onboardingSchema = new mongoose.Schema(
 
     // ============================================================
     // AUTO EMAILS
+    // These are one-time sends. The boolean tells the UI/automation
+    // whether it has EVER been sent. The paired *SentAt timestamp is
+    // the source of truth: once set, it is never cleared or
+    // overwritten by a later update, and the checkbox stays "Done".
     // ============================================================
 
     autoWelcomeEmail: {
       type: Boolean,
       default: false,
     },
+    autoWelcomeEmailSentAt: {
+      type: Date,
+      default: null,
+    },
 
     autoReminderEmail: {
       type: Boolean,
       default: false,
+    },
+    autoReminderEmailSentAt: {
+      type: Date,
+      default: null,
     },
 
     autoInstructionsToAllEmail: {
       type: Boolean,
       default: false,
     },
+    autoInstructionsToAllEmailSentAt: {
+      type: Date,
+      default: null,
+    },
 
     employeeConfirmationEmail: {
       type: Boolean,
       default: false,
+    },
+    employeeConfirmationEmailSentAt: {
+      type: Date,
+      default: null,
     },
 
     // ============================================================

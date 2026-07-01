@@ -83,6 +83,11 @@ interface OnboardingDetail {
   salSerialNo?: number; salApplicableFrom?: string;
   salReviewStatus?: string; reasonForSalReview?: string;
   salReviewType?: string; salRevisionDueDate?: string;
+  // Auto emails
+  autoWelcomeEmail?: boolean; autoWelcomeEmailSentAt?: string;
+  autoReminderEmail?: boolean; autoReminderEmailSentAt?: string;
+  autoInstructionsToAllEmail?: boolean; autoInstructionsToAllEmailSentAt?: string;
+  employeeConfirmationEmail?: boolean; employeeConfirmationEmailSentAt?: string;
   // Checklists
   checkLists: CheckListState[];
   totalTasks?: number;
@@ -199,6 +204,17 @@ const STATUS_BADGE: Record<string, string> = {
   "OVERDUE": "bg-red-100 text-red-700",
   "PENDING": "bg-yellow-100 text-yellow-700",
   "NOT YET DUE": "bg-slate-100 text-slate-500",
+};
+
+const JOINING_STATUS_STYLE: Record<string, { bg: string; text: string }> = {
+  "Joined": { bg: "bg-green-100", text: "text-green-700" },
+  "Yet To Join Office": { bg: "bg-blue-100", text: "text-blue-700" },
+  "Not Joining": { bg: "bg-red-100", text: "text-red-700" },
+};
+
+const FMS_STATUS_STYLE: Record<string, { bg: string; text: string }> = {
+  "Open": { bg: "bg-amber-100", text: "text-amber-700" },
+  "Closed": { bg: "bg-green-100", text: "text-green-700" },
 };
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -474,6 +490,50 @@ const UpdateOnboarding: React.FC = () => {
         </div>
 
         <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
+
+          {/* ── Status Banner (top of page, shown once a joinee is selected) ── */}
+          {detail && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-4 min-w-0">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-slate-900 truncate">{detail.name}</p>
+                  <p className="text-xs text-slate-500 truncate">
+                    {detail.designation || "—"} · {detail.dept || "—"}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mr-1">
+                  Joining Status
+                </span>
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-bold ${
+                    JOINING_STATUS_STYLE[detail.joiningStatus ?? ""]?.bg ?? "bg-slate-100"
+                  } ${JOINING_STATUS_STYLE[detail.joiningStatus ?? ""]?.text ?? "text-slate-600"}`}
+                >
+                  {detail.joiningStatus ?? "—"}
+                </span>
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-bold ${
+                    FMS_STATUS_STYLE[detail.fmsStatus ?? ""]?.bg ?? "bg-slate-100"
+                  } ${FMS_STATUS_STYLE[detail.fmsStatus ?? ""]?.text ?? "text-slate-600"}`}
+                >
+                  FMS: {detail.fmsStatus ?? "—"}
+                </span>
+                {(detail.fmsScore ?? 0) !== 0 && (
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-bold ${
+                      (detail.fmsScore ?? 0) < 0
+                        ? "bg-red-100 text-red-700"
+                        : "bg-green-100 text-green-700"
+                    }`}
+                  >
+                    Score: {detail.fmsScore}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* ── Joinee Selector ─────────────────────────────────────── */}
           <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
@@ -812,27 +872,49 @@ const UpdateOnboarding: React.FC = () => {
 
               {/* ── Auto Emails ────────────────────────────────────────── */}
               <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                {sectionTitle("Automated Emails")}
-                <div className="space-y-2">
+                {sectionTitle("Automated Emails", "One-time sends — once sent, they stay marked Done and can't be re-sent")}
+                <div className="space-y-1">
                   {[
-                    { id: "autoWelcomeEmail" as const, label: "Send Auto Welcome Email" },
-                    { id: "autoInstructionsToAllEmail" as const, label: "Send Auto-Instructions to All" },
-                    { id: "autoReminderEmail" as const, label: "Send Reminder Email (1 day before joining)" },
-                    { id: "employeeConfirmationEmail" as const, label: "Email Joinee to fill Onboarding Feedback Form" },
-                  ].map(({ id, label }) => (
-                    <Controller key={id} name={id} control={control} render={({ field }) => (
-                      <FormControlLabel
-                        control={
-                          <Checkbox
-                            checked={!!field.value}
-                            onChange={field.onChange}
-                            sx={{ color: "#6366f1", "&.Mui-checked": { color: "#6366f1" } }}
+                    { id: "autoWelcomeEmail" as const, sentAt: detail.autoWelcomeEmailSentAt, label: "Send Auto Welcome Email" },
+                    { id: "autoInstructionsToAllEmail" as const, sentAt: detail.autoInstructionsToAllEmailSentAt, label: "Send Auto-Instructions to All" },
+                    { id: "autoReminderEmail" as const, sentAt: detail.autoReminderEmailSentAt, label: "Send Reminder Email (1 day before joining)" },
+                    { id: "employeeConfirmationEmail" as const, sentAt: detail.employeeConfirmationEmailSentAt, label: "Email Joinee to fill Onboarding Feedback Form" },
+                  ].map(({ id, sentAt, label }) => {
+                    const sent = !!sentAt;
+                    return (
+                      <div
+                        key={id}
+                        className={`flex items-center justify-between gap-3 rounded-lg px-1 ${sent ? "bg-green-50/60" : ""}`}
+                      >
+                        <Controller name={id} control={control} render={({ field }) => (
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                checked={sent || !!field.value}
+                                disabled={sent}
+                                onChange={field.onChange}
+                                sx={{
+                                  color: "#6366f1",
+                                  "&.Mui-checked": { color: sent ? "#15803d" : "#6366f1" },
+                                  "&.Mui-disabled": { color: sent ? "#15803d" : undefined },
+                                }}
+                              />
+                            }
+                            label={
+                              <span className={`text-sm ${sent ? "text-slate-400 line-through" : "text-slate-700"}`}>
+                                {label}
+                              </span>
+                            }
                           />
-                        }
-                        label={<span className="text-sm text-slate-700">{label}</span>}
-                      />
-                    )} />
-                  ))}
+                        )} />
+                        {sent && (
+                          <span className="text-xs text-green-600 font-semibold flex-shrink-0 pr-2">
+                            Sent {fmtDate(sentAt)}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </section>
 

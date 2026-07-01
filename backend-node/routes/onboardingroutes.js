@@ -5,6 +5,39 @@ const Employee = require('../models/Employee');
 
 const router = express.Router();
 
+// ─── One-time email fields (flag + timestamp pairs) ─────────────────────────
+// These emails only ever get sent once. The *SentAt field is the source of
+// truth for "done" — once it's set, it must never be cleared or re-dated by
+// a later update, no matter what the submitted form sends for the checkbox.
+const EMAIL_FIELDS = [
+  ["autoWelcomeEmail", "autoWelcomeEmailSentAt"],
+  ["autoReminderEmail", "autoReminderEmailSentAt"],
+  ["autoInstructionsToAllEmail", "autoInstructionsToAllEmailSentAt"],
+  ["employeeConfirmationEmail", "employeeConfirmationEmailSentAt"],
+];
+
+// existing: plain object / doc of current DB values (or null for a brand-new record)
+// body: the incoming request body
+function resolveOneTimeEmails(existing, body) {
+  const resolved = {};
+  for (const [flagField, sentAtField] of EMAIL_FIELDS) {
+    const alreadySent = !!(existing && existing[sentAtField]);
+    if (alreadySent) {
+      // Locked in — ignore whatever the form submitted for this field.
+      resolved[flagField] = true;
+      resolved[sentAtField] = existing[sentAtField];
+    } else if (body[flagField]) {
+      // Being sent for the first time right now.
+      resolved[flagField] = true;
+      resolved[sentAtField] = new Date();
+    } else {
+      resolved[flagField] = false;
+      resolved[sentAtField] = null;
+    }
+  }
+  return resolved;
+}
+
 // ─── Scoring helper (mirrors Apps Script `scoring` function) ────────────────
 function scoreChecklist(list, today) {
   let doneInTime = 0,
@@ -179,6 +212,27 @@ function assignPlanDates(checkLists, joiningStatus, offerAcceptedDate, joinedDat
   }
 }
 
+// ─── Safely turn a Mongoose checklist array into clean plain objects ───────
+// Never spread Mongoose (sub)documents directly — depending on version this
+// can silently drop fields or leak internal Mongoose properties into the
+// object that later gets written back with findByIdAndUpdate. Always route
+// through toObject() and pick the exact fields we care about.
+function toPlainCheckLists(checkLists) {
+  return (checkLists || []).map((l) => ({
+    name: l.name,
+    planDate: l.planDate ?? null,
+    itemsList: (l.itemsList || []).map((it) => ({
+      name: it.name ?? "",
+      planDate: it.planDate ?? null,
+      doneDate: it.doneDate ?? null,
+      score: it.score ?? 0,
+      status: it.status ?? "Pending",
+      daysLeft: it.daysLeft ?? 0,
+      checked: !!it.checked,
+    })),
+  }));
+}
+
 // ─── POST /api/onboarding  — Create new onboarding ────────────────────────
 router.post("/", async (req, res) => {
   try {
@@ -252,9 +306,14 @@ router.post("/", async (req, res) => {
     const finalStatus =
       body.joiningStatus === "Not Joining" ? "Closed" : fmsStatus;
 
-    // 6. Build and save document
+    // 6. Resolve one-time email flags (fresh record, so this is just:
+    //    ticked now => sent now)
+    const emailFields = resolveOneTimeEmails(null, body);
+
+    // 7. Build and save document
     const doc = new Onboarding({
       ...body,
+      ...emailFields,
       offerAcceptedDate: body.offerAcceptedDate
         ? new Date(body.offerAcceptedDate)
         : undefined,
@@ -400,12 +459,12 @@ router.put("/:id", async (req, res) => {
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    // Re-use existing checklist structure
-    const checkLists = existing.checkLists.map((l) => ({
-      name:      l.name,
-      planDate:  l.planDate,
-      itemsList: l.itemsList.map((it) => ({ ...it })),
-    }));
+    // Re-use existing checklist structure — routed through toObject() and
+    // toPlainCheckLists() so we're mutating clean plain objects, never raw
+    // Mongoose subdocuments (spreading those directly is what silently broke
+    // ticked items not saving).
+    const existingPlain = existing.toObject();
+    const checkLists = toPlainCheckLists(existingPlain.checkLists);
 
     if (Array.isArray(body.checkLists)) {
       body.checkLists.forEach((submittedList, listIdx) => {
@@ -413,7 +472,9 @@ router.put("/:id", async (req, res) => {
         submittedItems.forEach((item, itemIdx) => {
           const target = checkLists[listIdx]?.itemsList?.[itemIdx];
           if (!target) return;
-          if (item.checked && item.name === "new" && !target.doneDate) {
+          const isNewlyTicked = !!item?.checked && item?.name === "new";
+          if (isNewlyTicked && !target.doneDate) {
+            target.checked = true;
             target.doneDate = new Date();
           }
         });
@@ -445,10 +506,14 @@ router.put("/:id", async (req, res) => {
     const fmsStatus = body.joiningStatus === "Not Joining" || tasksNotDone === 0
       ? "Closed" : "Open";
 
+    // One-time emails: never unsend, never re-date, once sent always "Done".
+    const emailFields = resolveOneTimeEmails(existingPlain, body);
+
     const updated = await Onboarding.findByIdAndUpdate(
       req.params.id,
       {
         ...body,
+        ...emailFields,
         offerAcceptedDate:   body.offerAcceptedDate   ? new Date(body.offerAcceptedDate)   : existing.offerAcceptedDate,
         plannedJoiningDate:  body.plannedJoiningDate  ? new Date(body.plannedJoiningDate)  : existing.plannedJoiningDate,
         joinedDate:          body.joinedDate          ? new Date(body.joinedDate)           : existing.joinedDate,

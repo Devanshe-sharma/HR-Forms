@@ -674,6 +674,11 @@ const NewOnboarding: React.FC = () => {
                       placeholder="Any additional notes..."
                     />
                   </div>
+                  <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2.5 text-xs text-indigo-700">
+                    This email will be sent to <span className="font-semibold">MD</span>, Cc{" "}
+                    <span className="font-semibold">CEO, Accounts, Admin</span>. Select others to
+                    keep in CC.
+                  </div>
                   <div>
                     <label className={labelClass}>Keep in Email CC</label>
                     <Select
