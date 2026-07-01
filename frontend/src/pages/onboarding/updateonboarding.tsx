@@ -32,6 +32,14 @@ interface OnboardingListItem {
   fmsStatus: string;
 }
 
+interface RoleEmployee {
+  emp_id: string;
+  full_name: string;
+  official_email: string;
+  department: string;
+  designation: string;
+}
+
 interface CheckItemState {
   doneHeader: string;
   doneDate?: string; // ISO string if already done
@@ -228,6 +236,7 @@ const UpdateOnboarding: React.FC = () => {
   const [selectedId, setSelectedId] = useState<string>(id ?? "");
   const [loadingJoinee, setLoadingJoinee] = useState(false);
   const [detail, setDetail] = useState<OnboardingDetail | null>(null);
+  const [employees, setEmployees] = useState<RoleEmployee[]>([]);
 
   // Newly ticked items (only "new" pending items can be ticked)
   // newTicks[listIdx][itemIdx] = true/false
@@ -259,6 +268,12 @@ const UpdateOnboarding: React.FC = () => {
     axios.get<{ data: OnboardingListItem[] }>(`${API}/onboarding`)
       .then((r) => setJoineeList(r.data.data))
       .catch(() => toast.error("Failed to load joinee list"));
+
+    // Same source New Onboarding uses for its CC list — keeps both forms
+    // in sync with the full employee directory instead of a fixed list.
+    axios.get(`${API}/rolemaster/all`)
+      .then((res) => setEmployees(res.data?.data?.employees ?? []))
+      .catch(() => toast.error("Failed to load employee list"));
   }, []);
 
   // ── Load selected joinee detail ────────────────────────────────────────
@@ -311,7 +326,12 @@ const UpdateOnboarding: React.FC = () => {
         setNewConfirmationDueDate(d.confirmationDueDate ? dayjs(d.confirmationDueDate) : null);
         setNewSalApplicableFrom(d.salApplicableFrom ? dayjs(d.salApplicableFrom) : null);
         setNewSalRevisionDueDate(d.salRevisionDueDate ? dayjs(d.salRevisionDueDate) : null);
-        setEmployeesInCc(d.employeesInCc ?? []); 
+        // Some older records saved CC emails as one comma-joined string
+        // inside a single array element instead of separate entries —
+        // flatten those back out so the multi-select pre-fills correctly.
+        setEmployeesInCc(
+          (d.employeesInCc ?? []).flatMap((v) => v.split(",").map((s) => s.trim()).filter(Boolean))
+        );
 
         // Init newTicks — all false (only pending items can be ticked)
         setNewTicks(CHECKLIST_DEFS.map((l) => l.items.map(() => false)));
@@ -345,12 +365,12 @@ const UpdateOnboarding: React.FC = () => {
   const fmtDate = (d?: string) =>
     d ? dayjs(d).format("DD MMM YYYY") : "—";
 
-  const ccOptions = [
-    { value: "sunil.prem@briskolive.com", label: "Sunil Prem" },
-    { value: "admin@briskolive.com", label: "Admin" },
-    { value: "accounts@briskolive.com", label: "Accounts" },
-    { value: "dme@briskolive.com", label: "DME" },
-  ];
+  const ccOptions = employees
+    .filter((employee) => employee.official_email)
+    .map((employee) => ({
+      value: employee.official_email,
+      label: employee.full_name,
+    }));
 
   // ── Submit ──────────────────────────────────────────────────────────────
   const onSubmit: SubmitHandler<FormValues> = async (data) => {
@@ -849,6 +869,11 @@ const UpdateOnboarding: React.FC = () => {
                       placeholder="Update remarks..."
                     />
                   )}
+                  <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2.5 text-xs text-indigo-700">
+                    This email will be sent to <span className="font-semibold">MD</span>, Cc{" "}
+                    <span className="font-semibold">CEO, Accounts, Admin</span>. Select others to
+                    keep in CC.
+                  </div>
                   <div>
                     <label className={labelClass}>Keep in Email CC</label>
                     <Select
@@ -872,7 +897,7 @@ const UpdateOnboarding: React.FC = () => {
 
               {/* ── Auto Emails ────────────────────────────────────────── */}
               <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                {sectionTitle("Automated Emails", "One-time sends — once sent, they stay marked Done and can't be re-sent")}
+                {sectionTitle("Automated Emails", "One-time sends — once sent, they stay marked Done and auto-complete the matching checklist task")}
                 <div className="space-y-1">
                   {[
                     { id: "autoWelcomeEmail" as const, sentAt: detail.autoWelcomeEmailSentAt, label: "Send Auto Welcome Email" },

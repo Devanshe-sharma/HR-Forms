@@ -10,7 +10,7 @@ import {
   InputAdornment, TablePagination, CircularProgress, Tooltip, Chip,
 } from "@mui/material";
 import {
-  AddCircle, Search, Edit,
+  AddCircle, Search, Edit, Refresh,
   PeopleAlt, AssignmentTurnedIn, PendingActions, Warning,
   Close, Visibility, CalendarToday, Person, Email, Phone,
   Business, WorkOutline, AccountBalance,
@@ -128,6 +128,7 @@ const OnboardingDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [rows, setRows]           = useState<OnboardingRow[]>([]);
   const [loading, setLoading]     = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch]       = useState("");
   const [page, setPage]           = useState(0);
   const [rpp, setRpp]             = useState(25);
@@ -139,12 +140,28 @@ const OnboardingDashboard: React.FC = () => {
   const closed  = rows.filter(r => r.fmsStatus === "Closed").length;
   const overdue = rows.filter(r => r.fmsStatus === "Open" && (r.fmsScore ?? 0) < 0).length;
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
 
-  const load = async () => {
+    // Refetch whenever the user comes back to this tab/window — covers the
+    // common case of updating a record in another tab (or the Update
+    // Onboarding page) and switching back here without a manual reload.
+    const onFocus = () => load(true);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") load(true);
+    });
+    return () => {
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
+
+  const load = async (silent = false) => {
     try {
-      setLoading(true);
-      const res = await axios.get(`${API}/onboarding`);
+      if (silent) setRefreshing(true); else setLoading(true);
+      const res = await axios.get(`${API}/onboarding`, {
+        params: { _t: Date.now() },
+      });
       if (!res.data?.success) throw new Error("Bad response");
       const data: OnboardingRow[] = res.data.data ?? [];
       setRows([...data]
@@ -155,13 +172,16 @@ const OnboardingDashboard: React.FC = () => {
       toast.error("Failed to load onboardings");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
   const openViewModal = async (row: OnboardingRow) => {
     setLoadingDetail(row._id);
     try {
-      const res = await axios.get(`${API}/onboarding/${row._id}`);
+      const res = await axios.get(`${API}/onboarding/${row._id}`, {
+        params: { _t: Date.now() },
+      });
       const lists: CheckList[] = res.data.data?.checkLists ?? [];
       setViewModal({ row, lists });
     } catch {
@@ -198,12 +218,28 @@ const OnboardingDashboard: React.FC = () => {
               </Typography>
               <Typography variant="caption" color="#94a3b8">{total} records</Typography>
             </Box>
-            <Button variant="contained" startIcon={<AddCircle />}
-              onClick={() => navigate("/new-onboarding")}
-              sx={{ bgcolor: "#4f46e5", "&:hover": { bgcolor: "#4338ca" },
-                borderRadius: "8px", textTransform: "none", fontWeight: 600, fontSize: "0.8rem" }}>
-              New Onboarding
-            </Button>
+            <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+              <Tooltip title="Refresh data">
+                <Button
+                  variant="outlined"
+                  onClick={() => load(true)}
+                  disabled={refreshing || loading}
+                  startIcon={refreshing
+                    ? <CircularProgress size={14} sx={{ color: "#4f46e5" }} />
+                    : <Refresh sx={{ fontSize: 16 }} />}
+                  sx={{ borderColor: "#e2e8f0", color: "#475569",
+                    borderRadius: "8px", textTransform: "none", fontWeight: 600, fontSize: "0.8rem" }}
+                >
+                  Refresh
+                </Button>
+              </Tooltip>
+              <Button variant="contained" startIcon={<AddCircle />}
+                onClick={() => navigate("/new-onboarding")}
+                sx={{ bgcolor: "#4f46e5", "&:hover": { bgcolor: "#4338ca" },
+                  borderRadius: "8px", textTransform: "none", fontWeight: 600, fontSize: "0.8rem" }}>
+                New Onboarding
+              </Button>
+            </Box>
           </Box>
 
           {/* Stats */}

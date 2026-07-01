@@ -16,6 +16,30 @@ const EMAIL_FIELDS = [
   ["employeeConfirmationEmail", "employeeConfirmationEmailSentAt"],
 ];
 
+// ─── Emails that double as checklist tasks ─────────────────────────────────
+// Sending one of these auto-emails IS the checklist task — no separate
+// manual tick should be required. Whenever an email flag is (or becomes)
+// true, its matching checklist item gets marked done automatically, using
+// the email's own sent timestamp as the doneDate.
+const EMAIL_TO_CHECKLIST_ITEM = [
+  { flagField: "autoWelcomeEmail", sentAtField: "autoWelcomeEmailSentAt", listName: "PRE-JOINING TASKS", itemName: "Welcome Email Done?" },
+  { flagField: "autoReminderEmail", sentAtField: "autoReminderEmailSentAt", listName: "PRE-JOINING TASKS", itemName: "Reminder Email Done?" },
+  { flagField: "autoInstructionsToAllEmail", sentAtField: "autoInstructionsToAllEmailSentAt", listName: "PRE-JOINING TASKS", itemName: "Reminder Email ToAll Done?" },
+  { flagField: "employeeConfirmationEmail", sentAtField: "employeeConfirmationEmailSentAt", listName: "POST-JOINING TASKS", itemName: "Employee Confirms All OK Done?" },
+];
+
+function syncEmailChecklistItems(checkLists, emailFields) {
+  for (const { flagField, sentAtField, listName, itemName } of EMAIL_TO_CHECKLIST_ITEM) {
+    if (!emailFields[flagField]) continue; // this email was never sent — nothing to sync
+    const list = checkLists.find((l) => l.name === listName);
+    if (!list) continue;
+    const item = list.itemsList.find((it) => it.name === itemName);
+    if (!item || item.doneDate) continue; // already marked done — don't touch it
+    item.checked = true;
+    item.doneDate = emailFields[sentAtField] ? new Date(emailFields[sentAtField]) : new Date();
+  }
+}
+
 // existing: plain object / doc of current DB values (or null for a brand-new record)
 // body: the incoming request body
 function resolveOneTimeEmails(existing, body) {
@@ -269,7 +293,13 @@ router.post("/", async (req, res) => {
   });
 }
 
-    // 3. Assign plan dates
+    // 3. Resolve one-time email flags, then sync their matching checklist
+    //    items — this must happen BEFORE plan dates/scoring below so the
+    //    computed totals (doneInTime, tasksDue, etc.) reflect them.
+    const emailFields = resolveOneTimeEmails(null, body);
+    syncEmailChecklistItems(checkLists, emailFields);
+
+    // 4. Assign plan dates
     assignPlanDates(
       checkLists,
       body.joiningStatus ?? "",
@@ -277,7 +307,7 @@ router.post("/", async (req, res) => {
       body.joinedDate ? new Date(body.joinedDate) : undefined
     );
 
-    // 4. Score every list
+    // 5. Score every list
     const today = new Date();
     let doneInTime = 0,
       doneButDelayed = 0,
@@ -302,13 +332,9 @@ router.post("/", async (req, res) => {
 
     const fmsStatus = tasksNotDone === 0 ? "Closed" : "Open";
 
-    // 5. If "Not Joining" override to Closed
+    // 6. If "Not Joining" override to Closed
     const finalStatus =
       body.joiningStatus === "Not Joining" ? "Closed" : fmsStatus;
-
-    // 6. Resolve one-time email flags (fresh record, so this is just:
-    //    ticked now => sent now)
-    const emailFields = resolveOneTimeEmails(null, body);
 
     // 7. Build and save document
     const doc = new Onboarding({
@@ -353,6 +379,7 @@ router.post("/", async (req, res) => {
 // ─── GET /api/onboarding  — List all (open first) ─────────────────────────
 router.get("/", async (req, res) => {
   try {
+    res.set("Cache-Control", "no-store");
     const docs = await Onboarding.find()
       .sort({ fmsStatus: 1, createdAt: -1 })
        // lighter list view
@@ -481,6 +508,12 @@ router.put("/:id", async (req, res) => {
       });
     }
 
+    // One-time emails: never unsend, never re-date, once sent always "Done".
+    // Resolved here (before plan dates/scoring) so the sync below can mark
+    // matching checklist items done in time for the totals to include them.
+    const emailFields = resolveOneTimeEmails(existingPlain, body);
+    syncEmailChecklistItems(checkLists, emailFields);
+
     assignPlanDates(
       checkLists,
       body.joiningStatus        ?? existing.joiningStatus        ?? "",
@@ -505,9 +538,6 @@ router.put("/:id", async (req, res) => {
 
     const fmsStatus = body.joiningStatus === "Not Joining" || tasksNotDone === 0
       ? "Closed" : "Open";
-
-    // One-time emails: never unsend, never re-date, once sent always "Done".
-    const emailFields = resolveOneTimeEmails(existingPlain, body);
 
     const updated = await Onboarding.findByIdAndUpdate(
       req.params.id,
@@ -545,6 +575,10 @@ router.put("/:id", async (req, res) => {
 async function recomputeOnboarding(existing) {
   const existingPlain = existing.toObject();
   const checkLists = toPlainCheckLists(existingPlain.checkLists);
+
+  // Repair any email/checklist mismatch too — e.g. an email flag that's
+  // true but whose matching checklist item was never marked done.
+  syncEmailChecklistItems(checkLists, existingPlain);
 
   assignPlanDates(
     checkLists,

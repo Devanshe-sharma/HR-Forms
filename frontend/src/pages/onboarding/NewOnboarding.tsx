@@ -233,6 +233,33 @@ const NewOnboarding: React.FC = () => {
   const joiningStatus = watch("joiningStatus");
   const employeeCategory = watch("employeeCategory");
   const selectedDept = watch("dept");
+  const autoWelcomeEmail = watch("autoWelcomeEmail");
+  const autoReminderEmail = watch("autoReminderEmail");
+  const autoInstructionsToAllEmail = watch("autoInstructionsToAllEmail");
+  const employeeConfirmationEmail = watch("employeeConfirmationEmail");
+
+  // Sending one of these emails IS the matching checklist task — auto-tick
+  // it in the UI the moment the email checkbox is ticked, so what you see
+  // here matches exactly what gets saved on submit.
+  useEffect(() => {
+    const map: [boolean | undefined, number, number][] = [
+      [autoWelcomeEmail, 0, 0],              // Welcome Email Done?
+      [autoReminderEmail, 0, 1],             // Reminder Email Done?
+      [autoInstructionsToAllEmail, 0, 5],    // Reminder Email ToAll Done?
+      [employeeConfirmationEmail, 2, 14],    // Employee Confirms All OK Done?
+    ];
+    setCheckStates((prev) => {
+      let changed = false;
+      const next = prev.map((l) => [...l]);
+      for (const [emailOn, listIdx, itemIdx] of map) {
+        if (emailOn && !next[listIdx][itemIdx]) {
+          next[listIdx][itemIdx] = true;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [autoWelcomeEmail, autoReminderEmail, autoInstructionsToAllEmail, employeeConfirmationEmail]);
 
   const totalChecked = checkStates.flat().filter(Boolean).length;
   const progress = Math.round((totalChecked / TOTAL_TASKS) * 100);
@@ -290,7 +317,7 @@ const NewOnboarding: React.FC = () => {
         salApplicableFrom: salApplicableFrom?.toISOString(),
         confirmationDueDate: confirmationDueDate?.toISOString(),
         salRevisionDueDate: salRevisionDueDate?.toISOString(),
-        employeesInCc: employeesInCc.join(","),
+        employeesInCc: employeesInCc,
         checkLists: CHECKLIST_DEFS.map((listDef, listIdx) => ({
           name: listDef.name,
           items: listDef.items.map((_, itemIdx) => ({
@@ -708,7 +735,7 @@ const NewOnboarding: React.FC = () => {
               <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
                 {sectionTitle(
                   "Automated Emails",
-                  "Tick to send auto-emails on form submission"
+                  "Tick to send auto-emails on form submission — this also auto-marks the matching checklist task as Done"
                 )}
                 <div className="space-y-2">
                   {[
