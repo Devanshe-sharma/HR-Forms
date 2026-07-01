@@ -645,6 +645,328 @@ router.post("/resync-all", async (req, res) => {
   }
 });
 
+// ============================================================
+// ONE-TIME LEGACY GOOGLE-SHEET IMPORT MIGRATION
+// ============================================================
+// Old Google-Sheet-imported records were inserted directly into the
+// `onboardings` collection using the sheet's own column names (PascalCase,
+// spaces, "Done?" suffixes) instead of this app's camelCase schema fields.
+// Mongoose only ever hydrates fields declared in the schema, so these
+// records come back from Onboarding.find() with name/dept/checkLists etc.
+// all blank — the data is there, just under field names Mongoose ignores.
+// This transforms each legacy-shaped document IN PLACE into the current
+// schema's shape (same _id), then removes the old junk keys. Safe to
+// re-run: after the first run no document has a "Name" field anymore, so
+// the filter below matches nothing on subsequent calls.
+
+const MONTH_MAP = {
+  jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+  jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+};
+
+function parseLegacyDate(raw) {
+  if (raw === undefined || raw === null) return null;
+  const s = String(raw).trim();
+  if (!s || s.toUpperCase() === "NA") return null;
+
+  // Expected legacy format: "22 Jun 26"
+  const m = s.match(/^(\d{1,2})\s+([A-Za-z]{3})\w*\s+(\d{2,4})$/);
+  if (m) {
+    const day = parseInt(m[1], 10);
+    const mon = MONTH_MAP[m[2].toLowerCase()];
+    let year = parseInt(m[3], 10);
+    if (year < 100) year += 2000;
+    if (mon !== undefined) {
+      const d = new Date(Date.UTC(year, mon, day));
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+
+  const fallback = new Date(s);
+  return isNaN(fallback.getTime()) ? null : fallback;
+}
+
+function toNum(raw, fallback = 0) {
+  if (raw === undefined || raw === null || raw === "") return fallback;
+  const n = Number(raw);
+  return isNaN(n) ? fallback : n;
+}
+
+function toStr(raw) {
+  if (raw === undefined || raw === null) return undefined;
+  return String(raw).trim();
+}
+
+const LEGACY_STRING_FIELDS = {
+  "Name": "name",
+  "Gender": "gender",
+  "Personal Email": "persEmail",
+  "Official Email": "officialEmail",
+  "Dept": "dept",
+  "Designation": "designation",
+  "Employee Category": "employeeCategory", // "Intern" is kept as-is, not remapped
+  "Name of Buddy": "nameOfBuddy",
+  "Authorised System": "laptopPc",
+  "Remarks": "remarks",
+  "DeptLink": "deptLink",
+  "DesignationLink": "designationLink",
+  "Confirmation Status": "confirmationStatus",
+  "Probation Type": "probationType",
+  "Reason for Sal Review Not Applicable": "reasonForSalReview",
+  "Next Sal Review Status": "salReviewStatus",
+  "Next Sal Review Type": "salReviewType",
+  "Sal Type": "salType",
+  "Reviewer Name": "reviewerName",
+  "Reviewer Email": "reviewerEmail",
+  "Notice Period": "noticePeriod",
+  "Exit Type": "exitType",
+  "Exit Status": "exitStatus",
+  "Not Joined Reason": "notJoinedReason",
+  "Employee Status": "employeeStatus",
+  "You Will transfer Knowledge to": "knowledgeTransferTo",
+};
+
+// Legacy columns needing normalization on top of a rename
+const LEGACY_NORMALIZED_FIELDS = {
+  "Joining Status": {
+    destField: "joiningStatus",
+    normalize: (v) => (toStr(v) === "Already Joined" ? "Joined" : toStr(v)),
+  },
+  "FMS Status": {
+    destField: "fmsStatus",
+    normalize: (v) => {
+      const s = toStr(v);
+      if (!s) return s;
+      return s.toLowerCase() === "closed" ? "Closed" : "Open";
+    },
+  },
+  "Employment Type": {
+    destField: "employmentType",
+    normalize: (v) => {
+      const s = toStr(v);
+      return s ? s.replace(/\w\S*/g, (t) => t[0].toUpperCase() + t.slice(1).toLowerCase()) : s;
+    },
+  },
+};
+
+const LEGACY_NUMBER_FIELDS = {
+  "Annual CTC": "annualCtc",
+  "Basic": "basicSal",
+  "HRA": "hraSal",
+  "Travel Allowance": "travelAllowance",
+  "Children's Education Allowance": "childrenEducationAllowance",
+  "Supplementary Allowance": "supplementaryAllowance",
+  "Gross Monthly": "grossMonthly",
+  "Employer PF": "empEpf",
+  "Employer ESI": "empEsic",
+  "Monthly CTC": "monthlyCtc",
+  "Medical Reimbursement Annual": "medicalReimbursement",
+  "Vehicle Reimbursement Annual": "vehicleReimbursement",
+  "Driver Reimbursement Annual": "driverReimbursement",
+  "Telephone Reimbursement Annual": "telephoneReimbursement",
+  "Meals Reimbursement Annual": "mealsReimbursement",
+  "Uniform Reimbursement Annual": "uniformReimbursement",
+  "Leave Travel Allowance Annual": "leaveTravelAllowance",
+  "Annual Bonus": "annualBonus",
+  "Annual Performance Incentive": "annualPerformanceIncentive",
+  "Medical Premium": "medicalPremium",
+  "Gratuity": "gratuity",
+  "Contract Amount": "contractAmount",
+  "Contract Period (months)": "contractPeriod",
+  "Equivalent Monthly CTC": "equivalentMonthlyCtc",
+  "Probation Duration(in months)": "probationDuration",
+};
+
+// Direct summary numbers from the sheet — used as a fallback for records
+// with no per-task data (recomputed below whenever task data does exist).
+const LEGACY_SUMMARY_NUMBER_FIELDS = {
+  "Total Tasks": "totalTasks",
+  "Done in Time": "doneInTime",
+  "Done but Delayed": "doneButDelayed",
+  "Tasks Due": "tasksDue",
+  "Tasks Overdue": "tasksOverdue",
+  "Not Yet Due": "notYetDue",
+  "FMS Score": "fmsScore",
+};
+
+// Dates are kept as originally recorded in the sheet — NOT regenerated via
+// assignPlanDates()'s day-offset rules, since that would overwrite real
+// historical plan dates with guesses.
+const LEGACY_DATE_FIELDS = {
+  "Offer Accepted Date": "offerAcceptedDate",
+  "Planned Joining Date": "plannedJoiningDate",
+  "Joined Date": "joinedDate",
+  "Planned Confirmation Date": "confirmationDueDate",
+  "Planned Exit Date": "plannedExitDate",
+  "Left Date": "leftDate",
+  "Resignation Email Sent on": "resignationEmailSentOn",
+  "Sal Applicable From": "salApplicableFrom",
+  "Revision Due Date": "salRevisionDueDate",
+};
+
+// Every top-level field the current schema actually declares — anything on
+// a legacy raw document that ISN'T in this list gets removed once migrated,
+// so no old sheet junk (including odd leftovers like "Employee Ser No")
+// lingers in the collection.
+const SCHEMA_FIELD_WHITELIST = new Set([
+  "_id", "__v", "createdAt", "updatedAt",
+  "rowNo", "name", "gender", "persEmail", "mobile", "officialEmail", "dept", "designation",
+  "employeeCategory", "nameOfBuddy", "dept_id", "desig_id", "offerAcceptedDate", "plannedJoiningDate",
+  "joiningStatus", "exitStatus", "joinedDate", "notJoinedReason", "confirmationStatus", "confirmationSerialNo",
+  "reasonForNotApplicable", "probationType", "applicableFrom", "probationDuration", "confirmationDueDate",
+  "confirmationHistory", "reviewerName", "reviewerEmail", "salSerialNo", "salType", "salApplicableFrom",
+  "annualCtc", "basicSal", "hraSal", "travelAllowance", "childrenEducationAllowance", "supplementaryAllowance",
+  "grossMonthly", "empEpf", "empEsic", "monthlyCtc", "medicalReimbursement", "vehicleReimbursement",
+  "driverReimbursement", "telephoneReimbursement", "mealsReimbursement", "uniformReimbursement",
+  "leaveTravelAllowance", "annualBonus", "annualPerformanceIncentive", "medicalPremium", "gratuity",
+  "contractAmount", "contractPeriod", "equivalentMonthlyCtc", "salReviewStatus", "salReviewType",
+  "reasonForSalReview", "salRevisionDueDate", "resignationEmailSentOn", "noticePeriod", "leftDate", "exitType",
+  "plannedExitDate", "knowledgeTransferTo", "nextPerformanceReviewDate", "laptopPc", "remarks", "totalTasks",
+  "doneInTime", "doneButDelayed", "tasksDue", "tasksOverdue", "notYetDue", "fmsStatus", "employeeStatus",
+  "employmentType", "fmsScore", "deptLink", "designationLink", "employeesInCc",
+  "autoWelcomeEmail", "autoWelcomeEmailSentAt", "autoReminderEmail", "autoReminderEmailSentAt",
+  "autoInstructionsToAllEmail", "autoInstructionsToAllEmailSentAt", "employeeConfirmationEmail",
+  "employeeConfirmationEmailSentAt", "checkLists",
+]);
+
+function buildLegacyChecklists(rawDoc) {
+  const template = buildDefaultCheckLists();
+  let hasAnyTaskData = false;
+
+  const checkLists = template.map((group) => ({
+    name: group.name,
+    planDate: null,
+    itemsList: group.itemsList.map(({ name: itemName }) => {
+      const base = itemName.replace(/\s*Done\?$/, "");
+      const planRaw = rawDoc[`${base} Plan?`];
+      const doneRaw = rawDoc[`${base} Done?`];
+      const scoreRaw = rawDoc[`${base} Score?`];
+      const statusRaw = rawDoc[`${base} Status?`];
+
+      if (planRaw !== undefined || doneRaw !== undefined || scoreRaw !== undefined || statusRaw !== undefined) {
+        hasAnyTaskData = true;
+      }
+
+      const planDate = parseLegacyDate(planRaw);
+      const doneDate = parseLegacyDate(doneRaw);
+
+      return {
+        name: itemName,
+        planDate,
+        doneDate,
+        score: 0,       // recomputed fresh below via scoreChecklist()
+        status: "Pending",
+        daysLeft: 0,
+        checked: !!doneDate,
+      };
+    }),
+  }));
+
+  return { checkLists, hasAnyTaskData };
+}
+
+router.post("/migrate/legacy-import", async (req, res) => {
+  try {
+    const rawDocs = await Onboarding.collection.find({ Name: { $exists: true } }).toArray();
+    let migrated = 0;
+
+    for (const rawDoc of rawDocs) {
+      const setFields = {};
+
+      for (const [oldKey, newKey] of Object.entries(LEGACY_STRING_FIELDS)) {
+        if (rawDoc[oldKey] !== undefined) {
+          const v = toStr(rawDoc[oldKey]);
+          if (v !== undefined) setFields[newKey] = v;
+        }
+      }
+
+      for (const [oldKey, { destField, normalize }] of Object.entries(LEGACY_NORMALIZED_FIELDS)) {
+        if (rawDoc[oldKey] !== undefined) {
+          const v = normalize(rawDoc[oldKey]);
+          if (v !== undefined) setFields[destField] = v;
+        }
+      }
+
+      for (const [oldKey, newKey] of Object.entries(LEGACY_NUMBER_FIELDS)) {
+        if (rawDoc[oldKey] !== undefined) setFields[newKey] = toNum(rawDoc[oldKey], 0);
+      }
+
+      for (const [oldKey, newKey] of Object.entries(LEGACY_DATE_FIELDS)) {
+        if (rawDoc[oldKey] !== undefined) {
+          const d = parseLegacyDate(rawDoc[oldKey]);
+          if (d) setFields[newKey] = d;
+        }
+      }
+
+      if (rawDoc["Mobile"] !== undefined) {
+        setFields.mobile = toStr(rawDoc["Mobile"]);
+      }
+
+      if (rawDoc["Employees In Cc"] !== undefined) {
+        setFields.employeesInCc = String(rawDoc["Employees In Cc"])
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+
+      for (const [oldKey, newKey] of Object.entries(LEGACY_SUMMARY_NUMBER_FIELDS)) {
+        if (rawDoc[oldKey] !== undefined) setFields[newKey] = toNum(rawDoc[oldKey], 0);
+      }
+
+      // Checklist reconstruction — only recompute fresh scores/statuses when
+      // there's real task data to work with. If there's none, leave it
+      // empty rather than inventing a fake 42-task skeleton.
+      const { checkLists, hasAnyTaskData } = buildLegacyChecklists(rawDoc);
+      if (hasAnyTaskData) {
+        const today = new Date();
+        let doneInTime = 0, doneButDelayed = 0, tasksOverdue = 0,
+            tasksDue = 0, notYetDue = 0, fmsScore = 0, tasksNotDone = 0;
+
+        for (const list of checkLists) {
+          const r = scoreChecklist(list, today);
+          doneInTime += r.doneInTime;
+          doneButDelayed += r.doneButDelayed;
+          tasksOverdue += r.tasksOverdue;
+          tasksDue += r.tasksDue;
+          notYetDue += r.notYetDue;
+          fmsScore += r.fmsScore;
+          tasksNotDone += r.tasksNotDone;
+        }
+
+        setFields.checkLists = checkLists;
+        setFields.totalTasks = checkLists.reduce((s, l) => s + l.itemsList.length, 0);
+        setFields.doneInTime = doneInTime;
+        setFields.doneButDelayed = doneButDelayed;
+        setFields.tasksDue = tasksDue;
+        setFields.tasksOverdue = tasksOverdue;
+        setFields.notYetDue = notYetDue;
+        setFields.fmsScore = fmsScore;
+        setFields.fmsStatus = (setFields.joiningStatus === "Not Joining" || tasksNotDone === 0)
+          ? "Closed" : "Open";
+      } else {
+        setFields.checkLists = [];
+      }
+
+      // Remove everything not part of the current schema.
+      const unsetFields = {};
+      for (const key of Object.keys(rawDoc)) {
+        if (!SCHEMA_FIELD_WHITELIST.has(key)) unsetFields[key] = "";
+      }
+
+      await Onboarding.collection.updateOne(
+        { _id: rawDoc._id },
+        { $set: setFields, $unset: unsetFields }
+      );
+      migrated++;
+    }
+
+    res.json({ success: true, message: `Migrated ${migrated} legacy records` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // ─── DELETE /api/onboarding/:id ────────────────────────────────────────────
 router.delete("/:id", async (req, res) => {
   try {

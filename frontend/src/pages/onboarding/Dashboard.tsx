@@ -59,6 +59,7 @@ interface OnboardingRow {
   remarks?: string;
   annualCtc?: number;
   createdAt?: string;
+  updatedAt?: string;
   checkLists?: CheckList[];
 }
 
@@ -130,6 +131,7 @@ const OnboardingDashboard: React.FC = () => {
   const [loading, setLoading]     = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch]       = useState("");
+  const [fmsFilter, setFmsFilter] = useState<"All" | "Open" | "Closed">("All");
   const [page, setPage]           = useState(0);
   const [rpp, setRpp]             = useState(25);
   const [viewModal, setViewModal] = useState<{ row: OnboardingRow; lists: CheckList[] } | null>(null);
@@ -164,10 +166,14 @@ const OnboardingDashboard: React.FC = () => {
       });
       if (!res.data?.success) throw new Error("Bad response");
       const data: OnboardingRow[] = res.data.data ?? [];
-      setRows([...data]
-        .filter(r => r.createdAt)
-        .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime())
-      );
+      // Sort by the person's actual joining date — joinedDate if they've
+      // joined, otherwise plannedJoiningDate for anyone still upcoming.
+      // Records with neither sink to the bottom.
+      const sortKey = (r: OnboardingRow) => {
+        const d = r.joinedDate ?? r.plannedJoiningDate;
+        return d ? new Date(d).getTime() : -Infinity;
+      };
+      setRows([...data].sort((a, b) => sortKey(b) - sortKey(a)));
     } catch {
       toast.error("Failed to load onboardings");
     } finally {
@@ -195,6 +201,7 @@ const OnboardingDashboard: React.FC = () => {
     r.totalTasks ? Math.round(((r.doneInTime ?? 0) / r.totalTasks) * 100) : 0;
 
   const filtered = rows.filter(r => {
+    if (fmsFilter !== "All" && r.fmsStatus !== fmsFilter) return false;
     const q = search.toLowerCase();
     return !q || [r.name, r.dept, r.designation, r.persEmail,
                   r.mobile, r.officialEmail, r.joiningStatus, r.fmsStatus]
@@ -263,25 +270,43 @@ const OnboardingDashboard: React.FC = () => {
           </Box>
 
           {/* Search + count */}
-          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1.5 }}>
+          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1.5, gap: 1.5, flexWrap: "wrap" }}>
             <Typography variant="caption" color="#94a3b8">
               {filtered.length} records{filtered.length !== total ? ` of ${total}` : ""}
             </Typography>
-            <TextField size="small" placeholder="Search name, dept, email…"
-              value={search}
-              onChange={e => { setSearch(e.target.value); setPage(0); }}
-              InputProps={{
-                startAdornment: <InputAdornment position="start">
-                  <Search sx={{ fontSize: 14, color: "#94a3b8" }} />
-                </InputAdornment>,
-              }}
-              sx={{ width: 240,
-                "& .MuiOutlinedInput-root": { borderRadius: "8px", fontSize: "0.76rem",
-                  "& fieldset": { borderColor: "#e2e8f0" },
-                  "&.Mui-focused fieldset": { borderColor: "#6366f1" },
-                },
-                "& .MuiInputBase-input": { py: "5px" },
-              }} />
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+              <Box sx={{ display: "flex", border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden" }}>
+                {(["All", "Open", "Closed"] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => { setFmsFilter(f); setPage(0); }}
+                    style={{
+                      border: "none", cursor: "pointer", padding: "6px 12px",
+                      fontSize: "0.75rem", fontWeight: 600,
+                      background: fmsFilter === f ? "#4f46e5" : "#fff",
+                      color: fmsFilter === f ? "#fff" : "#64748b",
+                    }}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </Box>
+              <TextField size="small" placeholder="Search name, dept, email…"
+                value={search}
+                onChange={e => { setSearch(e.target.value); setPage(0); }}
+                InputProps={{
+                  startAdornment: <InputAdornment position="start">
+                    <Search sx={{ fontSize: 14, color: "#94a3b8" }} />
+                  </InputAdornment>,
+                }}
+                sx={{ width: 240,
+                  "& .MuiOutlinedInput-root": { borderRadius: "8px", fontSize: "0.76rem",
+                    "& fieldset": { borderColor: "#e2e8f0" },
+                    "&.Mui-focused fieldset": { borderColor: "#6366f1" },
+                  },
+                  "& .MuiInputBase-input": { py: "5px" },
+                }} />
+            </Box>
           </Box>
 
           {/* Card list */}
@@ -302,11 +327,11 @@ const OnboardingDashboard: React.FC = () => {
                 {/* Column header */}
                 <Box sx={{
                   display: "grid",
-                  gridTemplateColumns: "2fr 1fr 1fr 120px 90px 90px",
+                  gridTemplateColumns: "2fr 1fr 1fr 90px 120px 90px 90px",
                   gap: 1, px: 2, py: 1,
                   bgcolor: "#f8fafc", borderBottom: "1px solid #e2e8f0",
                 }}>
-                  {["Employee", "Department", "Status", "Progress", "Tasks", "Actions"].map(h => (
+                  {["Employee", "Department", "Status", "FMS", "Progress", "Tasks", "Actions"].map(h => (
                     <Typography key={h} fontSize="0.6rem" fontWeight={700} color="#94a3b8"
                       textTransform="uppercase" letterSpacing="0.06em">{h}</Typography>
                   ))}
@@ -317,23 +342,26 @@ const OnboardingDashboard: React.FC = () => {
                   const jsStyle = JOINING_STATUS_STYLE[row.joiningStatus ?? ""] ?? { bg: "#f8fafc", color: "#64748b" };
                   const progress = pct(row);
                   const isLoadingThis = loadingDetail === row._id;
+                  const isClosed = row.fmsStatus === "Closed";
 
                   return (
                     <Box
                       key={row._id}
                       sx={{
                         display: "grid",
-                        gridTemplateColumns: "2fr 1fr 1fr 120px 90px 90px",
+                        gridTemplateColumns: "2fr 1fr 1fr 90px 120px 90px 90px",
                         gap: 1, px: 2, py: 1.5,
                         borderBottom: idx < paginated.length - 1 ? "1px solid #f1f5f9" : "none",
                         alignItems: "center",
-                        "&:hover": { bgcolor: "#fafbff" },
+                        bgcolor: isClosed ? "#f8fafc" : "transparent",
+                        opacity: isClosed ? 0.6 : 1,
+                        "&:hover": { bgcolor: isClosed ? "#f1f5f9" : "#fafbff" },
                         transition: "background 0.1s",
                       }}
                     >
                       {/* Employee */}
                       <Box sx={{ display: "flex", flexDirection: "column", gap: 0.4, minWidth: 0 }}>
-                        <Typography fontSize="0.8rem" fontWeight={600} color="#0f172a"
+                        <Typography fontSize="0.8rem" fontWeight={600} color={isClosed ? "#64748b" : "#0f172a"}
                           noWrap sx={{ lineHeight: 1.3 }}>
                           {row.name}
                         </Typography>
@@ -344,13 +372,6 @@ const OnboardingDashboard: React.FC = () => {
                           {row.employeeCategory && (
                             <Pill label={row.employeeCategory} bg="#f1f5f9" color="#475569" />
                           )}
-                          {row.fmsStatus && (
-                            <Pill
-                              label={row.fmsStatus}
-                              bg={row.fmsStatus === "Closed" ? "#f0fdf4" : "#fffbeb"}
-                              color={row.fmsStatus === "Closed" ? "#15803d" : "#d97706"}
-                            />
-                          )}
                         </Box>
                         <Typography fontSize="0.62rem" color="#94a3b8" noWrap>
                           {row.persEmail || row.officialEmail || "—"}
@@ -359,7 +380,7 @@ const OnboardingDashboard: React.FC = () => {
 
                       {/* Department */}
                       <Box>
-                        <Typography fontSize="0.75rem" color="#334155" noWrap fontWeight={500}>
+                        <Typography fontSize="0.75rem" color={isClosed ? "#64748b" : "#334155"} noWrap fontWeight={500}>
                           {row.dept || "—"}
                         </Typography>
                         <Typography fontSize="0.62rem" color="#94a3b8" noWrap sx={{ mt: 0.2 }}>
@@ -373,27 +394,36 @@ const OnboardingDashboard: React.FC = () => {
                       <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
                         <Pill
                           label={row.joiningStatus || "—"}
-                          bg={jsStyle.bg}
-                          color={jsStyle.color}
+                          bg={isClosed ? "#f1f5f9" : jsStyle.bg}
+                          color={isClosed ? "#94a3b8" : jsStyle.color}
                         />
                         {(row.fmsScore ?? 0) !== 0 && (
                           <Typography fontSize="0.62rem"
-                            color={(row.fmsScore ?? 0) < 0 ? "#dc2626" : "#15803d"} fontWeight={700}>
+                            color={isClosed ? "#94a3b8" : (row.fmsScore ?? 0) < 0 ? "#dc2626" : "#15803d"} fontWeight={700}>
                             Score: {row.fmsScore}
                           </Typography>
                         )}
+                      </Box>
+
+                      {/* FMS */}
+                      <Box>
+                        <Pill
+                          label={row.fmsStatus || "—"}
+                          bg={isClosed ? "#e2e8f0" : "#fffbeb"}
+                          color={isClosed ? "#64748b" : "#d97706"}
+                        />
                       </Box>
 
                       {/* Progress */}
                       <Box>
                         <ProgressBar value={progress} />
                         <Box sx={{ display: "flex", gap: 1, mt: 0.5 }}>
-                          {(row.tasksOverdue ?? 0) > 0 && (
+                          {!isClosed && (row.tasksOverdue ?? 0) > 0 && (
                             <Typography fontSize="0.6rem" color="#dc2626" fontWeight={700}>
                               {row.tasksOverdue} overdue
                             </Typography>
                           )}
-                          {(row.tasksDue ?? 0) > 0 && (
+                          {!isClosed && (row.tasksDue ?? 0) > 0 && (
                             <Typography fontSize="0.6rem" color="#d97706" fontWeight={700}>
                               {row.tasksDue} pending
                             </Typography>
