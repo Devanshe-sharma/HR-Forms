@@ -536,6 +536,81 @@ router.put("/:id", async (req, res) => {
   }
 });
 
+// ─── Shared recompute logic used by both resync routes below ──────────────
+// Rebuilds item-level planDates and every derived score/summary field from
+// scratch, using clean plain objects (never a raw Mongoose subdoc spread).
+// This repairs records saved before the checklist-merge fix, where item
+// planDate could get silently dropped even though the group-level planDate
+// saved fine.
+async function recomputeOnboarding(existing) {
+  const existingPlain = existing.toObject();
+  const checkLists = toPlainCheckLists(existingPlain.checkLists);
+
+  assignPlanDates(
+    checkLists,
+    existing.joiningStatus ?? "",
+    existing.offerAcceptedDate,
+    existing.joinedDate
+  );
+
+  const today = new Date();
+  let doneInTime = 0, doneButDelayed = 0, tasksOverdue = 0,
+      tasksDue = 0, notYetDue = 0, fmsScore = 0, tasksNotDone = 0;
+
+  for (const list of checkLists) {
+    const r = scoreChecklist(list, today);
+    doneInTime     += r.doneInTime;
+    doneButDelayed += r.doneButDelayed;
+    tasksOverdue   += r.tasksOverdue;
+    tasksDue       += r.tasksDue;
+    notYetDue      += r.notYetDue;
+    fmsScore       += r.fmsScore;
+    tasksNotDone   += r.tasksNotDone;
+  }
+
+  const totalTasks = checkLists.reduce((s, l) => s + l.itemsList.length, 0);
+  const fmsStatus = existing.joiningStatus === "Not Joining" || tasksNotDone === 0
+    ? "Closed" : "Open";
+
+  return Onboarding.findByIdAndUpdate(
+    existing._id,
+    { checkLists, totalTasks, doneInTime, doneButDelayed, tasksOverdue, tasksDue, notYetDue, fmsScore, fmsStatus },
+    { new: true, runValidators: true }
+  );
+}
+
+// ─── ONE-TIME FIX: recompute a single record's checklist + summary fields ──
+// Call this for any joinee whose dashboard "Done/Total" numbers don't match
+// what the expanded checklist actually shows (e.g. items stuck on "NYD"
+// despite the group Plan date being set).
+router.post("/:id/resync", async (req, res) => {
+  try {
+    const existing = await Onboarding.findById(req.params.id);
+    if (!existing) return res.status(404).json({ success: false, message: "Not found" });
+    const updated = await recomputeOnboarding(existing);
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── ONE-TIME FIX: recompute every record in one call ──────────────────────
+router.post("/resync-all", async (req, res) => {
+  try {
+    const docs = await Onboarding.find();
+    let fixed = 0;
+    for (const existing of docs) {
+      await recomputeOnboarding(existing);
+      fixed++;
+    }
+    res.json({ success: true, message: `Resynced ${fixed} records` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // ─── DELETE /api/onboarding/:id ────────────────────────────────────────────
 router.delete("/:id", async (req, res) => {
   try {
