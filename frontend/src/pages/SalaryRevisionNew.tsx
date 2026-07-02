@@ -124,9 +124,22 @@ const get11MonthDate = (j: string): Date => {
   return new Date(d.getFullYear(), d.getMonth()+11, d.getDate());
 };
 
+// The review recurs every year on the same month/day as the first
+// anniversary — this gives the correct calendar date for whichever year
+// is currently being browsed, not just the one year it first fell due.
+const anniversaryDateForYear = (j: string, year: number): Date => {
+  const first = get11MonthDate(j);
+  return new Date(year, first.getMonth(), first.getDate());
+};
+
 const isDueIn = (j: string, m: number, y: number) => {
-  const d = get11MonthDate(j);
-  return d.getMonth()===m && d.getFullYear()===y;
+  const first = get11MonthDate(j);
+  if (m !== first.getMonth()) return false;
+  // Due every year in that month, starting from the year they first became
+  // eligible — not just that one specific year.
+  const selDate   = new Date(y, m, 1);
+  const firstDate = new Date(first.getFullYear(), first.getMonth(), 1);
+  return selDate >= firstDate;
 };
 
 const isEligible = (j: string) => {
@@ -497,7 +510,9 @@ function DashboardView({ records, employees, loading, onSelect, onAdd }: {
                 )}
                 {filtered.map(emp=>{
                   const rec=revisionMap.get(emp.employee_id);
-                  const dueDate=get11MonthDate(emp.joining_date!);
+                  const dueDate=showAll
+                    ? anniversaryDateForYear(emp.joining_date!, now.getFullYear())
+                    : anniversaryDateForYear(emp.joining_date!, selYear);
                   const isThisMonth=isDueIn(emp.joining_date!,now.getMonth(),now.getFullYear());
                   return (
                     <TableRow key={emp._id} onClick={()=>onSelect(emp,rec)}
