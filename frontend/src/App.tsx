@@ -24,7 +24,9 @@ import Onboarding from "./pages/Onboarding";
 import NewOnboarding from "./pages/onboarding/NewOnboarding";
 import OnboardingDashboard from "./pages/onboarding/Dashboard";
 import UpdateOnboarding from "./pages/onboarding/updateonboarding";
-import Exit from "./pages/Exit";
+import NewExit from "./pages/Exits/Newexit";
+import UpdateExit from "./pages/Exits/Updateexit";
+import ExitDashboard from "./pages/Exits/ExitDashboard";
 import Confirmationspage from "./pages/Confirmationspage";
 import DeptOrientationPage from "./pages/Deptorientationpage";
 import Companyorientationpage from "./pages/Companyorientationpage";
@@ -66,7 +68,11 @@ export default function App() {
           <Route path="/onboarding/dashboard" element={<OnboardingDashboard />} />
           <Route path="/new-onboarding" element={<NewOnboarding />} />
           <Route path="/onboarding/update/:id" element={<UpdateOnboarding />} />
-          <Route path="/exits" element={<Exit />} />
+          <Route path="/exits" element={<ExitDashboard />} />
+          <Route path="/exits/dashboard" element={<ExitDashboard />} />
+          <Route path="/new-exit" element={<NewExit />} />
+          <Route path="/exits/update" element={<UpdateExit />} />
+          <Route path="/exits/update/:id" element={<UpdateExit />} />
           <Route path="/company-orientation" element={<Companyorientationpage />} />
           <Route path="/dept-orientation" element={<DeptOrientationPage />} />
           <Route path="/attendance" element={<ComingSoon />} />

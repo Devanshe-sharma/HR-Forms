@@ -53,7 +53,13 @@ const pageTitles: Record<string, string> = {
 
   '/pms':                  'Performance Management System',
 
-  '/exits':                'Exit',
+  '/exits':                'Exit Dashboard',
+
+  '/exits/dashboard':      'Exit Dashboard',
+
+  '/new-exit':             'New Exit',
+
+  '/exits/update':         'Update Exit',
 
   '/company-orientation':  'Company Orientation',
 

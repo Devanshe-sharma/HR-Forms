@@ -37,6 +37,8 @@ import {
   AutoGraph as GrowthIcon,
   Leaderboard as SummaryIcon,
   MonetizationOn as MonetizationOnIcon,
+  PersonAddAlt as PersonAddAltIcon,
+  EditNote as EditNoteIcon,
 } from '@mui/icons-material';
 import { NavLink, useLocation } from 'react-router-dom';
 
@@ -75,6 +77,7 @@ export default function Sidebar() {
   const [openOuting, setOpenOuting] = useState(false);
   const [openPMS, setOpenPMS] = useState(false);
   const [openRecruitment, setOpenRecruitment] = useState(false);
+  const [openExit, setOpenExit] = useState(false);
 
   const isActive = (path: string): boolean => {
     const current = location.pathname + location.search;
@@ -124,11 +127,20 @@ export default function Sidebar() {
       '/applicants'
     ].some(path => isActive(path));
 
+    // Check if any exit sub-item is active
+    const exitActive = [
+      '/exits',
+      '/exits/dashboard',
+      '/new-exit',
+      '/exits/update'
+    ].some(path => isActive(path));
+
     setOpenAttendance(attendanceActive);
     setOpenTrainings(trainingActive);
     setOpenOuting(outingActive);
     setOpenPMS(pmsActive);
     setOpenRecruitment(recruitmentActive);
+    setOpenExit(exitActive);
   }, [location.pathname, location.search]);
 
   const menuItems: MenuItem[] = [
@@ -185,8 +197,19 @@ export default function Sidebar() {
         { to: '/pms?tab=summary', text: 'Final Performance', icon: <SummaryIcon /> },
       ],
     },
-    
-    // { to: '/exits', text: 'Exit', icon: <ExitToAppIcon /> },
+
+    {
+      text: 'Exit',
+      icon: <ExitToAppIcon />,
+      onClick: () => setOpenExit(p => !p),
+      open: openExit,
+      subItems: [
+        { to: '/exits', text: 'Exit Dashboard', icon: <DashboardIcon /> },
+        { to: '/new-exit', text: 'New Exit', icon: <PersonAddAltIcon /> },
+        { to: '/exits/update', text: 'Update Exit', icon: <EditNoteIcon /> },
+      ],
+    },
+
     // {
     //   text: 'Attendance',
     //   icon: <AccessTimeIcon />,

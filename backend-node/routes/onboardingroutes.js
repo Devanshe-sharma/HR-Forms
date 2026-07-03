@@ -376,23 +376,34 @@ router.post("/", async (req, res) => {
   }
 });
 
+// Anyone with an exit record has left the company — they shouldn't show up
+// Statuses that mean the person has actually left — "Serving Notice Period"
+// still counts as employed, and "Not Exiting"/"Exit Cancelled" mean they
+// never left at all, so neither should exclude someone from the master list.
+const EXITED_STATUS_VALUES = new Set(["Left", "Already Left"]);
+
 // ─── GET /api/onboarding/eligible-employees  — Salary Revision employee source ──
 // Salary Revision used to pull its employee picker from a separate Employee
 // collection. Onboarding is now the single source of truth for who's
 // actually joined, so this shapes Onboarding records into the same fields
 // Salary Revision's UI already expects. Uses the onboarding record's own
 // _id as "employee_id" so revisions can be linked straight back to it.
+// Onboarding's own exitStatus field (kept in sync by the Exit module
+// whenever an exit is created/updated) is checked directly here — no live
+// join to the Exit collection needed.
 router.get("/eligible-employees", async (req, res) => {
   try {
     const docs = await Onboarding.find({ joiningStatus: "Joined" })
       .select(
-        "name dept designation officialEmail persEmail joinedDate employeeCategory " +
+        "name dept designation officialEmail persEmail joinedDate employeeCategory exitStatus " +
         "annualCtc basicSal hraSal grossMonthly empEpf gratuity annualBonus " +
         "annualPerformanceIncentive medicalPremium travelAllowance telephoneReimbursement reportingHead"
       )
       .lean();
 
-    const employees = docs.map((d) => ({
+    const activeDocs = docs.filter((d) => !EXITED_STATUS_VALUES.has(d.exitStatus || ""));
+
+    const employees = activeDocs.map((d) => ({
       _id: String(d._id),
       employee_id: String(d._id),
       full_name: d.name || "",
@@ -424,12 +435,15 @@ router.get("/eligible-employees", async (req, res) => {
 });
 
 // ─── GET /api/onboarding  — List all (open first) ─────────────────────────
+// Shows every onboarding record, including employees who have since
+// exited — this stays a full historical view. The exit-exclusion only
+// applies to the employee master list below.
 router.get("/", async (req, res) => {
   try {
     res.set("Cache-Control", "no-store");
     const docs = await Onboarding.find()
-      .sort({ fmsStatus: 1, createdAt: -1 })
-       // lighter list view
+      .sort({ fmsStatus: 1, createdAt: -1 });
+
     res.json({ success: true, data: docs });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

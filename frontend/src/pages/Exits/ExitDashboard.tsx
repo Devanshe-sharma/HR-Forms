@@ -11,9 +11,8 @@ import {
 } from "@mui/material";
 import {
   AddCircle, Search, Edit, Refresh,
-  PeopleAlt, AssignmentTurnedIn, PendingActions, Warning,
-  Close, Visibility, CalendarToday, Person, Email, Phone,
-  Business, WorkOutline, AccountBalance,
+  PeopleAlt, PendingActions, AssignmentTurnedIn, Warning,
+  Close, Visibility,
 } from "@mui/icons-material";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -32,7 +31,7 @@ interface CheckList {
   itemsList: CheckItem[];
 }
 
-interface OnboardingRow {
+interface ExitRow {
   _id: string;
   name: string;
   gender?: string;
@@ -41,8 +40,8 @@ interface OnboardingRow {
   officialEmail?: string;
   dept?: string;
   designation?: string;
-  employeeCategory?: string;
-  joiningStatus?: string;
+  noticePeriod?: string;
+  transferKnowledge?: string;
   exitStatus?: string;
   fmsStatus?: string;
   fmsScore?: number;
@@ -50,17 +49,11 @@ interface OnboardingRow {
   doneInTime?: number;
   tasksOverdue?: number;
   tasksDue?: number;
-  offerAcceptedDate?: string;
-  plannedJoiningDate?: string;
-  joinedDate?: string;
-  confirmationDueDate?: string;
-  salRevisionDueDate?: string;
-  nameOfBuddy?: string;
-  laptopPc?: string;
+  resignationDate?: string;
+  plannedExitDate?: string;
+  leftDate?: string;
   remarks?: string;
-  annualCtc?: number;
   createdAt?: string;
-  updatedAt?: string;
   checkLists?: CheckList[];
 }
 
@@ -70,7 +63,7 @@ const API = process.env.REACT_APP_REACT_APP_API_BASE_URL ?? "";
 const fmt  = (d?: string | null) => d ? dayjs(d).format("DD MMM") : "—";
 const fmtY = (d?: string | null) => d ? dayjs(d).format("DD MMM YY") : "—";
 
-const GROUP_COLORS = ["#7c3aed", "#0284c7", "#059669", "#d97706"];
+const GROUP_COLORS = ["#dc2626", "#d97706", "#475569"];
 
 const STATUS_COLOR: Record<string, { bg: string; text: string; short: string }> = {
   "DONE":           { bg: "#f0fdf4", text: "#15803d", short: "DONE"  },
@@ -80,21 +73,12 @@ const STATUS_COLOR: Record<string, { bg: string; text: string; short: string }> 
   "NOT YET DUE":    { bg: "#f8fafc", text: "#94a3b8", short: "NYD"   },
 };
 
-const JOINING_STATUS_STYLE: Record<string, { bg: string; color: string }> = {
-  "Joined":             { bg: "#f0fdf4", color: "#15803d" },
-  "Yet To Join Office": { bg: "#eff6ff", color: "#1d4ed8" },
-  "Not Joining":        { bg: "#fef2f2", color: "#dc2626" },
-};
-
-// Onboarding's exitStatus field is synced from the Exit module — only
-// "Left"/"Already Left" mean the person has actually gone; the others mean
-// they're still employed (mid-notice, or the exit never happened).
 const EXIT_STATUS_STYLE: Record<string, { bg: string; color: string }> = {
-  "Left":                  { bg: "#fef2f2", color: "#dc2626" },
-  "Already Left":          { bg: "#fef2f2", color: "#dc2626" },
   "Serving Notice Period": { bg: "#fffbeb", color: "#d97706" },
-  "Not Exiting":           { bg: "#f8fafc", color: "#64748b" },
-  "Exit Cancelled":        { bg: "#f8fafc", color: "#64748b" },
+  "Already Left":          { bg: "#f8fafc", color: "#475569" },
+  "Left":                  { bg: "#f0fdf4", color: "#15803d" },
+  "Not Exiting":           { bg: "#fef2f2", color: "#dc2626" },
+  "Exit Cancelled":        { bg: "#fef2f2", color: "#dc2626" },
 };
 
 // ─── Pill component ───────────────────────────────────────────────────────────
@@ -113,7 +97,7 @@ const ProgressBar: React.FC<{ value: number }> = ({ value }) => (
     <Box sx={{ flex: 1, height: 5, borderRadius: 3, bgcolor: "#e2e8f0", overflow: "hidden" }}>
       <Box sx={{
         height: "100%", width: `${value}%`, borderRadius: 3,
-        bgcolor: value === 100 ? "#15803d" : "#6366f1",
+        bgcolor: value === 100 ? "#15803d" : "#dc2626",
         transition: "width 0.4s ease",
       }} />
     </Box>
@@ -123,10 +107,9 @@ const ProgressBar: React.FC<{ value: number }> = ({ value }) => (
 
 // ─── Detail field ─────────────────────────────────────────────────────────────
 
-const DetailField: React.FC<{ label: string; value?: string | number | null; icon?: React.ReactNode }> = ({ label, value, icon }) => (
+const DetailField: React.FC<{ label: string; value?: string | number | null }> = ({ label, value }) => (
   <Box sx={{ display: "flex", flexDirection: "column", gap: 0.3 }}>
     <Typography fontSize="0.6rem" color="#94a3b8" textTransform="uppercase" letterSpacing="0.06em" fontWeight={600}>
-      {icon && <span style={{ marginRight: 4, verticalAlign: "middle", opacity: 0.7 }}>{icon}</span>}
       {label}
     </Typography>
     <Typography fontSize="0.8rem" color="#1e293b" fontWeight={500}>
@@ -137,78 +120,69 @@ const DetailField: React.FC<{ label: string; value?: string | number | null; ico
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-const OnboardingDashboard: React.FC = () => {
+const ExitDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [rows, setRows]           = useState<OnboardingRow[]>([]);
+  const [rows, setRows]           = useState<ExitRow[]>([]);
   const [loading, setLoading]     = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch]       = useState("");
   const [fmsFilter, setFmsFilter] = useState<"All" | "Open" | "Closed">("All");
-  const [employmentFilter, setEmploymentFilter] = useState<"All" | "Current" | "Exited">("All");
+  const [statusFilter, setStatusFilter] = useState<"All" | "Exited" | "Serving Notice" | "Not Exiting">("All");
   const [page, setPage]           = useState(0);
   const [rpp, setRpp]             = useState(25);
-  const [viewModal, setViewModal] = useState<{ row: OnboardingRow; lists: CheckList[] } | null>(null);
+  const [viewModal, setViewModal] = useState<{ row: ExitRow; lists: CheckList[] } | null>(null);
   const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
 
-  // "Left"/"Already Left" mean the person has actually gone — "Serving
-  // Notice Period" is still employed, and "Not Exiting"/"Exit Cancelled"
-  // mean the exit never happened, matching the backend's own rule.
-  const isExited = (r: OnboardingRow) =>
-    r.exitStatus === "Left" || r.exitStatus === "Already Left";
+  // "Left"/"Already Left" mean they've actually gone; "Serving Notice
+  // Period" is still employed (mid-notice); "Not Exiting"/"Exit Cancelled"
+  // mean the exit never went through.
+  const isExitedStatus = (r: ExitRow) => r.exitStatus === "Left" || r.exitStatus === "Already Left";
+  const isServingNotice = (r: ExitRow) => r.exitStatus === "Serving Notice Period";
+  const isNotExitingStatus = (r: ExitRow) => r.exitStatus === "Not Exiting" || r.exitStatus === "Exit Cancelled";
 
-  const total       = rows.length;
-  const open        = rows.filter(r => r.fmsStatus === "Open").length;
-  const closed      = rows.filter(r => r.fmsStatus === "Closed").length;
-  const overdue     = rows.filter(r => r.fmsStatus === "Open" && (r.fmsScore ?? 0) < 0).length;
-  const exitedCount = rows.filter(isExited).length;
-  const currentCount = total - exitedCount;
+  const total          = rows.length;
+  const open           = rows.filter(r => r.fmsStatus === "Open").length;
+  const closed          = rows.filter(r => r.fmsStatus === "Closed").length;
+  const overdue         = rows.filter(r => r.fmsStatus === "Open" && (r.tasksOverdue ?? 0) > 0).length;
+  const exitedCount     = rows.filter(isExitedStatus).length;
+  const servingNoticeCount = rows.filter(isServingNotice).length;
+  const notExitingCount = rows.filter(isNotExitingStatus).length;
 
   useEffect(() => {
     load();
-
-    // Refetch whenever the user comes back to this tab/window — covers the
-    // common case of updating a record in another tab (or the Update
-    // Onboarding page) and switching back here without a manual reload.
     const onFocus = () => load(true);
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") load(true);
     });
-    return () => {
-      window.removeEventListener("focus", onFocus);
-    };
+    return () => window.removeEventListener("focus", onFocus);
   }, []);
 
   const load = async (silent = false) => {
     try {
       if (silent) setRefreshing(true); else setLoading(true);
-      const res = await axios.get(`${API}/onboarding`, {
-        params: { _t: Date.now() },
-      });
+      const res = await axios.get(`${API}/exit`, { params: { _t: Date.now() } });
       if (!res.data?.success) throw new Error("Bad response");
-      const data: OnboardingRow[] = res.data.data ?? [];
-      // Sort by the person's actual joining date — joinedDate if they've
-      // joined, otherwise plannedJoiningDate for anyone still upcoming.
-      // Records with neither sink to the bottom.
-      const sortKey = (r: OnboardingRow) => {
-        const d = r.joinedDate ?? r.plannedJoiningDate;
+      const data: ExitRow[] = res.data.data ?? [];
+      // Latest exit first — leftDate if they've already left, else planned
+      // exit date, else resignation date, else sink to the bottom.
+      const sortKey = (r: ExitRow) => {
+        const d = r.leftDate ?? r.plannedExitDate ?? r.resignationDate;
         return d ? new Date(d).getTime() : -Infinity;
       };
       setRows([...data].sort((a, b) => sortKey(b) - sortKey(a)));
     } catch {
-      toast.error("Failed to load onboardings");
+      toast.error("Failed to load exits");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  const openViewModal = async (row: OnboardingRow) => {
+  const openViewModal = async (row: ExitRow) => {
     setLoadingDetail(row._id);
     try {
-      const res = await axios.get(`${API}/onboarding/${row._id}`, {
-        params: { _t: Date.now() },
-      });
+      const res = await axios.get(`${API}/exit/${row._id}`, { params: { _t: Date.now() } });
       const lists: CheckList[] = res.data.data?.checkLists ?? [];
       setViewModal({ row, lists });
     } catch {
@@ -218,16 +192,17 @@ const OnboardingDashboard: React.FC = () => {
     }
   };
 
-  const pct = (r: OnboardingRow) =>
+  const pct = (r: ExitRow) =>
     r.totalTasks ? Math.round(((r.doneInTime ?? 0) / r.totalTasks) * 100) : 0;
 
   const filtered = rows.filter(r => {
     if (fmsFilter !== "All" && r.fmsStatus !== fmsFilter) return false;
-    if (employmentFilter === "Current" && isExited(r)) return false;
-    if (employmentFilter === "Exited" && !isExited(r)) return false;
+    if (statusFilter === "Exited" && !isExitedStatus(r)) return false;
+    if (statusFilter === "Serving Notice" && !isServingNotice(r)) return false;
+    if (statusFilter === "Not Exiting" && !isNotExitingStatus(r)) return false;
     const q = search.toLowerCase();
     return !q || [r.name, r.dept, r.designation, r.persEmail,
-                  r.mobile, r.officialEmail, r.joiningStatus, r.fmsStatus]
+                  r.mobile, r.officialEmail, r.exitStatus, r.fmsStatus]
       .some(v => v?.toLowerCase().includes(q));
   });
   const paginated = filtered.slice(page * rpp, page * rpp + rpp);
@@ -244,7 +219,7 @@ const OnboardingDashboard: React.FC = () => {
           <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
             <Box>
               <Typography variant="h5" fontWeight={700} color="#0f172a" lineHeight={1.2}>
-                Onboarding Dashboard
+                Exit Dashboard
               </Typography>
               <Typography variant="caption" color="#94a3b8">{total} records</Typography>
             </Box>
@@ -255,7 +230,7 @@ const OnboardingDashboard: React.FC = () => {
                   onClick={() => load(true)}
                   disabled={refreshing || loading}
                   startIcon={refreshing
-                    ? <CircularProgress size={14} sx={{ color: "#4f46e5" }} />
+                    ? <CircularProgress size={14} sx={{ color: "#dc2626" }} />
                     : <Refresh sx={{ fontSize: 16 }} />}
                   sx={{ borderColor: "#e2e8f0", color: "#475569",
                     borderRadius: "8px", textTransform: "none", fontWeight: 600, fontSize: "0.8rem" }}
@@ -264,10 +239,10 @@ const OnboardingDashboard: React.FC = () => {
                 </Button>
               </Tooltip>
               <Button variant="contained" startIcon={<AddCircle />}
-                onClick={() => navigate("/new-onboarding")}
-                sx={{ bgcolor: "#4f46e5", "&:hover": { bgcolor: "#4338ca" },
+                onClick={() => navigate("/new-exit")}
+                sx={{ bgcolor: "#dc2626", "&:hover": { bgcolor: "#b91c1c" },
                   borderRadius: "8px", textTransform: "none", fontWeight: 600, fontSize: "0.8rem" }}>
-                New Onboarding
+                New Exit
               </Button>
             </Box>
           </Box>
@@ -275,12 +250,13 @@ const OnboardingDashboard: React.FC = () => {
           {/* Stats */}
           <Box sx={{ display: "flex", gap: 1.5, mb: 2.5, flexWrap: "wrap" }}>
             {[
-              { label: "Total",             value: total,        color: "#4f46e5", bg: "#eef2ff", Icon: PeopleAlt },
-              { label: "Current Employees", value: currentCount, color: "#0f172a", bg: "#f8fafc", Icon: PeopleAlt },
-              { label: "Exited",            value: exitedCount,  color: "#dc2626", bg: "#fef2f2", Icon: Warning },
-              { label: "Open",              value: open,         color: "#d97706", bg: "#fffbeb", Icon: PendingActions },
-              { label: "Completed",         value: closed,       color: "#15803d", bg: "#f0fdf4", Icon: AssignmentTurnedIn },
-              { label: "Overdue",           value: overdue,      color: "#dc2626", bg: "#fef2f2", Icon: Warning },
+              { label: "Total",          value: total,             color: "#dc2626", bg: "#fef2f2", Icon: PeopleAlt },
+              { label: "Exited",         value: exitedCount,       color: "#b91c1c", bg: "#fef2f2", Icon: PeopleAlt },
+              { label: "Serving Notice", value: servingNoticeCount, color: "#d97706", bg: "#fffbeb", Icon: PendingActions },
+              { label: "Not Exiting",    value: notExitingCount,   color: "#64748b", bg: "#f8fafc", Icon: PeopleAlt },
+              { label: "Open",           value: open,              color: "#d97706", bg: "#fffbeb", Icon: PendingActions },
+              { label: "Completed",      value: closed,            color: "#15803d", bg: "#f0fdf4", Icon: AssignmentTurnedIn },
+              { label: "Overdue",        value: overdue,           color: "#b91c1c", bg: "#fef2f2", Icon: Warning },
             ].map(({ label, value, color, bg, Icon }) => (
               <Box key={label} sx={{ flex: "1 1 110px", bgcolor: bg,
                 border: `1px solid ${color}25`, borderRadius: "10px",
@@ -294,7 +270,7 @@ const OnboardingDashboard: React.FC = () => {
             ))}
           </Box>
 
-          {/* Search + count */}
+          {/* Search + filter */}
           <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1.5, gap: 1.5, flexWrap: "wrap" }}>
             <Typography variant="caption" color="#94a3b8">
               {filtered.length} records{filtered.length !== total ? ` of ${total}` : ""}
@@ -303,17 +279,18 @@ const OnboardingDashboard: React.FC = () => {
               <Box sx={{ display: "flex", border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden" }}>
                 {([
                   { key: "All" as const, label: `All (${total})` },
-                  { key: "Current" as const, label: `Current (${currentCount})` },
                   { key: "Exited" as const, label: `Exited (${exitedCount})` },
+                  { key: "Serving Notice" as const, label: `Notice (${servingNoticeCount})` },
+                  { key: "Not Exiting" as const, label: `Not Exiting (${notExitingCount})` },
                 ]).map(({ key, label }) => (
                   <button
                     key={key}
-                    onClick={() => { setEmploymentFilter(key); setPage(0); }}
+                    onClick={() => { setStatusFilter(key); setPage(0); }}
                     style={{
                       border: "none", cursor: "pointer", padding: "6px 12px",
                       fontSize: "0.75rem", fontWeight: 600, whiteSpace: "nowrap",
-                      background: employmentFilter === key ? "#dc2626" : "#fff",
-                      color: employmentFilter === key ? "#fff" : "#64748b",
+                      background: statusFilter === key ? "#b91c1c" : "#fff",
+                      color: statusFilter === key ? "#fff" : "#64748b",
                     }}
                   >
                     {label}
@@ -328,7 +305,7 @@ const OnboardingDashboard: React.FC = () => {
                     style={{
                       border: "none", cursor: "pointer", padding: "6px 12px",
                       fontSize: "0.75rem", fontWeight: 600,
-                      background: fmsFilter === f ? "#4f46e5" : "#fff",
+                      background: fmsFilter === f ? "#dc2626" : "#fff",
                       color: fmsFilter === f ? "#fff" : "#64748b",
                     }}
                   >
@@ -347,7 +324,7 @@ const OnboardingDashboard: React.FC = () => {
                 sx={{ width: 240,
                   "& .MuiOutlinedInput-root": { borderRadius: "8px", fontSize: "0.76rem",
                     "& fieldset": { borderColor: "#e2e8f0" },
-                    "&.Mui-focused fieldset": { borderColor: "#6366f1" },
+                    "&.Mui-focused fieldset": { borderColor: "#dc2626" },
                   },
                   "& .MuiInputBase-input": { py: "5px" },
                 }} />
@@ -361,11 +338,11 @@ const OnboardingDashboard: React.FC = () => {
 
             {loading ? (
               <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
-                <CircularProgress size={26} sx={{ color: "#4f46e5" }} />
+                <CircularProgress size={26} sx={{ color: "#dc2626" }} />
               </Box>
             ) : paginated.length === 0 ? (
               <Box sx={{ textAlign: "center", py: 8, color: "#94a3b8", fontSize: "0.85rem" }}>
-                {rows.length === 0 ? "No onboardings yet. Add one to get started." : "No results match your search."}
+                {rows.length === 0 ? "No exits yet." : "No results match your search."}
               </Box>
             ) : (
               <>
@@ -384,7 +361,7 @@ const OnboardingDashboard: React.FC = () => {
 
                 {/* Rows */}
                 {paginated.map((row, idx) => {
-                  const jsStyle = JOINING_STATUS_STYLE[row.joiningStatus ?? ""] ?? { bg: "#f8fafc", color: "#64748b" };
+                  const esStyle = EXIT_STATUS_STYLE[row.exitStatus ?? ""] ?? { bg: "#f8fafc", color: "#64748b" };
                   const progress = pct(row);
                   const isLoadingThis = loadingDetail === row._id;
                   const isClosed = row.fmsStatus === "Closed";
@@ -410,14 +387,9 @@ const OnboardingDashboard: React.FC = () => {
                           noWrap sx={{ lineHeight: 1.3 }}>
                           {row.name}
                         </Typography>
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 0.8, flexWrap: "wrap" }}>
-                          <Typography fontSize="0.65rem" color="#64748b" noWrap>
-                            {row.designation || "—"}
-                          </Typography>
-                          {row.employeeCategory && (
-                            <Pill label={row.employeeCategory} bg="#f1f5f9" color="#475569" />
-                          )}
-                        </Box>
+                        <Typography fontSize="0.65rem" color="#64748b" noWrap>
+                          {row.designation || "—"}
+                        </Typography>
                         <Typography fontSize="0.62rem" color="#94a3b8" noWrap>
                           {row.persEmail || row.officialEmail || "—"}
                         </Typography>
@@ -429,26 +401,23 @@ const OnboardingDashboard: React.FC = () => {
                           {row.dept || "—"}
                         </Typography>
                         <Typography fontSize="0.62rem" color="#94a3b8" noWrap sx={{ mt: 0.2 }}>
-                          {fmtY(row.plannedJoiningDate) !== "—"
-                            ? `Joining: ${fmtY(row.plannedJoiningDate)}`
-                            : row.joinedDate ? `Joined: ${fmtY(row.joinedDate)}` : ""}
+                          {row.leftDate
+                            ? `Left: ${fmtY(row.leftDate)}`
+                            : row.plannedExitDate
+                              ? `Planned: ${fmtY(row.plannedExitDate)}`
+                              : row.resignationDate
+                                ? `Resigned: ${fmtY(row.resignationDate)}`
+                                : ""}
                         </Typography>
                       </Box>
 
                       {/* Status */}
                       <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
                         <Pill
-                          label={row.joiningStatus || "—"}
-                          bg={isClosed ? "#f1f5f9" : jsStyle.bg}
-                          color={isClosed ? "#94a3b8" : jsStyle.color}
+                          label={row.exitStatus || "—"}
+                          bg={isClosed ? "#f1f5f9" : esStyle.bg}
+                          color={isClosed ? "#94a3b8" : esStyle.color}
                         />
-                        {row.exitStatus && (
-                          <Pill
-                            label={row.exitStatus}
-                            bg={EXIT_STATUS_STYLE[row.exitStatus]?.bg ?? "#f8fafc"}
-                            color={EXIT_STATUS_STYLE[row.exitStatus]?.color ?? "#64748b"}
-                          />
-                        )}
                         {(row.fmsScore ?? 0) !== 0 && (
                           <Typography fontSize="0.62rem"
                             color={isClosed ? "#94a3b8" : (row.fmsScore ?? 0) < 0 ? "#dc2626" : "#15803d"} fontWeight={700}>
@@ -514,21 +483,21 @@ const OnboardingDashboard: React.FC = () => {
                             style={{
                               display: "flex", alignItems: "center", gap: 3,
                               fontSize: "0.61rem", padding: "4px 8px",
-                              background: "#eef2ff", color: "#4f46e5",
+                              background: "#fef2f2", color: "#dc2626",
                               border: "none", borderRadius: 6, cursor: "pointer",
                               fontWeight: 600, opacity: isLoadingThis ? 0.6 : 1,
                             }}
                           >
                             {isLoadingThis
-                              ? <CircularProgress size={10} sx={{ color: "#4f46e5" }} />
+                              ? <CircularProgress size={10} sx={{ color: "#dc2626" }} />
                               : <Visibility sx={{ fontSize: "11px !important" }} />
                             }
                             View
                           </button>
                         </Tooltip>
-                        <Tooltip title="Edit onboarding">
+                        <Tooltip title="Edit exit">
                           <button
-                            onClick={() => navigate(`/onboarding/update/${row._id}`)}
+                            onClick={() => navigate(`/exits/update/${row._id}`)}
                             style={{
                               display: "flex", alignItems: "center", gap: 3,
                               fontSize: "0.61rem", padding: "4px 8px",
@@ -590,7 +559,7 @@ const OnboardingDashboard: React.FC = () => {
             {/* Modal header */}
             <Box sx={{
               px: 3, py: 2, flexShrink: 0,
-              background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
+              background: "linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)",
               display: "flex", alignItems: "flex-start", justifyContent: "space-between",
             }}>
               <Box>
@@ -601,12 +570,12 @@ const OnboardingDashboard: React.FC = () => {
                   {viewModal.row.designation} · {viewModal.row.dept}
                 </Typography>
                 <Box sx={{ display: "flex", gap: 1, mt: 1, flexWrap: "wrap" }}>
-                  {viewModal.row.joiningStatus && (
+                  {viewModal.row.exitStatus && (
                     <span style={{
                       fontSize: "0.62rem", fontWeight: 700,
                       background: "rgba(255,255,255,0.2)", color: "#fff",
                       padding: "2px 8px", borderRadius: 20, backdropFilter: "blur(4px)",
-                    }}>{viewModal.row.joiningStatus}</span>
+                    }}>{viewModal.row.exitStatus}</span>
                   )}
                   {viewModal.row.fmsStatus && (
                     <span style={{
@@ -614,13 +583,6 @@ const OnboardingDashboard: React.FC = () => {
                       background: "rgba(255,255,255,0.2)", color: "#fff",
                       padding: "2px 8px", borderRadius: 20,
                     }}>FMS: {viewModal.row.fmsStatus}</span>
-                  )}
-                  {viewModal.row.employeeCategory && (
-                    <span style={{
-                      fontSize: "0.62rem", fontWeight: 700,
-                      background: "rgba(255,255,255,0.15)", color: "#fff",
-                      padding: "2px 8px", borderRadius: 20,
-                    }}>{viewModal.row.employeeCategory}</span>
                   )}
                 </Box>
               </Box>
@@ -655,23 +617,17 @@ const OnboardingDashboard: React.FC = () => {
 
               <Box sx={{ height: 1, bgcolor: "#f1f5f9" }} />
 
-              {/* Role & compensation */}
+              {/* Role info */}
               <Box>
                 <Typography fontSize="0.65rem" fontWeight={700} color="#94a3b8"
                   textTransform="uppercase" letterSpacing="0.08em" mb={1.2}>
-                  Role & Compensation
+                  Role Information
                 </Typography>
                 <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 2 }}>
                   <DetailField label="Department" value={viewModal.row.dept} />
                   <DetailField label="Designation" value={viewModal.row.designation} />
-                  <DetailField label="Category" value={viewModal.row.employeeCategory} />
-                  <DetailField label="Exit Status" value={viewModal.row.exitStatus} />
-                  <DetailField label="Annual CTC"
-                    value={viewModal.row.annualCtc
-                      ? `₹${(viewModal.row.annualCtc / 100000).toFixed(2)}L`
-                      : undefined} />
-                  <DetailField label="Buddy" value={viewModal.row.nameOfBuddy} />
-                  <DetailField label="Laptop / PC" value={viewModal.row.laptopPc} />
+                  <DetailField label="Notice Period" value={viewModal.row.noticePeriod} />
+                  <DetailField label="Transfer Knowledge To" value={viewModal.row.transferKnowledge} />
                 </Box>
               </Box>
 
@@ -681,15 +637,13 @@ const OnboardingDashboard: React.FC = () => {
               <Box>
                 <Typography fontSize="0.65rem" fontWeight={700} color="#94a3b8"
                   textTransform="uppercase" letterSpacing="0.08em" mb={1.2}>
-                  Key Dates
+                  Exit Timeline
                 </Typography>
                 <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
                   {[
-                    { label: "Offer Accepted",   value: viewModal.row.offerAcceptedDate },
-                    { label: "Planned Joining",   value: viewModal.row.plannedJoiningDate },
-                    { label: "Joined On",         value: viewModal.row.joinedDate },
-                    { label: "Confirmation Due",  value: viewModal.row.confirmationDueDate },
-                    { label: "Sal Revision Due",  value: viewModal.row.salRevisionDueDate },
+                    { label: "Resignation Date", value: viewModal.row.resignationDate },
+                    { label: "Planned Exit",     value: viewModal.row.plannedExitDate },
+                    { label: "Left On",          value: viewModal.row.leftDate },
                   ].map(({ label, value }) => (
                     <Box key={label} sx={{
                       px: 1.5, py: 1, bgcolor: "#f8fafc",
@@ -717,7 +671,7 @@ const OnboardingDashboard: React.FC = () => {
                     color: (viewModal.row.tasksOverdue ?? 0) > 0 ? "#dc2626" : "#94a3b8",
                     bg: (viewModal.row.tasksOverdue ?? 0) > 0 ? "#fef2f2" : "#f8fafc" },
                   { label: "Pending", value: viewModal.row.tasksDue ?? 0, color: "#d97706", bg: "#fffbeb" },
-                  { label: "Total Tasks", value: viewModal.row.totalTasks ?? 0, color: "#4f46e5", bg: "#eef2ff" },
+                  { label: "Total Tasks", value: viewModal.row.totalTasks ?? 0, color: "#dc2626", bg: "#fef2f2" },
                 ].map(({ label, value, color, bg }) => (
                   <Box key={label} sx={{ px: 1.5, py: 1, bgcolor: bg,
                     border: `1px solid ${color}25`, borderRadius: "8px", textAlign: "center", minWidth: 80 }}>
@@ -749,7 +703,7 @@ const OnboardingDashboard: React.FC = () => {
                   <Box>
                     <Typography fontSize="0.65rem" fontWeight={700} color="#94a3b8"
                       textTransform="uppercase" letterSpacing="0.08em" mb={1.5}>
-                      Onboarding Checklists
+                      Exit Checklists
                     </Typography>
                     <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))", gap: 2 }}>
                       {viewModal.lists.map((list, gi) => {
@@ -855,4 +809,4 @@ const OnboardingDashboard: React.FC = () => {
   );
 };
 
-export default OnboardingDashboard;
+export default ExitDashboard;
