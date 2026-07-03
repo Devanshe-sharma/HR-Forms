@@ -78,6 +78,7 @@ export default function Sidebar() {
   const [openPMS, setOpenPMS] = useState(false);
   const [openRecruitment, setOpenRecruitment] = useState(false);
   const [openExit, setOpenExit] = useState(false);
+  const [openOnboarding, setOpenOnboarding] = useState(false);
 
   const isActive = (path: string): boolean => {
     const current = location.pathname + location.search;
@@ -135,12 +136,21 @@ export default function Sidebar() {
       '/exits/update'
     ].some(path => isActive(path));
 
+    // Check if any onboarding sub-item is active
+    const onboardingActive = [
+      '/onboarding',
+      '/onboarding/dashboard',
+      '/new-onboarding',
+      '/onboarding/update'
+    ].some(path => isActive(path));
+
     setOpenAttendance(attendanceActive);
     setOpenTrainings(trainingActive);
     setOpenOuting(outingActive);
     setOpenPMS(pmsActive);
     setOpenRecruitment(recruitmentActive);
     setOpenExit(exitActive);
+    setOpenOnboarding(onboardingActive);
   }, [location.pathname, location.search]);
 
   const menuItems: MenuItem[] = [
@@ -148,6 +158,41 @@ export default function Sidebar() {
     { to: '/dept-orientation', text: 'Department Orientation', icon: <ApartmentIcon /> },
     { to: '/hr-dashboard', text: 'Dashboard', icon: <DashboardIcon /> },
     { to: '/employees', text: 'Employees List', icon: <PeopleIcon /> },
+    {
+      text: 'Recruitment',
+      icon: <RequestPageIcon />,
+      onClick: () => setOpenRecruitment(p => !p),
+      open: openRecruitment,
+      subItems: [
+        { to: '/recruitment', text: 'Recruitment Dashboard', icon: <DashboardIcon /> },
+        // { to: '/requisition', text: 'Requisitions', icon: <AssignmentIcon /> },
+        { to: '/new-hiring-requisition', text: 'New Requisition', icon: <RequestPageIcon /> },
+        { to: '/applicants', text: 'Candidate Management', icon: <PeopleIcon /> },
+      ],
+    },
+
+    {
+      text: 'Onboarding',
+      icon: <BusinessCenterIcon />,
+      onClick: () => setOpenOnboarding(p => !p),
+      open: openOnboarding,
+      subItems: [
+        { to: '/onboarding/dashboard', text: 'Onboarding Dashboard', icon: <DashboardIcon /> },
+        { to: '/new-onboarding', text: 'New Onboarding', icon: <PersonAddAltIcon /> },
+        { to: '/onboarding/update', text: 'Update Onboarding', icon: <EditNoteIcon /> },
+      ],
+    },
+    {
+      text: 'Exit',
+      icon: <ExitToAppIcon />,
+      onClick: () => setOpenExit(p => !p),
+      open: openExit,
+      subItems: [
+        { to: '/exits', text: 'Exit Dashboard', icon: <DashboardIcon /> },
+        { to: '/new-exit', text: 'New Exit', icon: <PersonAddAltIcon /> },
+        { to: '/exits/update', text: 'Update Exit', icon: <EditNoteIcon /> },
+      ],
+    },
     { to: '/dept-designation-master', text: 'Dept & Designation Master', icon: <BusinessCenterIcon /> },
 
     
@@ -198,17 +243,7 @@ export default function Sidebar() {
       ],
     },
 
-    {
-      text: 'Exit',
-      icon: <ExitToAppIcon />,
-      onClick: () => setOpenExit(p => !p),
-      open: openExit,
-      subItems: [
-        { to: '/exits', text: 'Exit Dashboard', icon: <DashboardIcon /> },
-        { to: '/new-exit', text: 'New Exit', icon: <PersonAddAltIcon /> },
-        { to: '/exits/update', text: 'Update Exit', icon: <EditNoteIcon /> },
-      ],
-    },
+    
 
     // {
     //   text: 'Attendance',
@@ -223,20 +258,7 @@ export default function Sidebar() {
     // },
 
     // { to: '/checklist-delegation', text: 'Check List & Delegation', icon: <AssignmentTurnedInIcon /> },
-    {
-      text: 'Recruitment',
-      icon: <RequestPageIcon />,
-      onClick: () => setOpenRecruitment(p => !p),
-      open: openRecruitment,
-      subItems: [
-        { to: '/recruitment', text: 'Recruitment Dashboard', icon: <DashboardIcon /> },
-        // { to: '/requisition', text: 'Requisitions', icon: <AssignmentIcon /> },
-        { to: '/new-hiring-requisition', text: 'New Requisition', icon: <RequestPageIcon /> },
-        { to: '/applicants', text: 'Candidate Management', icon: <PeopleIcon /> },
-      ],
-    },
     
-    { to: '/onboarding/dashboard', text: 'Onboarding', icon: <BusinessCenterIcon /> },
     { to: '/profile', text: 'Profile', icon: <AccountCircleIcon /> },
     { to: '/configuration', text: 'Configuration', icon: <SettingsIcon /> },
   ];

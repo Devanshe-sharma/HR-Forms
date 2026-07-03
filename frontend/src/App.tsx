@@ -67,6 +67,7 @@ export default function App() {
           <Route path="/onboarding" element={<OnboardingDashboard />} />
           <Route path="/onboarding/dashboard" element={<OnboardingDashboard />} />
           <Route path="/new-onboarding" element={<NewOnboarding />} />
+          <Route path="/onboarding/update" element={<UpdateOnboarding />} />
           <Route path="/onboarding/update/:id" element={<UpdateOnboarding />} />
           <Route path="/exits" element={<ExitDashboard />} />
           <Route path="/exits/dashboard" element={<ExitDashboard />} />
