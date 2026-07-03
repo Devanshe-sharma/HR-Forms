@@ -230,7 +230,7 @@ export default function Sidebar() {
       open: openRecruitment,
       subItems: [
         { to: '/recruitment', text: 'Recruitment Dashboard', icon: <DashboardIcon /> },
-        { to: '/requisition', text: 'Requisitions', icon: <AssignmentIcon /> },
+        // { to: '/requisition', text: 'Requisitions', icon: <AssignmentIcon /> },
         { to: '/new-hiring-requisition', text: 'New Requisition', icon: <RequestPageIcon /> },
         { to: '/applicants', text: 'Candidate Management', icon: <PeopleIcon /> },
       ],

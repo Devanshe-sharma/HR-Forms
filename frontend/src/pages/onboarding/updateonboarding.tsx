@@ -192,6 +192,7 @@ const CHECKLIST_DEFS = [
       "Emailed All Clients New Member Has Joined if Applicable Done?",
       "Coffee With Directors Done?", "Check if UAN Applicable Done?",
       "UAN (PF) if applicable completed Done?", "KYC (PF) if applicable completed Done?",
+      "Add Employee to BO WhatsApp Gp Done?",
     ],
   },
   {

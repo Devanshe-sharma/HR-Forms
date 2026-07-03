@@ -127,6 +127,7 @@ function buildDefaultCheckLists() {
         { name: "Archive Employee Profile Done?" },
         { name: "Remove the Access from Shared Contacts Done?" },
         { name: "Delete Email from BO Domain Done?" },
+        { name: "Remove Employee from BO WhatsApp Gp Done?" },
       ],
     },
   ];
@@ -180,6 +181,54 @@ function toPlainCheckLists(checkLists) {
       checked: !!it.checked,
     })),
   }));
+}
+
+// Reconciles an existing record's checklist against the CURRENT
+// buildDefaultCheckLists() template — used whenever a new task gets added
+// to the checklist definitions after records already exist. Matches items
+// by NAME (not array position), so it's safe regardless of where in the
+// list a new task was inserted: existing items keep all their done/plan
+// data untouched, and any task present in the template but missing from
+// the record gets added fresh (inheriting the group's plan date, if any,
+// so it scores consistently with its siblings).
+function reconcileChecklistsWithTemplate(existingCheckLists) {
+  const template = buildDefaultCheckLists();
+  const existingByGroupName = new Map((existingCheckLists || []).map((g) => [g.name, g]));
+
+  return template.map((templateGroup) => {
+    const existingGroup = existingByGroupName.get(templateGroup.name);
+    const existingItemsByName = new Map(
+      (existingGroup?.itemsList || []).map((it) => [it.name, it])
+    );
+
+    return {
+      name: templateGroup.name,
+      planDate: existingGroup?.planDate ?? null,
+      itemsList: templateGroup.itemsList.map(({ name: itemName }) => {
+        const existingItem = existingItemsByName.get(itemName);
+        if (existingItem) {
+          return {
+            name: existingItem.name ?? itemName,
+            planDate: existingItem.planDate ?? null,
+            doneDate: existingItem.doneDate ?? null,
+            score: existingItem.score ?? 0,
+            status: existingItem.status ?? "Pending",
+            daysLeft: existingItem.daysLeft ?? 0,
+            checked: !!existingItem.checked,
+          };
+        }
+        return {
+          name: itemName,
+          planDate: existingGroup?.planDate ?? null,
+          doneDate: null,
+          score: 0,
+          status: "Pending",
+          daysLeft: 0,
+          checked: false,
+        };
+      }),
+    };
+  });
 }
 
 function normalizeCc(raw) {
@@ -371,6 +420,53 @@ router.get("/", async (req, res) => {
 // which email did the matching, whether the rehire-date check skipped it,
 // and what exitStatus is actually stored on the matched Onboarding record
 // right now. Registered before /:id for the same reason as /unsynced.
+// ─── POST /api/exit/reconcile-checklist-template ───────────────────────────
+// Backfills any checklist task that's been added to buildDefaultCheckLists()
+// since a record was created — e.g. adding "Remove Employee from BO
+// WhatsApp Gp Done?" to POST-EXIT TASKS. Existing items are matched by
+// name and left completely untouched; only genuinely missing tasks get
+// added. Safe to re-run anytime, including after future task additions.
+router.post("/reconcile-checklist-template", async (req, res) => {
+  try {
+    const docs = await Exit.find();
+    let updated = 0;
+
+    for (const existing of docs) {
+      const existingPlain = existing.toObject();
+      const checkLists = reconcileChecklistsWithTemplate(existingPlain.checkLists);
+
+      const today = new Date();
+      let doneInTime = 0, doneButDelayed = 0, tasksOverdue = 0,
+          tasksDue = 0, notYetDue = 0, fmsScore = 0, tasksNotDone = 0;
+
+      for (const list of checkLists) {
+        const r = scoreChecklist(list, today);
+        doneInTime += r.doneInTime;
+        doneButDelayed += r.doneButDelayed;
+        tasksOverdue += r.tasksOverdue;
+        tasksDue += r.tasksDue;
+        notYetDue += r.notYetDue;
+        fmsScore += r.fmsScore;
+        tasksNotDone += r.tasksNotDone;
+      }
+
+      const totalTasks = checkLists.reduce((s, l) => s + l.itemsList.length, 0);
+      const fmsStatus = deriveFmsStatus(existing.exitStatus, tasksNotDone);
+
+      await Exit.findByIdAndUpdate(existing._id, {
+        checkLists, totalTasks, doneInTime, doneButDelayed,
+        tasksOverdue, tasksDue, notYetDue, fmsScore, fmsStatus,
+      });
+      updated++;
+    }
+
+    res.json({ success: true, message: `Reconciled checklist template on ${updated} exit record(s)` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 router.get("/sync-diagnostics", async (req, res) => {
   try {
     const exits = await Exit.find(

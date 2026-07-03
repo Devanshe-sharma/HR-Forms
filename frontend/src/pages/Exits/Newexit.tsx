@@ -122,6 +122,7 @@ const CHECKLIST_DEFS = [
       "Archive Employee Profile Done?",
       "Remove the Access from Shared Contacts Done?",
       "Delete Email from BO Domain Done?",
+      "Remove Employee from BO WhatsApp Gp Done?",
     ],
   },
 ];

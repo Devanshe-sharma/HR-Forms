@@ -176,6 +176,7 @@ const CHECKLIST_DEFS = [
       "Check if UAN Applicable Done?",
       "UAN (PF) if applicable completed Done?",
       "KYC (PF) if applicable completed Done?",
+      "Add Employee to BO WhatsApp Gp Done?",
     ],
   },
   {
