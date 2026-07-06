@@ -1,5 +1,9 @@
 const express = require("express");
 const Onboarding = require('../models/onboardingModel');
+// Used only by the HR analytics routes, to resolve real historical exit
+// dates for headcount-by-quarter reconstruction (Onboarding only stores
+// the current status, not the date it happened).
+const Exit = require('../models/exitModel');
 const { triggerNewOnboarding, triggerUpdateOnboarding } = require("../emails");
 const Employee = require('../models/Employee');
 
@@ -446,6 +450,160 @@ const EXITED_STATUS_VALUES = new Set(["Left", "Already Left"]);
 // Done?" to POST-JOINING TASKS. Existing items are matched by name and left
 // completely untouched; only genuinely missing tasks get added. Safe to
 // re-run anytime, including after future task additions.
+// ─── POST /api/onboarding/sync-dept-and-exitstatus-from-sheet ──────────────
+// Updates ONLY the dept and exitStatus fields on existing Onboarding
+// records, from a corrected master sheet export — deliberately narrow so
+// it doesn't touch anything else (salary, checklists, dates, etc.) that
+// already lives correctly in MongoDB.
+// Body: { csv: "<raw CSV file contents as a string>" }
+// Matching: Official Email → Personal Email → exact Name, in that order.
+// Exit Status: only applied when the sheet's value is non-blank ("Left") —
+// a blank cell means "not tracked here," not "definitely not exited," so
+// it must never silently clear an exitStatus already set via the Exit
+// module's own sync.
+router.post(
+  "/sync-dept-and-exitstatus-from-sheet",
+  express.text({ type: "*/*", limit: "10mb" }),
+  async (req, res) => {
+  try {
+    // Accepts EITHER a raw CSV text body (Content-Type: text/plain — the
+    // recommended way, since PowerShell's ConvertTo-Json can silently
+    // corrupt very large strings when JSON-wrapping them) OR the older
+    // { csv: "<file contents>" } JSON form, for backward compatibility.
+    let csvText;
+    if (typeof req.body === "string" && req.body.trim()) {
+      csvText = req.body;
+    } else if (req.body && typeof req.body.csv === "string") {
+      csvText = req.body.csv;
+    }
+
+    if (!csvText) {
+      return res.status(400).json({
+        success: false,
+        message: "Provide the raw CSV as the request body (Content-Type: text/plain), or { csv: \"<file contents>\" } as JSON",
+      });
+    }
+
+    const { parse: parseCsv } = require("csv-parse/sync");
+    const records = parseCsv(csvText, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: false,
+      relax_quotes: true, // tolerate stray quote characters (e.g. from corrupted special characters)
+    });
+
+    const all = await Onboarding.find({}, "name officialEmail persEmail dept exitStatus joinedDate").lean();
+
+    // Parses the sheet's date formats (DD/MM/YYYY, DD MMM YY, MMM D, YYYY)
+    // — same approach used for the standalone Exit CSV import.
+    const MONTH_MAP = { jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11 };
+    function parseSheetDate(raw) {
+      if (!raw) return null;
+      const s = String(raw).trim();
+      if (!s || s.toUpperCase() === "NA") return null;
+      let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (m) { const d = new Date(Date.UTC(+m[3], +m[2]-1, +m[1])); if (!isNaN(d)) return d; }
+      m = s.match(/^(\d{1,2})\s+([A-Za-z]{3})\w*\s+(\d{2,4})$/);
+      if (m) { const mon = MONTH_MAP[m[2].toLowerCase()]; let y=+m[3]; if(y<100)y+=2000; if(mon!==undefined){const d=new Date(Date.UTC(y,mon,+m[1])); if(!isNaN(d))return d;} }
+      m = s.match(/^([A-Za-z]{3})\w*\s+(\d{1,2}),\s*(\d{4})$/);
+      if (m) { const mon = MONTH_MAP[m[1].toLowerCase()]; if(mon!==undefined){const d=new Date(Date.UTC(+m[3],mon,+m[2])); if(!isNaN(d))return d;} }
+      const fb = new Date(s);
+      return isNaN(fb) ? null : fb;
+    }
+
+    let updated = 0;
+    const unmatched = [];
+    const skippedRehires = [];
+
+    for (const row of records) {
+      const name = (row["Name"] || "").trim();
+      if (!name) continue;
+
+      const officialEmail = (row["Official Email"] || "").trim().toLowerCase();
+      const persEmail = (row["Personal Email"] || "").trim().toLowerCase();
+      const sheetDept = (row["Dept"] || "").trim();
+      const sheetExitStatus = (row["Exit Status"] || "").trim();
+
+      // Personal email FIRST — official addresses (like hr.head@company.com)
+      // are often role-based and get reused across different successive
+      // people, which would otherwise misattribute one person's exit onto
+      // whoever currently holds that same official email.
+      let match = null;
+      if (persEmail) {
+        match = all.find((o) => (o.persEmail || "").trim().toLowerCase() === persEmail);
+      }
+      if (!match && officialEmail) {
+        match = all.find((o) => (o.officialEmail || "").trim().toLowerCase() === officialEmail);
+      }
+      if (!match) {
+        match = all.find((o) => (o.name || "").trim().toLowerCase() === name.toLowerCase());
+      }
+
+      if (!match) {
+        unmatched.push(name);
+        continue;
+      }
+
+      const setFields = {};
+      if (sheetDept) setFields.dept = sheetDept;
+
+      if (sheetExitStatus) {
+        // Rehire-aware: if this person's own joinedDate is AFTER the
+        // sheet's exit reference date, this "Left" entry predates their
+        // current stint (e.g. shared official email with a predecessor,
+        // or a genuine earlier exit before they were rehired) — don't
+        // mark them exited while they're actually currently employed.
+        const exitRefDate = parseSheetDate(row["Left Date"]) || parseSheetDate(row["Planned Exit Date"]) || parseSheetDate(row["Resignation Email Sent on"]);
+        const joinedDate = match.joinedDate ? new Date(match.joinedDate) : null;
+
+        if (joinedDate && exitRefDate && joinedDate > exitRefDate) {
+          skippedRehires.push(name);
+        } else {
+          setFields.exitStatus = sheetExitStatus;
+          // No point tracking onboarding tasks for someone who's actually
+          // gone — "Serving Notice Period" stays open (still employed).
+          if (["Left", "Already Left"].includes(sheetExitStatus)) {
+            setFields.fmsStatus = "Closed";
+          }
+        }
+      }
+
+      if (Object.keys(setFields).length > 0) {
+        await Onboarding.findByIdAndUpdate(match._id, setFields);
+        updated++;
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Updated ${updated} record(s). ${unmatched.length} row(s) had no matching Onboarding record. ${skippedRehires.length} exit status(es) skipped as likely rehires.`,
+      unmatched,
+      skippedRehires,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── POST /api/onboarding/close-fms-for-exited ─────────────────────────────
+// One-time backfill: closes fmsStatus on every onboarding record whose
+// exitStatus is already "Left" or "Already Left" but whose fmsStatus is
+// still "Open" — for anyone who got marked exited before this
+// auto-close behavior existed. Safe to re-run anytime.
+router.post("/close-fms-for-exited", async (req, res) => {
+  try {
+    const result = await Onboarding.updateMany(
+      { exitStatus: { $in: ["Left", "Already Left"] }, fmsStatus: { $ne: "Closed" } },
+      { $set: { fmsStatus: "Closed" } }
+    );
+    res.json({ success: true, message: `Closed FMS on ${result.modifiedCount} already-exited record(s)` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 router.post("/reconcile-checklist-template", async (req, res) => {
   try {
     const docs = await Onboarding.find();
@@ -482,6 +640,341 @@ router.post("/reconcile-checklist-template", async (req, res) => {
     }
 
     res.json({ success: true, message: `Reconciled checklist template on ${updated} onboarding record(s)` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── GET /api/onboarding/employee-master ───────────────────────────────────
+// The real employee master — built entirely from Onboarding, replacing the
+// old Dept & Designation Master sheet (which was placeholder data, never
+// kept in sync with reality). Includes EVERY employee ever onboarded —
+// current AND exited — each flagged with is_current/is_exited, plus
+// department and designation lists derived from what's actually in use
+// across real records, instead of a separate stale sheet.
+// ─── GET /api/onboarding/employee-master ───────────────────────────────────
+// The real employee master — WHO exists, built entirely from Onboarding.
+// Includes EVERY employee ever onboarded — current AND exited — each
+// flagged with is_current/is_exited. Deliberately does NOT include
+// department/designation option lists: those are owned by the actual Dept
+// & Designation Master, since a new department can legitimately exist with
+// zero employees in it yet (e.g. before the first hire) — deriving that
+// list from Onboarding would make it impossible to add one in advance.
+// ============================================================
+// HR ANALYTICS: Teeth-to-Tail Ratio
+// ============================================================
+// "Teeth" = Delivery departments, "Tail" = Support departments — read
+// directly from RoleMaster's own department_type field (the real Dept &
+// Designation Master, set via the "Type" dropdown on that page), NOT
+// guessed from department name patterns. Any department without a Type
+// set yet (or a name that doesn't match anything in RoleMaster at all)
+// falls into "Uncategorized" so it stays visible rather than being
+// silently miscounted either way.
+//
+// NOTE: assumes the RoleMaster model is at '../models/RoleMaster' — if
+// your actual file has a different name/casing, adjust this require to
+// match (same class of issue we hit with onboarding/exit model filenames).
+const RoleMaster = require("../models/role_master");
+
+// RoleMaster stores one row PER designation under each department, so the
+// same department name can appear many times with potentially different
+// department_type values across rows (e.g. if only some designations were
+// updated). This picks whichever row ACTUALLY has a Type set for that
+// department — a blank Type on one designation row must never override a
+// real one set on another row for the same department.
+// RoleMaster has a mix of legacy raw-imported documents (using PascalCase
+// keys like "Department" / "Department Type (Delivery or Support)" — and
+// even a typo'd "Department Type (Deliveryor Support)" on at least one
+// document) and properly schema-shaped documents (lowercase "department" /
+// "department_type"). Mongoose's schema-aware .find() silently returns
+// blank for every legacy document, since their real Type value lives under
+// a different literal key than the schema expects — that's why so many
+// departments showed Uncategorized despite clearly having a Type visible
+// in the raw data. Reading via the raw collection driver and checking
+// every known key variant fixes this regardless of which shape a given
+// document happens to be in.
+async function getDepartmentTypeMap() {
+  const rows = await RoleMaster.collection.find({}).toArray();
+  const map = new Map();
+  for (const r of rows) {
+    const deptRaw = r.department ?? r.Department ?? "";
+    const dept = String(deptRaw || "").trim().toLowerCase();
+    if (!dept) continue;
+
+    const typeRaw =
+      r.department_type ??
+      r["Department Type (Delivery or Support)"] ??
+      r["Department Type (Deliveryor Support)"] ??
+      "";
+    const type = String(typeRaw || "").trim();
+
+    if (type) {
+      map.set(dept, type); // a real Type always wins, whenever it's found
+    } else if (!map.has(dept)) {
+      map.set(dept, ""); // reserve the key so the department is still known
+    }
+  }
+  return map;
+}
+
+// Onboarding sometimes uses abbreviations or slightly different spellings
+// than the canonical department name in RoleMaster. This maps the known
+// ones onto RoleMaster's real name so they resolve to the same Type
+// instead of silently falling into Uncategorized. Add to this as new
+// mismatches turn up.
+const DEPARTMENT_ALIASES = {
+  "tcs": "temporary staffing",
+  "daa": "data analytics and automation",
+  "admin": "administration",
+  "recruitment": "recruitment services",
+  "hr": "human resources",
+  "design & develpoment": "engineering",
+  "support": "administration",
+  // "iab": "internal audit board", — NOT added yet: "Internal Audit
+  // Board" doesn't exist as a department in RoleMaster at all, so this
+  // alias would still resolve to nothing. Either add that department to
+  // the Dept & Designation Master with a Type set, or tell us which
+  // existing department it should actually map to instead.
+};
+
+// Resolves an Onboarding dept string to whichever RoleMaster department
+// name it should be treated as, before looking up its Type. Handles:
+//   - exact match (already canonical)
+//   - known aliases/abbreviations (see DEPARTMENT_ALIASES)
+//   - compound "A/B" values — tries each half against both the alias map
+//     and RoleMaster directly, since these look like dual-department
+//     entries rather than a single real department name
+function resolveDeptKey(dept, deptTypeMap) {
+  const d = (dept || "").trim().toLowerCase();
+  if (!d) return null;
+  if (deptTypeMap.has(d)) return d;
+  if (DEPARTMENT_ALIASES[d] && deptTypeMap.has(DEPARTMENT_ALIASES[d])) return DEPARTMENT_ALIASES[d];
+
+  if (d.includes("/")) {
+    for (const part of d.split("/").map((p) => p.trim())) {
+      if (deptTypeMap.has(part)) return part;
+      if (DEPARTMENT_ALIASES[part] && deptTypeMap.has(DEPARTMENT_ALIASES[part])) return DEPARTMENT_ALIASES[part];
+    }
+  }
+
+  return null;
+}
+
+function categorizeDept(dept, deptTypeMap) {
+  const key = resolveDeptKey(dept, deptTypeMap);
+  if (!key) return "Uncategorized";
+  const type = deptTypeMap.get(key);
+  if (type === "Delivery") return "Teeth";
+  if (type === "Support") return "Tail";
+  return "Uncategorized";
+}
+
+// Last instant of the given quarter (1-4) in the given year, in UTC.
+function quarterEndDate(year, quarter) {
+  const endMonth = quarter * 3; // 3, 6, 9, 12
+  return new Date(Date.UTC(year, endMonth, 0, 23, 59, 59));
+}
+
+// ─── GET /api/onboarding/analytics/teeth-to-tail?year=YYYY ────────────────
+router.get("/analytics/teeth-to-tail", async (req, res) => {
+  try {
+    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+    const deptTypeMap = await getDepartmentTypeMap();
+
+    const docs = await Onboarding.find(
+      {},
+      "name dept officialEmail persEmail joinedDate exitStatus"
+    ).lean();
+
+    const exits = await Exit.find(
+      {},
+      "persEmail officialEmail leftDate plannedExitDate resignationDate"
+    ).lean();
+
+    const exitDateOfRecord = (e) => {
+      const d = e.leftDate || e.plannedExitDate || e.resignationDate;
+      const t = d ? new Date(d).getTime() : NaN;
+      return isNaN(t) ? -Infinity : t;
+    };
+
+    // Resolve each exited employee's real exit date by matching against the
+    // Exit collection (persEmail first, officialEmail fallback), taking
+    // whichever of their exit records is chronologically latest — same
+    // approach used for the live exitStatus sync, so a re-exit after a
+    // rehire is still handled correctly here.
+    function resolveExitDate(emp) {
+      const persEmail = (emp.persEmail || "").trim().toLowerCase();
+      const officialEmail = (emp.officialEmail || "").trim().toLowerCase();
+
+      let candidates = [];
+      if (persEmail) {
+        candidates = exits.filter((e) => (e.persEmail || "").trim().toLowerCase() === persEmail);
+      }
+      if (candidates.length === 0 && officialEmail) {
+        candidates = exits.filter((e) => (e.officialEmail || "").trim().toLowerCase() === officialEmail);
+      }
+      if (candidates.length === 0) return null;
+
+      const latest = candidates.reduce(
+        (l, e) => (!l || exitDateOfRecord(e) > exitDateOfRecord(l) ? e : l),
+        null
+      );
+      const d = latest.leftDate || latest.plannedExitDate || latest.resignationDate;
+      return d ? new Date(d) : null;
+    }
+
+    const EXITED = new Set(["Left", "Already Left"]);
+    const employees = docs.map((d) => ({
+      ...d,
+      isMarkedExited: EXITED.has(d.exitStatus),
+      resolvedExitDate: EXITED.has(d.exitStatus) ? resolveExitDate(d) : null,
+    }));
+
+    const quarters = [1, 2, 3, 4].map((q) => {
+      const asOf = quarterEndDate(year, q);
+      let teeth = 0, tail = 0, uncategorized = 0;
+
+      for (const emp of employees) {
+        if (!emp.joinedDate) continue;
+        const joined = new Date(emp.joinedDate);
+        if (joined > asOf) continue; // hadn't joined by this quarter-end yet
+
+        if (emp.isMarkedExited) {
+          if (emp.resolvedExitDate) {
+            // We know exactly when — only exclude from quarters at/after that date.
+            if (emp.resolvedExitDate <= asOf) continue;
+          } else {
+            // Marked exited (e.g. via the master sheet) but with no formal
+            // Exit record to pin down a date. Safer to treat them as
+            // excluded from every quarter than to risk silently counting
+            // someone who's actually gone as still active.
+            continue;
+          }
+        }
+
+        const cat = categorizeDept(emp.dept, deptTypeMap);
+        if (cat === "Teeth") teeth++;
+        else if (cat === "Tail") tail++;
+        else uncategorized++;
+      }
+
+      const ratio = tail > 0 ? Math.round((teeth / tail) * 100) / 100 : null;
+
+      return {
+        quarter: `Q${q}`,
+        asOf: asOf.toISOString(),
+        teeth,
+        tail,
+        uncategorized,
+        total: teeth + tail + uncategorized,
+        ratio,
+      };
+    });
+
+    // Department-level breakdown (current employees, independent of the
+    // selected year/quarter) — shows exactly which departments are driving
+    // the Uncategorized count, so it's obvious what needs a Type set in
+    // the Dept & Designation Master rather than just seeing a mystery
+    // number.
+    const currentEmployees = docs.filter((d) => !EXITED.has(d.exitStatus || ""));
+    const deptCounts = {};
+    for (const d of currentEmployees) {
+      const dept = (d.dept || "").trim() || "(Blank)";
+      if (!deptCounts[dept]) {
+        deptCounts[dept] = { department: dept, category: categorizeDept(d.dept, deptTypeMap), count: 0 };
+      }
+      deptCounts[dept].count++;
+    }
+    const departmentBreakdown = Object.values(deptCounts).sort((a, b) => b.count - a.count);
+
+    // Only offer years that actually have joining data, plus the current year.
+    const joinYears = docs
+      .map((d) => (d.joinedDate ? new Date(d.joinedDate).getFullYear() : null))
+      .filter(Boolean);
+    const minYear = joinYears.length ? Math.min(...joinYears) : year;
+    const maxYear = Math.max(new Date().getFullYear(), ...(joinYears.length ? joinYears : [year]));
+    const availableYears = [];
+    for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
+
+    res.json({ success: true, year, quarters, availableYears, departmentBreakdown });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── GET /api/onboarding/analytics/gender ──────────────────────────────────
+// Gender split among CURRENT employees only (joined and not exited) —
+// overall counts, plus a per-department breakdown so it's clear whether
+// any imbalance is company-wide or concentrated in specific departments.
+router.get("/analytics/gender", async (req, res) => {
+  try {
+    const docs = await Onboarding.find({}, "gender dept joiningStatus exitStatus").lean();
+    // Matches the Onboarding Dashboard's own "Current Employees" definition
+    // exactly: not exited, regardless of joiningStatus. Someone marked
+    // "Yet To Join Office" still counts as current there, so this must
+    // count them too, or the two numbers won't match.
+    const EXITED = new Set(["Left", "Already Left"]);
+    const current = docs.filter((d) => !EXITED.has(d.exitStatus || ""));
+
+    const genderCounts = {};
+    const byDept = {};
+
+    for (const d of current) {
+      const g = (d.gender || "").trim() || "Not Specified";
+      genderCounts[g] = (genderCounts[g] || 0) + 1;
+
+      const dept = (d.dept || "").trim() || "Unassigned";
+      if (!byDept[dept]) byDept[dept] = {};
+      byDept[dept][g] = (byDept[dept][g] || 0) + 1;
+    }
+
+    const genders = Object.keys(genderCounts).sort();
+    const overall = genders.map((g) => ({ gender: g, count: genderCounts[g] }));
+
+    const departments = Object.keys(byDept).sort();
+    const byDepartment = departments.map((dept) => {
+      const row = { department: dept };
+      genders.forEach((g) => { row[g] = byDept[dept][g] || 0; });
+      return row;
+    });
+
+    res.json({ success: true, total: current.length, genders, overall, byDepartment });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.get("/employee-master", async (req, res) => {
+  try {
+    const docs = await Onboarding.find(
+      {},
+      "name dept designation officialEmail persEmail joiningStatus exitStatus joinedDate reportingHead employeeCategory"
+    ).lean();
+
+    const employees = docs.map((d) => {
+      const isExited = EXITED_STATUS_VALUES.has(d.exitStatus || "");
+      const isCurrent = d.joiningStatus === "Joined" && !isExited;
+      return {
+        _id: String(d._id),
+        employee_id: String(d._id),
+        full_name: d.name || "",
+        department: d.dept || "",
+        designation: d.designation || "",
+        official_email: d.officialEmail || "",
+        email: d.officialEmail || d.persEmail || "",
+        joining_date: d.joinedDate || null,
+        employee_category: d.employeeCategory || "",
+        reporting_head: d.reportingHead || "",
+        exit_status: d.exitStatus || "",
+        is_current: isCurrent,
+        is_exited: isExited,
+      };
+    });
+
+    res.json({ success: true, data: { employees } });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: err.message });

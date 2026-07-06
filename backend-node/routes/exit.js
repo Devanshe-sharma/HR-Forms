@@ -322,7 +322,17 @@ async function syncExitStatusToOnboarding(exitDoc) {
       }
     }
 
-    await Onboarding.findByIdAndUpdate(match._id, { exitStatus: latestExit.exitStatus || "" });
+    const finalExitStatus = latestExit.exitStatus || "";
+    const setFields = { exitStatus: finalExitStatus };
+    // No point tracking onboarding tasks for someone who's actually gone —
+    // "Serving Notice Period" is still employed, and "Not
+    // Exiting"/"Exit Cancelled" mean they never left, so only these two
+    // values close it out.
+    if (["Left", "Already Left"].includes(finalExitStatus)) {
+      setFields.fmsStatus = "Closed";
+    }
+
+    await Onboarding.findByIdAndUpdate(match._id, setFields);
   } catch (err) {
     console.error("Onboarding exitStatus sync failed:", err.message);
   }

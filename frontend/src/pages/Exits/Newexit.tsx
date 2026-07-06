@@ -46,21 +46,37 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-type RoleEmployee = {
-  emp_id: string;
+// WHO exists — sourced entirely from Onboarding (the employee master).
+// Includes both current and exited employees; is_current flags who can
+// actually be selected as "exiting".
+type MasterEmployee = {
+  employee_id: string;
   full_name: string;
-  official_email: string;
   department: string;
   designation: string;
+  official_email: string;
+  email: string;
+  reporting_head?: string;
+  is_current: boolean;
+  is_exited: boolean;
 };
 
-type RoleDepartment = {
+type EmployeeMasterData = {
+  employees: MasterEmployee[];
+};
+
+// WHAT departments/designations exist — sourced from the actual Dept &
+// Designation Master, NOT derived from Onboarding. A new department can
+// legitimately exist with zero employees in it yet (e.g. before the first
+// hire), so this list must come from its own dedicated master, independent
+// of who currently holds any given role.
+type DeptRecord = {
   dept_id: number | string;
   department: string;
   dept_page_link?: string;
 };
 
-type RoleDesignation = {
+type DesigRecord = {
   desig_id: number | string;
   designation: string;
   department: string;
@@ -69,11 +85,11 @@ type RoleDesignation = {
   role_document_link?: string;
 };
 
-type RoleMasterData = {
-  employees: RoleEmployee[];
-  departments: RoleDepartment[];
-  designations: RoleDesignation[];
+type DeptDesigMasterData = {
+  departments: DeptRecord[];
+  designations: DesigRecord[];
 };
+
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || "http://localhost:5000/api";
 
@@ -153,8 +169,8 @@ const NewExit: React.FC = () => {
   const [plannedExitDate, setPlannedExitDate] = useState<Dayjs | null>(null);
   const [leftDate, setLeftDate] = useState<Dayjs | null>(null);
   const [employeesInCc, setEmployeesInCc] = useState<string[]>([]);
-  const [roleData, setRoleData] = useState<RoleMasterData>({
-    employees: [],
+  const [master, setMaster] = useState<EmployeeMasterData>({ employees: [] });
+  const [deptDesig, setDeptDesig] = useState<DeptDesigMasterData>({
     departments: [],
     designations: [],
   });
@@ -170,12 +186,29 @@ const NewExit: React.FC = () => {
   const totalChecked = checkStates.flat().filter(Boolean).length;
   const progress = Math.round((totalChecked / TOTAL_TASKS) * 100);
 
+  // WHO exists comes from Onboarding (the employee master). WHAT
+  // departments/designations exist comes from the actual Dept &
+  // Designation Master — kept separate on purpose, since a new department
+  // can be created there before anyone is ever hired into it.
   useEffect(() => {
     axios
+      .get(`${API_BASE}/onboarding/employee-master`)
+      .then((res) => setMaster(res.data?.data ?? { employees: [] }))
+      .catch(() => toast.error("Failed to load employee master data"));
+
+    axios
       .get(`${API_BASE}/rolemaster/all`)
-      .then((res) => setRoleData(res.data.data))
-      .catch(() => toast.error("Failed to load role master data"));
+      .then((res) => setDeptDesig({
+        departments: res.data?.data?.departments ?? [],
+        designations: res.data?.data?.designations ?? [],
+      }))
+      .catch(() => toast.error("Failed to load department/designation master"));
   }, []);
+
+  const currentEmployees = useMemo(
+    () => master.employees.filter((e) => e.is_current),
+    [master.employees]
+  );
 
   useEffect(() => {
     setValue("designation", "");
@@ -183,24 +216,26 @@ const NewExit: React.FC = () => {
 
   // Auto-fill official email + dept/designation when picking an existing employee
   useEffect(() => {
-    const match = roleData.employees.find((e) => e.full_name === selectedName);
+    const match = currentEmployees.find((e) => e.full_name === selectedName);
     if (match) {
-      setValue("officialEmail", match.official_email || "");
+      setValue("officialEmail", match.official_email || match.email || "");
       if (match.department) setValue("dept", match.department);
       if (match.designation) setValue("designation", match.designation);
     }
-  }, [selectedName, roleData.employees, setValue]);
+  }, [selectedName, currentEmployees, setValue]);
 
   const filteredDesignations = useMemo(
     () =>
-      roleData.designations.filter((item) => {
+      deptDesig.designations.filter((item) => {
         const dept = (item.department || (item as any).Department || "").trim().toLowerCase();
         return dept === (selectedDept || "").trim().toLowerCase();
       }),
-    [roleData.designations, selectedDept]
+    [deptDesig.designations, selectedDept]
   );
 
-  const ccOptions = roleData.employees
+  // CC and "transfer knowledge to" should only offer currently employed
+  // people — not exited employees, and not the old stale sheet's roster.
+  const ccOptions = currentEmployees
     .filter((employee) => employee.official_email)
     .map((employee) => ({
       value: employee.official_email,
@@ -304,8 +339,8 @@ const NewExit: React.FC = () => {
                     <label className={labelClass}>Name of Exiting Employee *</label>
                     <select {...register("name")} className={inputClass}>
                       <option value="">Select employee</option>
-                      {roleData.employees.map((employee) => (
-                        <option key={employee.emp_id || employee.full_name} value={employee.full_name}>
+                      {currentEmployees.map((employee) => (
+                        <option key={employee.employee_id || employee.full_name} value={employee.full_name}>
                           {employee.full_name}
                         </option>
                       ))}
@@ -347,7 +382,7 @@ const NewExit: React.FC = () => {
                     <label className={labelClass}>Department *</label>
                     <select {...register("dept")} className={inputClass}>
                       <option value="">Select department</option>
-                      {roleData.departments.map((dept) => (
+                      {deptDesig.departments.map((dept) => (
                         <option key={`${dept.dept_id}-${dept.department}`} value={dept.department}>
                           {dept.department}
                         </option>
@@ -381,8 +416,8 @@ const NewExit: React.FC = () => {
                     <label className={labelClass}>You Will Transfer Knowledge To *</label>
                     <select {...register("transferKnowledge")} className={inputClass}>
                       <option value="">Select employee</option>
-                      {roleData.employees.map((employee) => (
-                        <option key={employee.emp_id || employee.full_name} value={employee.full_name}>
+                      {currentEmployees.map((employee) => (
+                        <option key={employee.employee_id || employee.full_name} value={employee.full_name}>
                           {employee.full_name}
                         </option>
                       ))}
