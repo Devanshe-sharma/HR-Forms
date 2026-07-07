@@ -1,8 +1,8 @@
-const dateToDD_MMM_YY = require("../utils/dateToDD_MMM_YY");
+﻿const dateToDD_MMM_YY = require("../utils/dateToDD_MMM_YY");
 const checklistTable  = require("../utils/checklistTable");
 const signature       = require("../utils/signature");
 
-// ─── Main summary table (one row per open exit, plus a totals row) ─────────
+//  Main summary table (one row per open exit, plus a totals row) 
 function buildSummaryTable(openExits) {
   let totalTasks = 0, doneInTime = 0, doneButDelayed = 0,
       tasksDue = 0, tasksOverdue = 0, notYetDue = 0, weekScore = 0;
@@ -85,8 +85,8 @@ function buildSummaryTable(openExits) {
     </table>`;
 }
 
-// ─── Per-person item-wise detail (reuses the same checklistTable util
-// already used for the per-record progress emails, for visual consistency) ──
+//  Per-person item-wise detail (reuses the same checklistTable util
+// already used for the per-record progress emails, for visual consistency) 
 function buildItemWiseSummary(openExits) {
   return openExits.map((doc, i) => `
     <p style="font-size:16px; font-weight:bold;">
