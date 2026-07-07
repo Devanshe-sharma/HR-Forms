@@ -271,6 +271,63 @@ router.get('/sync', async (req, res) => {
   }
 });
 
+// ─── POST /api/confirmations/bulk-confirm-before-date ─────────────────────
+// One-time bulk action: every currently-employed person who joined before
+// the given cutoff (default 1 Jan 2026) gets marked straight to
+// Confirmed/Completed — skipping the manager/management review workflow
+// entirely, since these are legacy joiners who predate this system.
+// Creates a confirmation record first if one doesn't already exist.
+// Safe to re-run — already-confirmed records are left untouched.
+router.post('/bulk-confirm-before-date', async (req, res) => {
+  try {
+    const cutoffStr = req.body?.date || '2026-01-01';
+    const cutoff = new Date(cutoffStr);
+    if (isNaN(cutoff.getTime())) return err(res, 400, 'Invalid date — use YYYY-MM-DD format');
+
+    const eligible = await getEligibleEmployees();
+    const beforeCutoff = eligible.filter((emp) => {
+      const joined = parseJoiningDate(emp.joining_date);
+      return joined && joined < cutoff;
+    });
+
+    let created = 0, confirmed = 0, alreadyConfirmed = 0;
+
+    for (const emp of beforeCutoff) {
+      let record = await Confirmations.findOne({ employeeId: emp._id });
+
+      if (!record) {
+        record = await createRecord(emp);
+        created++;
+      }
+
+      if (record.currentStatus === 'confirmed' && record.stage === 'completed') {
+        alreadyConfirmed++;
+        continue;
+      }
+
+      record.currentStatus = 'confirmed';
+      record.stage = 'completed';
+      record.history.push({
+        status: 'confirmed',
+        reason: `Bulk-confirmed: joined before ${cutoff.toISOString().split('T')[0]}`,
+        changedBy: 'system',
+        changedByName: 'System (Bulk Confirm)',
+        date: new Date(),
+      });
+      await record.save();
+      confirmed++;
+    }
+
+    res.json({
+      success: true,
+      message: `${beforeCutoff.length} employee(s) joined before ${cutoffStr}. Created ${created} new record(s), confirmed ${confirmed}, ${alreadyConfirmed} were already confirmed.`,
+    });
+  } catch (e) {
+    console.error('[Confirmations] Bulk confirm error:', e.message);
+    err(res, 500, 'Bulk confirm failed: ' + e.message);
+  }
+});
+
 // ─── GET /api/confirmations/:id ───────────────────────────────────────────────
 // ⚠️  This must stay AFTER all named GET routes above
 

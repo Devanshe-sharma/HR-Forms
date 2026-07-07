@@ -339,16 +339,27 @@ function DashboardView({
     return result;
   }, [allEmployees, quarterFilter, search, records]);
 
-  const counts = React.useMemo(() => ({
-    total       : filtered.length,
-    confirmed   : records.filter(r => r.currentStatus === 'confirmed').length,
-    extended    : records.filter(r => r.currentStatus === 'extended').length,
-    notConfirmed: records.filter(r => r.currentStatus === 'not_confirmed').length,
-    pending     : filtered.length - records.filter(r => 
-      r.currentStatus === 'confirmed' || 
-      r.currentStatus === 'not_confirmed'
-    ).length,
-  }), [filtered, records]);
+  const counts = React.useMemo(() => {
+    // Every stat card must reflect the SAME filtered set as "Total
+    // Employees" (respecting the Time Filter) — otherwise subtracting a
+    // global count from a filtered count produces nonsense like a negative
+    // "Pending Review".
+    const filteredRecords = filtered
+      .map(emp => records.find(r => r.employeeId === emp._id || r.employeeCode === emp.employee_id))
+      .filter((r): r is Confirmation => !!r);
+
+    const confirmed    = filteredRecords.filter(r => r.currentStatus === 'confirmed').length;
+    const extended     = filteredRecords.filter(r => r.currentStatus === 'extended').length;
+    const notConfirmed = filteredRecords.filter(r => r.currentStatus === 'not_confirmed').length;
+
+    return {
+      total: filtered.length,
+      confirmed,
+      extended,
+      notConfirmed,
+      pending: filtered.length - confirmed - notConfirmed,
+    };
+  }, [filtered, records]);
 
   const STATS = [
     { label: 'Total Employees', value: counts.total,        color: '#3B82F6', bg: '#EFF6FF' },
@@ -884,13 +895,13 @@ export default function ConfirmationsPage() {
   useEffect(() => { loadData(); }, [loadData]);
 
   const handleEmployeeSelect = (employee: Employee) => {
-    // Check if employee already has a confirmation record
+    // Check if employee already has a confirmation record — always open it,
+    // regardless of status, so history stays viewable even for people
+    // already confirmed. The "Update Status" action itself is separately
+    // hidden inside DetailView for completed/closed records, so this is
+    // safe.
     const existingRecord = records.find(r => r.employeeId === employee._id || r.employeeCode === employee.employee_id);
     if (existingRecord) {
-      if (existingRecord.currentStatus === 'confirmed') {
-        showToast(`${employee.full_name} is already confirmed`, 'info');
-        return;
-      }
       setSelected(existingRecord);
       setView('detail');
       return;
