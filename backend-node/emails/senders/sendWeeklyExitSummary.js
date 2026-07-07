@@ -1,5 +1,5 @@
 ﻿const Exit = require("../../models/exitModel");
-const sendEmail = require("../utils/sendEmail");
+const sendEmail = require("../sendEmail");
 const weeklyExitSummaryTemplate = require("../templates/weeklyExitSummaryTemplate");
 
 async function sendWeeklyExitSummary() {

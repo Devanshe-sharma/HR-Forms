@@ -1,4 +1,4 @@
-const nodemailer = require('nodemailer');
+﻿const nodemailer = require('nodemailer');
 
 const createTransporter = () => {
   return nodemailer.createTransport({
@@ -34,7 +34,7 @@ const sendEmail = async ({ to, subject, text, html, cc }) => {
 
     const info = await transporter.sendMail(mailOptions);
 
-    console.log(`Email sent successfully → Message ID: ${info.messageId}`);
+    console.log(`Email sent successfully  Message ID: ${info.messageId}`);
     return { success: true, messageId: info.messageId };
   } catch (error) {
     console.error('Email sending failed:', error.message);

@@ -1,5 +1,5 @@
 ﻿const dateToDD_MMM_YY = require("../utils/dateToDD_MMM_YY");
-const sendEmail = require("../utils/sendEmail");
+const sendEmail = require("../sendEmail");
 const exitAcceptanceTemplate = require("../templates/exitAcceptanceTemplate");
 
 async function sendExitAcceptance(doc) {

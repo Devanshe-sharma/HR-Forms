@@ -1,4 +1,4 @@
-﻿const sendEmail = require("../utils/sendEmail");
+﻿const sendEmail = require("../sendEmail");
 const exitProgressTemplate = require("../templates/exitProgressTemplate");
 
 async function sendExitProgress(doc) {

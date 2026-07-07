@@ -1,4 +1,4 @@
-﻿const sendEmail = require("../utils/sendEmail");
+﻿const sendEmail = require("../sendEmail");
 const exitAcceptanceAlreadyTemplate = require("../templates/exitAcceptanceAlreadyTemplate");
 
 async function sendExitAcceptanceAlready(doc) {
