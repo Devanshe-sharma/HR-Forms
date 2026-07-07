@@ -29,24 +29,24 @@ const EXIT_EMAIL_FIELDS = [
   ["autoInstructionsToAllEmail", "autoInstructionsToAllEmailSentAt"],
 ];
 
+// These checkboxes can legitimately need to fire MORE than once for the
+// same record — e.g. "autoExitEmail" sends the "Acceptance" email while
+// Serving Notice Period, and a completely different farewell email once
+// they're Already Left/Left. A sticky "only ever once" rule would silently
+// block the second send. So: fires every time the checkbox is ticked on a
+// given submit, matching the original Apps Script's behavior (it just
+// checked the box fresh each time). SentAt is still recorded — just as
+// "when did this last send," not as a block on sending again.
 function resolveOneTimeExitEmails(existing, body) {
   const resolved = {};
   const newlyTriggered = {};
   for (const [flagField, sentAtField] of EXIT_EMAIL_FIELDS) {
-    const alreadySent = !!(existing && existing[sentAtField]);
-    if (alreadySent) {
-      resolved[flagField] = true;
-      resolved[sentAtField] = existing[sentAtField];
-      newlyTriggered[flagField] = false; // already sent previously — don't re-send
-    } else if (body[flagField]) {
-      resolved[flagField] = true;
-      resolved[sentAtField] = new Date();
-      newlyTriggered[flagField] = true; // first time this flag has ever been true
-    } else {
-      resolved[flagField] = false;
-      resolved[sentAtField] = null;
-      newlyTriggered[flagField] = false;
-    }
+    const requestedNow = !!body[flagField];
+    resolved[flagField] = requestedNow;
+    resolved[sentAtField] = requestedNow
+      ? new Date()
+      : (existing ? existing[sentAtField] : null);
+    newlyTriggered[flagField] = requestedNow;
   }
   return { resolved, newlyTriggered };
 }

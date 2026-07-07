@@ -947,6 +947,46 @@ router.get("/analytics/gender", async (req, res) => {
   }
 });
 
+// ─── GET /api/onboarding/verify-access ──────────────────────────────────────
+// ACL gate: checks whether the given official email belongs to a CURRENT
+// (not exited) employee in Onboarding — the single source of truth. Used
+// by the frontend's ProtectedRoute to decide whether someone reaching the
+// portal via the ?name=&email= link should actually get in.
+router.get("/verify-access", async (req, res) => {
+  try {
+    const email = (req.query.email || "").trim().toLowerCase();
+
+    if (!email) {
+      return res.json({ success: true, allowed: false, reason: "missing_email" });
+    }
+
+    const docs = await Onboarding.find({}, "name officialEmail exitStatus dept designation").lean();
+    const match = docs.find((d) => (d.officialEmail || "").trim().toLowerCase() === email);
+
+    if (!match) {
+      return res.json({ success: true, allowed: false, reason: "not_found" });
+    }
+
+    if (EXITED_STATUS_VALUES.has(match.exitStatus || "")) {
+      return res.json({ success: true, allowed: false, reason: "exited" });
+    }
+
+    return res.json({
+      success: true,
+      allowed: true,
+      employee: {
+        name: match.name || "",
+        officialEmail: match.officialEmail || "",
+        dept: match.dept || "",
+        designation: match.designation || "",
+      },
+    });
+  } catch (err) {
+    console.error("[verify-access] error:", err.message);
+    res.status(500).json({ success: false, allowed: false, message: err.message });
+  }
+});
+
 router.get("/employee-master", async (req, res) => {
   try {
     const docs = await Onboarding.find(
