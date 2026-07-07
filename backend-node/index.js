@@ -12,6 +12,7 @@ const geoRoutes = require('./routes/geo');
 
 
 
+
 /* ─────────────────── MIDDLEWARE ─────────────────── */
 app.use(cors({
   origin: [

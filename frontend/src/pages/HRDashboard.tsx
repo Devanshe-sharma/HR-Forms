@@ -197,7 +197,15 @@ const TeethToTailWidget: React.FC = () => {
             />
             <StatCard
               label="Ratio (Teeth : Tail)"
-              value={focusedQuarter?.ratio != null ? `${focusedQuarter.ratio} : 1` : "—"}
+              value={(() => {
+                const t = focusedQuarter?.teeth ?? 0;
+                const s = focusedQuarter?.tail ?? 0;
+                const total = t + s;
+                if (total === 0) return "—";
+                const teethPct = Math.round((t / total) * 1000) / 10;
+                const tailPct = Math.round((s / total) * 1000) / 10;
+                return `${teethPct.toFixed(1)} : ${tailPct.toFixed(1)}`;
+              })()}
               color={ACCENT}
               bg="#eef2ff"
             />

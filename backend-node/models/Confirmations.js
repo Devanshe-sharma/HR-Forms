@@ -17,18 +17,22 @@ const HistorySchema = new Schema(
 // ── Main schema ───────────────────────────────────────────────────────────────
 const ConfirmationSchema = new Schema(
   {
-    // Reference to Employee collection
-    employeeId : { type: Schema.Types.ObjectId, ref: 'Employee', required: true, unique: true },
+    // Reference to the Onboarding collection — the single employee master.
+    // (Previously referenced a separate "Employee" collection that no
+    // longer serves as the source of truth.)
+    employeeId : { type: Schema.Types.ObjectId, ref: 'Onboarding', required: true, unique: true },
 
-    // Snapshot of Employee fields (so display works even if Employee changes)
-    employeeCode     : { type: String, default: '' },  // Employee.employee_id
-    employeeName     : { type: String, default: '' },  // Employee.full_name
-    department       : { type: String, default: '' },  // Employee.department
-    designation      : { type: String, default: '' },  // Employee.designation
-    joiningDate      : { type: String, default: '' },  // Employee.joining_date  (kept as string)
-    level            : { type: Number, default: 1 },   // Employee.level
-    email            : { type: String, default: '' },  // Employee.official_email
-    reportingManager : { type: String, default: '' },
+    // Snapshot of employee fields, kept fresh via the backend's
+    // refreshSnapshot() sync on every load — so display works even between
+    // syncs, but never drifts stale for long.
+    employeeCode     : { type: String, default: '' },  // stringified Onboarding _id
+    employeeName     : { type: String, default: '' },  // Onboarding.name
+    department       : { type: String, default: '' },  // Onboarding.dept
+    designation      : { type: String, default: '' },  // Onboarding.designation
+    joiningDate      : { type: String, default: '' },  // Onboarding.joinedDate (kept as string)
+    level            : { type: Number, default: 1 },   // not tracked in Onboarding today
+    email            : { type: String, default: '' },  // Onboarding.officialEmail
+    reportingManager : { type: String, default: '' },  // Onboarding.reportingHead
     pmsScore         : { type: Number, default: null },
 
     // ── Workflow ────────────────────────────────────────────────────────────────

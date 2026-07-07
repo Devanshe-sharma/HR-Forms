@@ -9,6 +9,7 @@ const { send1WeekMaterialUploadReminder } = require('./email1WeekMaterialUpload'
 const { sendOnDayFeedbackReminder } = require('./emailOnDayFeedback');
 const { sendQuarterlyOutingApprovalRequest } = require('./emailQuarterlyOutingApproval');
 const { sendUpcomingOutingReminder } = require('./emailUpcomingOutingReminder');
+const sendWeeklyExitSummary = require('./senders/sendWeeklyExitSummary');
 
 // Import models for auto-archive/complete
 const Outing = require('../models/Outing');
@@ -85,6 +86,20 @@ function startEmailScheduler() {
       await sendUpcomingOutingReminder();
     } catch (err) {
       console.error('2-week outing reminder failed:', err);
+    }
+  }, { timezone: tz });
+
+  // 8. Weekly Exit summary — every Monday at 9am (port of the Apps
+  // Script's sendWeeklyEmail(), which had no explicit cron trigger visible
+  // in the source — adjust the schedule below if you know the original
+  // actually ran on a different day/time).
+  cron.schedule('0 9 * * 1', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending weekly exit summary`);
+    try {
+      const result = await sendWeeklyExitSummary();
+      console.log(`Weekly exit summary sent — ${result.openCount} open exit(s)`);
+    } catch (err) {
+      console.error('Weekly exit summary failed:', err);
     }
   }, { timezone: tz });
 

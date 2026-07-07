@@ -1,36 +1,13 @@
 const express       = require('express');
 const router        = express.Router();
 const Confirmations = require('../models/Confirmations');
-const Employee      = require('../models/Employee');
+// Onboarding is the single employee master now — replaces the old,
+// separate Employee collection entirely.
+const Onboarding    = require('../models/onboardingModel');
 
 const err = (res, code, msg) => res.status(code).json({ success: false, message: msg });
 
-// ─── Date parser ──────────────────────────────────────────────────────────────
-
-function parseJoiningDate(raw) {
-  if (!raw || typeof raw !== 'string' || raw.trim() === '') return null;
-  const s = raw.trim();
-
-  // DD/MM/YYYY
-  const dmySlash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (dmySlash) {
-    const d = new Date(`${dmySlash[3]}-${dmySlash[2].padStart(2,'0')}-${dmySlash[1].padStart(2,'0')}`);
-    if (!isNaN(d)) return d;
-  }
-
-  // DD-MM-YYYY
-  const dmyDash = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
-  if (dmyDash) {
-    const d = new Date(`${dmyDash[3]}-${dmyDash[2].padStart(2,'0')}-${dmyDash[1].padStart(2,'0')}`);
-    if (!isNaN(d)) return d;
-  }
-
-  // YYYY-MM-DD or any parseable string
-  const fallback = new Date(s);
-  if (!isNaN(fallback)) return fallback;
-
-  return null;
-}
+const EXITED_STATUS_VALUES = new Set(['Left', 'Already Left']);
 
 // ─── Date calculation helpers ──────────────────────────────────────────────────
 // Safely add months to a date, handling month boundaries correctly
@@ -44,40 +21,57 @@ function addMonths(date, months) {
   return d;
 }
 
-// ─── Get eligible employees (joined in last 6 months) ─────────────────────────
+function parseJoiningDate(raw) {
+  if (!raw) return null;
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+}
 
+// ─── Get eligible employees from Onboarding ────────────────────────────────────
+// "Eligible" = currently employed (not Left/Already Left) and has actually
+// joined (has a joinedDate on or before today). Onboarding is read fresh on
+// every call — no caching — so this always reflects the live database.
 async function getEligibleEmployees() {
-  const allEmployees = await Employee
-    .find({})
-    .select('_id employee_id full_name department designation joining_date level official_email')
-    .lean();
+  const docs = await Onboarding.find(
+    {},
+    'name officialEmail persEmail dept designation joinedDate reportingHead exitStatus'
+  ).lean();
 
-  const now          = new Date();
-  const sixMonthsAgo = new Date();
-  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+  const now = new Date();
 
-  return allEmployees.filter(emp => {
-    const joined = parseJoiningDate(emp.joining_date);
-    if (!joined) return false;
-    return joined <= now;
-  });
+  return docs
+    .filter((d) => !EXITED_STATUS_VALUES.has(d.exitStatus || ''))
+    .filter((d) => {
+      const joined = parseJoiningDate(d.joinedDate);
+      return joined && joined <= now;
+    })
+    .map((d) => ({
+      _id               : d._id,
+      full_name         : d.name || 'Unknown',
+      department        : d.dept || '',
+      designation       : d.designation || '',
+      joining_date      : d.joinedDate,
+      official_email    : d.officialEmail || d.persEmail || '',
+      reporting_manager : d.reportingHead || '',
+    }));
 }
 
 // ─── Create confirmation record for one employee ──────────────────────────────
 
 async function createRecord(emp) {
   return Confirmations.create({
-    employeeId   : emp._id,
-    employeeCode : emp.employee_id    || '',
-    employeeName : emp.full_name      || 'Unknown',
-    department   : emp.department     || '',
-    designation  : emp.designation    || '',
-    joiningDate  : emp.joining_date   || '',
-    level        : emp.level          || 1,
-    email        : emp.official_email || '',
-    currentStatus: 'probation',
-    stage        : 'pending_manager',
-    history      : [{
+    employeeId       : emp._id,
+    employeeCode     : String(emp._id),
+    employeeName     : emp.full_name         || 'Unknown',
+    department       : emp.department        || '',
+    designation      : emp.designation       || '',
+    joiningDate      : emp.joining_date      || '',
+    level            : 1, // Onboarding doesn't track a numeric level today
+    email            : emp.official_email    || '',
+    reportingManager : emp.reporting_manager || '',
+    currentStatus    : 'probation',
+    stage            : 'pending_manager',
+    history          : [{
       status       : 'probation',
       reason       : 'Record auto-created on joining',
       changedBy    : 'system',
@@ -87,33 +81,110 @@ async function createRecord(emp) {
   });
 }
 
+// ─── Refresh an existing record's employee-snapshot fields ─────────────────────
+// Onboarding is the source of truth, so if a department gets corrected, a
+// reporting manager changes, etc., the confirmation record's display data
+// should reflect that — WITHOUT touching currentStatus, stage, decisions,
+// or history, which represent real workflow progress that must never be
+// reset by a data sync.
+async function refreshSnapshot(existing, emp) {
+  const updates = {
+    employeeName    : emp.full_name         || 'Unknown',
+    department      : emp.department        || '',
+    designation     : emp.designation       || '',
+    joiningDate     : emp.joining_date      || '',
+    email           : emp.official_email    || '',
+    reportingManager: emp.reporting_manager || '',
+  };
+
+  const changed = Object.keys(updates).some(
+    (k) => String(existing[k] || '') !== String(updates[k] || '')
+  );
+
+  if (changed) {
+    await Confirmations.findByIdAndUpdate(existing._id, updates);
+    return true;
+  }
+  return false;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // ROUTES — all named routes MUST come before /:id
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ─── GET /api/confirmations ───────────────────────────────────────────────────
+// Creates missing records AND refreshes stale snapshot data on every load.
+
+// ─── POST /api/confirmations ───────────────────────────────────────────────
+// Used by the HR Decision dialog to explicitly record an initial decision
+// for an employee. This route never existed before — the frontend was
+// silently failing every call here and papering over it with a localStorage
+// fallback, which has been removed in favor of actually fixing this gap.
+router.post('/', async (req, res) => {
+  try {
+    const body = req.body || {};
+    if (!body.employeeId) return err(res, 400, 'employeeId is required');
+
+    const existing = await Confirmations.findOne({ employeeId: body.employeeId });
+    if (existing) {
+      return err(res, 409, 'A confirmation record already exists for this employee');
+    }
+
+    const record = await Confirmations.create({
+      employeeId       : body.employeeId,
+      employeeCode     : body.employeeCode     || '',
+      employeeName     : body.employeeName     || 'Unknown',
+      department       : body.department       || '',
+      designation      : body.designation      || '',
+      joiningDate       : body.joiningDate      || '',
+      level            : body.level            || 1,
+      email            : body.email            || '',
+      reportingManager : body.reportingManager || '',
+      currentStatus    : body.currentStatus    || 'probation',
+      stage            : body.stage            || 'pending_manager',
+      history          : Array.isArray(body.history) && body.history.length
+        ? body.history
+        : [{
+            status       : body.currentStatus || 'probation',
+            reason       : body.reason || '',
+            changedBy    : 'hr',
+            changedByName: 'HR User',
+            date         : new Date(),
+          }],
+    });
+
+    res.json({ success: true, data: record });
+  } catch (e) {
+    console.error('[Confirmations] POST / error:', e.message);
+    err(res, 500, 'Failed to create confirmation record: ' + e.message);
+  }
+});
 
 router.get('/', async (req, res) => {
   try {
     const eligible = await getEligibleEmployees();
     let created = 0;
+    let refreshed = 0;
 
     for (const emp of eligible) {
-      try {
-        const exists = await Confirmations.findOne({ employeeId: emp._id });
-        if (exists) continue;
-        await createRecord(emp);
-        created++;
-        console.log(`[Confirmations] ✅ Created: ${emp.full_name}`);
-      } catch (e) {
-        console.log(`[Confirmations] ⚠️  Skip ${emp.full_name}: ${e.message}`);
+      const exists = await Confirmations.findOne({ employeeId: emp._id });
+      if (!exists) {
+        try {
+          await createRecord(emp);
+          created++;
+        } catch (e) {
+          console.log(`[Confirmations] ⚠️  Skip ${emp.full_name}: ${e.message}`);
+        }
+      } else {
+        const didRefresh = await refreshSnapshot(exists, emp);
+        if (didRefresh) refreshed++;
       }
     }
 
-    console.log(`[Confirmations] Sync done — eligible: ${eligible.length}, created: ${created}`);
+    console.log(`[Confirmations] Sync done — eligible: ${eligible.length}, created: ${created}, refreshed: ${refreshed}`);
 
     const records = await Confirmations.find().sort({ joiningDate: -1 }).lean();
-    res.json({ success: true, data: records });
+    res.json({ success: true, data: records, created, refreshed });
   } catch (e) {
     console.error('[Confirmations] GET / error:', e.message);
     err(res, 500, 'Failed to fetch confirmations');
@@ -124,37 +195,18 @@ router.get('/', async (req, res) => {
 
 router.get('/debug', async (req, res) => {
   try {
-    const allEmployees = await Employee
-      .find({})
-      .select('_id employee_id full_name joining_date')
-      .lean();
-
-    const now          = new Date();
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-
-    const rows = allEmployees.map(emp => {
-      const parsed  = parseJoiningDate(emp.joining_date);
-      const inRange = parsed ? (parsed >= sixMonthsAgo && parsed <= now) : false;
-      return {
-        name         : emp.full_name,
-        joining_date : emp.joining_date,
-        parsed       : parsed ? parsed.toISOString().split('T')[0] : 'FAILED TO PARSE',
-        inLast6Months: inRange,
-      };
-    });
-
+    const eligible = await getEligibleEmployees();
     const confirmationCount = await Confirmations.countDocuments();
 
     res.json({
-      success          : true,
-      totalEmployees   : allEmployees.length,
-      sixMonthsAgo     : sixMonthsAgo.toISOString().split('T')[0],
-      today            : now.toISOString().split('T')[0],
-      eligibleCount    : rows.filter(r => r.inLast6Months).length,
-      confirmationRows : confirmationCount,
-      sample           : rows.slice(0, 10),
-      eligible         : rows.filter(r => r.inLast6Months),
+      success       : true,
+      eligibleCount : eligible.length,
+      confirmationRows: confirmationCount,
+      sample        : eligible.slice(0, 10).map((e) => ({
+        name        : e.full_name,
+        department  : e.department,
+        joining_date: e.joining_date,
+      })),
     });
   } catch (e) {
     err(res, 500, 'Debug failed: ' + e.message);
@@ -163,14 +215,14 @@ router.get('/debug', async (req, res) => {
 
 // ─── GET /api/confirmations/force-sync ───────────────────────────────────────
 // Wipe + recreate all records for currently eligible employees.
-// Hit this in browser: http://localhost:5000/api/confirmations/force-sync
+// ⚠️  This destroys existing workflow decisions/history — use only for
+// resetting test data, not on records with real progress on them.
 
 router.get('/force-sync', async (req, res) => {
   try {
     const eligible    = await getEligibleEmployees();
     const eligibleIds = eligible.map(e => e._id);
 
-    // Delete existing records for eligible employees only
     const deleted = await Confirmations.deleteMany({ employeeId: { $in: eligibleIds } });
     console.log(`[Confirmations] Force-sync: deleted ${deleted.deletedCount} records`);
 
@@ -178,7 +230,6 @@ router.get('/force-sync', async (req, res) => {
     for (const emp of eligible) {
       await createRecord(emp);
       created++;
-      console.log(`[Confirmations] ✅ Re-created: ${emp.full_name}`);
     }
 
     const records = await Confirmations.find().sort({ joiningDate: -1 }).lean();
@@ -195,21 +246,26 @@ router.get('/force-sync', async (req, res) => {
 });
 
 // ─── GET /api/confirmations/sync ──────────────────────────────────────────────
-// Non-destructive sync — only creates missing records
+// Non-destructive sync — creates missing records and refreshes stale ones.
 
 router.get('/sync', async (req, res) => {
   try {
     const eligible = await getEligibleEmployees();
     let created = 0;
+    let refreshed = 0;
 
     for (const emp of eligible) {
       const exists = await Confirmations.findOne({ employeeId: emp._id });
-      if (exists) continue;
-      await createRecord(emp);
-      created++;
+      if (!exists) {
+        await createRecord(emp);
+        created++;
+      } else {
+        const didRefresh = await refreshSnapshot(exists, emp);
+        if (didRefresh) refreshed++;
+      }
     }
 
-    res.json({ success: true, eligible: eligible.length, created });
+    res.json({ success: true, eligible: eligible.length, created, refreshed });
   } catch (e) {
     err(res, 500, 'Sync failed: ' + e.message);
   }
@@ -257,7 +313,7 @@ router.put('/:id/manager', async (req, res) => {
     // If manager recommends extension, calculate dates now
     if (status === 'extended') {
       const months = Number(monthsExtended);
-      
+
       // Calculate base review date: use existing reviewDate or calculate from joining date
       let baseReviewDate = record.reviewDate;
       if (!baseReviewDate) {
@@ -269,7 +325,7 @@ router.put('/:id/manager', async (req, res) => {
           baseReviewDate = new Date();
         }
       }
-      
+
       const extendedTillDate = addMonths(baseReviewDate, months);
       const reviewDateObj = addMonths(baseReviewDate, months - 1);
 
@@ -293,18 +349,16 @@ router.put('/:id/manager', async (req, res) => {
       date           : new Date(),
     });
 
-  
     await record.save();
 
-    // ─── ADD THIS RIGHT HERE ──────────────────────────────────────────────────
-    if (status === 'confirmed' || status === 'not_confirmed') {
-      await Employee.findByIdAndUpdate(record.employeeId, {
-        joining_status: status === 'confirmed' ? 'Confirmed' : 'Not Confirmed',
-      });
-    }
-    // ─────────────────────────────────────────────────────────────────────────
+    // NOTE: previously this wrote a "joining_status" field back onto the
+    // old, separate Employee collection. That collection is no longer the
+    // source of truth (Onboarding is), and Onboarding doesn't currently
+    // have an equivalent confirmation-status field to write back to. If
+    // you want confirmation outcomes reflected back onto the employee's
+    // Onboarding record, tell us which field should hold that and we'll
+    // wire it up properly rather than guessing at one.
 
-    // this already exists in your file:
     res.json({ success: true, data: record });
   } catch (e) {
     err(res, 500, 'Failed to submit management decision');
@@ -340,7 +394,7 @@ router.put('/:id/management', async (req, res) => {
     // ─── Handle extension flow ────────────────────────────────────────────────
     if (status === 'extended') {
       const months = Number(monthsExtended);
-      
+
       // Calculate base review date: use existing reviewDate or calculate from joining date
       let baseReviewDate = record.reviewDate;
       if (!baseReviewDate) {
@@ -352,7 +406,7 @@ router.put('/:id/management', async (req, res) => {
           baseReviewDate = new Date();
         }
       }
-      
+
       const extendedTillDate = addMonths(baseReviewDate, months);
       const reviewDateObj = addMonths(baseReviewDate, months - 1);
 

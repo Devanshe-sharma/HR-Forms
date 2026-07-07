@@ -31,20 +31,24 @@ const EXIT_EMAIL_FIELDS = [
 
 function resolveOneTimeExitEmails(existing, body) {
   const resolved = {};
+  const newlyTriggered = {};
   for (const [flagField, sentAtField] of EXIT_EMAIL_FIELDS) {
     const alreadySent = !!(existing && existing[sentAtField]);
     if (alreadySent) {
       resolved[flagField] = true;
       resolved[sentAtField] = existing[sentAtField];
+      newlyTriggered[flagField] = false; // already sent previously — don't re-send
     } else if (body[flagField]) {
       resolved[flagField] = true;
       resolved[sentAtField] = new Date();
+      newlyTriggered[flagField] = true; // first time this flag has ever been true
     } else {
       resolved[flagField] = false;
       resolved[sentAtField] = null;
+      newlyTriggered[flagField] = false;
     }
   }
-  return resolved;
+  return { resolved, newlyTriggered };
 }
 
 // ─── Scoring helper (identical logic to Onboarding's) ───────────────────────
@@ -384,7 +388,7 @@ router.post("/", async (req, res) => {
     }
 
     const fmsStatus = deriveFmsStatus(body.exitStatus, tasksNotDone);
-    const emailFields = resolveOneTimeExitEmails(null, body);
+    const { resolved: emailFields, newlyTriggered } = resolveOneTimeExitEmails(null, body);
 
     const doc = new Exit({
       ...body,
@@ -405,7 +409,10 @@ router.post("/", async (req, res) => {
     });
 
     await doc.save();
-    triggerNewExit(doc).catch(console.error);
+    // Merge newlyTriggered over the saved doc so triggerNewExit only sends
+    // emails whose flag was newly set THIS call — not every sticky-true
+    // flag from prior calls.
+    triggerNewExit({ ...doc.toObject(), ...newlyTriggered }).catch(console.error);
     syncExitStatusToOnboarding(doc).catch(console.error);
     res.status(201).json({ success: true, data: doc });
   } catch (err) {
@@ -668,7 +675,7 @@ router.put("/:id", async (req, res) => {
     }
 
     const fmsStatus = deriveFmsStatus(resolvedExitStatus, tasksNotDone);
-    const emailFields = resolveOneTimeExitEmails(existingPlain, body);
+    const { resolved: emailFields, newlyTriggered } = resolveOneTimeExitEmails(existingPlain, body);
 
     const updated = await Exit.findByIdAndUpdate(
       req.params.id,
@@ -693,7 +700,9 @@ router.put("/:id", async (req, res) => {
       { new: true, runValidators: true }
     );
 
-    triggerUpdateExit(updated).catch(console.error);
+    // Same principle as create — only send emails whose flag was newly
+    // set this call, never re-send a sticky-true flag from before.
+    triggerUpdateExit({ ...updated.toObject(), ...newlyTriggered }).catch(console.error);
     syncExitStatusToOnboarding(updated).catch(console.error);
     res.json({ success: true, data: updated });
   } catch (err) {
