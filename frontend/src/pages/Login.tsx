@@ -39,7 +39,7 @@ export default function Login() {
         const { token, coordinatorId } = res.data;
         localStorage.setItem("jwtToken", token);
         localStorage.setItem("coordinatorId", coordinatorId);
-        navigate("/");
+        window.location.href = "https://operations.briskolive.com/landing";
       } else {
         const res = await authAxios.post(`${AUTH_API_BASE}/api/login`, { email, password });
         const { token, userId, attendanceId, designation, dept, name } = res.data;
@@ -49,7 +49,7 @@ export default function Login() {
         if (designation) localStorage.setItem("designation", designation);
         if (dept) localStorage.setItem("dept", dept);
         if (name) localStorage.setItem("name", name);
-        navigate("/");
+        window.location.href = "https://operations.briskolive.com/landing";
       }
     } catch (err: any) {
       setError(err?.response?.data?.error || "Authentication failed. Please check your details.");
