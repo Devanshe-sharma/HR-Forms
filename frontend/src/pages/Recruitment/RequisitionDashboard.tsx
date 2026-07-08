@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Edit2, Plus, RefreshCw } from 'lucide-react';
 import Sidebar from '../../components/Sidebar';
@@ -21,6 +21,13 @@ type Requisition = {
   hiring_status: string;
   fmsStatus: 'Open' | 'Closed';
   candidate_experience_level?: string;
+  fms_score?: number;
+  total_tasks?: number;
+  done_in_time?: number;
+  done_but_delayed?: number;
+  tasks_due?: number;
+  tasks_overdue?: number;
+  not_yet_due?: number;
 };
 
 const HIRING_STATUS_OPTIONS = [
@@ -45,6 +52,8 @@ const STATUS_CHIP: Record<string, string> = {
   'Filled Externally':        'bg-green-100 text-green-800',
 };
 
+type CardFilter = 'all' | 'open' | 'closed' | 'overdue';
+
 export default function RequisitionDashboard() {
   const navigate                      = useNavigate();
   const [searchParams]                = useSearchParams();
@@ -56,9 +65,8 @@ export default function RequisitionDashboard() {
 
   const [search,       setSearch]       = useState('');
   const [filterStatus, setFilterStatus] = useState('');
-  const [filterFms,    setFilterFms]    = useState('');
+  const [cardFilter,   setCardFilter]   = useState<CardFilter>('all');
 
-  // ── Modal state driven by URL query params ─────────────────────────────────
   const modal  = searchParams.get('modal');
   const editId = searchParams.get('id');
 
@@ -69,17 +77,14 @@ export default function RequisitionDashboard() {
   const openEdit   = (id: string) => navigate(`/recruitment?modal=update&id=${id}`);
   const closeModal = () => navigate('/recruitment');
 
-  // ── Fetch ──────────────────────────────────────────────────────────────────
+  // Always fetch the full set — filtering (including the stat cards) is
+  // done client-side so the card counts stay accurate regardless of which
+  // filter is currently active.
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams();
-      if (search)       params.set('search',    search);
-      if (filterStatus) params.set('status',    filterStatus);
-      if (filterFms)    params.set('fmsStatus', filterFms);
-
-      const res  = await fetch(`${API_BASE}/hiringrequisitions?${params}`);
+      const res  = await fetch(`${API_BASE}/hiringrequisitions`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to load');
       setRows(json.data);
@@ -88,11 +93,35 @@ export default function RequisitionDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [search, filterStatus, filterFms]);
+  }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // ── Inline status save ─────────────────────────────────────────────────────
+  const counts = useMemo(() => ({
+    total:   rows.length,
+    open:    rows.filter(r => r.fmsStatus === 'Open').length,
+    closed:  rows.filter(r => r.fmsStatus === 'Closed').length,
+    overdue: rows.filter(r => r.fmsStatus !== 'Closed' && (r.tasks_overdue ?? 0) > 0).length,
+  }), [rows]);
+
+  const filteredRows = useMemo(() => {
+    return rows.filter(r => {
+      if (cardFilter === 'open'    && r.fmsStatus !== 'Open')  return false;
+      if (cardFilter === 'closed'  && r.fmsStatus !== 'Closed') return false;
+      if (cardFilter === 'overdue' && (r.fmsStatus === 'Closed' || (r.tasks_overdue ?? 0) === 0)) return false;
+
+      if (filterStatus && r.hiring_status !== filterStatus) return false;
+
+      if (search) {
+        const q = search.toLowerCase();
+        const hay = `${r.designation} ${r.hiring_dept} ${r.requisitioner_name}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+
+      return true;
+    });
+  }, [rows, cardFilter, filterStatus, search]);
+
   const saveStatus = async (id: string, field: 'hiring_status' | 'fmsStatus', value: string) => {
     setSavingId(id);
     try {
@@ -112,16 +141,21 @@ export default function RequisitionDashboard() {
 
   const anyModalOpen = newModalOpen || updateModalOpen;
 
+  const CARDS: { key: CardFilter; label: string; value: number; color: string; bg: string }[] = [
+    { key: 'all',     label: 'Total Requisitions', value: counts.total,   color: '#3B82F6', bg: '#EFF6FF' },
+    { key: 'open',    label: 'Open',               value: counts.open,    color: '#059669', bg: '#ECFDF5' },
+    { key: 'closed',  label: 'Closed',             value: counts.closed,  color: '#6B7280', bg: '#F9FAFB' },
+    { key: 'overdue', label: 'Overdue Tasks',      value: counts.overdue, color: '#DC2626', bg: '#FEF2F2' },
+  ];
+
   return (
     <>
-      {/* ── Page content — blurred when any modal is open ── */}
       <div className={`min-h-screen bg-gray-100 flex transition-all duration-200 ${anyModalOpen ? 'blur-sm brightness-75 pointer-events-none select-none' : ''}`}>
         <Sidebar />
         <div className="flex-1 flex flex-col">
           <Navbar />
           <div className="p-4 md:p-6 mt-10 text-sm text-gray-800">
 
-            {/* Header */}
             <div className="flex items-center justify-between mb-5">
               <h1 className="text-xl font-bold">Hiring Requisitions</h1>
               <div className="flex items-center gap-2">
@@ -143,7 +177,6 @@ export default function RequisitionDashboard() {
               </div>
             </div>
 
-            {/* Error */}
             {error && (
               <div className="flex items-center justify-between bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2.5 rounded-md mb-4">
                 {error}
@@ -151,7 +184,26 @@ export default function RequisitionDashboard() {
               </div>
             )}
 
-            {/* Filters */}
+            {/* Stat / Filter Cards */}
+            <div className="flex gap-3 mb-5 flex-wrap">
+              {CARDS.map(c => (
+                <button
+                  key={c.key}
+                  onClick={() => setCardFilter(c.key)}
+                  className="flex-1 min-w-[150px] text-left p-3.5 rounded-lg border transition"
+                  style={{
+                    backgroundColor: c.bg,
+                    borderColor: cardFilter === c.key ? c.color : 'transparent',
+                    borderWidth: cardFilter === c.key ? 2 : 1,
+                    boxShadow: cardFilter === c.key ? `0 0 0 1px ${c.color}30` : undefined,
+                  }}
+                >
+                  <p className="text-2xl font-bold leading-none" style={{ color: c.color }}>{c.value}</p>
+                  <p className="text-xs text-gray-500 mt-1">{c.label}</p>
+                </button>
+              ))}
+            </div>
+
             <div className="flex flex-col sm:flex-row gap-3 mb-5">
               <div className="relative flex-[2]">
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -172,23 +224,33 @@ export default function RequisitionDashboard() {
                 {HIRING_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
               <select
-                value={filterFms}
-                onChange={e => setFilterFms(e.target.value)}
-                className="flex-1 min-w-[130px] px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={cardFilter === 'open' ? 'Open' : cardFilter === 'closed' ? 'Closed' : ''}
+                onChange={e => {
+                  const v = e.target.value;
+                  setCardFilter(v === 'Open' ? 'open' : v === 'Closed' ? 'closed' : 'all');
+                }}
+                className="flex-1 min-w-[140px] px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">All FMS Statuses</option>
                 <option value="Open">Open</option>
                 <option value="Closed">Closed</option>
               </select>
+              {(cardFilter !== 'all' || filterStatus || search) && (
+                <button
+                  onClick={() => { setCardFilter('all'); setFilterStatus(''); setSearch(''); }}
+                  className="px-4 py-2 text-sm text-blue-600 hover:underline whitespace-nowrap"
+                >
+                  Reset Filters
+                </button>
+              )}
             </div>
 
-            {/* Table */}
             {loading ? (
               <div className="flex justify-center py-16">
                 <span className="w-8 h-8 border-[3px] border-gray-200 border-t-blue-600 rounded-full animate-spin" />
               </div>
             ) : (
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="border border-gray-200 rounded-lg overflow-x-auto">
                 <table className="w-full text-[0.813rem] border-collapse">
                   <thead>
                     <tr className="bg-gray-50 text-left">
@@ -199,17 +261,24 @@ export default function RequisitionDashboard() {
                       <th className="px-3 py-2.5 font-semibold">Request Date</th>
                       <th className="px-3 py-2.5 font-semibold">Planned Joining</th>
                       <th className="px-3 py-2.5 font-semibold w-52">Hiring Status</th>
-                      <th className="px-3 py-2.5 font-semibold w-28">FMS</th>
+                      <th className="px-3 py-2.5 font-semibold w-24">FMS Status</th>
+                      <th className="px-3 py-2.5 font-semibold w-20 text-right">FMS Score</th>
+                      <th className="px-3 py-2.5 font-semibold w-16 text-right">Total Tasks</th>
+                      <th className="px-3 py-2.5 font-semibold w-16 text-right">Done in Time</th>
+                      <th className="px-3 py-2.5 font-semibold w-16 text-right">Done Delayed</th>
+                      <th className="px-3 py-2.5 font-semibold w-16 text-right">Tasks Due</th>
+                      <th className="px-3 py-2.5 font-semibold w-16 text-right">Overdue</th>
+                      <th className="px-3 py-2.5 font-semibold w-16 text-right">Not Yet Due</th>
                       <th className="px-3 py-2.5 font-semibold w-20 text-center">Update</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {rows.length === 0 && (
+                    {filteredRows.length === 0 && (
                       <tr>
-                        <td colSpan={9} className="py-12 text-center text-gray-400">No requisitions found</td>
+                        <td colSpan={16} className="py-12 text-center text-gray-400">No requisitions match the current filters</td>
                       </tr>
                     )}
-                    {rows.map(row => (
+                    {filteredRows.map(row => (
                       <tr key={row._id} onClick={() => openEdit(row._id)} className={`hover:bg-gray-50 transition cursor-pointer ${savingId === row._id ? 'opacity-50' : ''}`} >
                         <td className="px-3 py-2.5">{row.serial_no}</td>
                         <td className="px-3 py-2.5">
@@ -223,7 +292,6 @@ export default function RequisitionDashboard() {
                         <td className="px-3 py-2.5">{row.request_date || '—'}</td>
                         <td className="px-3 py-2.5">{row.planned_joined || '—'}</td>
 
-                        {/* Inline: Hiring Status */}
                         <td className="px-3 py-2.5 relative" onClick={e => e.stopPropagation()}>
                           {row.hiring_status && (
                             <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CHIP[row.hiring_status] ?? 'bg-gray-100 text-gray-700'}`}>
@@ -240,7 +308,6 @@ export default function RequisitionDashboard() {
                           </select>
                         </td>
 
-                        {/* Inline: FMS Status */}
                         <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
                           <button
                             onClick={() => saveStatus(row._id, 'fmsStatus', row.fmsStatus === 'Open' ? 'Closed' : 'Open')}
@@ -254,7 +321,18 @@ export default function RequisitionDashboard() {
                           </button>
                         </td>
 
-                        {/* Update button */}
+                        <td className={`px-3 py-2.5 text-right font-medium ${
+                          (row.fms_score ?? 0) < 0 ? 'text-red-600' : 'text-gray-700'
+                        }`}>
+                          {row.fms_score ?? 0}
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-gray-500">{row.total_tasks ?? 0}</td>
+                        <td className="px-3 py-2.5 text-right text-green-700">{row.done_in_time ?? 0}</td>
+                        <td className="px-3 py-2.5 text-right text-blue-700">{row.done_but_delayed ?? 0}</td>
+                        <td className="px-3 py-2.5 text-right text-yellow-700">{row.tasks_due ?? 0}</td>
+                        <td className="px-3 py-2.5 text-right text-red-700 font-medium">{row.tasks_overdue ?? 0}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-400">{row.not_yet_due ?? 0}</td>
+
                         <td className="px-3 py-2.5 text-center">
                           <button
                             title="Update this requisition"
@@ -272,14 +350,13 @@ export default function RequisitionDashboard() {
             )}
 
             <p className="mt-2 text-xs text-gray-400">
-              {rows.length} record{rows.length !== 1 ? 's' : ''}
-              {(filterStatus || filterFms || search) ? ' (filtered)' : ''}
+              {filteredRows.length} record{filteredRows.length !== 1 ? 's' : ''}
+              {(cardFilter !== 'all' || filterStatus || search) ? ' (filtered)' : ''}
             </p>
           </div>
         </div>
       </div>
 
-      {/* ── Modals — outside the blur div so they stay sharp ── */}
       <Modal
         open={newModalOpen}
         onClose={closeModal}

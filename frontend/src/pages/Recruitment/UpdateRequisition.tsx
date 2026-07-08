@@ -40,9 +40,8 @@ type UpdateFormData = z.infer<typeof updateSchema>;
 type Requisition = Record<string, any>;
 type Employee    = { emp_id: string; full_name: string; official_email: string };
 
-// ── Props ─────────────────────────────────────────────────────────────────────
 interface Props {
-  id?:        string;       // pass from modal; falls back to useParams
+  id?:        string;
   asModal?:   boolean;
   onSuccess?: () => void;
   onClose?:   () => void;
@@ -81,7 +80,14 @@ function Accordion({ title, children, defaultOpen = false }: { title: string; ch
   );
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+const STATUS_BADGE: Record<string, string> = {
+  'Done':            'bg-green-100 text-green-800',
+  'Done (Delayed)':  'bg-blue-100 text-blue-800',
+  'Overdue':         'bg-red-100 text-red-800',
+  'Pending':         'bg-yellow-100 text-yellow-800',
+  'Not Yet Due':     'bg-gray-100 text-gray-600',
+};
+
 export default function UpdateRequisition({ id: propId, asModal = false, onSuccess, onClose }: Props) {
   const { id: paramId } = useParams<{ id: string }>();
   const navigate        = useNavigate();
@@ -93,6 +99,7 @@ export default function UpdateRequisition({ id: propId, asModal = false, onSucce
   const [saving,  setSaving]  = useState(false);
   const [error,   setError]   = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [checklistSavingTask, setChecklistSavingTask] = useState<string | null>(null);
 
   const {
     control, register, handleSubmit, watch, reset,
@@ -162,12 +169,32 @@ export default function UpdateRequisition({ id: propId, asModal = false, onSucce
     }
   };
 
+  // Marks a single checklist task's plan/done date and refreshes the whole
+  // doc with the server's freshly-computed scores.
+  const updateChecklistTask = async (task: string, updates: Record<string, any>) => {
+    if (!id) return;
+    setChecklistSavingTask(task);
+    try {
+      const res = await fetch(`${API_BASE}/hiringrequisitions/${id}/checklist`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task, ...updates }),
+      });
+      const json = await res.json();
+      if (json.success) setDoc(json.data);
+      else setError(json.error || 'Failed to update checklist task');
+    } catch {
+      setError('Failed to update checklist task');
+    } finally {
+      setChecklistSavingTask(null);
+    }
+  };
+
   const handleBack = () => {
     if (asModal && onClose) onClose();
     else navigate('/recruitment');
   };
 
-  // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[40vh]">
@@ -189,11 +216,11 @@ export default function UpdateRequisition({ id: propId, asModal = false, onSucce
     );
   }
 
-  // ── Form content ──────────────────────────────────────────────────────────
+  const checklistTasks: any[] = doc.checklist_tasks || [];
+
   const formContent = (
     <div className={asModal ? '' : 'p-4 md:p-6 mt-10 max-w-5xl mx-auto'}>
 
-      {/* Header */}
       <div className="flex items-center gap-3 mb-5">
         <button
           onClick={handleBack}
@@ -210,7 +237,6 @@ export default function UpdateRequisition({ id: propId, asModal = false, onSucce
         </span>
       </div>
 
-      {/* Alerts */}
       {error && (
         <div className="flex items-center justify-between bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2.5 rounded-md mb-4">
           {error}
@@ -223,7 +249,6 @@ export default function UpdateRequisition({ id: propId, asModal = false, onSucce
         </div>
       )}
 
-      {/* Current Details */}
       <Accordion title="Current Details (Read-only)" defaultOpen>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <ROField label="Serial No"          value={String(doc.serial_no)} />
@@ -272,6 +297,91 @@ export default function UpdateRequisition({ id: propId, asModal = false, onSucce
             <ROField label="HR Remarks" value={doc.hr_remarks} />
           </div>
         </div>
+      </Accordion>
+
+      {/* HR Checklist & FMS Score — this is the section that actually
+          shows and lets you update the scoring you were looking for */}
+      <Accordion title="HR Checklist & FMS Score" defaultOpen>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+          <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+            <p className="text-lg font-bold text-indigo-700">{doc.fms_score ?? 0}</p>
+            <p className="text-xs text-gray-500">FMS Score</p>
+          </div>
+          <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+            <p className="text-lg font-bold text-green-700">{doc.done_in_time ?? 0}</p>
+            <p className="text-xs text-gray-500">Done in Time</p>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <p className="text-lg font-bold text-blue-700">{doc.done_but_delayed ?? 0}</p>
+            <p className="text-xs text-gray-500">Done (Delayed)</p>
+          </div>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+            <p className="text-lg font-bold text-red-700">{doc.tasks_overdue ?? 0}</p>
+            <p className="text-xs text-gray-500">Overdue</p>
+          </div>
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+            <p className="text-lg font-bold text-yellow-700">{doc.tasks_due ?? 0}</p>
+            <p className="text-xs text-gray-500">Pending</p>
+          </div>
+        </div>
+
+        {checklistTasks.length === 0 ? (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-md">
+            No checklist tasks found on this record — it was likely created before checklist
+            tracking existed. Ask your developer to run the one-time backfill
+            (<code>POST /api/hiringrequisitions/backfill-checklists</code>) to seed it.
+          </div>
+        ) : (
+          <div className="border border-gray-200 rounded-lg overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 text-left text-xs text-gray-500">
+                  <th className="px-3 py-2">Task</th>
+                  <th className="px-3 py-2">Plan Date</th>
+                  <th className="px-3 py-2">Done Date</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Score</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {checklistTasks.map((t) => (
+                  <tr key={t.task} className={checklistSavingTask === t.task ? 'opacity-50' : ''}>
+                    <td className="px-3 py-2 max-w-xs">{t.task}</td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="date"
+                        defaultValue={toDateInput(t.plan)}
+                        disabled={checklistSavingTask === t.task}
+                        onBlur={(e) => updateChecklistTask(t.task, { plan: e.target.value || null })}
+                        className="text-xs border border-gray-300 rounded px-1.5 py-1"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="date"
+                        defaultValue={toDateInput(t.done)}
+                        disabled={checklistSavingTask === t.task}
+                        onBlur={(e) => updateChecklistTask(t.task, { done: e.target.value || null })}
+                        className="text-xs border border-gray-300 rounded px-1.5 py-1"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[t.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                        {t.status || 'Not Yet Due'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">{t.score ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="text-xs text-gray-400 mt-3">
+          Set a Plan Date to schedule when a task is due; set a Done Date once it's
+          completed. Status and score are calculated automatically from these two
+          dates — no need to set them directly.
+        </p>
       </Accordion>
 
       {/* Update Form */}
@@ -359,7 +469,6 @@ export default function UpdateRequisition({ id: propId, asModal = false, onSucce
               </div>
             )}
 
-            {/* CC recipients */}
             <div>
               <label className={labelCls}>Update CC List (optional)</label>
               <Controller
@@ -410,7 +519,6 @@ export default function UpdateRequisition({ id: propId, asModal = false, onSucce
               />
             </div>
 
-            {/* HR Remarks */}
             <div>
               <label className={labelCls}>HR Remarks *</label>
               <textarea
@@ -424,7 +532,6 @@ export default function UpdateRequisition({ id: propId, asModal = false, onSucce
               }
             </div>
 
-            {/* Actions */}
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
@@ -449,10 +556,8 @@ export default function UpdateRequisition({ id: propId, asModal = false, onSucce
     </div>
   );
 
-  // ── Modal mode ─────────────────────────────────────────────────────────────
   if (asModal) return formContent;
 
-  // ── Page mode ──────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-100 flex">
       <Sidebar />
