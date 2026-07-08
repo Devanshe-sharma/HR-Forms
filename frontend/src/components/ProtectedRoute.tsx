@@ -25,13 +25,16 @@ function ProtectedRoute() {
 
   useEffect(() => {
     const urlEmail = searchParams.get('email');
+    const urlSig = searchParams.get('sig');
 
-    // A fresh link with ?email=... always re-verifies against Onboarding,
-    // even if a session was already cached — this is the actual source of
-    // truth check, not just a formality.
+    // A fresh link with ?email=...&sig=... always re-verifies against
+    // Onboarding, even if a session was already cached — this is the
+    // actual source of truth check, not just a formality. Without a
+    // signature, the email alone can't be trusted — anyone could edit it
+    // in the URL to claim to be a different employee.
     if (urlEmail) {
       axios
-        .get(`${API_BASE}/onboarding/verify-access`, { params: { email: urlEmail } })
+        .get(`${API_BASE}/onboarding/verify-access`, { params: { email: urlEmail, sig: urlSig } })
         .then((res) => {
           if (res.data?.allowed) {
             const verified: VerifiedEmployee = res.data.employee;

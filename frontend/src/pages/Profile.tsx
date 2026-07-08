@@ -34,6 +34,19 @@ import { useNavigate } from 'react-router-dom';
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL;
 
+// Same key ProtectedRoute writes to after a real, signature-verified
+// check against Onboarding — this is the one trustworthy source of "who
+// is this" in the app. Nothing else should be guessing at identity from
+// scattered localStorage keys.
+const SESSION_KEY = 'verifiedEmployee';
+
+interface VerifiedEmployee {
+  name: string;
+  officialEmail: string;
+  dept: string;
+  designation: string;
+}
+
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 interface UserProfile {
   _id?: string;
@@ -61,75 +74,6 @@ interface TabPanelProps {
   children?: React.ReactNode;
   index: number;
   value: number;
-}
-
-// ─── Smart Email Detector ─────────────────────────────────────────────────────
-// Checks every common place a login page might store the user's email:
-//   1. localStorage / sessionStorage keys (direct email strings)
-//   2. JWT tokens (decodes payload → reads email claim)
-//   3. JSON objects stored in storage (parses and extracts email field)
-// Returns null if nothing found → demo profile is shown instead.
-function detectLoggedInEmail(): string | null {
-  const COMMON_KEYS = [
-    'userEmail', 'email', 'user_email', 'userinfo',
-    'user', 'authUser', 'currentUser', 'loggedInUser',
-    'token', 'accessToken', 'access_token', 'authToken', 'id_token',
-  ];
-
-  const decodeJWT = (token: string): string | null => {
-    try {
-      const payload = token.split('.')[1];
-      const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
-      return decoded.email || decoded.mail || decoded.preferred_username || null;
-    } catch {
-      return null;
-    }
-  };
-
-  const isJWT = (val: string) => val.split('.').length === 3 && val.length > 20;
-  const isEmail = (val: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
-
-  for (const storage of [localStorage, sessionStorage]) {
-    for (const key of COMMON_KEYS) {
-      try {
-        const val = storage.getItem(key);
-        if (!val) continue;
-
-        // 1. Direct email string
-        if (isEmail(val)) return val;
-
-        // 2. JWT token → decode
-        if (isJWT(val)) {
-          const email = decodeJWT(val);
-          if (email) return email;
-        }
-
-        // 3. JSON object → extract email field
-        try {
-          const parsed = JSON.parse(val);
-          if (parsed && typeof parsed === 'object') {
-            const direct =
-              parsed.email || parsed.mail || parsed.official_email ||
-              parsed.user_email || parsed.userEmail;
-            if (direct && isEmail(direct)) return direct;
-
-            // Nested: { user: { email } } or { data: { email } }
-            if (parsed.user?.email && isEmail(parsed.user.email)) return parsed.user.email;
-            if (parsed.data?.email && isEmail(parsed.data.email)) return parsed.data.email;
-
-            // Token nested inside object
-            const tokenVal = parsed.token || parsed.accessToken || parsed.access_token;
-            if (tokenVal && isJWT(tokenVal)) {
-              const email = decodeJWT(tokenVal);
-              if (email) return email;
-            }
-          }
-        } catch { /* not JSON */ }
-      } catch { /* storage error */ }
-    }
-  }
-
-  return null;
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -257,54 +201,55 @@ export default function Profile() {
   const [tabValue, setTabValue] = useState(0);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [detectedEmail, setDetectedEmail] = useState<string | null>(null);
-  const [isDemo, setIsDemo] = useState(false);
+  const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const navigate = useNavigate();
   const currentRole = getRole();
 
   useEffect(() => { fetchUserProfile(); }, []);
 
-  const getDemoProfile = (): UserProfile => ({
-    full_name: 'Demo User', employee_id: 'BRK-0000',
-    official_email: 'demo@briskolive.com', personal_email: '',
-    department: 'IT Department', designation: 'Software Developer',
-    level: 3, joining_date: '2024-01-15', phone: '',
-    manager: 'Tanisha Sharma', employment_type: 'Full Time',
-    work_location: 'Office – Noida Sector 63',
-  });
-
   const fetchUserProfile = async () => {
     try {
       setLoading(true);
       setErrorMsg(null);
 
-      // ── Detect email from browser storage ──────────────────────────────────
-      const email = detectLoggedInEmail();
-      setDetectedEmail(email);
-
-      if (!email) {
-        // No session found — show demo until login page is ready
-        setIsDemo(true);
-        setUserProfile(getDemoProfile());
+      // The ONLY trustworthy identity in this app is whatever
+      // ProtectedRoute actually verified via a signed link against
+      // Onboarding — never re-derive identity from scattered
+      // localStorage/JWT guessing here, since that's exactly what let
+      // people view arbitrary profiles by editing the URL.
+      const cached = sessionStorage.getItem(SESSION_KEY);
+      if (!cached) {
+        setErrorMsg('No verified session found. Please use your onboarding link to access your profile.');
+        setUserProfile(null);
+        setVerifiedEmail(null);
         return;
       }
 
-      // ── Fetch from your employee API ───────────────────────────────────────
-      const res = await axios.get(`${API_BASE}/employees?email=${encodeURIComponent(email)}`);
+      const verified: VerifiedEmployee = JSON.parse(cached);
+      setVerifiedEmail(verified.officialEmail);
 
-      if (res.data.success && res.data.data?.length > 0) {
-        setUserProfile(res.data.data[0]);
-        setIsDemo(false);
-      } else {
-        setErrorMsg(`No employee record found for: ${email}`);
-        setIsDemo(true);
-        setUserProfile(getDemoProfile());
+      // Start from the already-verified fields immediately, then enrich
+      // with fuller details from the employee record if available.
+      setUserProfile({
+        full_name: verified.name,
+        official_email: verified.officialEmail,
+        department: verified.dept,
+        designation: verified.designation,
+      });
+
+      const res = await axios.get(`${API_BASE}/employees`, {
+        params: { email: verified.officialEmail },
+      });
+
+      if (res.data?.success && res.data.data?.length > 0) {
+        // Merge rather than replace, so verified fields never get
+        // silently overwritten by a stale/incomplete record on the
+        // other side.
+        setUserProfile((prev) => ({ ...prev, ...res.data.data[0] }));
       }
     } catch (err: any) {
-      setErrorMsg('Could not reach the server. Showing demo profile.');
-      setIsDemo(true);
-      setUserProfile(getDemoProfile());
+      setErrorMsg('Could not load full profile details from the server — showing what was verified.');
     } finally {
       setLoading(false);
     }
@@ -325,9 +270,22 @@ export default function Profile() {
   if (loading) return (
     <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#F8F9FB', gap: 2 }}>
       <CircularProgress size={40} thickness={5} sx={{ color: '#3F6FE8' }} />
-      <Typography color="#6B7280" fontSize="0.85rem">Detecting your session...</Typography>
+      <Typography color="#6B7280" fontSize="0.85rem">Loading your profile...</Typography>
     </Box>
   );
+
+  // No verified session at all — don't show anyone's data, demo or
+  // otherwise. Direct them back to a real link instead.
+  if (!verifiedEmail || !userProfile) {
+    return (
+      <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#F8F9FB', gap: 2, px: 3, textAlign: 'center' }}>
+        <Typography fontWeight={700} fontSize="1.1rem" color="#1A1F36">No verified session found</Typography>
+        <Typography color="#6B7280" fontSize="0.85rem" maxWidth={420}>
+          {errorMsg || 'Please open your profile using the personal link sent to you, rather than navigating here directly.'}
+        </Typography>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#F3F5F8', display: 'flex', flexDirection: 'column' }}>
@@ -341,24 +299,22 @@ export default function Profile() {
           <Typography fontWeight="800" fontSize="0.95rem" letterSpacing={0.5} color="#1A1F36">HR PORTAL</Typography>
         </Stack>
         <Stack direction="row" spacing={1} alignItems="center">
-          {/* Show a green pill with the detected email — confirms whose profile is loaded */}
-          {detectedEmail && !isDemo && (
-            <Chip
-              icon={<CheckCircleIcon sx={{ fontSize: 14, color: '#059669 !important' }} />}
-              label={detectedEmail}
-              size="small"
-              sx={{ bgcolor: '#ECFDF5', color: '#059669', fontWeight: 600, fontSize: '0.72rem', border: '1px solid #A7F3D0' }}
-            />
-          )}
+          {/* Green pill confirms whose VERIFIED profile is loaded */}
+          <Chip
+            icon={<CheckCircleIcon sx={{ fontSize: 14, color: '#059669 !important' }} />}
+            label={verifiedEmail}
+            size="small"
+            sx={{ bgcolor: '#ECFDF5', color: '#059669', fontWeight: 600, fontSize: '0.72rem', border: '1px solid #A7F3D0' }}
+          />
           <Button startIcon={<SettingsIcon />} size="small" onClick={() => navigate('/configuration')} sx={{ color: '#6B7280', textTransform: 'none', fontWeight: 600, fontSize: '0.82rem' }}>Configuration</Button>
           <Button startIcon={<ExitIcon />} size="small" color="error" onClick={() => navigate('/logout')} sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.82rem' }}>Logout</Button>
         </Stack>
       </Box>
 
       {/* ── Status Banner ── */}
-      {(errorMsg || isDemo) && (
-        <Alert severity={errorMsg ? 'warning' : 'info'} sx={{ borderRadius: 0, fontSize: '0.82rem' }}>
-          {errorMsg ?? 'No login session found. Showing demo profile — once the login page is live, your real data will load automatically.'}
+      {errorMsg && (
+        <Alert severity="warning" sx={{ borderRadius: 0, fontSize: '0.82rem' }}>
+          {errorMsg}
         </Alert>
       )}
 

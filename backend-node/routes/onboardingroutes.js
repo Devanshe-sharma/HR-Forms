@@ -1,5 +1,6 @@
 const express = require("express");
 const Onboarding = require('../models/onboardingModel');
+const { signEmail, verifySignature } = require('../utils/accessLinkSigning');
 // Used only by the HR analytics routes, to resolve real historical exit
 // dates for headcount-by-quarter reconstruction (Onboarding only stores
 // the current status, not the date it happened).
@@ -955,9 +956,20 @@ router.get("/analytics/gender", async (req, res) => {
 router.get("/verify-access", async (req, res) => {
   try {
     const email = (req.query.email || "").trim().toLowerCase();
+    const sig = req.query.sig || "";
 
     if (!email) {
       return res.json({ success: true, allowed: false, reason: "missing_email" });
+    }
+
+    // The signature proves this exact email came from a link we actually
+    // generated — without it, anyone could edit ?email= in the URL to any
+    // other real employee's address and get treated as that person. This
+    // check has nothing to do with whether the email belongs to a real
+    // employee (that's checked separately below) — it's specifically
+    // about whether THIS request is allowed to claim to BE that email.
+    if (!verifySignature(email, sig)) {
+      return res.json({ success: true, allowed: false, reason: "invalid_signature" });
     }
 
     const docs = await Onboarding.find({}, "name officialEmail exitStatus dept designation").lean();
@@ -984,6 +996,38 @@ router.get("/verify-access", async (req, res) => {
   } catch (err) {
     console.error("[verify-access] error:", err.message);
     res.status(500).json({ success: false, allowed: false, message: err.message });
+  }
+});
+
+// ─── GET /api/onboarding/generate-access-link ──────────────────────────────
+// Produces a signed link for a specific current employee. Intended to be
+// called by trusted internal systems only (e.g. whatever currently sends
+// onboarding welcome emails) — never expose this to the public internet
+// without its own auth, since anyone who can call it can mint a valid
+// link for any employee.
+router.get("/generate-access-link", async (req, res) => {
+  try {
+    const email = (req.query.email || "").trim().toLowerCase();
+    if (!email) return res.status(400).json({ success: false, message: "email is required" });
+
+    const doc = await Onboarding.findOne(
+      { officialEmail: { $regex: `^${email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" } },
+      "name officialEmail exitStatus"
+    ).lean();
+
+    if (!doc) return res.status(404).json({ success: false, message: "No matching employee found" });
+    if (EXITED_STATUS_VALUES.has(doc.exitStatus || "")) {
+      return res.status(400).json({ success: false, message: "This employee has exited" });
+    }
+
+    const sig = signEmail(doc.officialEmail);
+    const base = process.env.FRONTEND_URL || "https://hr.briskolive.com";
+    const link = `${base}/company-orientation?name=${encodeURIComponent(doc.name || "")}&email=${encodeURIComponent(doc.officialEmail)}&sig=${sig}`;
+
+    res.json({ success: true, link });
+  } catch (err) {
+    console.error("[generate-access-link] error:", err.message);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
