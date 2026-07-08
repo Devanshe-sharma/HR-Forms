@@ -118,6 +118,7 @@ const CHECKLIST_DEFS = [
       "Ensure All Assets Are Returned Done?",
       "Name Deleted from Employee List Done?",
       "Tea Party Done?",
+      "SIM Returned Done?",
     ],
   },
   {
@@ -485,7 +486,7 @@ const NewExit: React.FC = () => {
                     <input {...register("remarks")} className={inputClass} placeholder="Any additional notes..." />
                   </div>
                   <div className="rounded-lg bg-red-50 border border-red-100 px-3 py-2.5 text-xs text-red-700">
-                    This email will be sent excluding <span className="font-semibold">MD, CEO, COO, HR, Accounts &amp; DME</span>. Select others to keep in CC.
+                    This email will be sent including <span className="font-semibold">MD, CEO, COO, HR, Accounts &amp; DME</span>. Select others to keep in CC.
                   </div>
                   <div>
                     <label className={labelClass}>Keep in Email CC</label>

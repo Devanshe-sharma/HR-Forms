@@ -129,6 +129,7 @@ const CHECKLIST_DEFS = [
       "Photo Formal Dress Done?",
       "Reminder Email ToAll Done?",
       "Verification Of Document Done?",
+      "Company SIM Requirement Checked Done?",
     ],
   },
   {

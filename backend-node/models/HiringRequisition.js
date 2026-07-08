@@ -104,6 +104,12 @@ const HiringRequisitionSchema = new Schema(
     role_n_jd_good:    { type: String, enum: ['Yes', 'No'], required: true },
     days_well_thought: { type: String, enum: ['Yes', 'No'], required: true },
 
+    // ── Company SIM questions (raised at requisition time, same style as
+    // the dept checklist above — not a scored HR task, just info gathering) ──
+    is_sim_needed:                { type: String, enum: ['Yes', 'No', null], default: null },
+    sim_needed_reason:            { type: String, default: '' }, // only meaningful when is_sim_needed = 'Yes'
+    is_sim_available_for_transfer: { type: String, enum: ['Yes', 'No', null], default: null },
+
     // ── HR checklist tasks (the 10 repeated Plan/Done/Score/Status/DaysLeft blocks) ──
     checklist_tasks: { type: [ChecklistTaskSchema], default: [] },
 

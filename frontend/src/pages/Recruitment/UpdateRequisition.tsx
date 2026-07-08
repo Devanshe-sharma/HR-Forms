@@ -288,6 +288,16 @@ export default function UpdateRequisition({ id: propId, asModal = false, onSucce
           <ROField label="Days Well Thought?" value={doc.days_well_thought} />
         </div>
         <hr className="my-4 border-gray-100" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <ROField label="Company SIM Needed?"          value={doc.is_sim_needed} />
+          <ROField label="SIM Available for Transfer?"  value={doc.is_sim_available_for_transfer} />
+          {doc.is_sim_needed === 'Yes' && (
+            <div className="col-span-2">
+              <ROField label="Reason SIM is Needed" value={doc.sim_needed_reason} />
+            </div>
+          )}
+        </div>
+        <hr className="my-4 border-gray-100" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <ROField label="Special Instructions"       value={doc.special_instructions} />
           <ROField label="Employees in CC"            value={(doc.employees_in_cc || []).join(', ')} />

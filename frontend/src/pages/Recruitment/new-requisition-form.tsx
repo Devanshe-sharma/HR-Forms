@@ -38,9 +38,15 @@ const schema = z.object({
   role_n_jd_read:             z.enum(['Yes', 'No'], { required_error: 'Required' }),
   role_n_jd_good:             z.enum(['Yes', 'No'], { required_error: 'Required' }),
   days_well_thought:          z.enum(['Yes', 'No'], { required_error: 'Required' }),
+  is_sim_needed:                 z.enum(['Yes', 'No'], { required_error: 'Required' }),
+  sim_needed_reason:             z.string().optional(),
+  is_sim_available_for_transfer: z.enum(['Yes', 'No'], { required_error: 'Required' }),
   role_link:                  z.string().optional(),
   jd_link:                    z.string().optional(),
-});
+}).refine(
+  (data) => data.is_sim_needed !== 'Yes' || !!data.sim_needed_reason?.trim(),
+  { message: 'Please provide a reason since a SIM is needed', path: ['sim_needed_reason'] }
+);
 
 type FormData = z.infer<typeof schema>;
 
@@ -116,6 +122,9 @@ export default function NewRequisitionForm({ asModal = false, onSuccess, onClose
       role_n_jd_read:             '' as any,
       role_n_jd_good:             '' as any,
       days_well_thought:          '' as any,
+      is_sim_needed:                 '' as any,
+      sim_needed_reason:             '',
+      is_sim_available_for_transfer: '' as any,
       candidate_experience_level: '' as any,
       role_link:                  '',
       jd_link:                    '',
@@ -129,6 +138,7 @@ export default function NewRequisitionForm({ asModal = false, onSuccess, onClose
   const designationType     = watch('designation_type');
   const designationExisting = watch('designation_existing');
   const selectJoiningDays   = watch('select_joining_days');
+  const isSimNeeded         = watch('is_sim_needed');
 
   const fetchNextSerial = () =>
     fetch(`${API_BASE}/hiringrequisitions/next-serial`)
@@ -187,7 +197,10 @@ export default function NewRequisitionForm({ asModal = false, onSuccess, onClose
     setValue('planned_joined',             format(addDays(today, totalDays),      'dd-MM-yyyy'));
   }, [selectJoiningDays, setValue]);
 
-  
+  // Clear the reason field automatically if the answer flips back to "No"
+  useEffect(() => {
+    if (isSimNeeded === 'No') setValue('sim_needed_reason', '');
+  }, [isSimNeeded, setValue]);
 
   const onSubmit = async (data: FormData) => {
     setSubmitLoading(true);
@@ -228,6 +241,7 @@ export default function NewRequisitionForm({ asModal = false, onSuccess, onClose
         role_link:                  data.role_link           || null,
         jd_link:                    data.jd_link             || null,
         special_instructions:       data.special_instructions || null,
+        sim_needed_reason:          data.is_sim_needed === 'Yes' ? data.sim_needed_reason : '',
       };
       const res = await fetch(`${API_BASE}/hiringrequisitions/`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
@@ -666,6 +680,52 @@ const handleBackToDept = () => {
               {errors[name] && <p className={errCls}>{(errors[name] as any)?.message ?? 'Required'}</p>}
             </div>
           ))}
+
+          {/* Company SIM questions */}
+          <div>
+            <label className={labelCls}>Is Company SIM needed for this role? *</label>
+            <Controller
+              name="is_sim_needed"
+              control={control}
+              render={({ field }) => (
+                <select {...field} className={`${inputCls} ${errors.is_sim_needed ? 'border-red-400' : ''}`}>
+                  <option value="" disabled>Select</option>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+              )}
+            />
+            {errors.is_sim_needed && <p className={errCls}>{errors.is_sim_needed.message}</p>}
+          </div>
+
+          {isSimNeeded === 'Yes' && (
+            <div>
+              <label className={labelCls}>Reason SIM is needed *</label>
+              <textarea
+                {...register('sim_needed_reason')}
+                rows={2}
+                placeholder="Explain why this role requires a company SIM..."
+                className={`${inputCls} ${errors.sim_needed_reason ? 'border-red-400' : ''}`}
+              />
+              {errors.sim_needed_reason && <p className={errCls}>{errors.sim_needed_reason.message}</p>}
+            </div>
+          )}
+
+          <div>
+            <label className={labelCls}>Is Company SIM available for transfer from outgoing employee? *</label>
+            <Controller
+              name="is_sim_available_for_transfer"
+              control={control}
+              render={({ field }) => (
+                <select {...field} className={`${inputCls} ${errors.is_sim_available_for_transfer ? 'border-red-400' : ''}`}>
+                  <option value="" disabled>Select</option>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+              )}
+            />
+            {errors.is_sim_available_for_transfer && <p className={errCls}>{errors.is_sim_available_for_transfer.message}</p>}
+          </div>
         </div>
 
         <hr className="border-gray-200 my-5" />

@@ -163,7 +163,7 @@ const CHECKLIST_DEFS = [
     items: [
       "Welcome Email Done?", "Reminder Email Done?", "Blood Gp Reminder Done?",
       "Photos Reminder Done?", "Photo Formal Dress Done?", "Reminder Email ToAll Done?",
-      "Verification Of Document Done?",
+      "Verification Of Document Done?", "Company SIM Requirement Checked Done?",
     ],
   },
   {

@@ -115,6 +115,7 @@ const CHECKLIST_DEFS = [
       "Ensure All Assets Are Returned Done?",
       "Name Deleted from Employee List Done?",
       "Tea Party Done?",
+      "SIM Returned Done?",
     ],
   },
   {
