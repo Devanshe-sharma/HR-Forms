@@ -94,7 +94,22 @@ const onboardingSchema = new mongoose.Schema(
     officialEmail: String,
     dept: String,
     designation: String,
-    employeeCategory: String,
+    employeeCategory: {
+      type: String,
+      enum: ["Employee", "Consultant", "Intern"],
+      default: "",
+    },
+    managementLevel: {
+      type: String,
+      enum: [
+        "Office Staff",
+        "Junior Management",
+        "Middle Management",
+        "Senior Management",
+        "Apex Management (C Level)",
+      ],
+      default: "",
+    },
     nameOfBuddy: String,
 
     // ============================================================

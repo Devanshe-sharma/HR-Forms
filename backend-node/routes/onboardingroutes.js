@@ -1035,7 +1035,7 @@ router.get("/employee-master", async (req, res) => {
   try {
     const docs = await Onboarding.find(
       {},
-      "name dept designation officialEmail persEmail joiningStatus exitStatus joinedDate reportingHead employeeCategory"
+      "name dept designation officialEmail persEmail joiningStatus exitStatus joinedDate reportingHead employeeCategory managementLevel"
     ).lean();
 
     const employees = docs.map((d) => {
@@ -1051,6 +1051,7 @@ router.get("/employee-master", async (req, res) => {
         email: d.officialEmail || d.persEmail || "",
         joining_date: d.joinedDate || null,
         employee_category: d.employeeCategory || "",
+        management_level: d.managementLevel || "",
         reporting_head: d.reportingHead || "",
         exit_status: d.exitStatus || "",
         is_current: isCurrent,
@@ -1069,7 +1070,7 @@ router.get("/eligible-employees", async (req, res) => {
   try {
     const docs = await Onboarding.find({ joiningStatus: "Joined" })
       .select(
-        "name dept designation officialEmail persEmail joinedDate employeeCategory exitStatus " +
+        "name dept designation officialEmail persEmail joinedDate employeeCategory exitStatus managementLevel " +
         "annualCtc basicSal hraSal grossMonthly empEpf gratuity annualBonus " +
         "annualPerformanceIncentive medicalPremium travelAllowance telephoneReimbursement reportingHead"
       )
@@ -1087,6 +1088,8 @@ router.get("/eligible-employees", async (req, res) => {
       official_email: d.officialEmail || "",
       joining_date: d.joinedDate || null,
       employee_category: d.employeeCategory || "",
+      management_level: d.managementLevel || "",
+      management_level: d.managementLevel || "",
       annual_ctc: d.annualCtc || 0,
       basic: d.basicSal ?? "",
       hra: d.hraSal ?? "",
@@ -1205,6 +1208,7 @@ router.put("/:id", async (req, res) => {
           gender:            existing.gender                              || '',
           joining_date:      body.joinedDate    || existing.joinedDate    || '',
           employee_category: existing.employeeCategory                    || '',
+          management_level: existing.managementLevel                      || '',
           name_of_buddy:     existing.nameOfBuddy                        || '',
           joining_status:    'Joined',
           isArchived:        false,
@@ -1440,6 +1444,7 @@ const LEGACY_STRING_FIELDS = {
   "Dept": "dept",
   "Designation": "designation",
   "Employee Category": "employeeCategory", // "Intern" is kept as-is, not remapped
+  "Management Level": "managementLevel",
   "Name of Buddy": "nameOfBuddy",
   "Authorised System": "laptopPc",
   "Remarks": "remarks",
@@ -1562,6 +1567,7 @@ const SCHEMA_FIELD_WHITELIST = new Set([
   "autoWelcomeEmail", "autoWelcomeEmailSentAt", "autoReminderEmail", "autoReminderEmailSentAt",
   "autoInstructionsToAllEmail", "autoInstructionsToAllEmailSentAt", "employeeConfirmationEmail",
   "employeeConfirmationEmailSentAt", "checkLists",
+  "managementLevel",
 ]);
 
 function buildLegacyChecklists(rawDoc) {
