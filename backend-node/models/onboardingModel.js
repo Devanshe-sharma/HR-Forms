@@ -94,14 +94,21 @@ const onboardingSchema = new mongoose.Schema(
     officialEmail: String,
     dept: String,
     designation: String,
+    // NOTE: "" is included in the enum list because default: "" applies
+    // to every record that's never had this field explicitly set — if ""
+    // isn't itself a valid enum value, Mongoose fails validation against
+    // its OWN default the moment .save() runs on any such record. This
+    // exact bug previously blocked saving unrelated fields on records
+    // with no employeeCategory/managementLevel set yet.
     employeeCategory: {
       type: String,
-      enum: ["Employee", "Consultant", "Intern"],
+      enum: ["", "Employee", "Consultant", "Intern"],
       default: "",
     },
     managementLevel: {
       type: String,
       enum: [
+        "",
         "Office Staff",
         "Junior Management",
         "Middle Management",

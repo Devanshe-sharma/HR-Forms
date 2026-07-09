@@ -34,7 +34,8 @@ import Companyorientationpage from "./pages/Companyorientationpage";
 import EmployeesPage from "./pages/EmployeesPage";
 import ArchivedEmployeesPage from "./pages/ArchivedEmployeesPage";
 import SalaryRevisionNew from "./pages/SalaryRevisionNew";
-import DeptDesignationMaster from "./pages/deptdesignationmaster"; // 👈 ADD THIS
+import DeptDesignationMaster from "./pages/deptdesignationmaster";
+// 👈 ADD THIS
 
 import { ThemeProvider } from "./contexts/ThemeContext";
 

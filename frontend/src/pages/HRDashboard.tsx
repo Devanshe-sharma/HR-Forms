@@ -3,6 +3,7 @@ import axios from "axios";
 import toast from "react-hot-toast";
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
+import HRKpiScorecard from "../components/HRKpiScorecard";
 import { Box, Typography, CircularProgress, Tooltip as MuiTooltip } from "@mui/material";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -450,8 +451,10 @@ const HRAnalyticsDashboard: React.FC = () => {
           </Box>
 
           <Box sx={{ display: "flex", flexDirection: "column", gap: 3, maxWidth: 1300 }}>
+           
             <TeethToTailWidget />
             <GenderDistributionWidget />
+             <HRKpiScorecard />
             {/* More metric widgets can be added here as separate cards,
                 following the same pattern as the widgets above. */}
           </Box>
