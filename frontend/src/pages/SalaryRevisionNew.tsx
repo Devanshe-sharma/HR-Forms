@@ -4,6 +4,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, Button, TextField, Select, MenuItem, FormControl, InputLabel,
   Avatar, Stack, IconButton, Divider, Slider, Autocomplete, Switch, FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import {
   ArrowBack      as ArrowBackIcon,
@@ -14,6 +15,10 @@ import {
   Add            as AddIcon,
   Close          as CloseIcon,
   History        as HistoryIcon,
+  Edit           as EditIcon,
+  Delete         as DeleteIcon,
+  Settings       as SettingsIcon,
+  Save           as SaveIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import Sidebar from '../components/Sidebar';
@@ -92,6 +97,19 @@ interface Employee {
   reporting_head?  : string;
 }
 
+// CTC Components — shared across this page AND the Employee Letters page,
+// both reading/writing the same backend collection, so a change made here
+// is automatically visible everywhere else that fetches the same endpoint.
+interface CTCComponentType {
+  _id?: string;
+  name: string;
+  code: string;
+  formula: string;
+  order: number;
+  is_active: boolean;
+  show_in_documents: boolean;
+}
+
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const API_BASE = process.env.REACT_APP_API_URL || process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://3.110.162.1:5000/api';
@@ -99,6 +117,9 @@ const API      = `${API_BASE}/salary-revisions`;
 // Employees now come from Onboarding — the single source of truth — instead
 // of a separate Employee collection.
 const EMP_API  = `${API_BASE}/onboarding/eligible-employees`;
+// Same endpoint the Employee Letters page reads from — one source of
+// truth for CTC component definitions, edited from either place.
+const CTC_API  = `${API_BASE}/ctc-components/`;
 
 const ACCENT = '#4f46e5';
 const TH = { fontWeight: 600, fontSize: 11, color: '#64748b', bgcolor: '#f8fafc', whiteSpace: 'nowrap' as const, py: '8px', borderBottom: '1px solid #e2e8f0' };
@@ -124,9 +145,6 @@ const get11MonthDate = (j: string): Date => {
   return new Date(d.getFullYear(), d.getMonth()+11, d.getDate());
 };
 
-// The review recurs every year on the same month/day as the first
-// anniversary — this gives the correct calendar date for whichever year
-// is currently being browsed, not just the one year it first fell due.
 const anniversaryDateForYear = (j: string, year: number): Date => {
   const first = get11MonthDate(j);
   return new Date(year, first.getMonth(), first.getDate());
@@ -135,8 +153,6 @@ const anniversaryDateForYear = (j: string, year: number): Date => {
 const isDueIn = (j: string, m: number, y: number) => {
   const first = get11MonthDate(j);
   if (m !== first.getMonth()) return false;
-  // Due every year in that month, starting from the year they first became
-  // eligible — not just that one specific year.
   const selDate   = new Date(y, m, 1);
   const firstDate = new Date(first.getFullYear(), first.getMonth(), 1);
   return selDate >= firstDate;
@@ -377,11 +393,228 @@ function AddRevisionModal({ open, onClose, onAdded, showToast, employees }: {
   );
 }
 
+// ─── CTC Components View ───────────────────────────────────────────────────────
+// Manages the same collection the Employee Letters page reads from — a
+// change saved here shows up there (and anywhere else that fetches the
+// same endpoint) immediately, since there's only ever one copy of this
+// data. Restyled to match this page's own compact, MUI-based look
+// instead of the old standalone dashboard's styling.
+
+function CtcComponentsView({ onBack, showToast }: {
+  onBack: () => void;
+  showToast: (m: string, t: 'success' | 'error') => void;
+}) {
+  const [components, setComponents] = useState<CTCComponentType[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [formData, setFormData] = useState<CTCComponentType>({
+    name: '', code: '', formula: '0', order: 0, is_active: true, show_in_documents: true,
+  });
+
+  const fetchComponents = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get(CTC_API);
+      const data = Array.isArray(res.data) ? res.data : res.data?.data || [];
+      setComponents(data.sort((a: CTCComponentType, b: CTCComponentType) => a.order - b.order));
+    } catch (err) {
+      showToast('Failed to load CTC components', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => { fetchComponents(); }, [fetchComponents]);
+
+  const resetForm = () => {
+    setEditingId(null);
+    setFormOpen(false);
+    setFormData({ name: '', code: '', formula: '0', order: components.length + 1, is_active: true, show_in_documents: true });
+  };
+
+  const startAdd = () => {
+    setEditingId(null);
+    setFormData({ name: '', code: '', formula: '0', order: components.length + 1, is_active: true, show_in_documents: true });
+    setFormOpen(true);
+  };
+
+  const startEdit = (comp: CTCComponentType) => {
+    if (!comp._id) return;
+    setEditingId(comp._id);
+    setFormData(comp);
+    setFormOpen(true);
+  };
+
+  const saveComponent = async () => {
+    if (saving) return;
+    if (!formData.name.trim() || !formData.code.trim()) {
+      showToast('Name and Code are required', 'error');
+      return;
+    }
+    if (!editingId && components.some(c => c.code.toUpperCase() === formData.code.toUpperCase())) {
+      showToast('This code already exists — choose a unique one', 'error');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const isNew = !editingId;
+      const method = isNew ? 'post' : 'patch';
+      const url = isNew ? CTC_API : `${CTC_API}${editingId}/`;
+      const payload = { ...formData, code: formData.code.toUpperCase().trim(), order: formData.order || components.length + 1 };
+
+      const res = await (axios as any)[method](url, payload);
+      const saved = res.data;
+
+      if (isNew) setComponents(prev => [...prev, saved].sort((a, b) => a.order - b.order));
+      else setComponents(prev => prev.map(c => (c._id === editingId ? saved : c)));
+
+      showToast(isNew ? 'Component added' : 'Component updated', 'success');
+      resetForm();
+    } catch (err: any) {
+      showToast(err?.response?.data?.message || 'Error saving component', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteComponent = async (id: string) => {
+    if (!window.confirm('Delete this component permanently?')) return;
+    try {
+      await axios.delete(`${CTC_API}${id}/`);
+      setComponents(prev => prev.filter(c => c._id !== id));
+      showToast('Component deleted', 'success');
+    } catch {
+      showToast('Error deleting component', 'error');
+    }
+  };
+
+  return (
+    <Box sx={{ p: 2.5, maxWidth: 1300, mx: 'auto' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+        <IconButton onClick={onBack} size="small" sx={{ bgcolor: '#f8fafc', borderRadius: 1.5 }}>
+          <ArrowBackIcon fontSize="small" />
+        </IconButton>
+        <Box flex={1}>
+          <Typography fontSize={18} fontWeight={700} color="#0f172a">CTC Components</Typography>
+          <Typography fontSize={12} color="text.secondary">
+            Shared across salary revisions, employee letters and payslips
+          </Typography>
+        </Box>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={startAdd} size="small"
+          sx={{ bgcolor: ACCENT, textTransform: 'none', fontWeight: 600, borderRadius: 1.5, '&:hover': { bgcolor: '#4338ca' } }}>
+          Add Component
+        </Button>
+      </Box>
+
+      {formOpen && (
+        <Paper variant="outlined" sx={{ borderRadius: 2, p: 2.5, mb: 2.5, outline: `2px solid ${ACCENT}` }}>
+          <Typography fontWeight={700} fontSize={13} mb={2}>
+            {editingId ? 'Edit Component' : 'New Component'}
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <TextField size="small" label="Name" value={formData.name}
+              onChange={e => setFormData({ ...formData, name: e.target.value })}
+              placeholder="e.g. Internet Allowance" sx={{ flex: '1 1 200px' }} />
+            <TextField size="small" label="Code (unique)" value={formData.code}
+              onChange={e => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
+              placeholder="e.g. INTERNET" helperText="Uppercase, no spaces" sx={{ flex: '1 1 180px' }} />
+            <TextField size="small" label="Formula" value={formData.formula}
+              onChange={e => setFormData({ ...formData, formula: e.target.value })}
+              placeholder="e.g. BASIC * 0.4" sx={{ flex: '1 1 220px' }} />
+            <TextField size="small" label="Order" type="number" value={formData.order}
+              onChange={e => setFormData({ ...formData, order: Number(e.target.value) || 0 })}
+              sx={{ flex: '0 1 100px' }} />
+          </Box>
+          <Box sx={{ display: 'flex', gap: 3, mt: 2, alignItems: 'center' }}>
+            <FormControlLabel
+              control={<Checkbox size="small" checked={formData.is_active}
+                onChange={e => setFormData({ ...formData, is_active: e.target.checked })}
+                sx={{ color: ACCENT, '&.Mui-checked': { color: ACCENT } }} />}
+              label={<Typography fontSize={12}>Active</Typography>} />
+            <FormControlLabel
+              control={<Checkbox size="small" checked={formData.show_in_documents}
+                onChange={e => setFormData({ ...formData, show_in_documents: e.target.checked })}
+                sx={{ color: ACCENT, '&.Mui-checked': { color: ACCENT } }} />}
+              label={<Typography fontSize={12}>Show in Documents</Typography>} />
+            <Box sx={{ flex: 1 }} />
+            <Button size="small" onClick={resetForm} sx={{ textTransform: 'none' }}>Cancel</Button>
+            <Button size="small" variant="contained" startIcon={saving ? <CircularProgress size={14} sx={{ color: 'white' }} /> : <SaveIcon sx={{ fontSize: 15 }} />}
+              onClick={saveComponent} disabled={saving}
+              sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', fontWeight: 600 }}>
+              {editingId ? 'Update' : 'Add'}
+            </Button>
+          </Box>
+        </Paper>
+      )}
+
+      <Box sx={{ bgcolor: 'white', borderRadius: 2, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+        {loading ? (
+          <Box display="flex" justifyContent="center" py={6}><CircularProgress size={28} /></Box>
+        ) : components.length === 0 ? (
+          <Box sx={{ py: 6, textAlign: 'center', color: 'text.secondary', fontSize: 13 }}>
+            No components yet. Add one to get started.
+          </Box>
+        ) : (
+          <TableContainer sx={{ maxHeight: 500, overflow: 'auto' }}>
+            <Table size="small" stickyHeader>
+              <TableHead>
+                <TableRow sx={{ '& th': TH }}>
+                  <TableCell>Order</TableCell>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Code</TableCell>
+                  <TableCell>Formula</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell align="center">In Docs</TableCell>
+                  <TableCell align="center">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {components.map(comp => (
+                  <TableRow key={comp._id} sx={{ '&:hover': { bgcolor: '#f8fafc' }, borderBottom: '1px solid #f1f5f9' }}>
+                    <TableCell sx={{ fontSize: 12 }}>{comp.order}</TableCell>
+                    <TableCell sx={{ fontSize: 12, fontWeight: 600 }}>{comp.name}</TableCell>
+                    <TableCell sx={{ fontSize: 11, fontFamily: 'monospace', color: 'text.secondary' }}>{comp.code}</TableCell>
+                    <TableCell sx={{ fontSize: 11, fontFamily: 'monospace', color: 'text.secondary', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {comp.formula || '—'}
+                    </TableCell>
+                    <TableCell>
+                      <Chip size="small" label={comp.is_active ? 'Active' : 'Inactive'}
+                        sx={{ fontSize: 10, height: 20, bgcolor: comp.is_active ? '#f0fdf4' : '#fef2f2', color: comp.is_active ? '#059669' : '#dc2626' }} />
+                    </TableCell>
+                    <TableCell align="center" sx={{ fontSize: 13 }}>{comp.show_in_documents ? '✓' : '—'}</TableCell>
+                    <TableCell align="center">
+                      <Stack direction="row" justifyContent="center" spacing={0.5}>
+                        <IconButton size="small" onClick={() => startEdit(comp)} sx={{ color: ACCENT }}>
+                          <EditIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                        <IconButton size="small" onClick={() => comp._id && deleteComponent(comp._id)} sx={{ color: '#dc2626' }}>
+                          <DeleteIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Box>
+
+      <Typography fontSize={11} color="text.secondary" mt={2} textAlign="center">
+        Changes here apply immediately to salary revisions, employee letters and any other page reading this same data.
+      </Typography>
+    </Box>
+  );
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
-function DashboardView({ records, employees, loading, onSelect, onAdd }: {
+function DashboardView({ records, employees, loading, onSelect, onAdd, onManageCtc }: {
   records:SalaryRevision[]; employees:Employee[]; loading:boolean;
-  onSelect:(emp:Employee,rec?:SalaryRevision)=>void; onAdd:()=>void;
+  onSelect:(emp:Employee,rec?:SalaryRevision)=>void; onAdd:()=>void; onManageCtc:()=>void;
 }) {
   const now=new Date();
   const [selMonth, setSelMonth] = useState(now.getMonth());
@@ -391,9 +624,6 @@ function DashboardView({ records, employees, loading, onSelect, onAdd }: {
   const [dept,     setDept]     = useState('All');
   const [stage,    setStage]    = useState('All');
 
-  // records is already sorted newest-first — keep only the FIRST (newest)
-  // revision seen per employee so the dashboard shows current state, while
-  // older ones remain reachable via each employee's History tab.
   const revisionMap = useMemo(()=>{
     const m=new Map<string,SalaryRevision>();
     records.forEach(r=>{ if (!m.has(r.employeeCode)) m.set(r.employeeCode, r); });
@@ -431,13 +661,18 @@ function DashboardView({ records, employees, loading, onSelect, onAdd }: {
             {showAll?'All eligible employees':`Due in ${MONTHS[selMonth]} ${selYear}`}
           </Typography>
         </Box>
-        <Button variant="contained" startIcon={<AddIcon/>} onClick={onAdd} size="small"
-          sx={{ bgcolor:ACCENT, textTransform:'none', fontWeight:600, borderRadius: 1.5, '&:hover':{ bgcolor:'#4338ca' } }}>
-          Add Revision
-        </Button>
+        <Stack direction="row" spacing={1}>
+          <Button variant="outlined" startIcon={<SettingsIcon sx={{ fontSize: 16 }} />} onClick={onManageCtc} size="small"
+            sx={{ textTransform:'none', fontWeight:600, borderRadius: 1.5, borderColor: '#e2e8f0', color: '#475569' }}>
+            CTC Components
+          </Button>
+          <Button variant="contained" startIcon={<AddIcon/>} onClick={onAdd} size="small"
+            sx={{ bgcolor:ACCENT, textTransform:'none', fontWeight:600, borderRadius: 1.5, '&:hover':{ bgcolor:'#4338ca' } }}>
+            Add Revision
+          </Button>
+        </Stack>
       </Box>
 
-      {/* Stats — plain, no heavy colored boxes */}
       <Box sx={{ display:'flex', gap:3, mb:2.5, flexWrap:'wrap', pb: 2, borderBottom: '1px solid #e2e8f0' }}>
         {[
           { label: showAll?'All Eligible':'Due', value: stats.due, color: '#0f172a' },
@@ -459,7 +694,6 @@ function DashboardView({ records, employees, loading, onSelect, onAdd }: {
         </Box>
       )}
 
-      {/* Filters */}
       <Box sx={{ display:'flex', gap:1, mb:2, flexWrap:'wrap', alignItems:'center' }}>
         <TextField size="small" placeholder="Search name…" value={search}
           onChange={e=>setSearch(e.target.value)} sx={{ minWidth:180 }}
@@ -485,7 +719,6 @@ function DashboardView({ records, employees, loading, onSelect, onAdd }: {
         </Button>
       </Box>
 
-      {/* Table */}
       <Box sx={{ bgcolor:'white', borderRadius:2, border:'1px solid #e2e8f0', overflow:'hidden' }}>
         {loading?<Box display="flex" justifyContent="center" py={6}><CircularProgress size={28}/></Box>:(
           <TableContainer sx={{ maxHeight:460, overflow:'auto' }}>
@@ -556,9 +789,6 @@ function DashboardView({ records, employees, loading, onSelect, onAdd }: {
 }
 
 // ─── History panel ────────────────────────────────────────────────────────────
-// Every past revision for this employee, newest first. The Onboarding
-// dashboard only ever shows the latest finalised values — this is where
-// older revisions stay visible.
 
 function HistoryPanel({ employeeCode }: { employeeCode: string }) {
   const [history, setHistory] = useState<SalaryRevision[]>([]);
@@ -646,11 +876,9 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
     rec?.managerDecision?.pipNewDueDate
       ? new Date(rec.managerDecision.pipNewDueDate).toISOString().split('T')[0] : '');
 
-  // Designation change — independent of salary decision
   const [changeDesignation, setChangeDesignation] = useState(rec?.designationChanged ?? false);
   const [newDesignation,    setNewDesignation]    = useState(rec?.newDesignation || '');
 
-  // Reporting head change — independent of salary decision
   const [changeHead, setChangeHead] = useState(rec?.reportingHeadChanged ?? false);
   const [newHead,    setNewHead]    = useState(rec?.newReportingHead || '');
 
@@ -821,7 +1049,6 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
         </Tabs>
       </Box>
 
-      {/* ── TAB 0: Employee Details ────────────────────────────────────────── */}
       {tab===0&&(
         <Box sx={{ display:'flex', gap:2.5, flexWrap:'wrap' }}>
           <Paper variant="outlined" sx={{ flex:'1 1 260px', borderRadius:2, p:2.5 }}>
@@ -845,7 +1072,6 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
             </Stack>
           </Paper>
 
-          {/* Designation & Reporting Head changes — independent of salary */}
           <Paper variant="outlined" sx={{ flex:'1 1 280px', borderRadius:2, p:2.5 }}>
             <Typography fontWeight={700} fontSize={13} mb={1.5}>Designation & Reporting Head</Typography>
             <Stack spacing={2}>
@@ -933,7 +1159,6 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
         </Box>
       )}
 
-      {/* ── TAB 1: Decision ───────────────────────────────────────────────── */}
       {tab===1&&(
         <Box sx={{ display:'flex', gap:2.5, flexWrap:'wrap' }}>
 
@@ -1139,7 +1364,6 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
         </Box>
       )}
 
-      {/* ── TAB 2: Salary Structure ───────────────────────────────────────── */}
       {tab===2&&mgrDecision==='increment'&&(
         <Box>
           <Box sx={{ display:'flex', gap:2, mb:3, flexWrap:'wrap' }}>
@@ -1200,7 +1424,6 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
         </Box>
       )}
 
-      {/* ── TAB 3: History ────────────────────────────────────────────────── */}
       {tab===3&&<HistoryPanel employeeCode={emp.employee_id}/>}
     </Box>
   );
@@ -1208,7 +1431,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-type View = 'dashboard' | 'detail';
+type View = 'dashboard' | 'detail' | 'ctc';
 
 export default function SalaryRevisionPage() {
   const [records,   setRecords]   = useState<SalaryRevision[]>([]);
@@ -1273,7 +1496,7 @@ export default function SalaryRevisionPage() {
 
             {view==='dashboard'&&(
               <DashboardView records={records} employees={employees} loading={loading}
-                onSelect={handleSelect} onAdd={()=>setShowAdd(true)}/>
+                onSelect={handleSelect} onAdd={()=>setShowAdd(true)} onManageCtc={()=>setView('ctc')}/>
             )}
 
             {view==='detail'&&selEmp&&(
@@ -1283,6 +1506,10 @@ export default function SalaryRevisionPage() {
                 onBack={()=>{ setView('dashboard'); setSelEmp(null); setSelRec(undefined); loadData(); }}
                 onRecordChange={handleRecordChange}
                 showToast={showToast}/>
+            )}
+
+            {view==='ctc'&&(
+              <CtcComponentsView onBack={()=>setView('dashboard')} showToast={showToast}/>
             )}
           </Box>
         </main>
