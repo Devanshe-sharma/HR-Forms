@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { formatSalary, formatDate } from '../utils/helpers'; 
 
-const API_BASE = 'https://hr-forms.onrender.com/api';
+const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL;
 
 export default function LetterTemplate() {
   const [searchParams] = useSearchParams();
@@ -12,18 +12,24 @@ export default function LetterTemplate() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (empId) {
-      fetch(`${API_BASE}/employees/${empId}/`)
-        .then(res => res.json())
-        .then(data => {
-          setEmployee(data);
-          setLoading(false);
-        })
-        .catch(err => {
-          console.error(err);
-          setLoading(false);
-        });
+    if (!empId) {
+      setLoading(false);
+      return;
     }
+    
+    // pattern EmployeeContractsPage.tsx already uses.
+    fetch(`${API_BASE}/onboarding/employee-letters-source`)
+      .then(res => res.json())
+      .then(data => {
+        const all = data?.data ?? [];
+        const match = all.find((e: any) => e._id === empId);
+        setEmployee(match || null);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setLoading(false);
+      });
   }, [empId]);
 
   if (loading) return <div className="p-10 text-center text-gray-600">Loading letter...</div>;

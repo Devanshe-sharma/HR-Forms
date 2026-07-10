@@ -35,12 +35,19 @@ const schema = z.object({
   persEmail: z.string().email("Invalid email"),
   officialEmail: z.string().optional(),
   nameOfBuddy: z.string().optional(),
+  reportingHead: z.string().optional(),
   dept: z.string().min(1, "Department is required"),
   designation: z.string().min(1, "Designation is required"),
   laptopPc: z.string().optional(),
   joiningStatus: z.enum(["Yet To Join Office", "Joined", "Not Joining"]),
   employeeCategory: z.enum(["Employee", "Consultant", "Intern"]).optional(),
-  managementLevel: z.string().optional(),
+  managementLevel: z.enum([
+    "Office Staff",
+    "Junior Management",
+    "Middle Management",
+    "Senior Management",
+    "Apex Management (C Level)",
+  ]).optional(),
   remarks: z.string().optional(),
 
   // Salary
@@ -103,8 +110,8 @@ type RoleDesignation = {
   desig_id: number | string;
   designation: string;
   department: string;
-  Department?: string;
-  Designation?: string;
+   Department?: string;        // ← add this
+  Designation?: string; 
   role_document_link?: string;
   jd_link?: string;
 };
@@ -114,8 +121,15 @@ type OnboardingFormData = {
   departments: RoleDepartment[];
   designations: RoleDesignation[];
 };
-
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || "http://localhost:5000/api";
+
+const MANAGEMENT_LEVEL_OPTIONS = [
+  "Office Staff",
+  "Junior Management",
+  "Middle Management",
+  "Senior Management",
+  "Apex Management (C Level)",
+];
 
 // ─── Checklist definitions (must match backend order exactly) ───────────────
 const CHECKLIST_DEFS = [
@@ -215,6 +229,7 @@ const NewOnboarding: React.FC = () => {
     },
   });
 
+  // Date state (not in RHF schema – handled separately to keep types clean)
   const [offerAcceptedDate, setOfferAcceptedDate] = useState<Dayjs | null>(null);
   const [plannedJoiningDate, setPlannedJoiningDate] = useState<Dayjs | null>(null);
   const [joinedDate, setJoinedDate] = useState<Dayjs | null>(null);
@@ -227,27 +242,33 @@ const NewOnboarding: React.FC = () => {
     departments: [],
     designations: [],
   });
-  const [submitted,  setSubmitted]  = useState(false);
-  const [submitting, setSubmitting] = useState(false);
 
+  // Thank-you screen: shows a brief loader, then a confirmation message
+  const [showThankYou, setShowThankYou] = useState(false);
+  const [thankYouLoading, setThankYouLoading] = useState(true);
+
+  // Checklist state: array of arrays of booleans
   const [checkStates, setCheckStates] = useState<boolean[][]>(
     CHECKLIST_DEFS.map((l) => l.items.map(() => false))
   );
 
-  const joiningStatus             = watch("joiningStatus");
-  const employeeCategory          = watch("employeeCategory");
-  const selectedDept              = watch("dept");
-  const autoWelcomeEmail          = watch("autoWelcomeEmail");
-  const autoReminderEmail         = watch("autoReminderEmail");
+  const joiningStatus = watch("joiningStatus");
+  const employeeCategory = watch("employeeCategory");
+  const selectedDept = watch("dept");
+  const autoWelcomeEmail = watch("autoWelcomeEmail");
+  const autoReminderEmail = watch("autoReminderEmail");
   const autoInstructionsToAllEmail = watch("autoInstructionsToAllEmail");
-  const employeeConfirmationEmail  = watch("employeeConfirmationEmail");
+  const employeeConfirmationEmail = watch("employeeConfirmationEmail");
 
+  // Sending one of these emails IS the matching checklist task — auto-tick
+  // it in the UI the moment the email checkbox is ticked, so what you see
+  // here matches exactly what gets saved on submit.
   useEffect(() => {
     const map: [boolean | undefined, number, number][] = [
-      [autoWelcomeEmail,           0, 0],
-      [autoReminderEmail,          0, 1],
-      [autoInstructionsToAllEmail, 0, 5],
-      [employeeConfirmationEmail,  2, 14],
+      [autoWelcomeEmail, 0, 0],              // Welcome Email Done?
+      [autoReminderEmail, 0, 1],             // Reminder Email Done?
+      [autoInstructionsToAllEmail, 0, 5],    // Reminder Email ToAll Done?
+      [employeeConfirmationEmail, 2, 14],    // Employee Confirms All OK Done?
     ];
     setCheckStates((prev) => {
       let changed = false;
@@ -263,7 +284,7 @@ const NewOnboarding: React.FC = () => {
   }, [autoWelcomeEmail, autoReminderEmail, autoInstructionsToAllEmail, employeeConfirmationEmail]);
 
   const totalChecked = checkStates.flat().filter(Boolean).length;
-  const progress     = Math.round((totalChecked / TOTAL_TASKS) * 100);
+  const progress = Math.round((totalChecked / TOTAL_TASKS) * 100);
 
   useEffect(() => {
     axios
@@ -277,17 +298,20 @@ const NewOnboarding: React.FC = () => {
   }, [selectedDept, setValue]);
 
   const filteredDesignations = useMemo(
-    () =>
-      formData.designations.filter((item) => {
-        const dept = (item.department || (item as any).Department || "").trim().toLowerCase();
-        return dept === (selectedDept || "").trim().toLowerCase();
-      }),
-    [formData.designations, selectedDept]
-  );
+  () =>
+    formData.designations.filter((item) => {
+      const dept = (item.department || (item as any).Department || '').trim().toLowerCase();
+      return dept === (selectedDept || '').trim().toLowerCase();
+    }),
+  [formData.designations, selectedDept]
+);
 
   const ccOptions = formData.employees
-    .filter((e) => e.official_email)
-    .map((e) => ({ value: e.official_email, label: e.full_name }));
+    .filter((employee) => employee.official_email)
+    .map((employee) => ({
+      value: employee.official_email,
+      label: employee.full_name,
+    }));
 
   const toggleCheck = (listIdx: number, itemIdx: number) => {
     setCheckStates((prev) => {
@@ -297,7 +321,7 @@ const NewOnboarding: React.FC = () => {
     });
   };
 
-  const resetForm = () => {
+  const resetFormState = () => {
     reset();
     setCheckStates(CHECKLIST_DEFS.map((l) => l.items.map(() => false)));
     setOfferAcceptedDate(null);
@@ -310,24 +334,24 @@ const NewOnboarding: React.FC = () => {
   };
 
   const onSubmit: SubmitHandler<FormValues> = async (data) => {
-    setSubmitting(true);
     try {
       const payload = {
         ...data,
         name: [data.firstName, data.lastName].filter(Boolean).join(" "),
         deptLink:
-          formData.departments.find((d) => d.department === data.dept)?.dept_page_link ?? "",
+          formData.departments.find((dept) => dept.department === data.dept)?.dept_page_link ?? "",
         designationLink:
           formData.designations.find(
-            (d) => d.department === data.dept && d.designation === data.designation
+            (designation) =>
+              designation.department === data.dept && designation.designation === data.designation
           )?.role_document_link ?? "",
-        offerAcceptedDate:   offerAcceptedDate?.toISOString(),
-        plannedJoiningDate:  plannedJoiningDate?.toISOString(),
-        joinedDate:          joinedDate?.toISOString(),
-        salApplicableFrom:   salApplicableFrom?.toISOString(),
+        offerAcceptedDate: offerAcceptedDate?.toISOString(),
+        plannedJoiningDate: plannedJoiningDate?.toISOString(),
+        joinedDate: joinedDate?.toISOString(),
+        salApplicableFrom: salApplicableFrom?.toISOString(),
         confirmationDueDate: confirmationDueDate?.toISOString(),
-        salRevisionDueDate:  salRevisionDueDate?.toISOString(),
-        employeesInCc,
+        salRevisionDueDate: salRevisionDueDate?.toISOString(),
+        employeesInCc: employeesInCc,
         checkLists: CHECKLIST_DEFS.map((listDef, listIdx) => ({
           name: listDef.name,
           items: listDef.items.map((_, itemIdx) => ({
@@ -337,22 +361,31 @@ const NewOnboarding: React.FC = () => {
         })),
       };
 
-      await axios.post(`${API_BASE}/onboarding`, payload);
-      toast.success("Onboarding created successfully!");
-      setSubmitted(true);
-      resetForm();
+      await axios.post(
+        `${API_BASE}/onboarding`,
+        payload
+      );
+
+      // Show the thank-you screen (loader first, then confirmation)
+      // instead of resetting the form immediately.
+      setShowThankYou(true);
+      setThankYouLoading(true);
+      setTimeout(() => setThankYouLoading(false), 1200);
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? "Submission failed");
-    } finally {
-      setSubmitting(false);
     }
+  };
+
+  const handleThankYouDone = () => {
+    setShowThankYou(false);
+    resetFormState();
   };
 
   // ─── Field helpers ──────────────────────────────────────────────────────
   const inputClass =
     "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition";
-  const labelClass  = "block text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide";
-  const errorClass  = "text-red-500 text-xs mt-0.5";
+  const labelClass = "block text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide";
+  const errorClass = "text-red-500 text-xs mt-0.5";
 
   const sectionTitle = (title: string, subtitle?: string) => (
     <div className="mb-5">
@@ -364,87 +397,17 @@ const NewOnboarding: React.FC = () => {
   const numField = (id: keyof FormValues, label: string) => (
     <div>
       <label className={labelClass}>{label}</label>
-      <input type="number" step="any" {...register(id)} className={inputClass} placeholder="0" />
+      <input
+        type="number"
+        step="any"
+        {...register(id)}
+        className={inputClass}
+        placeholder="0"
+      />
     </div>
   );
 
-  // ─── Loader screen ──────────────────────────────────────────────────────
-  if (submitting) {
-    return (
-      <Box sx={{ display: "flex" }}>
-        <Sidebar />
-        <Box sx={{ flexGrow: 1 }}>
-          <Navbar />
-          <div
-            className="min-h-screen bg-slate-50 flex items-center justify-center"
-            style={{ marginTop: "56px" }}
-          >
-            <div className="text-center">
-              <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-6" />
-              <p className="text-slate-700 text-lg font-semibold">Saving onboarding record…</p>
-              <p className="text-slate-400 text-sm mt-1">Sending emails and setting up tasks</p>
-            </div>
-          </div>
-        </Box>
-      </Box>
-    );
-  }
-
-  // ─── Thank you screen ───────────────────────────────────────────────────
-  if (submitted) {
-    return (
-      <Box sx={{ display: "flex" }}>
-        <Sidebar />
-        <Box sx={{ flexGrow: 1 }}>
-          <Navbar />
-          <div
-            className="min-h-screen bg-slate-50 flex items-center justify-center"
-            style={{ marginTop: "56px" }}
-          >
-            <div className="text-center max-w-md px-6">
-              {/* Checkmark circle */}
-              <div className="w-24 h-24 rounded-full bg-indigo-50 border-4 border-indigo-100 flex items-center justify-center mx-auto mb-6">
-                <svg className="w-12 h-12 text-indigo-600" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M5 13l4 4L19 7"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </div>
-
-              <h2 className="text-2xl font-bold text-slate-800 mb-2">Onboarding created!</h2>
-              <p className="text-slate-500 mb-1">
-                The record has been saved and automated emails have been queued.
-              </p>
-              <p className="text-slate-400 text-sm mb-8">
-                Tasks have been set up with plan dates based on the joining date.
-              </p>
-
-              <div className="flex gap-3 justify-center flex-wrap">
-                <button
-                  onClick={() => setSubmitted(false)}
-                  className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow transition"
-                >
-                  Add another onboarding
-                </button>
-                <button
-                  onClick={() => (window.location.href = "/onboarding/dashboard")}
-                  className="px-6 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition"
-                >
-                  Go to dashboard
-                </button>
-              </div>
-            </div>
-          </div>
-        </Box>
-      </Box>
-    );
-  }
-
-  // ─── Main form ──────────────────────────────────────────────────────────
+  // Render
   return (
     <Box sx={{ display: "flex" }}>
       <Sidebar />
@@ -484,10 +447,7 @@ const NewOnboarding: React.FC = () => {
               </div>
             </div>
 
-            <form
-              onSubmit={handleSubmit(onSubmit)}
-              className="max-w-5xl mx-auto px-6 py-8 space-y-8"
-            >
+            <form onSubmit={handleSubmit(onSubmit)} className="max-w-5xl mx-auto px-6 py-8 space-y-8">
               {/* Employee Basic Data */}
               <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
                 {sectionTitle("Employee Basic Data")}
@@ -546,20 +506,16 @@ const NewOnboarding: React.FC = () => {
                   </div>
                   <div>
                     <label className={labelClass}>Designation *</label>
-                    <select
-                      {...register("designation")}
-                      className={inputClass}
-                      disabled={!selectedDept}
-                    >
+                    <select {...register("designation")} className={inputClass} disabled={!selectedDept}>
                       <option value="">
                         {selectedDept ? "Select designation" : "Select department first"}
                       </option>
-                      {filteredDesignations.map((d) => (
+                      {filteredDesignations.map((designation) => (
                         <option
-                          key={`${d.department}-${d.desig_id}-${d.designation}`}
-                          value={d.designation}
+                          key={`${designation.department}-${designation.desig_id}-${designation.designation}`}
+                          value={designation.designation}
                         >
-                          {d.designation}
+                          {designation.designation}
                         </option>
                       ))}
                     </select>
@@ -568,21 +524,30 @@ const NewOnboarding: React.FC = () => {
                   <div>
                     <label className={labelClass}>Management Level</label>
                     <select {...register("managementLevel")} className={inputClass}>
-                      <option value="">Select level</option>
-                      <option value="Office Staff">Office Staff</option>
-                      <option value="Junior Management">Junior Management</option>
-                      <option value="Middle Management">Middle Management</option>
-                      <option value="Senior Management">Senior Management</option>
-                      <option value="Apex Management (C Level)">Apex Management (C Level)</option>
+                      <option value="">Select</option>
+                      {MANAGEMENT_LEVEL_OPTIONS.map((lvl) => (
+                        <option key={lvl} value={lvl}>{lvl}</option>
+                      ))}
                     </select>
                   </div>
                   <div>
                     <label className={labelClass}>Name of Buddy</label>
                     <select {...register("nameOfBuddy")} className={inputClass}>
                       <option value="">Select employee</option>
-                      {formData.employees.map((e) => (
-                        <option key={e.emp_id || e.full_name} value={e.full_name}>
-                          {e.full_name}
+                      {formData.employees.map((employee) => (
+                        <option key={employee.emp_id || employee.full_name} value={employee.full_name}>
+                          {employee.full_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Reporting Manager</label>
+                    <select {...register("reportingHead")} className={inputClass}>
+                      <option value="">Select employee</option>
+                      {formData.employees.map((employee) => (
+                        <option key={employee.emp_id || employee.full_name} value={employee.full_name}>
+                          {employee.full_name}
                         </option>
                       ))}
                     </select>
@@ -608,7 +573,9 @@ const NewOnboarding: React.FC = () => {
                     <DatePicker
                       value={offerAcceptedDate}
                       onChange={setOfferAcceptedDate}
-                      slotProps={{ textField: { size: "small", fullWidth: true, className: "bg-white" } }}
+                      slotProps={{
+                        textField: { size: "small", fullWidth: true, className: "bg-white" },
+                      }}
                     />
                   </div>
                   <div>
@@ -616,7 +583,9 @@ const NewOnboarding: React.FC = () => {
                     <DatePicker
                       value={plannedJoiningDate}
                       onChange={setPlannedJoiningDate}
-                      slotProps={{ textField: { size: "small", fullWidth: true } }}
+                      slotProps={{
+                        textField: { size: "small", fullWidth: true },
+                      }}
                     />
                   </div>
                   <div>
@@ -647,7 +616,7 @@ const NewOnboarding: React.FC = () => {
               {/* Employee Category */}
               <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
                 {sectionTitle("Employee Category")}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   {(["Employee", "Consultant", "Intern"] as const).map((cat) => (
                     <label
                       key={cat}
@@ -673,6 +642,7 @@ const NewOnboarding: React.FC = () => {
               {employeeCategory === "Employee" && (
                 <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
                   {sectionTitle("Salary Details", "All amounts in INR")}
+
                   <div className="mb-4">
                     <label className={labelClass}>Sal Applicable From</label>
                     <DatePicker
@@ -681,6 +651,7 @@ const NewOnboarding: React.FC = () => {
                       slotProps={{ textField: { size: "small" } }}
                     />
                   </div>
+
                   <p className="text-xs font-bold text-slate-600 uppercase mb-3 mt-4">Gross Monthly</p>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     {numField("basicSal", "Basic Salary")}
@@ -690,12 +661,14 @@ const NewOnboarding: React.FC = () => {
                     {numField("supplementaryAllowance", "Supplementary Allowance")}
                     {numField("grossMonthly", "Gross Monthly")}
                   </div>
+
                   <p className="text-xs font-bold text-slate-600 uppercase mb-3 mt-6">Monthly CTC</p>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     {numField("empEpf", "Employer PF")}
                     {numField("empEsic", "Employer ESI")}
                     {numField("monthlyCtc", "Monthly CTC")}
                   </div>
+
                   <p className="text-xs font-bold text-slate-600 uppercase mb-3 mt-6">Annual Components</p>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     {numField("leaveTravelAllowance", "Leave Travel Allowance")}
@@ -793,7 +766,9 @@ const NewOnboarding: React.FC = () => {
                     <Select
                       isMulti
                       options={ccOptions}
-                      onChange={(selected) => setEmployeesInCc(selected.map((s) => s.value))}
+                      onChange={(selected) =>
+                        setEmployeesInCc(selected.map((s) => s.value))
+                      }
                       placeholder="Select employees..."
                       classNamePrefix="react-select"
                       styles={{
@@ -819,10 +794,10 @@ const NewOnboarding: React.FC = () => {
                 )}
                 <div className="space-y-2">
                   {[
-                    { id: "autoWelcomeEmail" as const,           label: "Send Auto Welcome Email" },
-                    { id: "autoInstructionsToAllEmail" as const,  label: "Send Auto-Instructions to All" },
-                    { id: "autoReminderEmail" as const,           label: "Send Reminder Email (tick 1 day before joining)" },
-                    { id: "employeeConfirmationEmail" as const,   label: "Email Joinee to fill Onboarding Feedback Form" },
+                    { id: "autoWelcomeEmail" as const, label: "Send Auto Welcome Email" },
+                    { id: "autoInstructionsToAllEmail" as const, label: "Send Auto-Instructions to All" },
+                    { id: "autoReminderEmail" as const, label: "Send Reminder Email (tick 1 day before joining)" },
+                    { id: "employeeConfirmationEmail" as const, label: "Email Joinee to fill Onboarding Feedback Form" },
                   ].map(({ id, label }) => (
                     <Controller
                       key={id}
@@ -847,7 +822,12 @@ const NewOnboarding: React.FC = () => {
 
               {/* Checklists */}
               <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                {sectionTitle("Onboarding Checklists", "Tick tasks as they are completed")}
+                {sectionTitle(
+                  "Onboarding Checklists",
+                  "Tick tasks as they are completed"
+                )}
+
+                {/* Progress bar */}
                 <div className="mb-6 p-4 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center gap-4">
                   <div className="flex-1">
                     <LinearProgress
@@ -887,9 +867,12 @@ const NewOnboarding: React.FC = () => {
                             className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                             style={{ backgroundColor: listDef.accent }}
                           />
-                          <span className="font-semibold text-slate-700 text-sm">{listDef.name}</span>
+                          <span className="font-semibold text-slate-700 text-sm">
+                            {listDef.name}
+                          </span>
                           <span className="ml-auto text-xs text-slate-400">
-                            {checkStates[listIdx].filter(Boolean).length} / {listDef.items.length}
+                            {checkStates[listIdx].filter(Boolean).length} /{" "}
+                            {listDef.items.length}
                           </span>
                         </div>
                       </AccordionSummary>
@@ -928,7 +911,7 @@ const NewOnboarding: React.FC = () => {
               <div className="flex justify-end gap-3 pb-8">
                 <button
                   type="button"
-                  onClick={resetForm}
+                  onClick={resetFormState}
                   className="px-6 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition"
                 >
                   Reset
@@ -951,9 +934,39 @@ const NewOnboarding: React.FC = () => {
             </form>
           </div>
         </LocalizationProvider>
+
+        {/* Thank-you overlay: brief loader, then confirmation */}
+        {showThankYou && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
+            <div className="bg-white rounded-2xl shadow-2xl p-10 max-w-md w-full text-center">
+              {thankYouLoading ? (
+                <>
+                  <div className="w-14 h-14 mx-auto mb-5 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
+                  <h2 className="text-lg font-bold text-slate-700">Submitting Onboarding…</h2>
+                  <p className="text-sm text-slate-400 mt-1">Just a moment</p>
+                </>
+              ) : (
+                <>
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
+                    <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <h2 className="text-2xl font-bold text-slate-800 mb-2">Thank You!</h2>
+                  <p className="text-sm text-slate-500 mb-6">Onboarding has been submitted successfully.</p>
+                  <button
+                    onClick={handleThankYouDone}
+                    className="px-8 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow transition"
+                  >
+                    Add Another Onboarding
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </Box>
     </Box>
   );
-};
-
+}
 export default NewOnboarding;

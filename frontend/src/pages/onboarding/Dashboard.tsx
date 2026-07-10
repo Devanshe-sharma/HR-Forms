@@ -56,6 +56,7 @@ interface OnboardingRow {
   confirmationDueDate?: string;
   salRevisionDueDate?: string;
   nameOfBuddy?: string;
+  reportingHead?: string;
   laptopPc?: string;
   remarks?: string;
   annualCtc?: number;
@@ -671,6 +672,7 @@ const OnboardingDashboard: React.FC = () => {
                       ? `₹${(viewModal.row.annualCtc / 100000).toFixed(2)}L`
                       : undefined} />
                   <DetailField label="Buddy" value={viewModal.row.nameOfBuddy} />
+                  <DetailField label="Reporting Manager" value={viewModal.row.reportingHead} />
                   <DetailField label="Laptop / PC" value={viewModal.row.laptopPc} />
                 </Box>
               </Box>

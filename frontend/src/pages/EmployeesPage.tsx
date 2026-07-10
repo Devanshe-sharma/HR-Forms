@@ -13,36 +13,39 @@ import {
   AccountTreeOutlined as DeptIcon,
   WorkOutlineOutlined as RoleIcon,
   SupervisorAccountOutlined as ManagerIcon,
-  SubdirectoryArrowRightOutlined as ParentDeptIcon,
   AlternateEmailOutlined as DesigEmailIcon,
   ManageAccountsOutlined as LevelIcon,
   BadgeOutlined as BadgeIcon,
   FilterListOutlined as FilterIcon,
+  ArchiveOutlined as ArchiveIcon,
+  ViewListOutlined as ViewListIcon,
+  ViewKanbanOutlined as ViewKanbanIcon,
 } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Types — mirrors role_master Mongoose schema (snake_case)
+// Types — sourced from Onboarding's employee-master endpoint, the single
+// source of truth for who's a current vs. exited employee. Past employees
+// live on the separate Archive page, not mixed in here.
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface RoleEntry {
-  _id:                string;
-  dept_id:            number | string;
-  department:         string;
-  parent_department:  string;
-  department_type:    string;
-  department_head:    string;
-  desig_id:           number | string;
-  designation:        string;
-  emp_id:             string;
-  emp_name:           string;
-  desig_email_id:     string;
-  jd_link:            string;
-  management_level:   string;
-  reporting_manager:  string;
-  personal_email?:    string;
-  mobile?:            string;
+interface EmployeeEntry {
+  _id: string;
+  full_name: string;
+  department: string;
+  designation: string;
+  official_email: string;
+  personal_email: string;
+  mobile: string;
+  joining_date: string | null;
+  employee_category: string;
+  management_level: string;
+  reporting_head: string;
+  exit_status: string;
+  is_current: boolean;
+  is_exited: boolean;
 }
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL;
@@ -82,9 +85,8 @@ type Preset  = { light: Palette; dark: Palette };
 const P: Record<string, Preset> = {
   blue:   { light: { bg: '#EFF6FF', text: '#1D4ED8', border: '#BFDBFE' }, dark: { bg: '#1E3A8A', text: '#93C5FD', border: '#1E40AF' } },
   green:  { light: { bg: '#F0FDF4', text: '#15803D', border: '#BBF7D0' }, dark: { bg: '#14532D', text: '#86EFAC', border: '#166534' } },
-  purple: { light: { bg: '#F5F3FF', text: '#6D28D9', border: '#DDD6FE' }, dark: { bg: '#3B0764', text: '#C4B5FD', border: '#5B21B6' } },
-  rose:   { light: { bg: '#FFF1F2', text: '#BE123C', border: '#FECDD3' }, dark: { bg: '#4C0519', text: '#FDA4AF', border: '#9F1239' } },
   teal:   { light: { bg: '#F0FDFA', text: '#0F766E', border: '#99F6E4' }, dark: { bg: '#134E4A', text: '#5EEAD4', border: '#0F766E' } },
+  rose:   { light: { bg: '#FFF1F2', text: '#BE123C', border: '#FECDD3' }, dark: { bg: '#4C0519', text: '#FDA4AF', border: '#9F1239' } },
 };
 
 const chipSx = (preset: Preset, isLight: boolean) => ({
@@ -125,105 +127,40 @@ const ContactRow: React.FC<ContactRowProps> = ({ icon, label, value }) => (
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Helper: extract the rows array from any response shape the controller sends
-// ─────────────────────────────────────────────────────────────────────────────
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const extractRows = (data: any): Record<string, any>[] => {
-  // Plain array
-  if (Array.isArray(data)) return data;
-
-  // { success, data: [...] }   ← original expectation
-  if (data?.success === true && Array.isArray(data.data))   return data.data;
-
-  // { data: [...] }            ← success flag missing
-  if (Array.isArray(data?.data))    return data.data;
-
-  // { roles: [...] }
-  if (Array.isArray(data?.roles))   return data.roles;
-
-  // { employees: [...] }
-  if (Array.isArray(data?.employees)) return data.employees;
-
-  // { result: [...] }
-  if (Array.isArray(data?.result))  return data.result;
-
-  // Give up
-  console.warn('[EmployeesPage] Unexpected API shape — could not extract rows:', data);
-  return [];
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
 const EmployeesPage: React.FC = () => {
   const theme   = useTheme();
   const isLight = theme.palette.mode === 'light';
+  const navigate = useNavigate();
 
-  const [entries, setEntries] = useState<RoleEntry[]>([]);
+  const [entries, setEntries] = useState<EmployeeEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
 
-  const [search,           setSearch]           = useState('');
-  const [filterParentDept, setFilterParentDept] = useState('');
-  const [filterDept,       setFilterDept]       = useState('');
-  const [filterDesig,      setFilterDesig]      = useState('');
+  const [search,      setSearch]      = useState('');
+  const [filterDept,  setFilterDept]  = useState('');
+  const [filterDesig, setFilterDesig] = useState('');
+  const [view, setView] = useState<'list' | 'kanban'>('list');
 
-  // ── Fetch all role_master rows ────────────────────────────────────────────
+  // ── Fetch from Onboarding's employee-master — the single source of
+  //    truth for current vs. exited. Only CURRENT employees show here;
+  //    exited ones live on the Archive page instead. ─────────────────────
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       setError('');
       try {
-        const token = localStorage.getItem('token') || '';
-        const res   = await fetch(`${API_BASE}/roles`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
+        const res = await fetch(`${API_BASE}/onboarding/employee-master`);
         if (!res.ok) throw new Error(`HTTP ${res.status} — ${res.statusText}`);
 
         const data = await res.json();
+        const all: EmployeeEntry[] = data?.data?.employees ?? [];
+        const current = all.filter((e) => e.is_current);
 
-        // ── DEBUG: remove once confirmed working ──────────────────────────
-        console.log('[EmployeesPage] raw API response:', data);
-        // ─────────────────────────────────────────────────────────────────
-
-        const rows = extractRows(data);
-
-        // ── Field resolver: tries snake_case first, then every known variant ──
-        // MongoDB documents may have been inserted with PascalCase / mixed-case
-        // field names that don't match the Mongoose schema definitions.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const f = (row: any, ...keys: string[]): any => {
-          for (const k of keys) if (row[k] !== undefined && row[k] !== null) return row[k];
-          return undefined;
-        };
-
-        const employees = rows.map((r): RoleEntry => ({
-          _id:               String(f(r, '_id') ?? ''),
-          dept_id:           f(r, 'dept_id',           'Dept_Id',           'DeptId')           ?? '',
-          department:        f(r, 'department',         'Department')                            ?? '',
-          parent_department: f(r, 'parent_department',  'Parent_Department', 'Parent Department','ParentDepartment') ?? '',
-          department_type:   f(r, 'department_type',    'Department_Type',   'Department Type',  'DepartmentType')  ?? '',
-          department_head:   f(r, 'department_head',    'Department_Head',   'Department Head',  'DepartmentHead')  ?? '',
-          desig_id:          f(r, 'desig_id',           'Desig_id',          'Desig_Id',         'DesigId')         ?? '',
-          designation:       f(r, 'designation',        'Designation')                           ?? '',
-          // emp_id stored as number (79) or string ("79") — normalise
-          emp_id:            String(f(r, 'emp_id', 'Emp_id', 'Emp_Id', 'EmpId') ?? '').trim(),
-          emp_name:          f(r, 'emp_name',           'Emp_name',          'Emp_Name',         'EmpName')         ?? '',
-          desig_email_id:    f(r, 'desig_email_id',     'desig Email Id',    'Desig_Email_Id',   'DesigEmailId',    'desigEmailId') ?? '',
-          jd_link:           f(r, 'jd_link',            'JD_Link',           'JD Link',          'JdLink')          ?? '',
-          management_level:  f(r, 'management_level',   'Management_Level',  'Management Level', 'ManagementLevel') ?? '',
-          reporting_manager: f(r, 'reporting_manager',  'Reporting_Manager', 'Reporting Manager','ReportingManager') ?? '',
-          personal_email:    f(r, 'personal_email',     'Personal_Email',    'Personal Email',   'PersonalEmail')   ?? '',
-          mobile:            f(r, 'mobile',             'Mobile',            'Phone',            'phone')           ?? '',
-        }));
-
-        console.log(`[EmployeesPage] total rows: ${rows.length}, with emp_id: ${employees.filter(e => e.emp_id).length}`);
-
-        setEntries(employees);          // ← show ALL rows, filter in UI if needed
+        setEntries(current);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Failed to load employees';
         console.error('[EmployeesPage] fetch error:', err);
@@ -237,32 +174,19 @@ const EmployeesPage: React.FC = () => {
 
   // ── Derived filter options ─────────────────────────────────────────────────
 
-  const parentDepartments = useMemo(() =>
-    [...new Set(entries.map(e => e.parent_department).filter(Boolean))].sort(),
+  const departments = useMemo(() =>
+    [...new Set(entries.map(e => e.department).filter(Boolean))].sort(),
     [entries]
   );
 
-  // When a parent dept is selected, scope dept options to that parent
-  const departments = useMemo(() =>
-    [...new Set(
-      entries
-        .filter(e => !filterParentDept || e.parent_department === filterParentDept)
-        .map(e => e.department)
-        .filter(Boolean)
-    )].sort(),
-    [entries, filterParentDept]
-  );
-
-  // When a dept is selected, scope designation options to that dept
   const designations = useMemo(() =>
     [...new Set(
       entries
-        .filter(e => (!filterParentDept || e.parent_department === filterParentDept)
-                  && (!filterDept       || e.department        === filterDept))
+        .filter(e => !filterDept || e.department === filterDept)
         .map(e => e.designation)
         .filter(Boolean)
     )].sort(),
-    [entries, filterParentDept, filterDept]
+    [entries, filterDept]
   );
 
   // ── Filtered + sorted list ─────────────────────────────────────────────────
@@ -272,20 +196,31 @@ const EmployeesPage: React.FC = () => {
     return entries
       .filter(e => {
         const matchSearch = !q || [
-          e.emp_name, e.emp_id, e.designation,
-          e.department, e.parent_department, e.desig_email_id, e.reporting_manager,
+          e.full_name, e.designation, e.department,
+          e.official_email, e.personal_email, e.reporting_head,
         ].some(v => v?.toLowerCase().includes(q));
-        const matchParent = !filterParentDept || e.parent_department === filterParentDept;
-        const matchDept   = !filterDept       || e.department        === filterDept;
-        const matchDesig  = !filterDesig      || e.designation       === filterDesig;
-        return matchSearch && matchParent && matchDept && matchDesig;
+        const matchDept  = !filterDept  || e.department  === filterDept;
+        const matchDesig = !filterDesig || e.designation === filterDesig;
+        return matchSearch && matchDept && matchDesig;
       })
-      .sort((a, b) => (a.emp_name || '').localeCompare(b.emp_name || ''));
-  }, [entries, search, filterParentDept, filterDept, filterDesig]);
+      .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
+  }, [entries, search, filterDept, filterDesig]);
 
-  const hasFilters = !!(search || filterParentDept || filterDept || filterDesig);
+  // ── Group by department for Kanban view ────────────────────────────────────
+
+  const byDepartment = useMemo(() => {
+    const groups: Record<string, EmployeeEntry[]> = {};
+    for (const e of filtered) {
+      const dept = e.department || 'Unassigned';
+      if (!groups[dept]) groups[dept] = [];
+      groups[dept].push(e);
+    }
+    return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [filtered]);
+
+  const hasFilters = !!(search || filterDept || filterDesig);
   const clearAll   = () => {
-    setSearch(''); setFilterParentDept(''); setFilterDept(''); setFilterDesig('');
+    setSearch(''); setFilterDept(''); setFilterDesig('');
   };
 
   // ── Shared styles ──────────────────────────────────────────────────────────
@@ -315,7 +250,7 @@ const EmployeesPage: React.FC = () => {
 
           {/* ── Page header ── */}
           <Box sx={{
-            display: 'flex', alignItems: 'center',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             mb: 2.5, pb: 2,
             borderBottom: `1px solid ${isLight ? '#E9EEF5' : 'rgba(255,255,255,0.08)'}`,
           }}>
@@ -333,10 +268,51 @@ const EmployeesPage: React.FC = () => {
                   Employees
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {loading ? '—' : `${entries.length} members`}
+                  {loading ? '—' : `${entries.length} current members`}
                 </Typography>
               </Box>
             </Box>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Box sx={{
+                display: 'flex', borderRadius: '8px', overflow: 'hidden',
+                border: `1px solid ${border}`,
+              }}>
+                <Button
+                  onClick={() => setView('list')}
+                  startIcon={<ViewListIcon sx={{ fontSize: 16 }} />}
+                  sx={{
+                    textTransform: 'none', fontSize: '0.78rem', fontWeight: 600, borderRadius: 0,
+                    px: 1.5, py: 0.6,
+                    bgcolor: view === 'list' ? theme.palette.primary.main : 'transparent',
+                    color: view === 'list' ? '#fff' : 'text.secondary',
+                    '&:hover': { bgcolor: view === 'list' ? theme.palette.primary.dark : 'action.hover' },
+                  }}
+                >
+                  List
+                </Button>
+                <Button
+                  onClick={() => setView('kanban')}
+                  startIcon={<ViewKanbanIcon sx={{ fontSize: 16 }} />}
+                  sx={{
+                    textTransform: 'none', fontSize: '0.78rem', fontWeight: 600, borderRadius: 0,
+                    px: 1.5, py: 0.6,
+                    bgcolor: view === 'kanban' ? theme.palette.primary.main : 'transparent',
+                    color: view === 'kanban' ? '#fff' : 'text.secondary',
+                    '&:hover': { bgcolor: view === 'kanban' ? theme.palette.primary.dark : 'action.hover' },
+                  }}
+                >
+                  Kanban
+                </Button>
+              </Box>
+              <Button
+                startIcon={<ArchiveIcon />}
+                onClick={() => navigate('/employees/archive')}
+                size="small"
+                sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.82rem', color: 'text.secondary' }}
+              >
+                View Archive (Past Employees)
+              </Button>
+            </Stack>
           </Box>
 
           {/* ── Filters ── */}
@@ -349,7 +325,7 @@ const EmployeesPage: React.FC = () => {
 
               <TextField
                 size="small"
-                placeholder="Search name, ID, designation, email…"
+                placeholder="Search name, designation, email…"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 InputProps={{
@@ -370,17 +346,6 @@ const EmployeesPage: React.FC = () => {
                   '& .MuiInputBase-input': { py: '6.5px' },
                 }}
               />
-
-              <TextField select label="Parent Dept" size="small"
-                value={filterParentDept}
-                onChange={e => { setFilterParentDept(e.target.value); setFilterDept(''); setFilterDesig(''); }}
-                sx={filterSx}
-              >
-                <MenuItem value="" sx={{ fontSize: '0.78rem', color: 'text.secondary' }}>All Parent Depts</MenuItem>
-                {parentDepartments.map(p => (
-                  <MenuItem key={p} value={p} sx={{ fontSize: '0.78rem' }}>{p}</MenuItem>
-                ))}
-              </TextField>
 
               <TextField select label="Department" size="small"
                 value={filterDept}
@@ -439,15 +404,15 @@ const EmployeesPage: React.FC = () => {
             </Box>
           )}
 
-          {/* ── Card grid ── */}
-          {!loading && !error && filtered.length > 0 && (
+          {/* ── Card grid (List view) ── */}
+          {!loading && !error && view === 'list' && filtered.length > 0 && (
             <Box sx={{
               display: 'grid',
               gridTemplateColumns: { xs: '1fr', sm: 'repeat(2,1fr)', md: 'repeat(3,1fr)', xl: 'repeat(4,1fr)' },
               gap: 2,
             }}>
               {filtered.map(emp => {
-                const [bg, fg] = avatarColors(emp.emp_name || 'A');
+                const [bg, fg] = avatarColors(emp.full_name || 'A');
 
                 return (
                   <Card key={emp._id} sx={{
@@ -465,7 +430,7 @@ const EmployeesPage: React.FC = () => {
                   }}>
                     <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
 
-                      {/* ── Avatar + Name + Emp ID ── */}
+                      {/* ── Avatar + Name ── */}
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.75 }}>
                         <Avatar sx={{
                           width: 48, height: 48, flexShrink: 0,
@@ -473,17 +438,17 @@ const EmployeesPage: React.FC = () => {
                           fontSize: '1rem', fontWeight: 700,
                           border: `2px solid ${border}`,
                         }}>
-                          {initials(emp.emp_name)}
+                          {initials(emp.full_name)}
                         </Avatar>
                         <Box sx={{ minWidth: 0, flex: 1 }}>
                           <Typography fontWeight={700} color="text.primary" noWrap
                             sx={{ fontSize: '0.9rem', lineHeight: 1.3, mb: 0.3 }}>
-                            {emp.emp_name || 'Unnamed Employee'}
+                            {emp.full_name || 'Unnamed Employee'}
                           </Typography>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             <BadgeIcon sx={{ fontSize: 11, color: 'text.disabled' }} />
-                            <Typography sx={{ fontSize: '0.68rem', color: 'text.disabled', fontFamily: 'monospace' }}>
-                              {emp.emp_id || '—'}
+                            <Typography sx={{ fontSize: '0.68rem', color: 'text.disabled' }}>
+                              {emp.joining_date ? new Date(emp.joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Joining date unknown'}
                             </Typography>
                           </Box>
                         </Box>
@@ -504,21 +469,15 @@ const EmployeesPage: React.FC = () => {
                           </Tooltip>
                         )}
 
-                        {emp.parent_department && (
-                          <Tooltip title={`Parent Department: ${emp.parent_department}`} arrow>
-                            <Chip icon={<ParentDeptIcon />} label={emp.parent_department} size="small" sx={chipSx(P.purple, isLight)} />
-                          </Tooltip>
-                        )}
-
                         {emp.management_level && (
                           <Tooltip title={`Management Level: ${emp.management_level}`} arrow>
                             <Chip icon={<LevelIcon />} label={emp.management_level} size="small" sx={chipSx(P.teal, isLight)} />
                           </Tooltip>
                         )}
 
-                        {emp.reporting_manager && (
-                          <Tooltip title={`Reports to: ${emp.reporting_manager}`} arrow>
-                            <Chip icon={<ManagerIcon />} label={emp.reporting_manager} size="small" sx={chipSx(P.rose, isLight)} />
+                        {emp.reporting_head && (
+                          <Tooltip title={`Reports to: ${emp.reporting_head}`} arrow>
+                            <Chip icon={<ManagerIcon />} label={emp.reporting_head} size="small" sx={chipSx(P.rose, isLight)} />
                           </Tooltip>
                         )}
 
@@ -530,8 +489,8 @@ const EmployeesPage: React.FC = () => {
                       <Stack spacing={1.1}>
                         <ContactRow
                           icon={<DesigEmailIcon sx={{ fontSize: 13, color: theme.palette.primary.main }} />}
-                          label="Designation email"
-                          value={emp.desig_email_id}
+                          label="Official email"
+                          value={emp.official_email}
                         />
                         <ContactRow
                           icon={<EmailIcon sx={{ fontSize: 13, color: theme.palette.success.main }} />}
@@ -552,6 +511,56 @@ const EmployeesPage: React.FC = () => {
             </Box>
           )}
 
+          {/* ── Kanban view — one column per department ── */}
+          {!loading && !error && view === 'kanban' && filtered.length > 0 && (
+            <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', pb: 2, alignItems: 'flex-start' }}>
+              {byDepartment.map(([dept, emps]) => (
+                <Box key={dept} sx={{
+                  flex: '0 0 280px', minWidth: 280,
+                  bgcolor: isLight ? '#F8FAFC' : 'rgba(255,255,255,0.02)',
+                  borderRadius: '12px',
+                  border: `1px solid ${border}`,
+                  p: 1.5,
+                }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5, px: 0.5 }}>
+                    <Typography fontWeight={700} fontSize="0.82rem" color="text.primary" noWrap>
+                      {dept}
+                    </Typography>
+                    <Chip label={emps.length} size="small" sx={{ height: 20, fontSize: '0.68rem', fontWeight: 700, bgcolor: theme.palette.primary.main, color: '#fff' }} />
+                  </Box>
+                  <Stack spacing={1}>
+                    {emps.map((emp) => {
+                      const [bg, fg] = avatarColors(emp.full_name || 'A');
+                      return (
+                        <Card key={emp._id} sx={{
+                          borderRadius: '10px',
+                          border: `1px solid ${border}`,
+                          boxShadow: 'none',
+                          bgcolor: theme.palette.background.paper,
+                          '&:hover': { borderColor: theme.palette.primary.main },
+                        }}>
+                          <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
+                              <Avatar sx={{ width: 30, height: 30, bgcolor: bg, color: fg, fontSize: '0.7rem', fontWeight: 700 }}>
+                                {initials(emp.full_name)}
+                              </Avatar>
+                              <Typography fontWeight={600} fontSize="0.78rem" color="text.primary" noWrap sx={{ flex: 1 }}>
+                                {emp.full_name || 'Unnamed'}
+                              </Typography>
+                            </Box>
+                            {emp.designation && (
+                              <Chip icon={<RoleIcon />} label={emp.designation} size="small" sx={chipSx(P.blue, isLight)} />
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </Stack>
+                </Box>
+              ))}
+            </Box>
+          )}
+
           {/* ── Empty state ── */}
           {!loading && !error && filtered.length === 0 && (
             <Box sx={{
@@ -568,7 +577,7 @@ const EmployeesPage: React.FC = () => {
               </Box>
               <Typography variant="subtitle1" fontWeight={600} color="text.secondary" mb={0.5}>
                 {entries.length === 0
-                  ? 'No employees found in role master'
+                  ? 'No current employees found'
                   : 'No results match your filters'}
               </Typography>
               <Typography variant="body2" color="text.disabled">

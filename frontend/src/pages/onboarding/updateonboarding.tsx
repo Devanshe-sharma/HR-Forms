@@ -62,6 +62,7 @@ interface OnboardingDetail {
   gender?: string;
   officialEmail?: string;
   nameOfBuddy?: string;
+  reportingHead?: string;
   dept?: string;
   deptLink?: string;
   designation?: string;
@@ -118,6 +119,8 @@ const schema = z.object({
   officialEmail: z.string().optional(),
   nameOfBuddy: z.string().optional(),
   newBuddy: z.string().optional(),
+  reportingHead: z.string().optional(),
+  newReportingHead: z.string().optional(),
   dept: z.string().optional(),
   newDept: z.string().optional(),
   designation: z.string().optional(),
@@ -156,6 +159,14 @@ const schema = z.object({
 });
 
 type FormValues = z.infer<typeof schema>;
+
+const MANAGEMENT_LEVEL_OPTIONS = [
+  "Office Staff",
+  "Junior Management",
+  "Middle Management",
+  "Senior Management",
+  "Apex Management (C Level)",
+];
 
 // ─── Checklist definitions (same order as backend) ──────────────────────────
 const CHECKLIST_DEFS = [
@@ -253,7 +264,11 @@ const UpdateOnboarding: React.FC = () => {
   const [newSalApplicableFrom, setNewSalApplicableFrom] = useState<Dayjs | null>(null);
   const [newSalRevisionDueDate, setNewSalRevisionDueDate] = useState<Dayjs | null>(null);
   const [employeesInCc, setEmployeesInCc] = useState<string[]>([]);
-  
+
+  // Thank-you screen: shows a brief loader, then a confirmation message
+  const [showThankYou, setShowThankYou] = useState(false);
+  const [thankYouLoading, setThankYouLoading] = useState(true);
+
   const {
     register, control, handleSubmit, reset, watch,
     formState: { errors, isSubmitting },
@@ -264,8 +279,6 @@ const UpdateOnboarding: React.FC = () => {
       autoInstructionsToAllEmail: false, employeeConfirmationEmail: false,
     },
   });
-  const [submitted, setSubmitted] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
 
   const statusChange = watch("statusChange");
 
@@ -301,6 +314,7 @@ const UpdateOnboarding: React.FC = () => {
           persEmail: d.persEmail ?? "",
           officialEmail: d.officialEmail ?? "",
           nameOfBuddy: d.nameOfBuddy ?? "",
+          reportingHead: d.reportingHead ?? "",
           dept: d.dept ?? "",
           designation: d.designation ?? "",
           laptopPc: d.laptopPc ?? "",
@@ -381,16 +395,15 @@ const UpdateOnboarding: React.FC = () => {
 
   // ── Submit ──────────────────────────────────────────────────────────────
   const onSubmit: SubmitHandler<FormValues> = async (data) => {
-  if (!selectedId || !detail) {
-    toast.error("Please select a joinee first");
-    return;
-  }
+    if (!selectedId || !detail) {
+      toast.error("Please select a joinee first");
+      return;
+    }
 
-  setSubmitting(true);
-  try {
     // Resolve "new overrides old" pattern (matching Apps Script logic)
     const resolvedGender = data.newGender || data.gender || "";
     const resolvedBuddy = data.newBuddy || data.nameOfBuddy || "";
+    const resolvedReportingHead = data.newReportingHead || data.reportingHead || "";
     const resolvedDept = data.newDept ? data.newDept.split(" - ")[0] : (data.dept ?? "");
     const resolvedDesignation = data.newDesignation ? data.newDesignation.split(" - ")[0] : (data.designation ?? "");
     const resolvedLaptop = data.newLaptopPc || data.laptopPc || "";
@@ -398,6 +411,7 @@ const UpdateOnboarding: React.FC = () => {
     const resolvedManagementLevel = data.newManagementLevel || data.managementLevel || "";
     const resolvedRemarks = data.newRemarks || data.remarks || "";
 
+    // Resolve joining status
     let joiningStatus = detail.joiningStatus ?? "";
     if (data.statusChange === "Joining Date Changed") joiningStatus = "Yet To Join Office";
     else if (data.statusChange === "Joined") joiningStatus = "Joined";
@@ -408,6 +422,7 @@ const UpdateOnboarding: React.FC = () => {
       name: [data.firstName, data.lastName].filter(Boolean).join(" "),
       gender: resolvedGender,
       nameOfBuddy: resolvedBuddy,
+      reportingHead: resolvedReportingHead,
       dept: resolvedDept,
       designation: resolvedDesignation,
       laptopPc: resolvedLaptop,
@@ -422,30 +437,38 @@ const UpdateOnboarding: React.FC = () => {
       salApplicableFrom: newSalApplicableFrom?.toISOString(),
       salRevisionDueDate: newSalRevisionDueDate?.toISOString(),
       employeesInCc: employeesInCc,
+      // Checklists: send name + item state (checked + name "new"/"old")
       checkLists: CHECKLIST_DEFS.map((listDef, listIdx) => ({
         name: listDef.name,
         items: listDef.items.map((_, itemIdx) => ({
           checked: isAlreadyDone(listIdx, itemIdx)
-            ? false
+            ? false // already done items: don't re-mark
             : newTicks[listIdx]?.[itemIdx] ?? false,
           name: isAlreadyDone(listIdx, itemIdx) ? "old" : "new",
         })),
       })),
     };
 
-    await axios.put(`${API}/onboarding/${selectedId}`, payload);
-    toast.success("Onboarding updated successfully!");
-    setSubmitted(true);
+    try {
+      await axios.put(`${API}/onboarding/${selectedId}`, payload);
+
+      // Show the thank-you screen (loader first, then confirmation)
+      // instead of resetting the form immediately.
+      setShowThankYou(true);
+      setThankYouLoading(true);
+      setTimeout(() => setThankYouLoading(false), 1200);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? "Update failed");
+    }
+  };
+
+  const handleThankYouDone = () => {
+    setShowThankYou(false);
     setSelectedId("");
     setDetail(null);
     reset();
     setNewTicks([]);
-  } catch (err: any) {
-    toast.error(err?.response?.data?.message ?? "Update failed");
-  } finally {
-    setSubmitting(false);
-  }
-};
+  };
 
   // ── Style helpers ───────────────────────────────────────────────────────
   const inputClass = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition";
@@ -483,67 +506,6 @@ const UpdateOnboarding: React.FC = () => {
       <input type="number" step="any" {...register(id)} className={inputClass} />
     </div>
   );
-
-  // ─── Loader screen ──────────────────────────────────────────────────────
-if (submitting) {
-  return (
-    <LocalizationProvider dateAdapter={AdapterDayjs}>
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-6" />
-          <p className="text-slate-700 text-lg font-semibold">Updating onboarding record…</p>
-          <p className="text-slate-400 text-sm mt-1">Saving changes and sending emails</p>
-        </div>
-      </div>
-    </LocalizationProvider>
-  );
-}
-
-// ─── Thank you screen ───────────────────────────────────────────────────
-if (submitted) {
-  return (
-    <LocalizationProvider dateAdapter={AdapterDayjs}>
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center max-w-md px-6">
-          <div className="w-24 h-24 rounded-full bg-indigo-50 border-4 border-indigo-100 flex items-center justify-center mx-auto mb-6">
-            <svg className="w-12 h-12 text-indigo-600" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M5 13l4 4L19 7"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </div>
-
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">Onboarding updated!</h2>
-          <p className="text-slate-500 mb-1">
-            The record has been saved and any queued emails have been sent.
-          </p>
-          <p className="text-slate-400 text-sm mb-8">
-            Checklist progress and status changes are now reflected.
-          </p>
-
-          <div className="flex gap-3 justify-center flex-wrap">
-            <button
-              onClick={() => setSubmitted(false)}
-              className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow transition"
-            >
-              Update another joinee
-            </button>
-            <button
-              onClick={() => navigate("/onboarding/dashboard")}
-              className="px-6 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition"
-            >
-              Go to dashboard
-            </button>
-          </div>
-        </div>
-      </div>
-    </LocalizationProvider>
-  );
-}
 
   // ─── Render ─────────────────────────────────────────────────────────────
   return (
@@ -730,6 +692,17 @@ if (submitted) {
                     detail.nameOfBuddy,
                     <input {...register("newBuddy")} className={inputClass} placeholder="Update buddy name" />
                   )}
+                  {fieldRow("Reporting Manager",
+                    detail.reportingHead,
+                    <select {...register("newReportingHead")} className={inputClass}>
+                      <option value="">No change</option>
+                      {employees.map((employee) => (
+                        <option key={employee.emp_id || employee.full_name} value={employee.full_name}>
+                          {employee.full_name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   {fieldRow("Department",
                     detail.dept,
                     <input {...register("newDept")} className={inputClass} placeholder="Update dept" />
@@ -737,6 +710,15 @@ if (submitted) {
                   {fieldRow("Designation",
                     detail.designation,
                     <input {...register("newDesignation")} className={inputClass} placeholder="Update designation" />
+                  )}
+                  {fieldRow("Management Level",
+                    detail.managementLevel,
+                    <select {...register("newManagementLevel")} className={inputClass}>
+                      <option value="">No change</option>
+                      {MANAGEMENT_LEVEL_OPTIONS.map((lvl) => (
+                        <option key={lvl} value={lvl}>{lvl}</option>
+                      ))}
+                    </select>
                   )}
                   {fieldRow("System Authorised",
                     detail.laptopPc,
@@ -754,17 +736,6 @@ if (submitted) {
                       <option value="Employee">Employee</option>
                       <option value="Consultant">Consultant</option>
                       <option value="Intern">Intern</option>
-                    </select>
-                  )}
-                  {fieldRow("Management Level",
-                    detail.managementLevel,
-                    <select {...register("newManagementLevel")} className={inputClass}>
-                      <option value="">No change</option>
-                      <option value="Office Staff">Office Staff</option>
-                      <option value="Junior Management">Junior Management</option>
-                      <option value="Middle Management">Middle Management</option>
-                      <option value="Senior Management">Senior Management</option>
-                      <option value="Apex Management (C Level)">Apex Management (C Level)</option>
                     </select>
                   )}
                 </div>
@@ -1169,6 +1140,37 @@ if (submitted) {
           )}
         </div>
       </div>
+
+      {/* Thank-you overlay: brief loader, then confirmation */}
+      {showThankYou && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-10 max-w-md w-full text-center">
+            {thankYouLoading ? (
+              <>
+                <div className="w-14 h-14 mx-auto mb-5 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
+                <h2 className="text-lg font-bold text-slate-700">Updating Onboarding…</h2>
+                <p className="text-sm text-slate-400 mt-1">Just a moment</p>
+              </>
+            ) : (
+              <>
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
+                  <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <h2 className="text-2xl font-bold text-slate-800 mb-2">Thank You!</h2>
+                <p className="text-sm text-slate-500 mb-6">Onboarding has been updated successfully.</p>
+                <button
+                  onClick={handleThankYouDone}
+                  className="px-8 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow transition"
+                >
+                  Done
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </LocalizationProvider>
   );
 };

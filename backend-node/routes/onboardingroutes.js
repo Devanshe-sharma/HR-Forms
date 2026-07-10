@@ -430,11 +430,219 @@ router.post("/", async (req, res) => {
   }
 });
 
+// ─── POST /api/onboarding/backfill-reporting-head-from-rolemaster ──────────
+// One-time backfill: fills reportingHead on existing Onboarding records
+// from RoleMaster's own reporting_manager field — new records already get
+// this set directly via the Onboarding form now, so this is purely for
+// records created before that field existed.
+//
+// Only fills BLANK reportingHead values — never overwrites a value
+// someone has already set (whether manually via the form, or by a prior
+// Salary Revision sync). Matches by official email first (most reliable,
+// since RoleMaster's desig_email_id is role-specific), falling back to
+// exact name match.
+//
+// Uses the raw collection driver rather than RoleMaster's Mongoose model,
+// same reason as getDepartmentTypeMap() above: RoleMaster has a mix of
+// legacy PascalCase-keyed documents and properly schema-shaped ones, and
+// Mongoose's schema-aware .find() silently returns blank for the legacy
+// ones. Checking every known key variant works regardless of shape.
+router.post("/backfill-reporting-head-from-rolemaster", async (req, res) => {
+  try {
+    const roleRows = await RoleMaster.collection.find({}).toArray();
+
+    const byEmail = new Map();
+    const byName = new Map();
+
+    for (const r of roleRows) {
+      const reportingManagerRaw =
+        r.reporting_manager ??
+        r.Reporting_Manager ??
+        r["Reporting Manager"] ??
+        r.ReportingManager ??
+        "";
+      const reportingManager = String(reportingManagerRaw || "").trim();
+      if (!reportingManager) continue; // nothing useful on this row
+
+      const emailRaw =
+        r.desig_email_id ??
+        r["desig Email Id"] ??
+        r.Desig_Email_Id ??
+        r.DesigEmailId ??
+        r.desigEmailId ??
+        "";
+      const email = String(emailRaw || "").trim().toLowerCase();
+      if (email && !byEmail.has(email)) byEmail.set(email, reportingManager);
+
+      const nameRaw = r.emp_name ?? r.Emp_name ?? r.Emp_Name ?? r.EmpName ?? "";
+      const name = String(nameRaw || "").trim().toLowerCase();
+      if (name && !byName.has(name)) byName.set(name, reportingManager);
+    }
+
+    // Only records that don't already have a reportingHead set — never
+    // overwrite an existing value.
+    const candidates = await Onboarding.find(
+      { $or: [{ reportingHead: { $exists: false } }, { reportingHead: "" }] },
+      "name officialEmail persEmail"
+    );
+
+    let updated = 0;
+    const unmatched = [];
+
+    for (const doc of candidates) {
+      const email = (doc.officialEmail || "").trim().toLowerCase();
+      const name = (doc.name || "").trim().toLowerCase();
+
+      const reportingManager = (email && byEmail.get(email)) || (name && byName.get(name));
+
+      if (reportingManager) {
+        await Onboarding.findByIdAndUpdate(doc._id, { reportingHead: reportingManager });
+        updated++;
+      } else {
+        unmatched.push(doc.name);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Backfilled reportingHead on ${updated} record(s). ${unmatched.length} had no match in Role Master.`,
+      unmatched,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.post("/backfill-empid-from-rolemaster", async (req, res) => {
+  try {
+    const roleRows = await RoleMaster.collection.find({}).toArray();
+ 
+    const byEmail = new Map();
+    const byName = new Map();
+ 
+    for (const r of roleRows) {
+      const empIdRaw = r.emp_id ?? r.Emp_id ?? r.Emp_Id ?? r.EmpId ?? "";
+      const empId = String(empIdRaw || "").trim();
+      if (!empId) continue; // nothing useful on this row
+ 
+      const emailRaw =
+        r.desig_email_id ??
+        r["desig Email Id"] ??
+        r.Desig_Email_Id ??
+        r.DesigEmailId ??
+        r.desigEmailId ??
+        "";
+      const email = String(emailRaw || "").trim().toLowerCase();
+      if (email && !byEmail.has(email)) byEmail.set(email, empId);
+ 
+      const nameRaw = r.emp_name ?? r.Emp_name ?? r.Emp_Name ?? r.EmpName ?? "";
+      const name = String(nameRaw || "").trim().toLowerCase();
+      if (name && !byName.has(name)) byName.set(name, empId);
+    }
+ 
+    const candidates = await Onboarding.find(
+      { $or: [{ empId: { $exists: false } }, { empId: "" }] },
+      "name officialEmail persEmail"
+    );
+ 
+    let updated = 0;
+    const unmatched = [];
+ 
+    for (const doc of candidates) {
+      const email = (doc.officialEmail || "").trim().toLowerCase();
+      const name = (doc.name || "").trim().toLowerCase();
+ 
+      const empId = (email && byEmail.get(email)) || (name && byName.get(name));
+ 
+      if (empId) {
+        await Onboarding.findByIdAndUpdate(doc._id, { empId });
+        updated++;
+      } else {
+        unmatched.push(doc.name);
+      }
+    }
+ 
+    res.json({
+      success: true,
+      message: `Backfilled empId on ${updated} record(s). ${unmatched.length} had no match in Role Master.`,
+      unmatched,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+
 // Anyone with an exit record has left the company — they shouldn't show up
 // Statuses that mean the person has actually left — "Serving Notice Period"
 // still counts as employed, and "Not Exiting"/"Exit Cancelled" mean they
 // never left at all, so neither should exclude someone from the master list.
 const EXITED_STATUS_VALUES = new Set(["Left", "Already Left"]);
+
+
+router.get("/employee-letters-source", async (req, res) => {
+  try {
+    const docs = await Onboarding.find(
+      {},
+      "name empId dept designation mobile joinedDate employeeCategory exitStatus " +
+      "annualCtc monthlyCtc basicSal hraSal travelAllowance childrenEducationAllowance " +
+      "grossMonthly empEpf empEsic medicalReimbursement vehicleReimbursement " +
+      "driverReimbursement telephoneReimbursement mealsReimbursement uniformReimbursement " +
+      "leaveTravelAllowance annualBonus annualPerformanceIncentive medicalPremium gratuity " +
+      "contractAmount contractPeriod salApplicableFrom"
+    ).lean();
+ 
+    const employees = docs.map((d) => {
+      const isExited = EXITED_STATUS_VALUES.has(d.exitStatus || "");
+      return {
+        _id: String(d._id),
+        employee_id: d.empId || String(d._id),
+        full_name: d.name || "",
+        department: d.dept || "",
+        designation: d.designation || "",
+        mobile: d.mobile || "",
+        joining_date: d.joinedDate || null,
+        employee_category: d.employeeCategory || "",
+        is_current: !isExited,
+        is_exited: isExited,
+ 
+        annual_ctc: d.annualCtc || 0,
+        monthly_ctc: d.monthlyCtc || 0,
+        basic: d.basicSal ?? "",
+        hra: d.hraSal ?? "",
+        travel_allowance: d.travelAllowance ?? "",
+        childrens_education_allowance: d.childrenEducationAllowance ?? "",
+        gross_monthly: d.grossMonthly ?? "",
+        employer_pf: d.empEpf ?? "",
+        employer_esi: d.empEsic ?? "",
+        // Telephone: single underlying field, mapped to both frontend
+        // field names — see note above.
+        telephone_allowance: d.telephoneReimbursement ?? "",
+        telephone_reimbursement_annual: d.telephoneReimbursement ?? "",
+        medical_reimbursement_annual: d.medicalReimbursement ?? "",
+        vehicle_reimbursement_annual: d.vehicleReimbursement ?? "",
+        driver_reimbursement_annual: d.driverReimbursement ?? "",
+        meals_reimbursement_annual: d.mealsReimbursement ?? "",
+        uniform_reimbursement_annual: d.uniformReimbursement ?? "",
+        leave_travel_allowance_annual: d.leaveTravelAllowance ?? "",
+        annual_bonus: d.annualBonus ?? "",
+        annual_performance_incentive: d.annualPerformanceIncentive ?? "",
+        medical_premium: d.medicalPremium ?? "",
+        gratuity: d.gratuity ?? "",
+        contract_amount: d.contractAmount ?? null,
+        contract_period_months: d.contractPeriod ?? null,
+        sal_applicable_from: d.salApplicableFrom || null,
+      };
+    });
+ 
+    res.json({ success: true, data: employees });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 // ─── GET /api/onboarding/eligible-employees  — Salary Revision employee source ──
 // Salary Revision used to pull its employee picker from a separate Employee
@@ -1035,20 +1243,22 @@ router.get("/employee-master", async (req, res) => {
   try {
     const docs = await Onboarding.find(
       {},
-      "name dept designation officialEmail persEmail joiningStatus exitStatus joinedDate reportingHead employeeCategory managementLevel"
+      "name empId dept designation officialEmail persEmail mobile joiningStatus exitStatus joinedDate reportingHead employeeCategory managementLevel"
     ).lean();
-
+ 
     const employees = docs.map((d) => {
       const isExited = EXITED_STATUS_VALUES.has(d.exitStatus || "");
       const isCurrent = d.joiningStatus === "Joined" && !isExited;
       return {
         _id: String(d._id),
-        employee_id: String(d._id),
+        employee_id: d.empId || String(d._id),
         full_name: d.name || "",
         department: d.dept || "",
         designation: d.designation || "",
         official_email: d.officialEmail || "",
+        personal_email: d.persEmail || "",
         email: d.officialEmail || d.persEmail || "",
+        mobile: d.mobile || "",
         joining_date: d.joinedDate || null,
         employee_category: d.employeeCategory || "",
         management_level: d.managementLevel || "",

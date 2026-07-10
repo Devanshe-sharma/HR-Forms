@@ -118,6 +118,7 @@ const onboardingSchema = new mongoose.Schema(
       default: "",
     },
     nameOfBuddy: String,
+    empId: { type: String, default: "" },
 
     // ============================================================
     dept_id:  { type: Number, default: null },
