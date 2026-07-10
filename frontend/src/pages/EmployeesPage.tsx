@@ -20,6 +20,7 @@ import {
   ArchiveOutlined as ArchiveIcon,
   ViewListOutlined as ViewListIcon,
   ViewKanbanOutlined as ViewKanbanIcon,
+  CalendarMonthOutlined as CalendarIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
@@ -48,6 +49,8 @@ interface EmployeeEntry {
   is_exited: boolean;
 }
 
+type DateMode = 'all' | 'quarter' | 'year' | 'custom';
+
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,6 +76,27 @@ const avatarColors = (name: string): [string, string] =>
 const initials = (name?: string) => {
   if (!name?.trim()) return '?';
   return name.trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2);
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Date range helpers — calendar quarter/year based on today, matching the
+// same convention used elsewhere (Q1=Jan-Mar, Q2=Apr-Jun, Q3=Jul-Sep,
+// Q4=Oct-Dec), rather than a fiscal-year convention.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const getQuarterRange = (): [Date, Date] => {
+  const now = new Date();
+  const q = Math.floor(now.getMonth() / 3); // 0-3
+  const from = new Date(now.getFullYear(), q * 3, 1);
+  const to = new Date(now.getFullYear(), q * 3 + 3, 0, 23, 59, 59);
+  return [from, to];
+};
+
+const getYearRange = (): [Date, Date] => {
+  const now = new Date();
+  const from = new Date(now.getFullYear(), 0, 1);
+  const to = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
+  return [from, to];
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -144,6 +168,12 @@ const EmployeesPage: React.FC = () => {
   const [filterDesig, setFilterDesig] = useState('');
   const [view, setView] = useState<'list' | 'kanban'>('list');
 
+  // Joining-date filter — quick presets (This Quarter / This Year) or a
+  // custom From/To range, applied against each employee's joining_date.
+  const [dateMode, setDateMode] = useState<DateMode>('all');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+
   // ── Fetch from Onboarding's employee-master — the single source of
   //    truth for current vs. exited. Only CURRENT employees show here;
   //    exited ones live on the Archive page instead. ─────────────────────
@@ -189,10 +219,24 @@ const EmployeesPage: React.FC = () => {
     [entries, filterDept]
   );
 
+  // ── Active date range, resolved from the selected mode ─────────────────────
+
+  const activeDateRange = useMemo((): [Date | null, Date | null] => {
+    if (dateMode === 'quarter') return getQuarterRange();
+    if (dateMode === 'year') return getYearRange();
+    if (dateMode === 'custom') {
+      const from = customFrom ? new Date(customFrom) : null;
+      const to = customTo ? new Date(`${customTo}T23:59:59`) : null;
+      return [from, to];
+    }
+    return [null, null];
+  }, [dateMode, customFrom, customTo]);
+
   // ── Filtered + sorted list ─────────────────────────────────────────────────
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
+    const [rangeFrom, rangeTo] = activeDateRange;
     return entries
       .filter(e => {
         const matchSearch = !q || [
@@ -201,10 +245,22 @@ const EmployeesPage: React.FC = () => {
         ].some(v => v?.toLowerCase().includes(q));
         const matchDept  = !filterDept  || e.department  === filterDept;
         const matchDesig = !filterDesig || e.designation === filterDesig;
-        return matchSearch && matchDept && matchDesig;
+
+        let matchDate = true;
+        if (rangeFrom || rangeTo) {
+          if (!e.joining_date) {
+            matchDate = false; // no joining date on record — can't fall in any range
+          } else {
+            const joined = new Date(e.joining_date);
+            if (rangeFrom && joined < rangeFrom) matchDate = false;
+            if (rangeTo && joined > rangeTo) matchDate = false;
+          }
+        }
+
+        return matchSearch && matchDept && matchDesig && matchDate;
       })
       .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
-  }, [entries, search, filterDept, filterDesig]);
+  }, [entries, search, filterDept, filterDesig, activeDateRange]);
 
   // ── Group by department for Kanban view ────────────────────────────────────
 
@@ -218,9 +274,10 @@ const EmployeesPage: React.FC = () => {
     return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
   }, [filtered]);
 
-  const hasFilters = !!(search || filterDept || filterDesig);
+  const hasFilters = !!(search || filterDept || filterDesig || dateMode !== 'all');
   const clearAll   = () => {
     setSearch(''); setFilterDept(''); setFilterDesig('');
+    setDateMode('all'); setCustomFrom(''); setCustomTo('');
   };
 
   // ── Shared styles ──────────────────────────────────────────────────────────
@@ -238,6 +295,13 @@ const EmployeesPage: React.FC = () => {
     '& .MuiInputLabel-root': { fontSize: '0.76rem', top: '-3px' },
     '& .MuiInputLabel-shrink': { top: '0px' },
   };
+
+  const dateModeOptions: { key: DateMode; label: string }[] = [
+    { key: 'all', label: 'All Time' },
+    { key: 'quarter', label: 'This Quarter' },
+    { key: 'year', label: 'This Year' },
+    { key: 'custom', label: 'Custom Range' },
+  ];
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -386,6 +450,76 @@ const EmployeesPage: React.FC = () => {
                   </Button>
                 )}
               </Stack>
+            </Stack>
+
+            {/* ── Joining-date filter row ── */}
+            <Divider sx={{ my: 1.5, borderColor: isLight ? '#E9EEF5' : 'rgba(255,255,255,0.08)' }} />
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} alignItems={{ sm: 'center' }} flexWrap="wrap" useFlexGap>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, flexShrink: 0 }}>
+                <CalendarIcon sx={{ fontSize: 15, color: 'text.disabled' }} />
+                <Typography variant="caption" color="text.disabled" fontWeight={600} sx={{ fontSize: '0.71rem' }}>
+                  Joining Date:
+                </Typography>
+              </Box>
+
+              <Box sx={{
+                display: 'flex', borderRadius: '8px', overflow: 'hidden',
+                border: `1px solid ${border}`,
+              }}>
+                {dateModeOptions.map(({ key, label }) => (
+                  <Button
+                    key={key}
+                    onClick={() => setDateMode(key)}
+                    sx={{
+                      textTransform: 'none', fontSize: '0.74rem', fontWeight: 600, borderRadius: 0,
+                      px: 1.4, py: 0.5,
+                      bgcolor: dateMode === key ? theme.palette.primary.main : 'transparent',
+                      color: dateMode === key ? '#fff' : 'text.secondary',
+                      '&:hover': { bgcolor: dateMode === key ? theme.palette.primary.dark : 'action.hover' },
+                    }}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </Box>
+
+              {dateMode === 'custom' && (
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <TextField
+                    type="date"
+                    size="small"
+                    label="From"
+                    value={customFrom}
+                    onChange={e => setCustomFrom(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ ...filterSx, flex: '0 1 150px' }}
+                  />
+                  <Typography variant="caption" color="text.disabled">to</Typography>
+                  <TextField
+                    type="date"
+                    size="small"
+                    label="To"
+                    value={customTo}
+                    onChange={e => setCustomTo(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ ...filterSx, flex: '0 1 150px' }}
+                  />
+                </Stack>
+              )}
+
+              {dateMode === 'quarter' && (
+                <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.71rem' }}>
+                  {(() => {
+                    const [from, to] = getQuarterRange();
+                    return `${from.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} – ${to.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`;
+                  })()}
+                </Typography>
+              )}
+              {dateMode === 'year' && (
+                <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.71rem' }}>
+                  {new Date().getFullYear()}
+                </Typography>
+              )}
             </Stack>
           </Box>
 
