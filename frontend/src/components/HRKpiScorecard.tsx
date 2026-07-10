@@ -4,7 +4,7 @@ import toast from "react-hot-toast";
 import { Box, Typography, CircularProgress } from "@mui/material";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer, PieChart, Pie, Cell,
+  ResponsiveContainer, PieChart, Pie, Cell, LabelList,
 } from "recharts";
 
 const API = process.env.REACT_APP_REACT_APP_API_BASE_URL ?? "";
@@ -77,6 +77,25 @@ function pctColor(pct: number | null): string {
   return "#dc2626";
 }
 
+// Renders "Name: value" directly beside each pie slice — always visible,
+// not just on hover.
+const renderPieLabel = (props: any) => {
+  const { cx, cy, midAngle, outerRadius, name, value } = props;
+  const RADIAN = Math.PI / 180;
+  const radius = outerRadius + 18;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  return (
+    <text x={x} y={y} fill="#0f172a" fontSize={11} fontWeight={700} textAnchor={x > cx ? "start" : "end"} dominantBaseline="central">
+      {`${name}: ${value}`}
+    </text>
+  );
+};
+
+// Hides zero-value labels on stacked/grouped bars so empty categories
+// don't clutter the chart with a bunch of "0"s.
+const nonZeroLabel = (v: any) => (typeof v === "number" && v > 0 ? v : "");
+
 // ─── One module's row (its own independent filters + charts) ──────────────
 
 const ModuleKpiRow: React.FC<{ moduleKey: string; label: string }> = ({ moduleKey, label }) => {
@@ -143,7 +162,7 @@ const ModuleKpiRow: React.FC<{ moduleKey: string; label: string }> = ({ moduleKe
         { name: "Delayed", value: focusedQuarter.delayed, color: DELAYED_COLOR },
         { name: "Overdue", value: focusedQuarter.overdue, color: OVERDUE_COLOR },
         { name: "Pending", value: focusedQuarter.pending, color: PENDING_COLOR },
-      ]
+      ].filter((d) => d.value > 0)
     : [];
 
   return (
@@ -195,16 +214,24 @@ const ModuleKpiRow: React.FC<{ moduleKey: string; label: string }> = ({ moduleKe
                 Quarterly Trend — {fiscalLabel(year)}
               </Typography>
               <ResponsiveContainer width="100%" height="90%">
-                <BarChart data={data.quarters} barGap={4}>
+                <BarChart data={data.quarters} barGap={4} margin={{ top: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="quarter" tick={{ fontSize: 12, fill: "#64748b" }} />
                   <YAxis tick={{ fontSize: 12, fill: "#64748b" }} allowDecimals={false} />
                   <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="onTime" name="On Time" fill={ON_TIME_COLOR} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="delayed" name="Delayed" fill={DELAYED_COLOR} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="overdue" name="Overdue" fill={OVERDUE_COLOR} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="pending" name="Pending" fill={PENDING_COLOR} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="onTime" name="On Time" fill={ON_TIME_COLOR} radius={[4, 4, 0, 0]}>
+                    <LabelList dataKey="onTime" position="top" formatter={nonZeroLabel} style={{ fontSize: 10, fontWeight: 700, fill: "#0f172a" }} />
+                  </Bar>
+                  <Bar dataKey="delayed" name="Delayed" fill={DELAYED_COLOR} radius={[4, 4, 0, 0]}>
+                    <LabelList dataKey="delayed" position="top" formatter={nonZeroLabel} style={{ fontSize: 10, fontWeight: 700, fill: "#0f172a" }} />
+                  </Bar>
+                  <Bar dataKey="overdue" name="Overdue" fill={OVERDUE_COLOR} radius={[4, 4, 0, 0]}>
+                    <LabelList dataKey="overdue" position="top" formatter={nonZeroLabel} style={{ fontSize: 10, fontWeight: 700, fill: "#0f172a" }} />
+                  </Bar>
+                  <Bar dataKey="pending" name="Pending" fill={PENDING_COLOR} radius={[4, 4, 0, 0]}>
+                    <LabelList dataKey="pending" position="top" formatter={nonZeroLabel} style={{ fontSize: 10, fontWeight: 700, fill: "#0f172a" }} />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </Box>
@@ -216,7 +243,16 @@ const ModuleKpiRow: React.FC<{ moduleKey: string; label: string }> = ({ moduleKe
               {focusedQuarter && (focusedQuarter.onTime + focusedQuarter.delayed + focusedQuarter.overdue + focusedQuarter.pending) > 0 ? (
                 <ResponsiveContainer width="100%" height="90%">
                   <PieChart>
-                    <Pie data={pieData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2}>
+                    <Pie
+                      data={pieData}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={50}
+                      outerRadius={80}
+                      paddingAngle={2}
+                      label={renderPieLabel}
+                      labelLine={{ stroke: "#cbd5e1" }}
+                    >
                       {pieData.map((entry, i) => (
                         <Cell key={i} fill={entry.color} />
                       ))}

@@ -7,7 +7,7 @@ import HRKpiScorecard from "../components/HRKpiScorecard";
 import { Box, Typography, CircularProgress, Tooltip as MuiTooltip } from "@mui/material";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer, PieChart, Pie, Cell,
+  ResponsiveContainer, PieChart, Pie, Cell, LabelList,
 } from "recharts";
 
 // ─── Config ─────────────────────────────────────────────────────────────────
@@ -95,23 +95,58 @@ const FilterPillRow: React.FC<{
   </Box>
 );
 
-const StatCard: React.FC<{ label: string; value: React.ReactNode; color: string; bg: string; hint?: string }> = ({
-  label, value, color, bg, hint,
+const StatCard: React.FC<{
+  label: string; value: React.ReactNode; color: string; bg: string; hint?: string;
+  onClick?: () => void; active?: boolean;
+}> = ({
+  label, value, color, bg, hint, onClick, active,
 }) => (
-  <Box sx={{
-    flex: "1 1 140px", bgcolor: bg, border: `1px solid ${color}25`, borderRadius: "12px",
-    p: "14px 18px", display: "flex", flexDirection: "column", gap: 0.3,
-    transition: "transform 0.2s ease", "&:hover": { transform: "translateY(-2px)" },
-  }}>
-    <Typography fontSize="0.68rem" fontWeight={700} color="#64748b" textTransform="uppercase" letterSpacing="0.06em">
-      {label}
-    </Typography>
+  <Box
+    onClick={onClick}
+    sx={{
+      flex: "1 1 140px", bgcolor: bg, border: `1px solid ${active ? color : `${color}25`}`, borderRadius: "12px",
+      p: "14px 18px", display: "flex", flexDirection: "column", gap: 0.3,
+      transition: "transform 0.2s ease, border-color 0.2s ease",
+      cursor: onClick ? "pointer" : "default",
+      "&:hover": { transform: "translateY(-2px)", borderColor: onClick ? color : undefined },
+    }}
+  >
+    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <Typography fontSize="0.68rem" fontWeight={700} color="#64748b" textTransform="uppercase" letterSpacing="0.06em">
+        {label}
+      </Typography>
+      {onClick && (
+        <Typography fontSize="0.85rem" sx={{ color, transform: active ? "rotate(180deg)" : "none", transition: "transform 0.2s ease" }}>
+          ▾
+        </Typography>
+      )}
+    </Box>
     <Typography fontSize="1.6rem" fontWeight={800} sx={{ color, lineHeight: 1.2 }}>
       {value}
     </Typography>
     {hint && <Typography fontSize="0.65rem" color="#94a3b8">{hint}</Typography>}
+    {onClick && !hint && (
+      <Typography fontSize="0.65rem" color="#94a3b8">
+        {active ? "Click to hide breakdown" : "Click for department breakdown"}
+      </Typography>
+    )}
   </Box>
 );
+
+// Renders "Name: value" directly beside/inside each pie slice — always
+// visible, not just on hover.
+const renderPieLabel = (props: any) => {
+  const { cx, cy, midAngle, outerRadius, name, value } = props;
+  const RADIAN = Math.PI / 180;
+  const radius = outerRadius + 18;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  return (
+    <text x={x} y={y} fill="#0f172a" fontSize={11} fontWeight={700} textAnchor={x > cx ? "start" : "end"} dominantBaseline="central">
+      {`${name}: ${value}`}
+    </text>
+  );
+};
 
 // ─── Teeth-to-Tail widget ───────────────────────────────────────────────────
 
@@ -120,6 +155,7 @@ const TeethToTailWidget: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [year, setYear] = useState<number>(new Date().getFullYear());
   const [quarterFocus, setQuarterFocus] = useState<string>("All");
+  const [showBreakdown, setShowBreakdown] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -134,17 +170,38 @@ const TeethToTailWidget: React.FC = () => {
     return years.map((y) => ({ key: String(y), label: String(y) }));
   }, [data, year]);
 
+  // Calendar quarters (matches the backend's own quarterEndDate: Q1=Jan-Mar,
+  // Q2=Apr-Jun, Q3=Jul-Sep, Q4=Oct-Dec) — used to hide quarters that
+  // haven't started yet, rather than showing them as if they have real
+  // (zero) data.
+  const quarterStartDate = (quarter: string, y: number): Date => {
+    const q = parseInt(quarter.replace("Q", ""), 10);
+    return new Date(y, (q - 1) * 3, 1);
+  };
+  const hasQuarterStarted = (quarter: string, y: number): boolean =>
+    quarterStartDate(quarter, y) <= new Date();
+
+  useEffect(() => {
+    if (quarterFocus !== "All" && !hasQuarterStarted(quarterFocus, year)) {
+      setQuarterFocus("All");
+    }
+  }, [year, quarterFocus]);
+
+  const startedQuarters = useMemo(
+    () => (data?.quarters ?? []).filter((q) => hasQuarterStarted(q.quarter, year)),
+    [data, year]
+  );
+
   const quarterOptions = [
     { key: "All", label: "All Quarters" },
-    { key: "Q1", label: "Q1" },
-    { key: "Q2", label: "Q2" },
-    { key: "Q3", label: "Q3" },
-    { key: "Q4", label: "Q4" },
+    ...["Q1", "Q2", "Q3", "Q4"]
+      .filter((q) => hasQuarterStarted(q, year))
+      .map((q) => ({ key: q, label: q })),
   ];
 
   const focusedQuarter: QuarterData | undefined =
     quarterFocus === "All"
-      ? data?.quarters[data.quarters.length - 1]
+      ? startedQuarters[startedQuarters.length - 1]
       : data?.quarters.find((q) => q.quarter === quarterFocus);
 
   const pieData = focusedQuarter
@@ -209,6 +266,8 @@ const TeethToTailWidget: React.FC = () => {
               })()}
               color={ACCENT}
               bg="#eef2ff"
+              onClick={() => setShowBreakdown((v) => !v)}
+              active={showBreakdown}
             />
             {(focusedQuarter?.uncategorized ?? 0) > 0 && (
               <MuiTooltip title="Employees whose department isn't classified as Teeth or Tail yet — adjust the classification rules on the backend as department names evolve.">
@@ -224,58 +283,10 @@ const TeethToTailWidget: React.FC = () => {
             )}
           </Box>
 
-          {/* Charts */}
-          <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-            {/* Quarterly trend bar chart */}
-            <Box sx={{ flex: "2 1 420px", minWidth: 320, height: 320 }}>
-              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
-                Quarterly Trend — {year}
-              </Typography>
-              <ResponsiveContainer width="100%" height="90%">
-                <BarChart data={data.quarters} barGap={4}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="quarter" tick={{ fontSize: 12, fill: "#64748b" }} />
-                  <YAxis tick={{ fontSize: 12, fill: "#64748b" }} allowDecimals={false} />
-                  <Tooltip
-                    contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="teeth" name="Teeth (Delivery)" fill={TEETH_COLOR} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="tail" name="Tail (Support)" fill={TAIL_COLOR} radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </Box>
-
-            {/* Focused-quarter pie chart */}
-            <Box sx={{ flex: "1 1 260px", minWidth: 240, height: 320 }}>
-              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
-                Split — {focusedQuarter?.quarter ?? "—"} {year}
-              </Typography>
-              <ResponsiveContainer width="100%" height="90%">
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    dataKey="value"
-                    nameKey="name"
-                    innerRadius={55}
-                    outerRadius={90}
-                    paddingAngle={2}
-                  >
-                    {pieData.map((entry, i) => (
-                      <Cell key={i} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </Box>
-          </Box>
-
-          {/* Department breakdown — shows exactly which departments drive
-              the Uncategorized count, instead of leaving it a mystery number */}
-          {(data.departmentBreakdown ?? []).length > 0 && (
-            <Box sx={{ mt: 3 }}>
+          {/* Department breakdown — hidden by default, revealed by clicking
+              the Ratio stat card above, instead of always taking up space */}
+          {showBreakdown && (data.departmentBreakdown ?? []).length > 0 && (
+            <Box sx={{ mb: 3 }}>
               <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
                 Department Breakdown (current employees)
               </Typography>
@@ -319,6 +330,60 @@ const TeethToTailWidget: React.FC = () => {
               )}
             </Box>
           )}
+
+          {/* Charts */}
+          <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+            {/* Quarterly trend bar chart */}
+            <Box sx={{ flex: "2 1 420px", minWidth: 320, height: 320 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                Quarterly Trend — {year}
+              </Typography>
+              <ResponsiveContainer width="100%" height="90%">
+                <BarChart data={startedQuarters} barGap={4} margin={{ top: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="quarter" tick={{ fontSize: 12, fill: "#64748b" }} />
+                  <YAxis tick={{ fontSize: 12, fill: "#64748b" }} allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="teeth" name="Teeth (Delivery)" fill={TEETH_COLOR} radius={[4, 4, 0, 0]}>
+                    <LabelList dataKey="teeth" position="top" style={{ fontSize: 11, fontWeight: 700, fill: "#0f172a" }} />
+                  </Bar>
+                  <Bar dataKey="tail" name="Tail (Support)" fill={TAIL_COLOR} radius={[4, 4, 0, 0]}>
+                    <LabelList dataKey="tail" position="top" style={{ fontSize: 11, fontWeight: 700, fill: "#0f172a" }} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </Box>
+
+            {/* Focused-quarter pie chart */}
+            <Box sx={{ flex: "1 1 260px", minWidth: 240, height: 320 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                Split — {focusedQuarter?.quarter ?? "—"} {year}
+              </Typography>
+              <ResponsiveContainer width="100%" height="90%">
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={55}
+                    outerRadius={90}
+                    paddingAngle={2}
+                    label={renderPieLabel}
+                    labelLine={{ stroke: "#cbd5e1" }}
+                  >
+                    {pieData.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </Box>
+          </Box>
         </>
       )}
     </Box>
@@ -391,7 +456,16 @@ const GenderDistributionWidget: React.FC = () => {
               </Typography>
               <ResponsiveContainer width="100%" height="90%">
                 <PieChart>
-                  <Pie data={pieData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={90} paddingAngle={2}>
+                  <Pie
+                    data={pieData}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={55}
+                    outerRadius={90}
+                    paddingAngle={2}
+                    label={renderPieLabel}
+                    labelLine={{ stroke: "#cbd5e1" }}
+                  >
                     {pieData.map((entry, i) => (
                       <Cell key={i} fill={entry.color} />
                     ))}
@@ -420,7 +494,14 @@ const GenderDistributionWidget: React.FC = () => {
                   <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                   {data.genders.map((g, i) => (
-                    <Bar key={g} dataKey={g} stackId="gender" name={g} fill={colorFor(g, i)} />
+                    <Bar key={g} dataKey={g} stackId="gender" name={g} fill={colorFor(g, i)}>
+                      <LabelList
+                        dataKey={g}
+                        position="inside"
+                        style={{ fontSize: 10, fontWeight: 700, fill: "#fff" }}
+                        formatter={(v: any) => (typeof v === "number" && v > 0 ? v : "")}
+                      />
+                    </Bar>
                   ))}
                 </BarChart>
               </ResponsiveContainer>
