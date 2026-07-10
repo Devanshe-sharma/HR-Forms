@@ -60,8 +60,18 @@ interface GenderByDeptRow {
   [gender: string]: string | number;
 }
 
+interface GenderQuarterRow {
+  quarter: string;
+  asOf: string;
+  total: number;
+  genderCounts: Record<string, number>;
+}
+
 interface GenderResponse {
   success: boolean;
+  year: number;
+  availableYears: number[];
+  quarters: GenderQuarterRow[];
   total: number;
   genders: string[];
   overall: GenderOverall[];
@@ -202,7 +212,7 @@ const TeethToTailWidget: React.FC = () => {
   const focusedQuarter: QuarterData | undefined =
     quarterFocus === "All"
       ? startedQuarters[startedQuarters.length - 1]
-      : data?.quarters.find((q) => q.quarter === quarterFocus);
+      : data?.quarters?.find((q) => q.quarter === quarterFocus);
 
   const pieData = focusedQuarter
     ? [
@@ -395,35 +405,88 @@ const TeethToTailWidget: React.FC = () => {
 const GenderDistributionWidget: React.FC = () => {
   const [data, setData] = useState<GenderResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [year, setYear] = useState<number>(new Date().getFullYear());
+  const [quarterFocus, setQuarterFocus] = useState<string>("All");
 
   useEffect(() => {
-    axios.get(`${API}/onboarding/analytics/gender`, { params: { _t: Date.now() } })
+    setLoading(true);
+    axios.get(`${API}/onboarding/analytics/gender`, { params: { year, _t: Date.now() } })
       .then((res) => setData(res.data))
       .catch(() => toast.error("Failed to load gender distribution"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [year]);
 
   const colorFor = (gender: string, idx: number) =>
     GENDER_COLORS[gender] ?? GENDER_FALLBACK_COLORS[idx % GENDER_FALLBACK_COLORS.length];
 
-  const pieData = data?.overall.map((o, i) => ({
-    name: o.gender,
-    value: o.count,
-    color: colorFor(o.gender, i),
-  })) ?? [];
+  // Same calendar-quarter convention as Teeth-to-Tail — hides quarters
+  // that haven't started yet instead of showing them as empty/zero.
+  const quarterStartDate = (quarter: string, y: number): Date => {
+    const q = parseInt(quarter.replace("Q", ""), 10);
+    return new Date(y, (q - 1) * 3, 1);
+  };
+  const hasQuarterStarted = (quarter: string, y: number): boolean =>
+    quarterStartDate(quarter, y) <= new Date();
 
-  const femaleCount = data?.overall.find((o) => o.gender === "Female")?.count ?? 0;
-  const femalePct = data && data.total > 0 ? Math.round((femaleCount / data.total) * 1000) / 10 : 0;
+  useEffect(() => {
+    if (quarterFocus !== "All" && !hasQuarterStarted(quarterFocus, year)) {
+      setQuarterFocus("All");
+    }
+  }, [year, quarterFocus]);
+
+  const yearOptions = useMemo(() => {
+    const years = data?.availableYears ?? [year];
+    return years.map((y) => ({ key: String(y), label: String(y) }));
+  }, [data, year]);
+
+  const quarterOptions = [
+    { key: "All", label: "All Quarters" },
+    ...["Q1", "Q2", "Q3", "Q4"]
+      .filter((q) => hasQuarterStarted(q, year))
+      .map((q) => ({ key: q, label: q })),
+  ];
+
+  const startedQuarters = useMemo(
+    () => (data?.quarters ?? []).filter((q) => hasQuarterStarted(q.quarter, year)),
+    [data, year]
+  );
+
+  const focusedQuarter: GenderQuarterRow | undefined =
+    quarterFocus === "All"
+      ? startedQuarters[startedQuarters.length - 1]
+      : data?.quarters?.find((q) => q.quarter === quarterFocus);
+
+  const focusedGenders = useMemo(
+    () => Object.keys(focusedQuarter?.genderCounts ?? {}).sort(),
+    [focusedQuarter]
+  );
+
+  // Zero-value slices collapse to the same point and their labels stack on
+  // top of each other — filter them out, same fix as the KPI scorecard.
+  const pieData = focusedGenders
+    .map((g, i) => ({ name: g, value: focusedQuarter?.genderCounts[g] ?? 0, color: colorFor(g, i) }))
+    .filter((d) => d.value > 0);
+
+  const femaleCount = focusedQuarter?.genderCounts["Female"] ?? 0;
+  const femalePct = focusedQuarter && focusedQuarter.total > 0
+    ? Math.round((femaleCount / focusedQuarter.total) * 1000) / 10
+    : 0;
 
   return (
     <Box sx={{ bgcolor: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", p: 3, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-      <Box sx={{ mb: 2.5 }}>
-        <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
-          Gender Distribution
-        </Typography>
-        <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
-          Current employees only (excludes exited)
-        </Typography>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 2, mb: 2.5 }}>
+        <Box>
+          <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
+            Gender Distribution
+          </Typography>
+          <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
+            By Department shows current employees only — the trend and split above reflect the selected quarter
+          </Typography>
+        </Box>
+        <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+          <FilterPillRow options={yearOptions} active={String(year)} onChange={(k) => setYear(Number(k))} color={ACCENT} />
+          <FilterPillRow options={quarterOptions} active={quarterFocus} onChange={setQuarterFocus} color="#059669" />
+        </Box>
       </Box>
 
       {loading || !data ? (
@@ -432,16 +495,22 @@ const GenderDistributionWidget: React.FC = () => {
         </Box>
       ) : (
         <>
-          {/* Stat cards */}
+          {/* Stat cards — reflect the focused quarter, not just "current" */}
           <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexWrap: "wrap" }}>
-            <StatCard label="Total Employees" value={data.total} color={ACCENT} bg="#eef2ff" />
-            {data.overall.map((o, i) => (
+            <StatCard
+              label="Total Employees"
+              value={focusedQuarter?.total ?? 0}
+              color={ACCENT}
+              bg="#eef2ff"
+              hint={`As of ${focusedQuarter?.quarter ?? "—"} ${year}`}
+            />
+            {focusedGenders.map((g, i) => (
               <StatCard
-                key={o.gender}
-                label={o.gender}
-                value={o.count}
-                color={colorFor(o.gender, i)}
-                bg={`${colorFor(o.gender, i)}12`}
+                key={g}
+                label={g}
+                value={focusedQuarter?.genderCounts[g] ?? 0}
+                color={colorFor(g, i)}
+                bg={`${colorFor(g, i)}12`}
               />
             ))}
             <StatCard label="% Female" value={`${femalePct}%`} color="#db2777" bg="#fdf2f8" />
@@ -452,34 +521,41 @@ const GenderDistributionWidget: React.FC = () => {
             {/* Overall split pie */}
             <Box sx={{ flex: "1 1 260px", minWidth: 240, height: 300 }}>
               <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
-                Overall Split
+                Split — {focusedQuarter?.quarter ?? "—"} {year}
               </Typography>
-              <ResponsiveContainer width="100%" height="90%">
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    dataKey="value"
-                    nameKey="name"
-                    innerRadius={55}
-                    outerRadius={90}
-                    paddingAngle={2}
-                    label={renderPieLabel}
-                    labelLine={{ stroke: "#cbd5e1" }}
-                  >
-                    {pieData.map((entry, i) => (
-                      <Cell key={i} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                </PieChart>
-              </ResponsiveContainer>
+              {pieData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="90%">
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={55}
+                      outerRadius={90}
+                      paddingAngle={2}
+                      label={renderPieLabel}
+                      labelLine={{ stroke: "#cbd5e1" }}
+                    >
+                      {pieData.map((entry, i) => (
+                        <Cell key={i} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", height: "90%", color: "#94a3b8", fontSize: "0.8rem" }}>
+                  No employees yet as of this quarter
+                </Box>
+              )}
             </Box>
 
-            {/* By department stacked bar */}
+            {/* By department stacked bar — current snapshot, height grows
+                with department count so none get squeezed out */}
             <Box sx={{ flex: "2 1 420px", minWidth: 320, height: 300 }}>
               <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
-                By Department
+                By Department (current)
               </Typography>
               <ResponsiveContainer width="100%" height="90%">
                 <BarChart data={data.byDepartment} layout="vertical" margin={{ left: 24 }}>
@@ -490,6 +566,7 @@ const GenderDistributionWidget: React.FC = () => {
                     dataKey="department"
                     tick={{ fontSize: 11, fill: "#64748b" }}
                     width={140}
+                    interval={0}
                   />
                   <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
@@ -546,3 +623,6 @@ const HRAnalyticsDashboard: React.FC = () => {
 };
 
 export default HRAnalyticsDashboard;
+
+
+

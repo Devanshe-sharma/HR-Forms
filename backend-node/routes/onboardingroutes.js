@@ -1119,42 +1119,138 @@ router.get("/analytics/teeth-to-tail", async (req, res) => {
 // any imbalance is company-wide or concentrated in specific departments.
 router.get("/analytics/gender", async (req, res) => {
   try {
-    const docs = await Onboarding.find({}, "gender dept joiningStatus exitStatus").lean();
-    // Matches the Onboarding Dashboard's own "Current Employees" definition
-    // exactly: not exited, regardless of joiningStatus. Someone marked
-    // "Yet To Join Office" still counts as current there, so this must
-    // count them too, or the two numbers won't match.
+    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+ 
+    const docs = await Onboarding.find(
+      {},
+      "gender dept joinedDate joiningStatus exitStatus persEmail officialEmail"
+    ).lean();
+ 
+    const exits = await Exit.find(
+      {},
+      "persEmail officialEmail leftDate plannedExitDate resignationDate"
+    ).lean();
+ 
     const EXITED = new Set(["Left", "Already Left"]);
+ 
+    const exitDateOfRecord = (e) => {
+      const d = e.leftDate || e.plannedExitDate || e.resignationDate;
+      const t = d ? new Date(d).getTime() : NaN;
+      return isNaN(t) ? -Infinity : t;
+    };
+ 
+    function resolveExitDate(emp) {
+      const persEmail = (emp.persEmail || "").trim().toLowerCase();
+      const officialEmail = (emp.officialEmail || "").trim().toLowerCase();
+ 
+      let candidates = [];
+      if (persEmail) {
+        candidates = exits.filter((e) => (e.persEmail || "").trim().toLowerCase() === persEmail);
+      }
+      if (candidates.length === 0 && officialEmail) {
+        candidates = exits.filter((e) => (e.officialEmail || "").trim().toLowerCase() === officialEmail);
+      }
+      if (candidates.length === 0) return null;
+ 
+      const latest = candidates.reduce(
+        (l, e) => (!l || exitDateOfRecord(e) > exitDateOfRecord(l) ? e : l),
+        null
+      );
+      const d = latest.leftDate || latest.plannedExitDate || latest.resignationDate;
+      return d ? new Date(d) : null;
+    }
+ 
+    const employees = docs.map((d) => ({
+      ...d,
+      isMarkedExited: EXITED.has(d.exitStatus || ""),
+      resolvedExitDate: EXITED.has(d.exitStatus || "") ? resolveExitDate(d) : null,
+    }));
+ 
+    const quarters = [1, 2, 3, 4].map((q) => {
+      const asOf = quarterEndDate(year, q);
+      const genderCounts = {};
+ 
+      for (const emp of employees) {
+        if (!emp.joinedDate) continue;
+        const joined = new Date(emp.joinedDate);
+        if (joined > asOf) continue; // hadn't joined by this quarter-end yet
+ 
+        if (emp.isMarkedExited) {
+          if (emp.resolvedExitDate) {
+            if (emp.resolvedExitDate <= asOf) continue;
+          } else {
+            // Marked exited but no formal Exit record to pin a date —
+            // same conservative call Teeth-to-Tail makes: exclude rather
+            // than risk counting someone who's actually gone.
+            continue;
+          }
+        }
+ 
+        const g = (emp.gender || "").trim() || "Not Specified";
+        genderCounts[g] = (genderCounts[g] || 0) + 1;
+      }
+ 
+      const total = Object.values(genderCounts).reduce((s, c) => s + c, 0);
+ 
+      return {
+        quarter: `Q${q}`,
+        asOf: asOf.toISOString(),
+        total,
+        genderCounts,
+      };
+    });
+ 
+    // Current snapshot — used for the By Department breakdown, same as
+    // Teeth-to-Tail's own department breakdown (always current, never
+    // historicized per quarter).
     const current = docs.filter((d) => !EXITED.has(d.exitStatus || ""));
-
     const genderCounts = {};
     const byDept = {};
-
+ 
     for (const d of current) {
       const g = (d.gender || "").trim() || "Not Specified";
       genderCounts[g] = (genderCounts[g] || 0) + 1;
-
+ 
       const dept = (d.dept || "").trim() || "Unassigned";
       if (!byDept[dept]) byDept[dept] = {};
       byDept[dept][g] = (byDept[dept][g] || 0) + 1;
     }
-
+ 
     const genders = Object.keys(genderCounts).sort();
     const overall = genders.map((g) => ({ gender: g, count: genderCounts[g] }));
-
+ 
     const departments = Object.keys(byDept).sort();
     const byDepartment = departments.map((dept) => {
       const row = { department: dept };
       genders.forEach((g) => { row[g] = byDept[dept][g] || 0; });
       return row;
     });
-
-    res.json({ success: true, total: current.length, genders, overall, byDepartment });
+ 
+    // Only offer years that actually have joining data, plus the current year.
+    const joinYears = docs
+      .map((d) => (d.joinedDate ? new Date(d.joinedDate).getFullYear() : null))
+      .filter(Boolean);
+    const minYear = joinYears.length ? Math.min(...joinYears) : year;
+    const maxYear = Math.max(new Date().getFullYear(), ...(joinYears.length ? joinYears : [year]));
+    const availableYears = [];
+    for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
+ 
+    res.json({
+      success: true,
+      year,
+      quarters,
+      availableYears,
+      total: current.length,
+      genders,
+      overall,
+      byDepartment,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
 
 // ─── GET /api/onboarding/verify-access ──────────────────────────────────────
 // ACL gate: checks whether the given official email belongs to a CURRENT
