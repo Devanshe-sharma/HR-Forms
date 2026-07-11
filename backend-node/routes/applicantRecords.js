@@ -20,7 +20,7 @@ const CANDIDATE_FIELDS = [
   'expected_monthly_ctc',
   'hindi_read', 'hindi_write', 'hindi_speak',
   'english_read', 'english_write', 'english_speak',
-  'facebookLink', 'linkedin', 'short_video_url',
+  'facebookLink', 'linkedin', 'short_video_url', 'resume',
   'internalNotes',
 ];
 

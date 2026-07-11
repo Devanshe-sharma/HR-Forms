@@ -170,6 +170,26 @@ const CandidateInformationTab = ({
         </div>
       </section>
 
+      {/* Resume — separate from the other links since, unlike LinkedIn/
+          Facebook/Video (which the candidate fills in themselves), nothing
+          currently uploads a resume automatically, so HR needs a way to
+          paste one in manually until that pipeline exists. */}
+      <section>
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Resume</p>
+        {mode === 'view' ? (
+          draft.resume ? (
+            <a href={draft.resume} target="_blank" rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-teal-600 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-lg transition">
+              <ExternalLink size={12} /> View Resume
+            </a>
+          ) : (
+            <p className="text-sm text-gray-400">No resume on file</p>
+          )
+        ) : (
+          <EditField label="Resume Link" name="resume" value={draft.resume} onChange={handleChange} type="url" />
+        )}
+      </section>
+
       {/* Links */}
       {(draft.linkedin || draft.facebookLink || draft.short_video_url) && (
         <section>

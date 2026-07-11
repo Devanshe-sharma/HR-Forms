@@ -101,6 +101,14 @@ const applicantRecordSchema = new mongoose.Schema(
     facebookLink:    { type: String, default: '' },
     linkedin:        { type: String, default: '' },
     short_video_url: { type: String, default: '' },
+    // Resume link — the candidate application form has a file input for
+    // this, but that upload was never actually wired to send the file
+    // anywhere on submit, so this stayed empty for every record. Adding
+    // the field here so HR at least has somewhere to view/paste a
+    // resume link directly; the candidate-side upload pipeline (actually
+    // storing the uploaded file and populating this automatically) is a
+    // separate, larger piece not addressed by this change.
+    resume:          { type: String, default: '' },
 
     // ── HR workflow fields ────────────────────────────────────────────────────
     status: {

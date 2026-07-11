@@ -245,9 +245,8 @@ const AllApplicants: React.FC = () => {
                     <th className="p-4">Expected CTC</th>
                     <th className="p-4">Exp</th>
                     <th className="p-4">Location</th>
-                    <th className="p-4 text-center">Screener</th>
-                    <th className="p-4 text-center">Interviews</th>
-                    <th className="p-4 text-center">Profiles</th>
+                    
+                  
                     <th className="p-4">Status</th>
                     <th className="p-4 text-center">Actions</th>
                   </tr>
@@ -271,43 +270,9 @@ const AllApplicants: React.FC = () => {
                         </span>
                       </td>
                       <td className="p-4 text-gray-500 text-xs">{[r.city, r.state].filter(Boolean).join(', ')}</td>
-                      <td className="p-4 text-center">
-                        {r.screenerStatus ? (
-                          <button
-                            onClick={() => openModal(r, 'screener')}
-                            className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full transition ${SCREENER_STATUS_COLORS[r.screenerStatus] || 'bg-gray-100 text-gray-600'}`}
-                          >
-                            <UserCheck size={11} />
-                            {r.screenerStatus}
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => openModal(r, 'screener')}
-                            className="text-xs text-gray-300 hover:text-lime-600 transition"
-                          >
-                            —
-                          </button>
-                        )}
-                      </td>
-                      <td className="p-4 text-center">
-                        {(r.interviewRounds?.length ?? 0) > 0 ? (
-                          <button
-                            onClick={() => openModal(r, 'interview')}
-                            className="inline-flex items-center gap-1 text-xs text-lime-700 bg-lime-50 hover:bg-lime-100 px-2 py-0.5 rounded-full transition"
-                          >
-                            <ClipboardList size={11} />
-                            {r.interviewRounds.length} round{r.interviewRounds.length !== 1 ? 's' : ''}
-                          </button>
-                        ) : (
-                          <span className="text-xs text-gray-300">—</span>
-                        )}
-                      </td>
-                      <td className="p-4">
-                        <div className="flex justify-center gap-3">
-                          {r.linkedin        && <a href={r.linkedin}        target="_blank" rel="noreferrer" className="text-blue-500 hover:scale-110 transition-transform"><ExternalLink size={16} /></a>}
-                          {r.short_video_url && <a href={r.short_video_url} target="_blank" rel="noreferrer" className="text-red-500  hover:scale-110 transition-transform"><Video size={16} /></a>}
-                        </div>
-                      </td>
+                      
+                      
+                      
                       <td className="p-4">
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${STATUS_COLORS[r.status] || 'bg-gray-100 text-gray-600'}`}>
                           {r.status}

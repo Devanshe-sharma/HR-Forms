@@ -53,6 +53,7 @@ export interface ApplicantRecord {
   facebookLink:    string;
   linkedin:        string;
   short_video_url: string;
+  resume:          string;
   internalNotes:   string;
   status:          StatusType;
   // Stage 1 — Screener Round
