@@ -117,6 +117,40 @@ router.patch('/:id/status', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/applicant-records/:id/screener-round
+// Stage 1 — HR Screener Round. Mirrors the /final-decision pattern below:
+// Shortlisted/Rejected here also sync the top-level status, same reasoning
+// as a final decision syncing it — "Candidate On Hold"/"Profile On Hold"
+// have no matching value in the status enum, so those only affect this
+// stage's own screenerStatus and leave the top-level status untouched.
+// ─────────────────────────────────────────────────────────────────────────────
+router.patch('/:id/screener-round', async (req, res) => {
+  try {
+    const { screenerName, screenerStatus, screenerNotes } = req.body;
+
+    const update = {};
+    if (screenerName   !== undefined) update.screenerName   = screenerName;
+    if (screenerStatus !== undefined) update.screenerStatus = screenerStatus;
+    if (screenerNotes  !== undefined) update.screenerNotes  = screenerNotes;
+
+    if (screenerStatus === 'Shortlisted')      update.status = 'Shortlisted';
+    else if (screenerStatus === 'Rejected')    update.status = 'Rejected';
+
+    const record = await ApplicantRecord.findByIdAndUpdate(
+      req.params.id,
+      { $set: update },
+      { new: true, runValidators: true },
+    ).lean();
+
+    if (!record) return err(res, 'Record not found', 404);
+    ok(res, record);
+  } catch (e) {
+    console.error(e);
+    err(res, 'Failed to update screener round');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/applicant-records/:id/interview-rounds
 // Add a new interview round
 // ─────────────────────────────────────────────────────────────────────────────
@@ -197,6 +231,7 @@ router.delete('/:id/interview-rounds/:roundId', async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PATCH /api/applicant-records/:id/final-decision
+// Stage 3 — Offer & Placement
 // ─────────────────────────────────────────────────────────────────────────────
 router.patch('/:id/final-decision', async (req, res) => {
   try {

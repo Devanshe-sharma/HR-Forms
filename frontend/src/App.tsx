@@ -9,7 +9,8 @@ import EmployeeLetter from "./pages/EmployeeLetter";
 import Profile from "./pages/Profile";
 import Configuration from "./pages/Configruation";
 import ProtectedRoute from "./components/ProtectedRoute";
-// import Bridge from "./pages/Bridge";
+import Login from "./pages/Login";
+import Bridge from "./pages/Bridge";
 
 import Recruitment from "./pages/Recruitment/RequisitionDashboard";
 import CTCComponentsDashboard from "./components/CTCComponentsDashboard";
@@ -46,7 +47,8 @@ export default function App() {
 
         {/* Public Routes */}
         <Route path="/" element={<Home />} />
-        {/* <Route path="/bridge" element={<Bridge />} /> */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/bridge" element={<Bridge />} />
         <Route path="/outsider-dashboard" element={<OutsiderDashboard />} />
         <Route path="/careers" element={<CareersPage />} />
         <Route path="/candidate-application" element={<CandidateApplicationPage />} />
@@ -57,13 +59,16 @@ export default function App() {
           <Route path="/employee-letters" element={<EmployeeLetter />} />
           <Route path="/salary-revision" element={<SalaryRevisionNew />} />
           <Route path="/recruitment" element={<Recruitment />} />
+     
           <Route path="/ctc-components" element={<CTCComponentsDashboard />} />
           <Route path="/letter" element={<LetterTemplate />} />
           <Route path="/employees" element={<EmployeesPage />} />
           <Route path="/employees/archive" element={<ArchivedEmployeesPage />} />
           <Route path="/candidates" element={<ComingSoon />} />
           <Route path="/applicants" element={<AllApplicants />} />
+          <Route path="/recruitment/applicants" element={<AllApplicants />} />
           <Route path="/new-hiring-requisition" element={<NewRequisitionForm />} />
+          <Route path="/recruitment/new" element={<NewRequisitionForm />} />
           <Route path="/recruitment/update/:id" element={<UpdateRequisition />} />
           <Route path="/training-page" element={<TrainingPage />} />
           <Route path="/outing" element={<Outing/>}/>

@@ -44,7 +44,7 @@ const interviewRoundSchema = new mongoose.Schema(
   { _id: true, timestamps: true },
 );
 
-// ── Final Decision ─────────────────────────────────────────────────────────────
+// ── Final Decision (Offer & Placement) ──────────────────────────────────────────
 const finalDecisionSchema = new mongoose.Schema(
   {
     decision: {
@@ -112,8 +112,23 @@ const applicantRecordSchema = new mongoose.Schema(
 
     internalNotes: { type: String, default: '' },
 
+    // ── Stage 1: Screener Round (HR) ──────────────────────────────────────────
+    // Kept as its own group of fields, distinct from interviewRounds — this is
+    // the initial HR screening decision, not one of the later interview
+    // rounds, mirroring how the Recruitment department's own pipeline treats
+    // screening as a separate step before interviews.
+    screenerName:   { type: String, default: '' },
+    screenerStatus: {
+      type: String,
+      enum: ['', 'Shortlisted', 'Rejected', 'Candidate On Hold', 'Profile On Hold'],
+      default: '',
+    },
+    screenerNotes:  { type: String, default: '' },
+
+    // ── Stage 2: Interview Round(s) ───────────────────────────────────────────
     interviewRounds: [interviewRoundSchema],
 
+    // ── Stage 3: Offer & Placement ────────────────────────────────────────────
     finalDecision: { type: finalDecisionSchema, default: () => ({}) },
 
     // ── Convenience flags ─────────────────────────────────────────────────────
