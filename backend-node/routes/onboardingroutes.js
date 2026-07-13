@@ -1603,9 +1603,8 @@ router.put("/:id", async (req, res) => {
     );
 
     if (process.env.SEND_UPDATE_ONBOARDING_EMAILS !== 'false') {
-  triggerUpdateOnboarding(updated).catch(console.error);
-}
-res.json({ success: true, data: updated });
+    triggerUpdateOnboarding(updated).catch(console.error);
+  }
 
   } catch (err) {
     console.error(err);
