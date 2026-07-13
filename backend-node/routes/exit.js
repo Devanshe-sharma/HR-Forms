@@ -711,6 +711,53 @@ router.put("/:id", async (req, res) => {
   }
 });
 
+// ─── POST /api/exit/close-before-date ──────────────────────────────────────
+// One-time bulk action: closes fmsStatus on every exit record whose actual
+// exit date falls before the given cutoff. "Actual exit date" is resolved
+// the same way syncExitStatusToOnboarding() already does via exitDateOf()
+// — leftDate, falling back to plannedExitDate, falling back to
+// resignationDate — rather than a single fixed field, since which of
+// those three is populated varies by exitStatus. Doesn't touch checklist
+// data, exitStatus, or anything else — just flips fmsStatus, since these
+// are old exits no longer being actively tracked.
+//
+// Body (optional): { date: "YYYY-MM-DD" } — defaults to 2026-05-31 (i.e.
+// "before 31 May") if omitted. A record with no resolvable exit date at
+// all (exitDateOf returns -Infinity) is left untouched rather than closed
+// — there's nothing to compare against the cutoff, so silently closing it
+// would be a guess, not a fact.
+router.post("/close-before-date", async (req, res) => {
+  try {
+    const cutoff = req.body?.date ? new Date(req.body.date) : new Date("2026-05-31T23:59:59.999Z");
+    if (isNaN(cutoff.getTime())) {
+      return res.status(400).json({ success: false, message: "Invalid date" });
+    }
+
+    const docs = await Exit.find(
+      { fmsStatus: { $ne: "Closed" } },
+      "leftDate plannedExitDate resignationDate fmsStatus"
+    );
+
+    let closed = 0;
+    for (const doc of docs) {
+      const exitTime = exitDateOf(doc);
+      if (exitTime !== -Infinity && exitTime < cutoff.getTime()) {
+        doc.fmsStatus = "Closed";
+        await doc.save();
+        closed++;
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Closed ${closed} exit(s) with an exit date before ${cutoff.toISOString().slice(0, 10)}`,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // ─── DELETE /api/exit/:id ──────────────────────────────────────────────────
 // ============================================================
 // ONE-TIME LEGACY CSV IMPORT (old Google Sheet exit export)

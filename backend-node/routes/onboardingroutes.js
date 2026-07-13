@@ -1603,10 +1603,58 @@ router.put("/:id", async (req, res) => {
     );
 
     if (process.env.SEND_UPDATE_ONBOARDING_EMAILS !== 'false') {
-      triggerUpdateOnboarding(updated).catch(console.error);
-    }
-    res.json({ success: true, data: updated });
+  triggerUpdateOnboarding(updated).catch(console.error);
+}
+res.json({ success: true, data: updated });
 
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.get("/analytics/interns", async (req, res) => {
+  try {
+    const docs = await Onboarding.find(
+      {},
+      "employeeCategory dept joiningStatus exitStatus"
+    ).lean();
+ 
+    const current = docs.filter(
+      (d) => d.joiningStatus === "Joined" && !EXITED_STATUS_VALUES.has(d.exitStatus || "")
+    );
+ 
+    const isIntern = (d) => (d.employeeCategory || "").trim().toLowerCase() === "intern";
+ 
+    const total = current.length;
+    const internsCount = current.filter(isIntern).length;
+    const internPct = total > 0 ? Math.round((internsCount / total) * 1000) / 10 : 0;
+ 
+    // Per-department breakdown — same "reveal on click" UI pattern as
+    // Teeth-to-Tail's department breakdown, so it's clear WHERE interns
+    // are concentrated rather than just seeing one company-wide number.
+    const byDept = {};
+    for (const d of current) {
+      const dept = (d.dept || "").trim() || "Unassigned";
+      if (!byDept[dept]) byDept[dept] = { department: dept, interns: 0, total: 0 };
+      byDept[dept].total++;
+      if (isIntern(d)) byDept[dept].interns++;
+    }
+    const departmentBreakdown = Object.values(byDept)
+      .map((row) => ({
+        ...row,
+        pct: row.total > 0 ? Math.round((row.interns / row.total) * 1000) / 10 : 0,
+      }))
+      .sort((a, b) => b.interns - a.interns || a.department.localeCompare(b.department));
+ 
+    res.json({
+      success: true,
+      total,
+      internsCount,
+      internPct,
+      nonInternsCount: total - internsCount,
+      departmentBreakdown,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: err.message });

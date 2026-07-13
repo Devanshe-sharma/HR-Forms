@@ -23,6 +23,8 @@ const GENDER_COLORS: Record<string, string> = {
   "Not Specified": "#94a3b8",
 };
 const GENDER_FALLBACK_COLORS = ["#0891b2", "#7c3aed", "#ea580c", "#65a30d"];
+const INTERN_COLOR = "#7c3aed";
+const NON_INTERN_COLOR = "#cbd5e1";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -76,6 +78,22 @@ interface GenderResponse {
   genders: string[];
   overall: GenderOverall[];
   byDepartment: GenderByDeptRow[];
+}
+
+interface InternDeptRow {
+  department: string;
+  interns: number;
+  total: number;
+  pct: number;
+}
+
+interface InternsResponse {
+  success: boolean;
+  total: number;
+  internsCount: number;
+  internPct: number;
+  nonInternsCount: number;
+  departmentBreakdown: InternDeptRow[];
 }
 
 // ─── Small building blocks ─────────────────────────────────────────────────
@@ -590,6 +608,147 @@ const GenderDistributionWidget: React.FC = () => {
   );
 };
 
+// ─── Interns widget ─────────────────────────────────────────────────────────
+// What share of the current workforce are interns — current-only snapshot
+// (no quarter/year filter, since employeeCategory isn't historicized the
+// way exit dates are — it's just today's state, same reasoning as Gender's
+// "By Department" panel being current-only).
+
+const InternsWidget: React.FC = () => {
+  const [data, setData] = useState<InternsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showBreakdown, setShowBreakdown] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    axios.get(`${API}/onboarding/analytics/interns`, { params: { _t: Date.now() } })
+      .then((res) => setData(res.data))
+      .catch(() => toast.error("Failed to load intern data"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const pieData = data && data.total > 0
+    ? [
+        { name: "Interns", value: data.internsCount, color: INTERN_COLOR },
+        { name: "Other Employees", value: data.nonInternsCount, color: NON_INTERN_COLOR },
+      ].filter((d) => d.value > 0)
+    : [];
+
+  const deptRowsWithInterns = useMemo(
+    () => (data?.departmentBreakdown ?? []).filter((r) => r.interns > 0),
+    [data]
+  );
+
+  return (
+    <Box sx={{ bgcolor: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", p: 3, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+      <Box sx={{ mb: 2.5 }}>
+        <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
+          Interns
+        </Typography>
+        <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
+          Share of the current workforce categorized as Intern in Onboarding — today's snapshot
+        </Typography>
+      </Box>
+
+      {loading || !data ? (
+        <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
+          <CircularProgress size={26} sx={{ color: ACCENT }} />
+        </Box>
+      ) : (
+        <>
+          {/* Stat cards */}
+          <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexWrap: "wrap" }}>
+            <StatCard label="Total Employees" value={data.total} color={ACCENT} bg="#eef2ff" />
+            <StatCard label="Interns" value={data.internsCount} color={INTERN_COLOR} bg="#f5f3ff" />
+            <StatCard
+              label="% Interns"
+              value={`${data.internPct}%`}
+              color={INTERN_COLOR}
+              bg="#f5f3ff"
+              onClick={() => setShowBreakdown((v) => !v)}
+              active={showBreakdown}
+            />
+          </Box>
+
+          {/* Department breakdown — reveal on click, same pattern as
+              Teeth-to-Tail. Only departments that actually have at least
+              one intern are shown, so this doesn't turn into a full
+              department listing. */}
+          {showBreakdown && (
+            <Box sx={{ mb: 3 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                Departments With Interns
+              </Typography>
+              {deptRowsWithInterns.length === 0 ? (
+                <Typography fontSize="0.8rem" color="#94a3b8">
+                  No department currently has any interns.
+                </Typography>
+              ) : (
+                <Box sx={{ border: "1px solid #e2e8f0", borderRadius: "10px", overflow: "hidden" }}>
+                  {deptRowsWithInterns.map((row, i) => (
+                    <Box
+                      key={row.department}
+                      sx={{
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                        px: 2, py: 1, bgcolor: "#fff",
+                        borderTop: i > 0 ? "1px solid #f1f5f9" : "none",
+                      }}
+                    >
+                      <Typography fontSize="0.8rem" color="#1e293b" fontWeight={500}>
+                        {row.department}
+                      </Typography>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                        <span style={{
+                          fontSize: "0.65rem", fontWeight: 700, color: INTERN_COLOR,
+                          background: `${INTERN_COLOR}15`, padding: "2px 8px", borderRadius: 20,
+                        }}>
+                          {row.interns} of {row.total} ({row.pct}%)
+                        </span>
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+              )}
+            </Box>
+          )}
+
+          {/* Pie chart */}
+          <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+            <Box sx={{ flex: "1 1 260px", minWidth: 240, height: 280 }}>
+              {pieData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={55}
+                      outerRadius={90}
+                      paddingAngle={2}
+                      label={renderPieLabel}
+                      labelLine={{ stroke: "#cbd5e1" }}
+                    >
+                      {pieData.map((entry, i) => (
+                        <Cell key={i} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#94a3b8", fontSize: "0.8rem" }}>
+                  No current employees to show
+                </Box>
+              )}
+            </Box>
+          </Box>
+        </>
+      )}
+    </Box>
+  );
+};
+
 // ─── Root page ──────────────────────────────────────────────────────────────
 
 const HRAnalyticsDashboard: React.FC = () => {
@@ -612,6 +771,7 @@ const HRAnalyticsDashboard: React.FC = () => {
            
             <TeethToTailWidget />
             <GenderDistributionWidget />
+            <InternsWidget />
              <HRKpiScorecard />
             {/* More metric widgets can be added here as separate cards,
                 following the same pattern as the widgets above. */}
@@ -623,6 +783,3 @@ const HRAnalyticsDashboard: React.FC = () => {
 };
 
 export default HRAnalyticsDashboard;
-
-
-
