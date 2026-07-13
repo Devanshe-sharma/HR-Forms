@@ -29,16 +29,33 @@ async function findDept(nameOrId) {
   return doc;
 }
 
+// This codebase's RoleMaster collection has a known history of field-name
+// casing inconsistency (some code paths write/read "Department", others
+// "department") — see the earlier reportingHead/empId backfill routes,
+// which had to work around the exact same ambiguity by using the raw
+// driver. Rather than guessing which casing is currently correct (and
+// silently returning zero departments if we guess wrong, which is what
+// was happening here — .distinct() only matches an EXACT field name),
+// this queries both and merges the results.
+async function getDistinctDepartmentNames() {
+  const [pascal, lower] = await Promise.all([
+    RoleMaster.distinct('Department', { Department: { $ne: '' } }).catch(() => []),
+    RoleMaster.distinct('department', { department: { $ne: '' } }).catch(() => []),
+  ]);
+  return [...pascal, ...lower];
+}
+
 // ── GET ALL ───────────────────────────────────────────────────
 router.get('/', async (req, res) => {
   try {
-    const raw = await RoleMaster.distinct('department', { department: { $ne: '' } });
+    const raw = await getDistinctDepartmentNames();
 
     const validNames = [...new Set(
       raw.map(n => n?.trim()).filter(Boolean)
     )].sort();
 
     if (!validNames.length) {
+      console.warn('[dept-orientation] No distinct department names found in RoleMaster under either "Department" or "department" — check the actual field name on the collection.');
       return res.json({ success: true, data: [] });
     }
 

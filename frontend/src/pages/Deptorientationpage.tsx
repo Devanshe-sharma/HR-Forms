@@ -54,28 +54,10 @@ function fallbackCopy(text: string): void {
 }
  
 // ── Types ─────────────────────────────────────────────────────────────────────
-// Updated Designation interface to match Role Master schema (capital field names)
-interface Designation {
-  _id: string;
-  Dept_Id: number;
-  Department: string;
-  dept_page_link?: string;
-  dept_head_email?: string;
-  dept_group_email?: string;
-  parent_department?: string;
-  department_type?: string;
-  department_head?: string;
-  department_deputy?: string;
-  Desig_Id: number;
-  Designation: string;
-  emp_id?: string;
-  emp_name?: string;
-  role_document_link?: string;
-  jd_link?: string;
-  remarks?: string;
-  management_level?: string;
-  reporting_manager?: string;
-}
+// Designations are sourced directly from Onboarding employee records (same
+// pattern EmployeesPage.tsx already uses) — Role Master is not used here at
+// all. Onboarding stores department and designation together, self-
+// consistently, so there's no code-vs-full-name mismatch to work around.
 interface QuarterPPT {
   id: string; fy: string; quarter: 'Q1'|'Q2'|'Q3'|'Q4'; name: string; url: string;
 }
@@ -91,6 +73,16 @@ interface DeptData {
   roleDocs?: Array<{ id: string; role: string; jdUrl?: string; roleDocUrl?: string; }>;
 }
 interface ApiResponse<T = unknown> { success: boolean; data?: T; message?: string; }
+
+// Sourced from Onboarding's employee-master endpoint — the same single
+// source of truth used by EmployeesPage and everywhere else in this app —
+// rather than RoleMaster, whose department field casing has been
+// inconsistent ("Department" vs "department") across this codebase.
+interface OnboardingEmployee {
+  department: string;
+  designation: string;
+  is_current: boolean;
+}
  
 // ── API helpers ───────────────────────────────────────────────────────────────
 const authH = () => ({
@@ -131,6 +123,30 @@ const QUARTERS: Array<'Q1'|'Q2'|'Q3'|'Q4'> = ['Q1','Q2','Q3','Q4'];
  
 function slugify(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9\s]/g,'').trim().replace(/\s+/g,'_');
+}
+
+// Normalizes a department name for MATCHING purposes only (so "Human
+// Resources", " Human resources ", and "human   resources" all collapse to
+// the same lookup key) — the display name shown to the user still comes
+// from Onboarding (the authoritative source), this is just used to decide
+// whether an existing DeptOrientation record belongs to that department.
+function normDeptKey(s?: string | null): string {
+  return (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+// Pulls an array out of a response whose exact shape we don't fully
+// control — different endpoints in this app have returned a bare array,
+// { data: [...] }, or { data: { <somekey>: [...] } } at different times.
+function extractArray<T>(raw: unknown, label: string): T[] {
+  if (Array.isArray(raw)) return raw as T[];
+  if (raw && typeof raw === 'object') {
+    const obj = raw as Record<string, unknown>;
+    for (const key of Object.keys(obj)) {
+      if (Array.isArray(obj[key])) return obj[key] as T[];
+    }
+  }
+  console.warn(`[DeptOrientationPage] "${label}" response wasn't an array and had no array field — got:`, raw);
+  return [];
 }
  
 const COLOR_POOL = ['#3B82F6','#10B981','#EC4899','#F59E0B','#8B5CF6','#0EA5E9','#EF4444','#F97316','#14B8A6','#6366F1'];
@@ -369,9 +385,11 @@ function DeptPresentations({dept,dd,c,onUpdate}:{dept:string;dd:DeptData|undefin
 }
  
 // ══════════════════════════════════════════════════════════════════════════════
-// Section 2 — JD & Role Docs (Updated to use lowercase field names from Role Master schema)
+// Section 2 — JD & Role Docs (still uses /roles designations to list roles
+// WITHIN a department — this part is unrelated to the department LIST bug,
+// so it's left sourced from Role Master as before)
 // ══════════════════════════════════════════════════════════════════════════════
-function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;designations:Designation[];dd:DeptData|undefined;onUpdate:(n:string,d:Partial<DeptData>)=>void}) {
+function JDRoleDocs({dept,c,designationNames,dd,onUpdate}:{dept:string;c:string;designationNames:string[];dd:DeptData|undefined;onUpdate:(n:string,d:Partial<DeptData>)=>void}) {
   const [active,setActive] = useState<string|null>(null);
   const [uploadDialog, setUploadDialog] = useState<{ 
     open: boolean; 
@@ -390,8 +408,10 @@ function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;desi
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Filter roles by department using capital field name
-  const roles = designations.filter(d=>d.Department===dept);
+  // designationNames already comes pre-filtered to this department by the
+  // parent (derived straight from Onboarding employee records) — nothing
+  // further to filter here.
+  const roles = designationNames;
  
   const openUploadDialog = (type: 'jd' | 'role_doc', designation: string) => {
     console.log('Opening upload dialog:', { type, designation, dept });
@@ -499,34 +519,34 @@ function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;desi
       {roles.length===0
         ?<EmptyState icon={<WorkIcon sx={{fontSize:36}}/>} text={`No designations found for ${dept}`}/>
         :<Stack spacing={0.8}>
-          {roles.map(r=>{
-            // Use capital field names from Role Master schema
-            const jdSys   = `${slugify(dept)}_${slugify(r.Designation)}_jd`;
-            const roleSys = `${slugify(dept)}_${slugify(r.Designation)}_role_doc`;
-            const hasJD   = !!r.jd_link;
-            const hasRole = !!r.role_document_link;
-            
-            // Check for uploaded documents in department data
-            const uploadedDoc = dd?.roleDocs?.find(doc => doc.role === r.Designation);
+          {roles.map(designationName=>{
+            const jdSys   = `${slugify(dept)}_${slugify(designationName)}_jd`;
+            const roleSys = `${slugify(dept)}_${slugify(designationName)}_role_doc`;
+
+            // JD/Role Doc links live entirely on this orientation model's
+            // own roleDocs — there's no Role Master fallback anymore,
+            // since Role Master's department names don't reliably match
+            // Onboarding's (e.g. "DAA" vs "Data Analytics and
+            // Automation"). Upload fresh via the dialog below.
+            const uploadedDoc = dd?.roleDocs?.find(doc => doc.role === designationName);
             const uploadedJD = uploadedDoc?.jdUrl;
             const uploadedRole = uploadedDoc?.roleDocUrl;
             
             return(
-              <Box key={r._id}>
-                <Box onClick={()=>setActive(a=>a===r._id?null:r._id)}
-                  sx={{display:'flex',alignItems:'center',gap:1.5,p:1.3,bgcolor:active===r._id?`${c}08`:'white',borderRadius:'10px',border:`1px solid ${active===r._id?c+'35':'#E5E7EB'}`,cursor:'pointer',transition:'all 0.15s','&:hover':{bgcolor:`${c}05`}}}>
+              <Box key={designationName}>
+                <Box onClick={()=>setActive(a=>a===designationName?null:designationName)}
+                  sx={{display:'flex',alignItems:'center',gap:1.5,p:1.3,bgcolor:active===designationName?`${c}08`:'white',borderRadius:'10px',border:`1px solid ${active===designationName?c+'35':'#E5E7EB'}`,cursor:'pointer',transition:'all 0.15s','&:hover':{bgcolor:`${c}05`}}}>
                   <Box sx={{width:34,height:34,borderRadius:'8px',bgcolor:`${c}12`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><Person sx={{fontSize:16,color:c}}/></Box>
                   <Box flex={1}>
-                    <Typography fontSize="0.88rem" fontWeight={700} color="#1F2937">{r.Designation}</Typography>
-                    {r.remarks&&<Typography fontSize="0.72rem" color="#9CA3AF">{r.remarks}</Typography>}
+                    <Typography fontSize="0.88rem" fontWeight={700} color="#1F2937">{designationName}</Typography>
                   </Box>
                   <Stack direction="row" spacing={0.5}>
-                    {(hasJD || uploadedJD)  &&<Chip label="JD"       size="small" sx={{fontSize:'0.65rem',height:18,bgcolor:`${c}12`,color:c,fontWeight:700}}/>}
-                    {(hasRole || uploadedRole)&&<Chip label="Role Doc" size="small" sx={{fontSize:'0.65rem',height:18,bgcolor:'#F3F4F6',color:'#6B7280',fontWeight:700}}/>}
+                    {uploadedJD  &&<Chip label="JD"       size="small" sx={{fontSize:'0.65rem',height:18,bgcolor:`${c}12`,color:c,fontWeight:700}}/>}
+                    {uploadedRole&&<Chip label="Role Doc" size="small" sx={{fontSize:'0.65rem',height:18,bgcolor:'#F3F4F6',color:'#6B7280',fontWeight:700}}/>}
                   </Stack>
-                  <ExpandMoreIcon sx={{fontSize:18,color:'#9CA3AF',transform:active===r._id?'rotate(180deg)':'none',transition:'transform 0.2s'}}/>
+                  <ExpandMoreIcon sx={{fontSize:18,color:'#9CA3AF',transform:active===designationName?'rotate(180deg)':'none',transition:'transform 0.2s'}}/>
                 </Box>
-                <Collapse in={active===r._id} timeout="auto">
+                <Collapse in={active===designationName} timeout="auto">
                   <Box sx={{mx:1,mt:0.5,mb:0.5,p:2,bgcolor:'#F8FAFC',borderRadius:'10px',border:`1px solid ${c}15`}}>
                     <Typography fontSize="0.72rem" color="#94A3B8" fontWeight={700} textTransform="uppercase" letterSpacing={0.8} mb={1.5}>Documents</Typography>
                     <Stack spacing={1.5}>
@@ -537,19 +557,18 @@ function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;desi
                           <Typography fontSize="0.82rem" fontWeight={700} color="#1F2937">Job Description</Typography>
                           <CopyBadge text={jdSys}/>
                         </Box>
-                        {(uploadedJD || hasJD)?(
+                        {uploadedJD?(
                           <Stack direction="row" spacing={1}>
                             <Button 
-                            href={uploadedJD || r.jd_link || '#'} 
+                            href={uploadedJD} 
                             target="_blank" 
                             startIcon={<OpenInNewIcon sx={{fontSize:14}}/>}
-                            disabled={!uploadedJD && !r.jd_link}
                             sx={{textTransform:'none',fontWeight:700,fontSize:'0.82rem',color:'white',bgcolor:c,borderRadius:'8px',px:2,py:0.7,'&:hover':{opacity:0.88}}}
                           >Open</Button>
-                            <Tooltip title="Download"><IconButton component="a" href={uploadedJD || r.jd_link} download={jdSys} sx={{color:'#6B7280',bgcolor:'#F3F4F6',borderRadius:'7px',width:32,height:32}}><DownloadIcon sx={{fontSize:15}}/></IconButton></Tooltip>
+                            <Tooltip title="Download"><IconButton component="a" href={uploadedJD} download={jdSys} sx={{color:'#6B7280',bgcolor:'#F3F4F6',borderRadius:'7px',width:32,height:32}}><DownloadIcon sx={{fontSize:15}}/></IconButton></Tooltip>
                             {isHR && (
                               <Tooltip title="Upload New JD">
-                                <IconButton onClick={() => openUploadDialog('jd', r.Designation)} sx={{color:c,bgcolor:`${c}12`,borderRadius:'7px',width:32,height:32}}>
+                                <IconButton onClick={() => openUploadDialog('jd', designationName)} sx={{color:c,bgcolor:`${c}12`,borderRadius:'7px',width:32,height:32}}>
                                   <EditIcon sx={{fontSize:15}}/>
                                 </IconButton>
                               </Tooltip>
@@ -557,9 +576,9 @@ function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;desi
                           </Stack>
                         ):(
                           <Stack direction="row" spacing={1} alignItems="center">
-                            <Typography fontSize="0.78rem" color="#9CA3AF" fontStyle="italic" flex={1}>No JD linked in designation record.</Typography>
+                            <Typography fontSize="0.78rem" color="#9CA3AF" fontStyle="italic" flex={1}>No JD uploaded yet.</Typography>
                             {isHR && (
-                              <Button size="small" startIcon={<EditIcon sx={{fontSize:14}}/>} onClick={() => openUploadDialog('jd', r.Designation)}
+                              <Button size="small" startIcon={<EditIcon sx={{fontSize:14}}/>} onClick={() => openUploadDialog('jd', designationName)}
                                 sx={{textTransform:'none',fontWeight:600,fontSize:'0.78rem',color:c,bgcolor:`${c}10`,border:`1px solid ${c}30`,borderRadius:'6px',px:1.5,py:0.5}}>
                                 Upload JD
                               </Button>
@@ -574,19 +593,18 @@ function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;desi
                           <Typography fontSize="0.82rem" fontWeight={700} color="#1F2937">Role Document</Typography>
                           <CopyBadge text={roleSys}/>
                         </Box>
-                        {(uploadedRole || hasRole)?(
+                        {uploadedRole?(
                           <Stack direction="row" spacing={1}>
                             <Button 
-                            href={uploadedRole || r.role_document_link || '#'} 
+                            href={uploadedRole} 
                             target="_blank" 
                             startIcon={<OpenInNewIcon sx={{fontSize:14}}/>}
-                            disabled={!uploadedRole && !r.role_document_link}
                             sx={{textTransform:'none',fontWeight:700,fontSize:'0.82rem',color:c,bgcolor:`${c}12`,border:`1px solid ${c}30`,borderRadius:'8px',px:2,py:0.7,'&:hover':{bgcolor:`${c}20`}}}
                           >Open</Button>
-                            <Tooltip title="Download"><IconButton component="a" href={uploadedRole || r.role_document_link} download={roleSys} sx={{color:'#6B7280',bgcolor:'#F3F4F6',borderRadius:'7px',width:32,height:32}}><DownloadIcon sx={{fontSize:15}}/></IconButton></Tooltip>
+                            <Tooltip title="Download"><IconButton component="a" href={uploadedRole} download={roleSys} sx={{color:'#6B7280',bgcolor:'#F3F4F6',borderRadius:'7px',width:32,height:32}}><DownloadIcon sx={{fontSize:15}}/></IconButton></Tooltip>
                             {isHR && (
                               <Tooltip title="Upload New Role Doc">
-                                <IconButton onClick={() => openUploadDialog('role_doc', r.Designation)} sx={{color:'#6B7280',bgcolor:'#F3F4F6',borderRadius:'7px',width:32,height:32}}>
+                                <IconButton onClick={() => openUploadDialog('role_doc', designationName)} sx={{color:'#6B7280',bgcolor:'#F3F4F6',borderRadius:'7px',width:32,height:32}}>
                                   <EditIcon sx={{fontSize:15}}/>
                                 </IconButton>
                               </Tooltip>
@@ -594,9 +612,9 @@ function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;desi
                           </Stack>
                         ):(
                           <Stack direction="row" spacing={1} alignItems="center">
-                            <Typography fontSize="0.78rem" color="#9CA3AF" fontStyle="italic" flex={1}>No role document linked in designation record.</Typography>
+                            <Typography fontSize="0.78rem" color="#9CA3AF" fontStyle="italic" flex={1}>No role document uploaded yet.</Typography>
                             {isHR && (
-                              <Button size="small" startIcon={<EditIcon sx={{fontSize:14}}/>} onClick={() => openUploadDialog('role_doc', r.Designation)}
+                              <Button size="small" startIcon={<EditIcon sx={{fontSize:14}}/>} onClick={() => openUploadDialog('role_doc', designationName)}
                                 sx={{textTransform:'none',fontWeight:600,fontSize:'0.78rem',color:'#6B7280',bgcolor:'#F3F4F6',border:'1px solid #D1D5DB',borderRadius:'6px',px:1.5,py:0.5}}>
                                 Upload Role Doc
                               </Button>
@@ -718,7 +736,7 @@ function JDRoleDocs({dept,c,designations,dd,onUpdate}:{dept:string;c:string;desi
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Section 3 — Notes (no changes needed for Role Master schema)
+// Section 3 — Notes (no changes needed)
 // ══════════════════════════════════════════════════════════════════════════════
 function DeptNotes({dept,c,dd,onUpdate}:{dept:string;c:string;dd:DeptData|undefined;onUpdate:(n:string,d:Partial<DeptData>)=>void}) {
   const [expanded,setExpanded] = useState<string|null>(null);
@@ -930,7 +948,7 @@ function DeptNotes({dept,c,dd,onUpdate}:{dept:string;c:string;dd:DeptData|undefi
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Section 4 — Tests (no changes needed for Role Master schema)
+// Section 4 — Tests (no changes needed)
 // ══════════════════════════════════════════════════════════════════════════════
 function DeptTests({dept,c,dd,onUpdate}:{dept:string;c:string;dd:DeptData|undefined;onUpdate:(n:string,d:Partial<DeptData>)=>void}) {
   const recSys=`${slugify(dept)}_recruitment_test`;
@@ -961,7 +979,7 @@ function DeptTests({dept,c,dd,onUpdate}:{dept:string;c:string;dd:DeptData|undefi
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Department picker (no changes needed for Role Master schema)
+// Department picker
 // ══════════════════════════════════════════════════════════════════════════════
 function DeptPicker({departments,value,onChange}:{departments:string[];value:string;onChange:(d:string)=>void}) {
   const [open,setOpen]=useState(false);
@@ -996,10 +1014,15 @@ function DeptPicker({departments,value,onChange}:{departments:string[];value:str
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Page root (Updated to use lowercase field names from Role Master schema)
+// Page root — department list now comes from Onboarding's employee-master
+// endpoint (the same source EmployeesPage and the rest of this app already
+// trust), rather than RoleMaster. Any existing DeptOrientation content
+// (PPTs/notes/tests) is merged in for departments that actually exist in
+// Onboarding; content for a department no longer in Onboarding just won't
+// show, since Onboarding is the filter now, not RoleMaster.
 // ══════════════════════════════════════════════════════════════════════════════
 export default function DeptOrientationPage() {
-  const [designations,setDesignations] = useState<Designation[]>([]);
+  const [deptDesignations,setDeptDesignations] = useState<Record<string,string[]>>({});
   const [deptDataMap,setDeptDataMap]   = useState<Record<string,DeptData>>({});
   const [departments,setDepartments]   = useState<string[]>([]);
   const [activeDept,setActiveDept]     = useState('');
@@ -1009,30 +1032,84 @@ export default function DeptOrientationPage() {
   const fetchData = useCallback(async()=>{
     setLoading(true);
     try{
-      const [desRes,deptRes] = await Promise.all([
-        apiGet<Designation[]>('/roles'),
+      const [onbResult, deptResult] = await Promise.allSettled([
+        apiGet<OnboardingEmployee[] | { employees: OnboardingEmployee[] }>('/onboarding/employee-master'),
         apiGet<DeptData[]>('/dept-orientation'),
       ]);
-      // Build map from orientation model
-      const map:Record<string,DeptData>={};
-      if (deptRes.success&&Array.isArray(deptRes.data)){
-        deptRes.data.forEach(d=>{
-          const name=d?.name?.trim(); if(!name) return;
-          map[name]={...d,id:(d as any).id||(d as any)._id?.toString()||''};
-        });
+
+      if (onbResult.status === 'rejected')  console.error('[DeptOrientationPage] /onboarding/employee-master failed:', onbResult.reason);
+      if (deptResult.status === 'rejected') console.error('[DeptOrientationPage] /dept-orientation failed:', deptResult.reason);
+
+      const onbRes  = onbResult.status  === 'fulfilled' ? onbResult.value  : null;
+      const deptRes = deptResult.status === 'fulfilled' ? deptResult.value : null;
+
+      // ── Authoritative department AND designation lists: both derived
+      // from CURRENT employees in Onboarding — same pattern EmployeesPage
+      // already uses. displayNames keeps first-seen casing; normDeptKey
+      // is only used to dedupe. designationsByKey collects distinct
+      // designations seen per department, keyed the same way. ───────────
+      const displayNames: Record<string, string> = {};
+      const designationsByKey: Record<string, Set<string>> = {};
+      if (onbRes?.success) {
+        const rawEmployees = (onbRes.data as any)?.employees ?? onbRes.data;
+        const employees = extractArray<OnboardingEmployee>(rawEmployees, '/onboarding/employee-master');
+        console.log(`[DeptOrientationPage] /onboarding/employee-master returned ${employees.length} employee record(s)`);
+        employees
+          .filter((e) => e.is_current)
+          .forEach((e) => {
+            const display = e.department?.trim();
+            if (!display) return;
+            const key = normDeptKey(display);
+            if (!displayNames[key]) displayNames[key] = display;
+            const desig = e.designation?.trim();
+            if (desig) {
+              if (!designationsByKey[key]) designationsByKey[key] = new Set();
+              designationsByKey[key].add(desig);
+            }
+          });
+      } else if (onbRes) {
+        console.warn('[DeptOrientationPage] /onboarding/employee-master responded but success=false:', onbRes.message);
       }
-      // Seed departments that only exist in Designation model (using capital field names)
-      if (desRes.success&&Array.isArray(desRes.data)){
-        setDesignations(desRes.data);
-        desRes.data.forEach(des=>{
-          const dn=des.Department?.trim(); // Using capital 'Department' from Role Master schema
-          if (dn&&!map[dn]) map[dn]={id:'',name:dn,onboardingPPT:null,reviewPPTs:[],masterPPT:null,notes:[],recruitmentTest:null,onboardingTest:null};
+
+      const departmentKeys = Object.keys(displayNames);
+      console.log(`[DeptOrientationPage] Distinct departments from Onboarding: ${departmentKeys.length}`, Object.values(displayNames));
+
+      // ── Merge in existing DeptOrientation content, matched by
+      // normalized name, for departments Onboarding actually has. ───────
+      const orientationByKey: Record<string, DeptData> = {};
+      if (deptRes?.success) {
+        const deptArr = extractArray<DeptData>(deptRes.data, '/dept-orientation');
+        deptArr.forEach((d) => {
+          const display = d?.name?.trim();
+          if (!display) return;
+          orientationByKey[normDeptKey(display)] = { ...d, id: (d as any).id || (d as any)._id?.toString() || '' };
         });
+      } else if (deptRes) {
+        console.warn('[DeptOrientationPage] /dept-orientation responded but success=false:', deptRes.message);
       }
-      const sorted=Object.keys(map).sort();
-      setDeptDataMap(map); setDepartments(sorted);
+
+      const finalMap: Record<string, DeptData> = {};
+      const finalDesignations: Record<string, string[]> = {};
+      departmentKeys.forEach((key) => {
+        const display = displayNames[key];
+        finalMap[display] = orientationByKey[key] || {
+          id: '', name: display, onboardingPPT: null, reviewPPTs: [], masterPPT: null, notes: [], recruitmentTest: null, onboardingTest: null,
+        };
+        finalDesignations[display] = Array.from(designationsByKey[key] || []).sort();
+      });
+
+      const sorted = Object.values(displayNames).sort();
+      setDeptDataMap(finalMap);
+      setDepartments(sorted);
+      setDeptDesignations(finalDesignations);
+
+      if (onbResult.status === 'rejected') {
+        setToast({ open: true, msg: 'Failed to load departments from Onboarding', type: 'error' });
+      } else if (deptResult.status === 'rejected') {
+        setToast({ open: true, msg: 'Existing orientation content failed to load — department list from Onboarding still shown', type: 'error' });
+      }
     } catch(err){
-      console.error(err);
+      console.error('[DeptOrientationPage] Unexpected error in fetchData:', err);
       setToast({open:true,msg:'Failed to load data',type:'error'});
     } finally { setLoading(false); }
   },[]);
@@ -1091,7 +1168,7 @@ export default function DeptOrientationPage() {
                   <DeptPresentations dept={activeDept} dd={dd} c={c} onUpdate={updateDeptData}/>
                 </SectionCard>
                 <SectionCard num={2} label="JD & Role Documents" icon={<WorkIcon sx={{fontSize:21}}/>}>
-                  <JDRoleDocs dept={activeDept} c={c} designations={designations} dd={dd} onUpdate={updateDeptData}/>
+                  <JDRoleDocs dept={activeDept} c={c} designationNames={deptDesignations[activeDept] || []} dd={dd} onUpdate={updateDeptData}/>
                 </SectionCard>
                 <SectionCard num={3} label="Department Notes"  icon={<NotesIcon sx={{fontSize:21}}/>}>
                   <DeptNotes dept={activeDept} c={c} dd={dd} onUpdate={updateDeptData}/>

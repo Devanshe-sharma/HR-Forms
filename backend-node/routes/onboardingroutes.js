@@ -1602,8 +1602,10 @@ router.put("/:id", async (req, res) => {
       { new: true, runValidators: true }
     );
 
-    triggerUpdateOnboarding(updated).catch(console.error);
-    res.json({ success: true, data: updated });
+    if (process.env.SEND_UPDATE_ONBOARDING_EMAILS !== 'false') {
+  triggerUpdateOnboarding(updated).catch(console.error);
+}
+res.json({ success: true, data: updated });
 
   } catch (err) {
     console.error(err);

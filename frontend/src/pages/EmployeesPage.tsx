@@ -692,4 +692,4 @@ const EmployeesPage: React.FC = () => {
     </div>
   );
 };
-export default EmployeesPage;
+export default EmployeesPage
