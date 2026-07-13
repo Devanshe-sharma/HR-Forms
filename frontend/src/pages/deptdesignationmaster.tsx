@@ -11,9 +11,10 @@ import {
 } from '@mui/material';
 import {
   Add as AddIcon, Search as SearchIcon, Close as CloseIcon,
-  Edit as EditIcon, Refresh as RefreshIcon,
+  Edit as EditIcon, Refresh as RefreshIcon, Visibility as ViewIcon,
   Business as BusinessIcon, WorkOutline as WorkIcon,
   Groups as GroupsIcon, Category as CategoryIcon,
+  OpenInNew as OpenInNewIcon,
 } from '@mui/icons-material';
 import Navbar from '../components/Navbar';
 import Sidebar from '../components/Sidebar';
@@ -78,6 +79,37 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
   );
 }
 
+// ─── View-mode field (label above, value below, read-only) ────────────────────
+
+function ViewField({ label, value, link }: { label: string; value?: string | number; link?: boolean }) {
+  const display = value === '' || value === undefined || value === null ? '—' : value;
+  return (
+    <Box>
+      <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        {label}
+      </Typography>
+      {link && display !== '—' ? (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Typography
+            component="a"
+            href={String(display)}
+            target="_blank"
+            rel="noreferrer"
+            sx={{ fontSize: '0.85rem', color: BRAND_BLUE, wordBreak: 'break-all', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+          >
+            {display}
+          </Typography>
+          <OpenInNewIcon sx={{ fontSize: 12, color: BRAND_BLUE, flexShrink: 0 }} />
+        </Box>
+      ) : (
+        <Typography sx={{ fontSize: '0.85rem', color: display === '—' ? 'text.disabled' : 'text.primary', wordBreak: 'break-word' }}>
+          {display}
+        </Typography>
+      )}
+    </Box>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function DeptDesignationMaster() {
@@ -96,11 +128,20 @@ export default function DeptDesignationMaster() {
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof RoleMasterRow, string>>>({});
 
+  // View-only modal — separate from the Add/Edit dialog above.
+  const [viewOpen, setViewOpen] = useState(false);
+  const [viewRow,  setViewRow]  = useState<RoleMasterRow | null>(null);
+
   const [toast, setToast] = useState<{ open: boolean; msg: string; severity: 'success' | 'error' }>({
     open: false, msg: '', severity: 'success',
   });
 
   // ─── Fetch ────────────────────────────────────────────────────────────────────
+  // NOTE: confirmed via grep on index.js that this router is actually
+  // mounted at app.use("/api/rolemaster", require("./routes/roles")) — so
+  // this path was correct all along. The "no data" issue is NOT a path
+  // mismatch; it must be inside routes/roles.js itself (query shape,
+  // field-name mismatch, or similar) — not yet diagnosed.
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -177,6 +218,7 @@ export default function DeptDesignationMaster() {
 
   const openAdd  = () => { setForm(EMPTY_FORM); setEditId(null); setErrors({}); setOpen(true); };
   const openEdit = (row: RoleMasterRow) => { setForm({ ...row }); setEditId(row._id || null); setErrors({}); setOpen(true); };
+  const openView = (row: RoleMasterRow) => { setViewRow(row); setViewOpen(true); };
 
   const handleField = (field: keyof RoleMasterRow, value: string | number) => {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -334,7 +376,7 @@ export default function DeptDesignationMaster() {
                       {col.label}
                     </TableCell>
                   ))}
-                  <TableCell sx={{ bgcolor: '#f5f5f5', fontWeight: 600, fontSize: '0.73rem', width: 56 }}>
+                  <TableCell sx={{ bgcolor: '#f5f5f5', fontWeight: 600, fontSize: '0.73rem', width: 80 }}>
                     Actions
                   </TableCell>
                 </TableRow>
@@ -355,7 +397,8 @@ export default function DeptDesignationMaster() {
                     </TableCell>
                   </TableRow>
                 ) : pageRows.map((row, i) => (
-                  <TableRow key={row._id || i} hover sx={{ '&:last-child td': { border: 0 } }}>
+                  <TableRow key={row._id || i} hover sx={{ '&:last-child td': { border: 0 }, cursor: 'pointer' }}
+                    onClick={() => openView(row)}>
                     <TableCell sx={{ color: 'text.disabled', fontSize: '0.73rem' }}>
                       {(page - 1) * PAGE_SIZE + i + 1}
                     </TableCell>
@@ -411,7 +454,12 @@ export default function DeptDesignationMaster() {
                       );
                     })}
 
-                    <TableCell>
+                    <TableCell onClick={e => e.stopPropagation()}>
+                      <Tooltip title="View">
+                        <IconButton size="small" onClick={() => openView(row)}>
+                          <ViewIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title="Edit">
                         <IconButton size="small" onClick={() => openEdit(row)}>
                           <EditIcon sx={{ fontSize: 16 }} />
@@ -434,6 +482,95 @@ export default function DeptDesignationMaster() {
             <Pagination count={pageCount} page={page} onChange={(_, v) => setPage(v)} size="small" color="primary" />
           </Box>
         </Paper>
+
+        {/* ── View Dialog (read-only) ───────────────────────────────────────── */}
+        <Dialog open={viewOpen} onClose={() => setViewOpen(false)} maxWidth="md" fullWidth
+          PaperProps={{ sx: { borderRadius: 3 } }}>
+
+          <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>
+            <Box>
+              <Typography variant="h6" fontWeight={700}>{viewRow?.designation || 'Entry details'}</Typography>
+              <Typography variant="body2" color="text.secondary">{viewRow?.department}</Typography>
+            </Box>
+            <IconButton onClick={() => setViewOpen(false)} size="small"><CloseIcon /></IconButton>
+          </DialogTitle>
+
+          <Divider />
+
+          {viewRow && (
+            <DialogContent sx={{ pt: 2.5 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+
+                <Typography variant="overline" color="text.secondary" fontWeight={600}
+                  sx={{ fontSize: '0.7rem', letterSpacing: 1 }}>Department info</Typography>
+
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1.5fr', gap: 2 }}>
+                  <ViewField label="Dept ID" value={viewRow.dept_id} />
+                  <ViewField label="Department" value={viewRow.department} />
+                  <ViewField label="Type" value={viewRow.department_type} />
+                </Box>
+
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2 }}>
+                  <ViewField label="Parent department" value={viewRow.parent_department} />
+                  <ViewField label="Department head" value={viewRow.department_head} />
+                  <ViewField label="Department deputy" value={viewRow.department_deputy} />
+                </Box>
+
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                  <ViewField label="Dept head email" value={viewRow.dept_head_email} />
+                  <ViewField label="Group email" value={viewRow.dept_group_email} />
+                </Box>
+
+                <Divider />
+
+                <Typography variant="overline" color="text.secondary" fontWeight={600}
+                  sx={{ fontSize: '0.7rem', letterSpacing: 1 }}>Designation info</Typography>
+
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1.5fr', gap: 2 }}>
+                  <ViewField label="Desig ID" value={viewRow.desig_id} />
+                  <ViewField label="Designation" value={viewRow.designation} />
+                  <ViewField label="Management level" value={viewRow.management_level} />
+                </Box>
+
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2 }}>
+                  <ViewField label="Reporting manager" value={viewRow.reporting_manager} />
+                  <ViewField label="Designation email" value={viewRow.desig_email_id} />
+                  <ViewField label="Employee ID" value={viewRow.emp_id} />
+                </Box>
+
+                <ViewField label="Employee name" value={viewRow.emp_name} />
+
+                <Divider />
+
+                <Typography variant="overline" color="text.secondary" fontWeight={600}
+                  sx={{ fontSize: '0.7rem', letterSpacing: 1 }}>Links &amp; misc</Typography>
+
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2 }}>
+                  <ViewField label="Dept page link" value={viewRow.dept_page_link} link />
+                  <ViewField label="Role document link" value={viewRow.role_document_link} link />
+                  <ViewField label="JD link" value={viewRow.jd_link} link />
+                </Box>
+
+                <ViewField label="Remarks" value={viewRow.remarks} />
+
+              </Box>
+            </DialogContent>
+          )}
+
+          <Divider />
+
+          <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
+            <Button onClick={() => setViewOpen(false)} variant="outlined" sx={{ borderRadius: 2, textTransform: 'none' }}>
+              Close
+            </Button>
+            <Button
+              onClick={() => { if (viewRow) { setViewOpen(false); openEdit(viewRow); } }}
+              variant="contained" startIcon={<EditIcon />}
+              sx={{ bgcolor: BRAND_BLUE, borderRadius: 2, textTransform: 'none', fontWeight: 600 }}>
+              Edit
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         {/* ── Add / Edit Dialog ──────────────────────────────────────────────── */}
         <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth
