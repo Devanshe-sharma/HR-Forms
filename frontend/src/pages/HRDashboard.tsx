@@ -3,12 +3,22 @@ import axios from "axios";
 import toast from "react-hot-toast";
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
-import HRKpiScorecard from "../components/HRKpiScorecard";
-import { Box, Typography, CircularProgress, Tooltip as MuiTooltip } from "@mui/material";
+import HRKpiScorecard, { ModuleKpiRow, MODULES } from "../components/HRKpiScorecard";
+import {
+  Box, Typography, CircularProgress, Tooltip as MuiTooltip,
+  Dialog, DialogContent, IconButton,
+} from "@mui/material";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, PieChart, Pie, Cell, LabelList,
 } from "recharts";
+import CloseIcon from "@mui/icons-material/Close";
+import BalanceIcon from "@mui/icons-material/BalanceOutlined";
+import WcIcon from "@mui/icons-material/WcOutlined";
+import SchoolIcon from "@mui/icons-material/SchoolOutlined";
+import WorkIcon from "@mui/icons-material/WorkOutline";
+import HowToRegIcon from "@mui/icons-material/HowToRegOutlined";
+import ExitToAppIcon from "@mui/icons-material/ExitToAppOutlined";
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
@@ -96,6 +106,19 @@ interface InternsResponse {
   departmentBreakdown: InternDeptRow[];
 }
 
+// Minimal shape needed just for the KPI summary cards — the full
+// QuarterRow/QuarterResponse types live in HRKpiScorecard.tsx itself.
+interface KpiQuarterRow {
+  quarter: string;
+  onTime: number;
+  delayed: number;
+  overdue: number;
+  pending: number;
+}
+interface KpiQuarterResponse {
+  quarters: KpiQuarterRow[];
+}
+
 // ─── Small building blocks ─────────────────────────────────────────────────
 
 const FilterPillRow: React.FC<{
@@ -176,7 +199,7 @@ const renderPieLabel = (props: any) => {
   );
 };
 
-// ─── Teeth-to-Tail widget ───────────────────────────────────────────────────
+// ─── Teeth-to-Tail widget (unchanged — now shown inside a modal) ───────────
 
 const TeethToTailWidget: React.FC = () => {
   const [data, setData] = useState<TeethToTailResponse | null>(null);
@@ -418,7 +441,7 @@ const TeethToTailWidget: React.FC = () => {
   );
 };
 
-// ─── Gender Distribution widget ─────────────────────────────────────────────
+// ─── Gender Distribution widget (unchanged — now shown inside a modal) ────
 
 const GenderDistributionWidget: React.FC = () => {
   const [data, setData] = useState<GenderResponse | null>(null);
@@ -608,11 +631,7 @@ const GenderDistributionWidget: React.FC = () => {
   );
 };
 
-// ─── Interns widget ─────────────────────────────────────────────────────────
-// What share of the current workforce are interns — current-only snapshot
-// (no quarter/year filter, since employeeCategory isn't historicized the
-// way exit dates are — it's just today's state, same reasoning as Gender's
-// "By Department" panel being current-only).
+// ─── Interns widget (unchanged — now shown inside a modal) ────────────────
 
 const InternsWidget: React.FC = () => {
   const [data, setData] = useState<InternsResponse | null>(null);
@@ -749,35 +768,238 @@ const InternsWidget: React.FC = () => {
   );
 };
 
+// ─── Landing summary card ────────────────────────────────────────────────────
+// Fetches just enough to show one headline number — independent of whatever
+// full widget opens when clicked, so the widgets above stay completely
+// untouched and this card's own tiny fetch has nothing to do with the
+// filters/state inside them.
+
+interface CardSummary { value: string; sublabel: string; }
+
+const SummaryCard: React.FC<{
+  title: string;
+  icon: React.ReactNode;
+  color: string;
+  bg: string;
+  fetchSummary: () => Promise<CardSummary>;
+  onClick: () => void;
+}> = ({ title, icon, color, bg, fetchSummary, onClick }) => {
+  const [summary, setSummary] = useState<CardSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetchSummary()
+      .then((s) => { if (!cancelled) setSummary(s); })
+      .catch(() => { if (!cancelled) setSummary({ value: "—", sublabel: "Failed to load" }); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <Box
+      onClick={onClick}
+      sx={{
+        bgcolor: "#fff", border: "1px solid #e2e8f0", borderRadius: "16px",
+        p: 2.5, cursor: "pointer", display: "flex", flexDirection: "column",
+        justifyContent: "space-between", height: "100%", minHeight: 0,
+        boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+        transition: "transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease",
+        "&:hover": { transform: "translateY(-3px)", boxShadow: "0 10px 28px rgba(0,0,0,0.09)", borderColor: color },
+      }}
+    >
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1.5 }}>
+        <Box sx={{
+          width: 38, height: 38, borderRadius: "10px", bgcolor: bg,
+          display: "flex", alignItems: "center", justifyContent: "center", color, flexShrink: 0,
+        }}>
+          {icon}
+        </Box>
+        <Typography fontSize="0.9rem" fontWeight={700} color="#0f172a" sx={{ lineHeight: 1.2 }}>
+          {title}
+        </Typography>
+      </Box>
+
+      {loading ? (
+        <Box sx={{ display: "flex", alignItems: "center", flex: 1 }}>
+          <CircularProgress size={22} sx={{ color }} />
+        </Box>
+      ) : (
+        <Box sx={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+          <Typography fontSize="clamp(1.5rem, 3vw, 2.2rem)" fontWeight={800} sx={{ color, lineHeight: 1.1 }}>
+            {summary?.value}
+          </Typography>
+          <Typography fontSize="0.72rem" color="#94a3b8" mt={0.5} sx={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+            {summary?.sublabel}
+          </Typography>
+        </Box>
+      )}
+
+      <Typography fontSize="0.65rem" color="#cbd5e1" mt={1.5}>
+        Click for full breakdown →
+      </Typography>
+    </Box>
+  );
+};
+
+// ─── Summary fetchers — each mirrors the "All Quarters, most recent" logic
+// already used inside the corresponding full widget, just extracting one
+// headline number instead of the whole dataset. ─────────────────────────────
+
+async function fetchTeethToTailSummary(): Promise<CardSummary> {
+  const now = new Date();
+  const res = await axios.get(`${API}/onboarding/analytics/teeth-to-tail`, {
+    params: { year: now.getFullYear(), _t: Date.now() },
+  });
+  const quarters: QuarterData[] = res.data?.quarters ?? [];
+  const started = quarters.filter((q) => {
+    const qNum = parseInt(q.quarter.replace("Q", ""), 10);
+    return new Date(now.getFullYear(), (qNum - 1) * 3, 1) <= now;
+  });
+  const latest = started[started.length - 1];
+  if (!latest || latest.teeth + latest.tail === 0) {
+    return { value: "—", sublabel: "No categorized data yet" };
+  }
+  const total = latest.teeth + latest.tail;
+  const teethPct = Math.round((latest.teeth / total) * 1000) / 10;
+  const tailPct = Math.round((latest.tail / total) * 1000) / 10;
+  return {
+    value: `${teethPct.toFixed(1)} : ${tailPct.toFixed(1)}`,
+    sublabel: `Teeth : Tail — ${latest.quarter} ${now.getFullYear()}`,
+  };
+}
+
+async function fetchGenderSummary(): Promise<CardSummary> {
+  const now = new Date();
+  const res = await axios.get(`${API}/onboarding/analytics/gender`, {
+    params: { year: now.getFullYear(), _t: Date.now() },
+  });
+  const total: number = res.data?.total ?? 0;
+  const overall: GenderOverall[] = res.data?.overall ?? [];
+  const female = overall.find((g) => g.gender === "Female")?.count ?? 0;
+  if (total === 0) return { value: "—", sublabel: "No current employees" };
+  const pct = Math.round((female / total) * 1000) / 10;
+  return { value: `${pct}%`, sublabel: `${female} of ${total} current employees are Female` };
+}
+
+async function fetchInternsSummary(): Promise<CardSummary> {
+  const res = await axios.get(`${API}/onboarding/analytics/interns`, { params: { _t: Date.now() } });
+  const total = res.data?.total ?? 0;
+  const internsCount = res.data?.internsCount ?? 0;
+  const internPct = res.data?.internPct ?? 0;
+  if (total === 0) return { value: "—", sublabel: "No current employees" };
+  return { value: `${internPct}%`, sublabel: `${internsCount} of ${total} current employees` };
+}
+
+async function fetchKpiSummary(moduleKey: string): Promise<CardSummary> {
+  const now = new Date();
+  const res = await axios.get(`${API}/kpi/scores-by-quarter`, {
+    params: { module: moduleKey, year: now.getFullYear(), _t: Date.now() },
+  });
+  const data: KpiQuarterResponse = res.data;
+  const quarters = data?.quarters ?? [];
+  const onTime = quarters.reduce((s, q) => s + q.onTime, 0);
+  const delayed = quarters.reduce((s, q) => s + q.delayed, 0);
+  const completed = onTime + delayed;
+  if (completed === 0) return { value: "—", sublabel: "No completed tasks yet" };
+  const pct = Math.round((onTime / completed) * 1000) / 10;
+  return { value: `${pct}%`, sublabel: `${onTime} of ${completed} tasks on time this year` };
+}
+
 // ─── Root page ──────────────────────────────────────────────────────────────
+// Default view is a fixed 3x2 grid of equal-size summary cards — no
+// scrolling. Clicking a card opens that area's full existing widget
+// (unchanged from before) inside a modal.
+
+type CardKey = "teeth" | "gender" | "interns" | "recruitment" | "onboarding" | "exit";
 
 const HRAnalyticsDashboard: React.FC = () => {
+  const [activeCard, setActiveCard] = useState<CardKey | null>(null);
+
+  const cards: {
+    key: CardKey;
+    title: string;
+    icon: React.ReactNode;
+    color: string;
+    bg: string;
+    fetchSummary: () => Promise<CardSummary>;
+  }[] = [
+    { key: "teeth", title: "Teeth-to-Tail Ratio", icon: <BalanceIcon />, color: ACCENT, bg: "#eef2ff", fetchSummary: fetchTeethToTailSummary },
+    { key: "gender", title: "Gender Distribution", icon: <WcIcon />, color: "#db2777", bg: "#fdf2f8", fetchSummary: fetchGenderSummary },
+    { key: "interns", title: "Interns", icon: <SchoolIcon />, color: INTERN_COLOR, bg: "#f5f3ff", fetchSummary: fetchInternsSummary },
+    { key: "recruitment", title: "Recruitment On-Time %", icon: <WorkIcon />, color: "#0284c7", bg: "#eff6ff", fetchSummary: () => fetchKpiSummary("recruitment") },
+    { key: "onboarding", title: "Onboarding On-Time %", icon: <HowToRegIcon />, color: "#059669", bg: "#f0fdf4", fetchSummary: () => fetchKpiSummary("onboarding") },
+    { key: "exit", title: "Exit On-Time %", icon: <ExitToAppIcon />, color: "#d97706", bg: "#fffbeb", fetchSummary: () => fetchKpiSummary("exit") },
+  ];
+
+  const activeModuleLabel = MODULES.find((m) => m.key === activeCard)?.label;
+
   return (
-    <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "#f8fafc" }}>
+    <Box sx={{ display: "flex", height: "100vh", bgcolor: "#f8fafc", overflow: "hidden" }}>
       <Sidebar />
-      <Box sx={{ flexGrow: 1, overflow: "hidden" }}>
+      <Box sx={{ flexGrow: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <Navbar />
-        <Box sx={{ p: 2.5, pt: "76px" }}>
-          <Box sx={{ mb: 2.5 }}>
+        <Box sx={{ p: 2.5, pt: "76px", flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minHeight: 0 }}>
+          <Box sx={{ mb: 2, flexShrink: 0 }}>
             <Typography variant="h5" fontWeight={700} color="#0f172a" lineHeight={1.2}>
               HR Analytics Dashboard
             </Typography>
             <Typography variant="caption" color="#94a3b8">
-              Workforce composition and structural metrics
+              Workforce composition and structural metrics — click any card for the full breakdown
             </Typography>
           </Box>
 
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 3, maxWidth: 1300 }}>
-           
-            <TeethToTailWidget />
-            <GenderDistributionWidget />
-            <InternsWidget />
-             <HRKpiScorecard />
-            {/* More metric widgets can be added here as separate cards,
-                following the same pattern as the widgets above. */}
+          {/* Fixed 3x2 grid — fills remaining height, no scroll */}
+          <Box sx={{
+            flex: 1, minHeight: 0,
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", md: "repeat(3, 1fr)" },
+            gridTemplateRows: { xs: "repeat(6, minmax(140px, 1fr))", sm: "repeat(3, minmax(140px, 1fr))", md: "repeat(2, 1fr)" },
+            gap: 2,
+            overflow: { xs: "auto", md: "hidden" },
+          }}>
+            {cards.map((c) => (
+              <SummaryCard
+                key={c.key}
+                title={c.title}
+                icon={c.icon}
+                color={c.color}
+                bg={c.bg}
+                fetchSummary={c.fetchSummary}
+                onClick={() => setActiveCard(c.key)}
+              />
+            ))}
           </Box>
         </Box>
       </Box>
+
+      {/* Detail modal — renders the SAME full widget component that used
+          to sit inline in the old scrolling layout, completely unchanged. */}
+      <Dialog
+        open={!!activeCard}
+        onClose={() => setActiveCard(null)}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: "16px", maxHeight: "88vh" } }}
+      >
+        <DialogContent sx={{ p: 3, position: "relative", bgcolor: "#f8fafc" }}>
+          <IconButton
+            onClick={() => setActiveCard(null)}
+            sx={{ position: "absolute", top: 12, right: 12, zIndex: 10, bgcolor: "#fff", border: "1px solid #e2e8f0", "&:hover": { bgcolor: "#f1f5f9" } }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+
+          {activeCard === "teeth" && <TeethToTailWidget />}
+          {activeCard === "gender" && <GenderDistributionWidget />}
+          {activeCard === "interns" && <InternsWidget />}
+          {(activeCard === "recruitment" || activeCard === "onboarding" || activeCard === "exit") && activeModuleLabel && (
+            <ModuleKpiRow moduleKey={activeCard} label={activeModuleLabel} />
+          )}
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };

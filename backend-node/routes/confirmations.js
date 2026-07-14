@@ -584,4 +584,22 @@ router.put('/:id/management', async (req, res) => {
   }
 });
 
+router.post('/backfill-onboarding-status', async (req, res) => {
+  try {
+    const records = await Confirmations.find();
+    let synced = 0;
+ 
+    for (const record of records) {
+      await syncConfirmationStatusToOnboarding(record);
+      synced++;
+    }
+ 
+    res.json({ success: true, message: `Synced confirmationStatus onto Onboarding for ${synced} record(s)` });
+  } catch (e) {
+    console.error('[Confirmations] Backfill error:', e.message);
+    err(res, 500, 'Backfill failed: ' + e.message);
+  }
+});
+
+
 module.exports = router;

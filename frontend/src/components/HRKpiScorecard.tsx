@@ -37,7 +37,10 @@ function fiscalLabel(year: number): string {
   return `${year}-${String((year + 1) % 100).padStart(2, "0")}`;
 }
 
-const MODULES = [
+// Exported so HRAnalyticsDashboard's landing grid can fetch each module's
+// headline number independently, without duplicating the "All Quarters"
+// combine logic that already lives in ModuleKpiRow below.
+export const MODULES = [
   { key: "recruitment", label: "Recruitment" },
   { key: "onboarding", label: "Onboarding" },
   { key: "exit", label: "Exit" },
@@ -97,8 +100,11 @@ const renderPieLabel = (props: any) => {
 const nonZeroLabel = (v: any) => (typeof v === "number" && v > 0 ? v : "");
 
 // ─── One module's row (its own independent filters + charts) ──────────────
+// Exported so HRAnalyticsDashboard can render a single module's full detail
+// inside its own modal, rather than always getting all three bundled
+// together via the default HRKpiScorecard export below.
 
-const ModuleKpiRow: React.FC<{ moduleKey: string; label: string }> = ({ moduleKey, label }) => {
+export const ModuleKpiRow: React.FC<{ moduleKey: string; label: string }> = ({ moduleKey, label }) => {
   const [data, setData] = useState<QuarterResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [year, setYear] = useState<number>(new Date().getFullYear());
