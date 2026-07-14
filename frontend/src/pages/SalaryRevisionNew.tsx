@@ -4,7 +4,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, Button, TextField, Select, MenuItem, FormControl, InputLabel,
   Avatar, Stack, IconButton, Divider, Slider, Autocomplete, Switch, FormControlLabel,
-  Checkbox,
+  Checkbox, InputAdornment,
 } from '@mui/material';
 import {
   ArrowBack      as ArrowBackIcon,
@@ -181,6 +181,15 @@ const calcSalaryStructure = (annualCtc: number) => {
   const gross    = basic + hra + convey + medical + Math.max(special, 0);
   return { basic, hra, convey, medical, special:Math.max(special,0), pf, gratuity, gross, monthly, annual:annualCtc };
 };
+
+// Bidirectional %-to-amount conversion for the increment inputs — editing
+// either the percentage slider or the target CTC amount field keeps the
+// other one in sync, both derived off the same previous-CTC baseline.
+const amountFromPct = (pct: number, base: number): number =>
+  Math.round(base * (1 + pct / 100));
+
+const pctFromAmount = (amount: number, base: number): number =>
+  base > 0 ? Math.round(((amount - base) / base) * 1000) / 10 : 0;
 
 // ─── Stage helpers ────────────────────────────────────────────────────────────
 
@@ -861,6 +870,10 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
 }) {
   const [tab, setTab] = useState(0);
 
+  // Computed once up front — both the % and $ increment inputs below need
+  // this same baseline to stay in sync with each other.
+  const prevCtc = emp.annual_ctc || rec?.previousCtc || 0;
+
   const [applicableDate, setApplicableDate] = useState(rec?.applicableDate
     ? new Date(rec.applicableDate).toISOString().split('T')[0] : '');
   const [category, setCategory] = useState(rec?.category||emp.employee_category||'Employee');
@@ -876,6 +889,24 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
     rec?.managerDecision?.pipNewDueDate
       ? new Date(rec.managerDecision.pipNewDueDate).toISOString().split('T')[0] : '');
 
+  // Target CTC amount — a second, equally-editable way to express the same
+  // increment as mgrPct/mgmtPct. Editing either one recalculates the
+  // other off the same previous-CTC baseline; the percentage remains the
+  // single value actually sent to the backend (recommendedPct/finalPct),
+  // this amount field is purely a convenience alternative for entering it.
+  const [mgrAmount, setMgrAmount] = useState<number>(
+    amountFromPct(rec?.managerDecision?.recommendedPct ?? mgrPct, prevCtc)
+  );
+
+  const handleMgrPctChange = (pct: number) => {
+    setMgrPct(pct);
+    setMgrAmount(amountFromPct(pct, prevCtc));
+  };
+  const handleMgrAmountChange = (amount: number) => {
+    setMgrAmount(amount);
+    setMgrPct(pctFromAmount(amount, prevCtc));
+  };
+
   const [changeDesignation, setChangeDesignation] = useState(rec?.designationChanged ?? false);
   const [newDesignation,    setNewDesignation]    = useState(rec?.newDesignation || '');
 
@@ -885,6 +916,19 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
   const [mgmtPct,       setMgmtPct]       = useState(rec?.managementDecision?.finalPct??mgrPct);
   const [mgmtReason,    setMgmtReason]    = useState(rec?.managementDecision?.reason||'');
   const [pipApproved,   setPipApproved]   = useState(rec?.managementDecision?.pipApproved??true);
+
+  const [mgmtAmount, setMgmtAmount] = useState<number>(
+    amountFromPct(rec?.managementDecision?.finalPct ?? mgmtPct, prevCtc)
+  );
+
+  const handleMgmtPctChange = (pct: number) => {
+    setMgmtPct(pct);
+    setMgmtAmount(amountFromPct(pct, prevCtc));
+  };
+  const handleMgmtAmountChange = (amount: number) => {
+    setMgmtAmount(amount);
+    setMgmtPct(pctFromAmount(amount, prevCtc));
+  };
 
   const [hrNotes,       setHrNotes]       = useState(rec?.hrDecision?.notes||'');
   const [hrAppDate,     setHrAppDate]     = useState(
@@ -908,7 +952,6 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
   const isCompleted = stage==='completed';
   const isOnHold    = stage==='on_hold';
 
-  const prevCtc     = emp.annual_ctc || rec?.previousCtc || 0;
   const newCtc      = mgrDecision==='increment'
     ? Math.round(prevCtc*(1+(isHr||isCompleted?(rec?.managementDecision?.finalPct??mgmtPct):isMgmt?mgmtPct:mgrPct)/100))
     : prevCtc;
@@ -1149,7 +1192,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
               <FormControl size="small" fullWidth>
                 <InputLabel>Category</InputLabel>
                 <Select value={category} label="Category" onChange={e=>setCategory(e.target.value)} disabled={!isMgr}>
-                  {['Employee','Consultant','Intern','Temporary Staff','Contract Based'].map(c=>(
+                  {['Employee','Consultant','Intern','Contract Based','Part Time','Temporary Staffing'].map(c=>(
                     <MenuItem key={c} value={c}>{c}</MenuItem>
                   ))}
                 </Select>
@@ -1197,13 +1240,26 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                     Manager Recommendation: <strong style={{ color:'#059669' }}>{isMgr?mgrPct:(rec?.managerDecision?.recommendedPct??mgrPct)}%</strong>
                   </Typography>
                   {isMgr?(
-                    <Slider value={mgrPct} onChange={(_,v)=>setMgrPct(v as number)}
-                      min={0} max={50} step={0.5} valueLabelDisplay="auto"
-                      valueLabelFormat={v=>`${v}%`} sx={{ color:'#059669', maxWidth:340 }}/>
+                    <>
+                      <Slider value={mgrPct} onChange={(_,v)=>handleMgrPctChange(v as number)}
+                        min={0} max={50} step={0.5} valueLabelDisplay="auto"
+                        valueLabelFormat={v=>`${v}%`} sx={{ color:'#059669', maxWidth:340 }}/>
+                      <TextField
+                        size="small" label="Or enter New CTC Amount" type="number"
+                        value={mgrAmount}
+                        onChange={e=>handleMgrAmountChange(Number(e.target.value)||0)}
+                        sx={{ mt: 1.5, maxWidth: 220 }}
+                        InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
+                      />
+                      <Typography fontSize={11} color="text.secondary" mt={0.5}>
+                        From {fmtCurrency(prevCtc)} to {fmtCurrency(mgrAmount)}
+                      </Typography>
+                    </>
                   ):(
                     <Box sx={{ p:1.5, bgcolor:'#f8fafc', borderRadius:1.5, border:'1px solid #e2e8f0' }}>
                       <Typography fontSize={12} color="#059669" fontWeight={600}>
                         {rec?.managerDecision?.recommendedPct??mgrPct}% increment recommended
+                        {' '}({fmtCurrency(amountFromPct(rec?.managerDecision?.recommendedPct??mgrPct, prevCtc))})
                       </Typography>
                       <Typography fontSize={11} color="text.secondary" mt={0.5}>{rec?.managerDecision?.reason}</Typography>
                     </Box>
@@ -1259,13 +1315,26 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                       )}
                     </Typography>
                     {isMgmt?(
-                      <Slider value={mgmtPct} onChange={(_,v)=>setMgmtPct(v as number)}
-                        min={0} max={50} step={0.5} valueLabelDisplay="auto"
-                        valueLabelFormat={v=>`${v}%`} sx={{ color:ACCENT, maxWidth:340 }}/>
+                      <>
+                        <Slider value={mgmtPct} onChange={(_,v)=>handleMgmtPctChange(v as number)}
+                          min={0} max={50} step={0.5} valueLabelDisplay="auto"
+                          valueLabelFormat={v=>`${v}%`} sx={{ color:ACCENT, maxWidth:340 }}/>
+                        <TextField
+                          size="small" label="Or enter New CTC Amount" type="number"
+                          value={mgmtAmount}
+                          onChange={e=>handleMgmtAmountChange(Number(e.target.value)||0)}
+                          sx={{ mt: 1.5, maxWidth: 220 }}
+                          InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
+                        />
+                        <Typography fontSize={11} color="text.secondary" mt={0.5}>
+                          From {fmtCurrency(prevCtc)} to {fmtCurrency(mgmtAmount)}
+                        </Typography>
+                      </>
                     ):(
                       <Box sx={{ p:1.5, bgcolor:'#f8fafc', borderRadius:1.5, border:'1px solid #e2e8f0' }}>
                         <Typography fontSize={12} color={ACCENT} fontWeight={600}>
                           {rec?.managementDecision?.finalPct??mgmtPct}% — final management decision
+                          {' '}({fmtCurrency(amountFromPct(rec?.managementDecision?.finalPct??mgmtPct, prevCtc))})
                         </Typography>
                       </Box>
                     )}

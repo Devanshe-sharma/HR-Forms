@@ -66,6 +66,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   Intern: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   'Temporary Staff': 'bg-sky-50 text-sky-700 border-sky-200',
   'Contract Based': 'bg-rose-50 text-rose-700 border-rose-200',
+
 };
 
 export default function EmployeeContractsPage() {

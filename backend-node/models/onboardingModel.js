@@ -102,7 +102,7 @@ const onboardingSchema = new mongoose.Schema(
     // with no employeeCategory/managementLevel set yet.
     employeeCategory: {
       type: String,
-      enum: ["", "Employee", "Consultant", "Intern"],
+      enum: ["", "Employee", "Consultant", "Intern", "Contract Based", "Part Time", "Temporary Staffing"],
       default: "",
     },
     managementLevel: {

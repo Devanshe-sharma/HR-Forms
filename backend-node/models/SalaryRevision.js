@@ -46,7 +46,7 @@ const salaryRevisionSchema = new mongoose.Schema({
 
   category: {
     type   : String,
-    enum   : ['Employee', 'Consultant', 'Intern', 'Temporary Staff', 'Contract Based'],
+    enum   : ['Employee', 'Consultant', 'Intern', 'Temporary Staff', 'Contract Based', 'Part Time'],
     default: 'Employee',
   },
 

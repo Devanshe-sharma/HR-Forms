@@ -736,6 +736,9 @@ const UpdateOnboarding: React.FC = () => {
                       <option value="Employee">Employee</option>
                       <option value="Consultant">Consultant</option>
                       <option value="Intern">Intern</option>
+                      <option value="Part Time">Part Time</option>
+                      <option value="Contract Based">Contract Based</option>
+                      <option value="Temporary Staffing">Temporary Staffing</option>
                     </select>
                   )}
                 </div>

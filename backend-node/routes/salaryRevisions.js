@@ -269,10 +269,12 @@ router.put('/:id/management', asyncHandler(async (req, res) => {
 
 // ─── PUT /api/salary-revisions/:id/hr ────────────────────────────────────────
 // Finalises the revision AND syncs the latest values back onto the
-// Onboarding record — designation only if it actually changed, salary
-// numbers always (even a "0% increment" finalization still confirms the
-// current CTC as the latest figure), reporting head only if it changed.
-
+// Onboarding record — designation only if it actually changed, reporting
+// head only if it changed, salary numbers and category always (even a
+// "0% increment, no category change" finalization still confirms the
+// current CTC/category as the latest figures — same reasoning as the
+// designation/reporting-head "changed" flags, just applied to fields that
+// don't have their own explicit changed flag).
 router.put('/:id/hr', asyncHandler(async (req, res) => {
   const { notes, applicableDate, newCtc } = req.body;
 
@@ -308,12 +310,20 @@ router.put('/:id/hr', asyncHandler(async (req, res) => {
 
   // ─── Sync latest values back onto the Onboarding record ────────────────
   // Onboarding is the dashboard's source of truth — it should always show
-  // the CURRENT designation/salary, while this revision stays in history.
+  // the CURRENT designation/salary/category, while this revision stays in
+  // history.
   try {
     const onboardingUpdate = {
       annualCtc: finalCtc,
       salApplicableFrom: appDate,
       salReviewStatus: 'Revised',
+      // Category has no dedicated "changed" flag the way designation and
+      // reporting head do, so — same as CTC/applicable date — it's synced
+      // unconditionally with whatever the revision ended up recording.
+      // This is the field that matters for e.g. an intern converting to a
+      // full-time Employee mid-revision: whatever category the Manager
+      // step set is what lands on Onboarding once HR finalises.
+      employeeCategory: revision.category,
     };
     if (revision.designationChanged && revision.newDesignation) {
       onboardingUpdate.designation = revision.newDesignation;
@@ -322,9 +332,20 @@ router.put('/:id/hr', asyncHandler(async (req, res) => {
       onboardingUpdate.reportingHead = revision.newReportingHead;
     }
 
-    const onboardingTarget = revision.onboardingId || revision.employeeCode;
-    if (onboardingTarget) {
-      await Onboarding.findByIdAndUpdate(onboardingTarget, { $set: onboardingUpdate });
+    // Only ever target by onboardingId — a real Mongo ObjectId set at
+    // creation time. Previously this fell back to revision.employeeCode,
+    // which is NOT guaranteed to be a valid ObjectId (it happens to be
+    // one today only because of how the frontend's current employee
+    // source populates it) — that fallback could silently target nothing
+    // and fail the whole sync without any visible error, exactly the
+    // failure mode worth avoiding here.
+    if (revision.onboardingId) {
+      await Onboarding.findByIdAndUpdate(revision.onboardingId, { $set: onboardingUpdate });
+    } else {
+      console.error(
+        `Onboarding sync-back skipped for revision ${revision._id} — no onboardingId on record. ` +
+        `employeeCode=${revision.employeeCode}, employeeName=${revision.employeeName}`
+      );
     }
   } catch (syncErr) {
     // Don't fail the whole request if the sync-back has an issue — the
