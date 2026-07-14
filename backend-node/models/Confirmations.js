@@ -42,10 +42,15 @@ const ConfirmationSchema = new Schema(
       default : 'probation',
     },
 
+    // 'not_due' — the initial state for every joiner: they're on probation,
+    // but the confirmation review itself hasn't opened up for
+    // manager/management action yet (that only starts once tenure hits 5
+    // months — see advanceStageIfDue() in routes/confirmations.js). Once a
+    // record leaves 'not_due' it's never sent back to it automatically.
     stage : {
       type    : String,
-      enum    : ['pending_manager', 'pending_management', 'completed', 'on_hold'],
-      default : 'pending_manager',
+      enum    : ['not_due', 'pending_manager', 'pending_management', 'completed', 'on_hold'],
+      default : 'not_due',
     },
 
     // ── Extension tracking (when probation is extended) ──────────────────────────

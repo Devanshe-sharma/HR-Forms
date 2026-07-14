@@ -36,6 +36,11 @@ const candidateApplicationSchema = new mongoose.Schema(
     linkedin:              { type: String, default: '' },
     short_video_url:       { type: String, default: '' },
 
+    // Path/URL to the uploaded PDF, set by the upload middleware in
+    // routes/candidateApplications.js — never populated directly from
+    // req.body (that's just the on-disk path multer wrote it to).
+    resume:                { type: String, default: '' },
+
     status: {
       type: String,
       enum: ['New', 'Reviewed', 'Shortlisted', 'Rejected'],

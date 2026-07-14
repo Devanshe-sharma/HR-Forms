@@ -27,6 +27,16 @@ function parseJoiningDate(raw) {
   return isNaN(d.getTime()) ? null : d;
 }
 
+// Full months between a joining date and now — same definition the
+// frontend's own monthsAgo() uses, so "5 months" means the same thing on
+// both sides.
+function monthsSinceJoining(joiningDate) {
+  const joined = parseJoiningDate(joiningDate);
+  if (!joined) return null;
+  const now = new Date();
+  return (now.getFullYear() - joined.getFullYear()) * 12 + (now.getMonth() - joined.getMonth());
+}
+
 // ─── Get eligible employees from Onboarding ────────────────────────────────────
 // "Eligible" = currently employed (not Left/Already Left) and has actually
 // joined (has a joinedDate on or before today). Onboarding is read fresh on
@@ -57,9 +67,14 @@ async function getEligibleEmployees() {
 }
 
 // ─── Create confirmation record for one employee ──────────────────────────────
-
+// Every joiner starts here automatically — on probation by default, but in
+// the 'not_due' stage: the confirmation review itself doesn't open up for
+// manager/management action until tenure hits 5 months (see
+// advanceStageIfDue below). This is what makes "on probation from day 1"
+// and "review starts at 5 months" both true without contradicting each
+// other.
 async function createRecord(emp) {
-  return Confirmations.create({
+  const record = await Confirmations.create({
     employeeId       : emp._id,
     employeeCode     : String(emp._id),
     employeeName     : emp.full_name         || 'Unknown',
@@ -70,7 +85,7 @@ async function createRecord(emp) {
     email            : emp.official_email    || '',
     reportingManager : emp.reporting_manager || '',
     currentStatus    : 'probation',
-    stage            : 'pending_manager',
+    stage            : 'not_due',
     history          : [{
       status       : 'probation',
       reason       : 'Record auto-created on joining',
@@ -79,6 +94,8 @@ async function createRecord(emp) {
       date         : new Date(),
     }],
   });
+  await syncConfirmationStatusToOnboarding(record);
+  return record;
 }
 
 // ─── Refresh an existing record's employee-snapshot fields ─────────────────────
@@ -108,18 +125,77 @@ async function refreshSnapshot(existing, emp) {
   return false;
 }
 
+// ─── Auto-advance from 'not_due' once 5 months' tenure is reached ──────────────
+// This is the actual "confirmation process starts after 5 months" trigger.
+// Only ever touches records still sitting in 'not_due' — once a record has
+// moved on (by this advance, by a manual decision, or any other path), it's
+// never automatically moved again. Runs as part of the regular sync loop
+// below rather than a separate cron job, since the dashboard already
+// re-syncs on every load.
+async function advanceStageIfDue(record) {
+  if (record.stage !== 'not_due') return false;
+
+  const months = monthsSinceJoining(record.joiningDate);
+  if (months === null || months < 5) return false;
+
+  record.stage = 'pending_manager';
+  record.history.push({
+    status       : record.currentStatus,
+    reason       : 'Confirmation review opened automatically — 5 months\' tenure reached',
+    changedBy    : 'system',
+    changedByName: 'System',
+    date         : new Date(),
+  });
+  await record.save();
+  return true;
+}
+
+// ─── Human-readable status to write onto Onboarding's own record ──────────────
+// Onboarding already has a confirmationStatus field (used by the legacy
+// CSV migration), so this reuses that existing field rather than adding a
+// new one — every status (probation, an active PIP/extension, confirmed,
+// or not confirmed) shows up there, not just the "final" outcomes.
+function mapConfirmationStatusForOnboarding(record) {
+  if (record.currentStatus === 'extended') {
+    const months = record.extendedMonths ? ` (${record.extendedMonths} mo)` : '';
+    return `On PIP / Extended${months}`;
+  }
+  if (record.currentStatus === 'confirmed') return 'Confirmed';
+  if (record.currentStatus === 'not_confirmed') return 'Not Confirmed';
+  // 'probation' — distinguish "review not open yet" from "under review"
+  // so Onboarding shows something more useful than just "On Probation"
+  // for the entire 5-month stretch.
+  if (record.stage === 'not_due') return 'On Probation';
+  return 'On Probation — Confirmation In Progress';
+}
+
+async function syncConfirmationStatusToOnboarding(record) {
+  try {
+    await Onboarding.findByIdAndUpdate(record.employeeId, {
+      confirmationStatus: mapConfirmationStatusForOnboarding(record),
+    });
+  } catch (e) {
+    // Best-effort — a sync hiccup here should never block a confirmation
+    // decision from being saved.
+    console.error('[Confirmations] Failed to sync confirmationStatus to Onboarding:', e.message);
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // ROUTES — all named routes MUST come before /:id
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ─── GET /api/confirmations ───────────────────────────────────────────────────
-// Creates missing records AND refreshes stale snapshot data on every load.
+// Creates missing records, refreshes stale snapshot data, advances stage
+// past 'not_due' where 5 months have passed, and keeps Onboarding's own
+// confirmationStatus tag in sync — all on every load.
 
 // ─── POST /api/confirmations ───────────────────────────────────────────────
 // Used by the HR Decision dialog to explicitly record an initial decision
-// for an employee. This route never existed before — the frontend was
-// silently failing every call here and papering over it with a localStorage
-// fallback, which has been removed in favor of actually fixing this gap.
+// for an employee. Kept as a fallback path — under the new auto-create
+// flow every eligible employee already gets a record via /sync, so this
+// should rarely be hit in practice, but stays here for the edge case of
+// acting on someone before the next sync has run.
 router.post('/', async (req, res) => {
   try {
     const body = req.body || {};
@@ -141,7 +217,7 @@ router.post('/', async (req, res) => {
       email            : body.email            || '',
       reportingManager : body.reportingManager || '',
       currentStatus    : body.currentStatus    || 'probation',
-      stage            : body.stage            || 'pending_manager',
+      stage            : body.stage            || 'not_due',
       history          : Array.isArray(body.history) && body.history.length
         ? body.history
         : [{
@@ -153,6 +229,7 @@ router.post('/', async (req, res) => {
           }],
     });
 
+    await syncConfirmationStatusToOnboarding(record);
     res.json({ success: true, data: record });
   } catch (e) {
     console.error('[Confirmations] POST / error:', e.message);
@@ -165,6 +242,7 @@ router.get('/', async (req, res) => {
     const eligible = await getEligibleEmployees();
     let created = 0;
     let refreshed = 0;
+    let advanced = 0;
 
     for (const emp of eligible) {
       const exists = await Confirmations.findOne({ employeeId: emp._id });
@@ -178,13 +256,19 @@ router.get('/', async (req, res) => {
       } else {
         const didRefresh = await refreshSnapshot(exists, emp);
         if (didRefresh) refreshed++;
+
+        const didAdvance = await advanceStageIfDue(exists);
+        if (didAdvance) {
+          advanced++;
+          await syncConfirmationStatusToOnboarding(exists);
+        }
       }
     }
 
-    console.log(`[Confirmations] Sync done — eligible: ${eligible.length}, created: ${created}, refreshed: ${refreshed}`);
+    console.log(`[Confirmations] Sync done — eligible: ${eligible.length}, created: ${created}, refreshed: ${refreshed}, advanced: ${advanced}`);
 
     const records = await Confirmations.find().sort({ joiningDate: -1 }).lean();
-    res.json({ success: true, data: records, created, refreshed });
+    res.json({ success: true, data: records, created, refreshed, advanced });
   } catch (e) {
     console.error('[Confirmations] GET / error:', e.message);
     err(res, 500, 'Failed to fetch confirmations');
@@ -246,13 +330,15 @@ router.get('/force-sync', async (req, res) => {
 });
 
 // ─── GET /api/confirmations/sync ──────────────────────────────────────────────
-// Non-destructive sync — creates missing records and refreshes stale ones.
+// Non-destructive sync — creates missing records, refreshes stale ones,
+// and advances any record past 'not_due' whose tenure has hit 5 months.
 
 router.get('/sync', async (req, res) => {
   try {
     const eligible = await getEligibleEmployees();
     let created = 0;
     let refreshed = 0;
+    let advanced = 0;
 
     for (const emp of eligible) {
       const exists = await Confirmations.findOne({ employeeId: emp._id });
@@ -262,10 +348,16 @@ router.get('/sync', async (req, res) => {
       } else {
         const didRefresh = await refreshSnapshot(exists, emp);
         if (didRefresh) refreshed++;
+
+        const didAdvance = await advanceStageIfDue(exists);
+        if (didAdvance) {
+          advanced++;
+          await syncConfirmationStatusToOnboarding(exists);
+        }
       }
     }
 
-    res.json({ success: true, eligible: eligible.length, created, refreshed });
+    res.json({ success: true, eligible: eligible.length, created, refreshed, advanced });
   } catch (e) {
     err(res, 500, 'Sync failed: ' + e.message);
   }
@@ -315,6 +407,7 @@ router.post('/bulk-confirm-before-date', async (req, res) => {
         date: new Date(),
       });
       await record.save();
+      await syncConfirmationStatusToOnboarding(record);
       confirmed++;
     }
 
@@ -407,14 +500,7 @@ router.put('/:id/manager', async (req, res) => {
     });
 
     await record.save();
-
-    // NOTE: previously this wrote a "joining_status" field back onto the
-    // old, separate Employee collection. That collection is no longer the
-    // source of truth (Onboarding is), and Onboarding doesn't currently
-    // have an equivalent confirmation-status field to write back to. If
-    // you want confirmation outcomes reflected back onto the employee's
-    // Onboarding record, tell us which field should hold that and we'll
-    // wire it up properly rather than guessing at one.
+    await syncConfirmationStatusToOnboarding(record);
 
     res.json({ success: true, data: record });
   } catch (e) {
@@ -490,6 +576,8 @@ router.put('/:id/management', async (req, res) => {
     });
 
     await record.save();
+    await syncConfirmationStatusToOnboarding(record);
+
     res.json({ success: true, data: record });
   } catch (e) {
     err(res, 500, 'Failed to submit management decision');

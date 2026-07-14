@@ -89,6 +89,7 @@ export default function CandidateApplicationPage() {
 
   const [dialCode,     setDialCode]     = useState('+91');
   const [resumeFile,   setResumeFile]   = useState<File | null>(null);
+  const [resumeError,  setResumeError]  = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted,    setSubmitted]    = useState(false);
 
@@ -219,45 +220,76 @@ export default function CandidateApplicationPage() {
     label: `${c.dialCode} ${c.name}`,
   }));
 
+  // ── Resume file handler ───────────────────────────────────────────────────────
+  // Validated client-side too (type + size) so a candidate gets immediate
+  // feedback instead of only finding out after a round trip to the server
+  // — the backend's own multer fileFilter/limits are the real enforcement,
+  // this is just a faster first check.
+  const handleResumeChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    if (!file) { setResumeFile(null); setResumeError(null); return; }
+    if (file.type !== 'application/pdf') {
+      setResumeFile(null);
+      setResumeError('Only PDF files are accepted');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setResumeFile(null);
+      setResumeError('File must be under 5MB');
+      e.target.value = '';
+      return;
+    }
+    setResumeError(null);
+    setResumeFile(file);
+  };
+
   // ── Submit ───────────────────────────────────────────────────────────────────
+  // Sent as multipart/form-data (not JSON) so the resume file — a real
+  // File object — can actually travel in the same request as the rest of
+  // the form. A plain JSON body has no way to carry binary file data at
+  // all, which is why the resume was never reaching the server before.
   const onSubmit = async (data: FormData) => {
     setIsSubmitting(true);
     try {
-      const payload = {
-        full_name:             data.full_name,
-        email:                 data.email,
-        phone:                 dialCode + data.mobile,
-        whatsapp_same:         data.whatsapp_same || false,
-        dob:                   data.dob,
-        country:               data.country,
-        state:                 data.state,
-        city:                  data.city,
-        pin_code:              data.pin_code,
-        relocation:            data.relocation,
-        job_id:                 data.job_id,
-        designation:             data.designation,
-        designation_id:          data.designation_id,
-        highest_qualification: data.highest_qualification,
-        experience:            data.experience,
-        total_experience:      data.total_experience  || '',
-        current_ctc:           data.current_ctc       || '',
-        notice_period:         data.notice_period     || '',
-        expected_monthly_ctc:  data.expected_monthly_ctc,
-        hindi_read:            data.hindi_read,
-        hindi_write:           data.hindi_write,
-        hindi_speak:           data.hindi_speak,
-        english_read:          data.english_read,
-        english_write:         data.english_write,
-        english_speak:         data.english_speak,
-        facebookLink:          data.facebookLink      || '',
-        linkedin:              data.linkedin          || '',
-        short_video_url:       data.short_video_url   || '',
-      };
+      const formData = new FormData();
+      formData.append('full_name', data.full_name);
+      formData.append('email', data.email);
+      formData.append('phone', dialCode + data.mobile);
+      formData.append('whatsapp_same', String(data.whatsapp_same || false));
+      formData.append('dob', data.dob);
+      formData.append('country', data.country);
+      formData.append('state', data.state);
+      formData.append('city', data.city);
+      formData.append('pin_code', data.pin_code);
+      formData.append('relocation', data.relocation);
+      if (data.job_id !== undefined) formData.append('job_id', String(data.job_id));
+      formData.append('designation', data.designation);
+      if (data.designation_id !== undefined) formData.append('designation_id', String(data.designation_id));
+      formData.append('highest_qualification', data.highest_qualification);
+      formData.append('experience', data.experience);
+      formData.append('total_experience', data.total_experience || '');
+      formData.append('current_ctc', data.current_ctc || '');
+      formData.append('notice_period', data.notice_period || '');
+      formData.append('expected_monthly_ctc', data.expected_monthly_ctc);
+      formData.append('hindi_read', data.hindi_read);
+      formData.append('hindi_write', data.hindi_write);
+      formData.append('hindi_speak', data.hindi_speak);
+      formData.append('english_read', data.english_read);
+      formData.append('english_write', data.english_write);
+      formData.append('english_speak', data.english_speak);
+      formData.append('facebookLink', data.facebookLink || '');
+      formData.append('linkedin', data.linkedin || '');
+      formData.append('short_video_url', data.short_video_url || '');
+      if (resumeFile) formData.append('resume', resumeFile);
 
       const res = await fetch(`${API_BASE}/candidate-applications`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload),
+        method: 'POST',
+        // No Content-Type header here — the browser sets the multipart
+        // boundary itself when the body is a FormData instance. Setting
+        // it manually breaks the upload, since the boundary string
+        // wouldn't match what's actually in the body.
+        body: formData,
       });
 
       if (res.ok) {
@@ -603,10 +635,11 @@ export default function CandidateApplicationPage() {
             <input
               type="file"
               accept=".pdf"
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setResumeFile(e.target.files?.[0] || null)}
+              onChange={handleResumeChange}
               className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-5 file:rounded-lg file:border-0 file:font-semibold file:bg-lime-50 file:text-lime-700 hover:file:bg-lime-100 cursor-pointer"
             />
             {resumeFile && <p className="mt-2 text-xs text-green-600">✓ {resumeFile.name}</p>}
+            {resumeError && <p className={errCls}>{resumeError}</p>}
           </section>
 
           {/* ── Submit ── */}

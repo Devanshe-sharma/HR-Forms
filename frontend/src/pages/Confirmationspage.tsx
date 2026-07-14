@@ -17,8 +17,14 @@ import Navbar   from '../components/Navbar';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-type CurrentStatus   = 'probation' | 'confirmed' | 'extended' | 'not_confirmed' | 'pip';
-type Stage           = 'hr_pending' | 'pending_manager' | 'pending_management' | 'completed' | 'closed';
+type CurrentStatus   = 'probation' | 'confirmed' | 'extended' | 'not_confirmed';
+// 'not_due' — every joiner starts here: on probation, but the review
+// itself hasn't opened for manager/management action yet. The backend
+// auto-advances this to 'pending_manager' once tenure hits 5 months —
+// see advanceStageIfDue() in routes/confirmations.js. Matches the actual
+// Mongoose schema enum exactly (this previously had 'hr_pending'/'closed'
+// values that didn't exist in the backend enum at all).
+type Stage           = 'not_due' | 'pending_manager' | 'pending_management' | 'completed' | 'on_hold';
 type ProbationStatus = 'probation' | 'confirmed' | 'not_applicable' | null;
 type UserRole        = 'hr' | 'manager' | 'management' | 'admin';
 
@@ -105,15 +111,14 @@ const STATUS_CFG: Record<CurrentStatus, { label: string; color: string; bg: stri
   confirmed     : { label: 'Confirmed'        , color: '#059669', bg: '#ECFDF5' },
   extended      : { label: 'Extended'         , color: '#2563EB', bg: '#EFF6FF' },
   not_confirmed : { label: 'Not Confirmed'    , color: '#DC2626', bg: '#FEF2F2' },
-  pip           : { label: 'On PIP'           , color: '#7C3AED', bg: '#F3E8FF' },
 };
 
 const STAGE_CFG: Record<Stage, { label: string }> = {
-  hr_pending         : { label: 'HR Pending'         },
-  pending_manager    : { label: 'Pending Manager'    },
-  pending_management : { label: 'Pending Management' },
-  completed          : { label: 'Completed'          },
-  closed             : { label: 'Closed'             },
+  not_due             : { label: 'Not Yet Due'       },
+  pending_manager     : { label: 'Pending Manager'    },
+  pending_management  : { label: 'Pending Management' },
+  completed           : { label: 'Completed'          },
+  on_hold             : { label: 'On Hold'            },
 };
 
 const STATUS_OPTIONS: { value: CurrentStatus; label: string }[] = [
@@ -169,16 +174,17 @@ function StatusChip({ status }: { status: CurrentStatus }) {
 
 function StageChip({ stage }: { stage: Stage }) {
   const done   = stage === 'completed';
-  const closed = stage === 'closed';
+  const onHold = stage === 'on_hold';
+  const notDue = stage === 'not_due';
   return (
     <Chip
       size="small"
       label={STAGE_CFG[stage]?.label || stage}
       sx={{
-        bgcolor   : done ? '#ECFDF5' : closed ? '#F3F4F6' : '#EFF6FF',
-        color     : done ? '#059669' : closed ? '#6B7280' : '#2563EB',
+        bgcolor   : done ? '#ECFDF5' : onHold ? '#FEF3C7' : notDue ? '#F3F4F6' : '#EFF6FF',
+        color     : done ? '#059669' : onHold ? '#D97706' : notDue ? '#6B7280' : '#2563EB',
         fontWeight: 600, fontSize: 11,
-        border    : `1px solid ${done ? '#6EE7B7' : closed ? '#D1D5DB' : '#BFDBFE'}`,
+        border    : `1px solid ${done ? '#6EE7B7' : onHold ? '#FCD34D' : notDue ? '#D1D5DB' : '#BFDBFE'}`,
         '& .MuiChip-icon': { color: 'inherit', ml: '6px' },
       }}
     />
@@ -197,6 +203,11 @@ function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error' 
 }
 
 // ─── Probation Confirmation Dialog ────────────────────────────────────────────
+// Fallback path only now — under the automatic flow every eligible
+// employee already has a confirmation record by the time this page loads
+// (created via /sync in 'not_due' the moment they appear in Onboarding).
+// This dialog only matters for the rare case of acting on someone before
+// the next sync has run.
 
 function HRDecisionDialog({ 
   employee, 
@@ -609,7 +620,7 @@ function DetailView({ record, onBack, onChangeStatus }: {
         </Box>
         <StatusChip status={record.currentStatus} />
         <StageChip  stage={record.stage} />
-        {record.stage !== 'completed' && record.stage !== 'closed' && (
+        {record.stage !== 'completed' && record.stage !== 'on_hold' && record.stage !== 'not_due' && (
           <Button variant="contained" size="small" onClick={onChangeStatus}
             sx={{ bgcolor: '#2563EB', textTransform: 'none', fontWeight: 600, px: 3 }}>
             Update Status
@@ -645,7 +656,9 @@ function DetailView({ record, onBack, onChangeStatus }: {
                   )}
                 </>
               ) : (
-                <Typography fontSize={13} color="text.disabled">Pending</Typography>
+                <Typography fontSize={13} color="text.disabled">
+                  {record.stage === 'not_due' ? 'Review not open yet' : 'Pending'}
+                </Typography>
               )}
             </Box>
 
@@ -662,7 +675,8 @@ function DetailView({ record, onBack, onChangeStatus }: {
                 </>
               ) : (
                 <Typography fontSize={13} color="text.disabled">
-                  {record.stage === 'pending_manager' ? 'Waiting for manager' : 'Pending'}
+                  {record.stage === 'not_due' ? 'Review not open yet'
+                    : record.stage === 'pending_manager' ? 'Waiting for manager' : 'Pending'}
                 </Typography>
               )}
             </Box>
@@ -718,7 +732,7 @@ function StatusChangeView({ record, onBack, onSuccess, showToast }: {
 }) {
   const isManagerTurn    = record.stage === 'pending_manager';
   const isManagementTurn = record.stage === 'pending_management';
-  const isHrPending     = record.stage === 'hr_pending';
+  const isNotDue         = record.stage === 'not_due';
   const endpoint         = isManagerTurn ? 'manager' : 'management';
   const roleLabel        = isManagerTurn ? 'Manager' : 'Management';
 
@@ -727,10 +741,12 @@ function StatusChangeView({ record, onBack, onSuccess, showToast }: {
   const [monthsExtended, setMonthsExtended] = useState(3);
   const [submitting,     setSubmitting]     = useState(false);
 
-  if (isHrPending) {
+  if (isNotDue) {
     return (
       <Box sx={{ p: 3, textAlign: 'center' }}>
-        <Typography color="text.secondary" mb={2}>This confirmation is pending HR decision.</Typography>
+        <Typography color="text.secondary" mb={2}>
+          This employee's confirmation review isn't due yet — it opens automatically once they hit 5 months' tenure.
+        </Typography>
         <Button variant="outlined" onClick={onBack}>Back</Button>
       </Box>
     );
@@ -895,11 +911,12 @@ export default function ConfirmationsPage() {
   useEffect(() => { loadData(); }, [loadData]);
 
   const handleEmployeeSelect = (employee: Employee) => {
-    // Check if employee already has a confirmation record — always open it,
-    // regardless of status, so history stays viewable even for people
-    // already confirmed. The "Update Status" action itself is separately
-    // hidden inside DetailView for completed/closed records, so this is
-    // safe.
+    // Under the automatic flow every eligible employee should already
+    // have a confirmation record by the time this runs (auto-created via
+    // /sync, in 'not_due', the moment they appear in Onboarding) — so this
+    // will almost always find one. The HR dialog fallback below only
+    // matters for the edge case of clicking someone before the next sync
+    // has run.
     const existingRecord = records.find(r => r.employeeId === employee._id || r.employeeCode === employee.employee_id);
     if (existingRecord) {
       setSelected(existingRecord);
@@ -918,7 +935,9 @@ export default function ConfirmationsPage() {
     if (!employee) return;
     
     if (isOnProbation) {
-      // Employee is on probation - create confirmation record and proceed to manager stage
+      // Employee is on probation - create confirmation record in the same
+      // 'not_due' starting stage the automatic sync uses, so this fallback
+      // path behaves identically to the normal one.
       const newRecord = {
         employeeId: employee._id,
         employeeCode: employee.employee_id,
@@ -930,26 +949,14 @@ export default function ConfirmationsPage() {
         level: employee.level,
         reportingManager: employee.reporting_manager,
         currentStatus: 'probation' as CurrentStatus,
-        stage: 'pending_manager' as Stage,
-        hrDecision: {
-          stage: 'hr_pending' as Stage,
-          status: 'probation' as CurrentStatus,
-          reason: reason,
-          monthsExtended: null,
-          newReviewDate: null,
-          submittedAt: new Date().toISOString(),
-          submittedBy: 'HR User',
-          submittedByRole: 'hr' as UserRole,
-        },
-        managerDecision: null,
-        managementDecision: null,
+        stage: 'not_due' as Stage,
         history: [{
-          stage: 'hr_pending' as Stage,
+          stage: 'not_due' as Stage,
           status: 'probation' as CurrentStatus,
           reason: reason,
           monthsExtended: null,
           newReviewDate: null,
-          changedBy: 'HR User',
+          changedBy: 'hr',
           changedByName: 'HR User',
           changedByRole: 'hr' as UserRole,
           date: new Date().toISOString(),
@@ -968,7 +975,7 @@ export default function ConfirmationsPage() {
         setRecords(prev => [...prev, data.data]);
         setSelected(data.data);
         setView('detail');
-        showToast('Employee marked as on probation - sent to manager for decision', 'success');
+        showToast('Employee marked as on probation', 'success');
       } catch (err: any) {
         // No local fallback — if the server didn't save it, the app
         // shouldn't pretend it did. Always trust the database, never a
@@ -977,7 +984,10 @@ export default function ConfirmationsPage() {
       }
 
     } else {
-      // Employee is not on probation - close the entry
+      // Employee is not on probation - close the entry immediately as
+      // 'completed'/'not_confirmed' — 'closed' isn't a valid stage in the
+      // schema, so this uses the same terminal stage a real not_confirmed
+      // decision from Management would land on.
       const newRecord = {
         employeeId: employee._id,
         employeeCode: employee.employee_id,
@@ -989,26 +999,14 @@ export default function ConfirmationsPage() {
         level: employee.level,
         reportingManager: employee.reporting_manager,
         currentStatus: 'not_confirmed' as CurrentStatus,
-        stage: 'closed' as Stage,
-        hrDecision: {
-          stage: 'hr_pending' as Stage,
-          status: 'not_confirmed' as CurrentStatus,
-          reason: reason,
-          monthsExtended: null,
-          newReviewDate: null,
-          submittedAt: new Date().toISOString(),
-          submittedBy: 'HR User',
-          submittedByRole: 'hr' as UserRole,
-        },
-        managerDecision: null,
-        managementDecision: null,
+        stage: 'completed' as Stage,
         history: [{
-          stage: 'hr_pending' as Stage,
+          stage: 'completed' as Stage,
           status: 'not_confirmed' as CurrentStatus,
           reason: reason,
           monthsExtended: null,
           newReviewDate: null,
-          changedBy: 'HR User',
+          changedBy: 'hr',
           changedByName: 'HR User',
           changedByRole: 'hr' as UserRole,
           date: new Date().toISOString(),

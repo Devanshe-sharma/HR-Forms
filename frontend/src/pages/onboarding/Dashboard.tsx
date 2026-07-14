@@ -54,6 +54,10 @@ interface OnboardingRow {
   plannedJoiningDate?: string;
   joinedDate?: string;
   confirmationDueDate?: string;
+  // Existing field, kept in sync from the Confirmations module (see
+  // syncConfirmationStatusToOnboarding in routes/confirmations.js) — no
+  // schema change here, just surfacing it as a tag in the view modal.
+  confirmationStatus?: string;
   salRevisionDueDate?: string;
   nameOfBuddy?: string;
   reportingHead?: string;
@@ -96,6 +100,17 @@ const EXIT_STATUS_STYLE: Record<string, { bg: string; color: string }> = {
   "Serving Notice Period": { bg: "#fffbeb", color: "#d97706" },
   "Not Exiting":           { bg: "#f8fafc", color: "#64748b" },
   "Exit Cancelled":        { bg: "#f8fafc", color: "#64748b" },
+};
+
+// Confirmation status text carries variable detail (e.g. "On PIP /
+// Extended (3 mo)"), so this matches on substring rather than an exact
+// Record lookup — same four buckets the Confirmations module itself uses.
+const confirmationStatusStyle = (status?: string): { bg: string; color: string } => {
+  if (!status) return { bg: "#f8fafc", color: "#94a3b8" };
+  if (status.includes("Confirmed") && !status.includes("Not")) return { bg: "#ecfdf5", color: "#059669" };
+  if (status.includes("Not Confirmed")) return { bg: "#fef2f2", color: "#dc2626" };
+  if (status.includes("PIP") || status.includes("Extended")) return { bg: "#eff6ff", color: "#2563eb" };
+  return { bg: "#fef3c7", color: "#d97706" }; // On Probation (with or without "— Confirmation In Progress")
 };
 
 // ─── Pill component ───────────────────────────────────────────────────────────
@@ -623,6 +638,21 @@ const OnboardingDashboard: React.FC = () => {
                       padding: "2px 8px", borderRadius: 20,
                     }}>{viewModal.row.employeeCategory}</span>
                   )}
+                  {/* Confirmation status — synced from the Confirmations
+                      module (probation / review in progress / on PIP-
+                      extended / confirmed / not confirmed). Colored
+                      distinctly (unlike the other header pills above)
+                      since this one carries real urgency at a glance. */}
+                  {viewModal.row.confirmationStatus && (() => {
+                    const s = confirmationStatusStyle(viewModal.row.confirmationStatus);
+                    return (
+                      <span style={{
+                        fontSize: "0.62rem", fontWeight: 700,
+                        background: s.bg, color: s.color,
+                        padding: "2px 8px", borderRadius: 20,
+                      }}>{viewModal.row.confirmationStatus}</span>
+                    );
+                  })()}
                 </Box>
               </Box>
               <button
