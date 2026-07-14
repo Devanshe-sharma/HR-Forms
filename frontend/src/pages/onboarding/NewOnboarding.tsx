@@ -131,6 +131,18 @@ const MANAGEMENT_LEVEL_OPTIONS = [
   "Apex Management (C Level)",
 ];
 
+// Only Intern and Contract Based get the Contract Details section
+// (Contract Period / Contract Amount / Equivalent Monthly CTC) — Contract
+// Amount doubles as their CTC, synced into annualCtc below so Salary
+// Revision and everywhere else that reads annualCtc works the same as it
+// does for any other category. Every other category (Employee,
+// Consultant, Part Time, Temporary Staffing) gets the full Salary Details
+// breakdown instead.
+const CONTRACT_BASED_CATEGORIES = [
+  "Intern",
+  "Contract Based",
+] as const;
+
 // ─── Checklist definitions (must match backend order exactly) ───────────────
 const CHECKLIST_DEFS = [
   {
@@ -259,6 +271,10 @@ const NewOnboarding: React.FC = () => {
   const autoReminderEmail = watch("autoReminderEmail");
   const autoInstructionsToAllEmail = watch("autoInstructionsToAllEmail");
   const employeeConfirmationEmail = watch("employeeConfirmationEmail");
+  const contractAmount = watch("contractAmount");
+
+  const isContractBasedCategory =
+    !!employeeCategory && (CONTRACT_BASED_CATEGORIES as readonly string[]).includes(employeeCategory);
 
   // Sending one of these emails IS the matching checklist task — auto-tick
   // it in the UI the moment the email checkbox is ticked, so what you see
@@ -282,6 +298,19 @@ const NewOnboarding: React.FC = () => {
       return changed ? next : prev;
     });
   }, [autoWelcomeEmail, autoReminderEmail, autoInstructionsToAllEmail, employeeConfirmationEmail]);
+
+  // Contract Amount doubles as Annual CTC for every non-Employee category
+  // — Salary Revision, /eligible-employees, and everywhere else in the app
+  // read annualCtc as THE CTC field regardless of category, so without
+  // this sync these employees would keep showing annualCtc: 0 there no
+  // matter what gets entered in Contract Amount. Only runs for the
+  // contract-based categories — "Employee" keeps its own manually-entered
+  // Annual CTC field untouched.
+  useEffect(() => {
+    if (isContractBasedCategory && contractAmount !== undefined) {
+      setValue("annualCtc", contractAmount, { shouldValidate: false, shouldDirty: true });
+    }
+  }, [contractAmount, isContractBasedCategory, setValue]);
 
   const totalChecked = checkStates.flat().filter(Boolean).length;
   const progress = Math.round((totalChecked / TOTAL_TASKS) * 100);
@@ -638,8 +667,11 @@ const NewOnboarding: React.FC = () => {
                 </div>
               </section>
 
-              {/* Salary Details (Employee) */}
-              {employeeCategory === "Employee" && (
+              {/* Salary Details — shown for every category EXCEPT Intern
+                  and Contract Based (those get Contract Details below
+                  instead). Covers Employee, Consultant, Part Time, and
+                  Temporary Staffing. */}
+              {!!employeeCategory && !isContractBasedCategory && (
                 <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
                   {sectionTitle("Salary Details", "All amounts in INR")}
 
@@ -687,10 +719,17 @@ const NewOnboarding: React.FC = () => {
                 </section>
               )}
 
-              {/* Contract Details (Consultant) */}
-              {employeeCategory === "Consultant" && (
+              {/* Contract Details (Intern, Contract Based only) —
+                  Contract Amount doubles as this person's Annual CTC
+                  everywhere else in the app (Salary Revision, Onboarding
+                  Dashboard, etc.), synced automatically via the useEffect
+                  above. */}
+              {isContractBasedCategory && (
                 <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                  {sectionTitle("Contract Details")}
+                  {sectionTitle(
+                    "Contract Details",
+                    `For ${employeeCategory} — Contract Amount is used as this person's Annual CTC everywhere else in the app, including Salary Revision`
+                  )}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {numField("contractPeriod", "Contract Period (months)")}
                     {numField("contractAmount", "Contract Amount (₹)")}
