@@ -6,4 +6,6 @@ module.exports = {
   triggerCandidateApplication:  require("./triggers/triggerCandidateApplication"),
   triggerNewExit:               require("./triggers/triggerExit").triggerNewExit,
   triggerUpdateExit:            require("./triggers/triggerExit").triggerUpdateExit,
+  triggerNewRequisition:        require("./triggers/triggerNewRequisition"),
+  triggerUpdateRequisition:     require("./triggers/triggerUpdateRequisition"),
 };

@@ -2,6 +2,7 @@ const express           = require('express');
 const { parse: parseCsv } = require('csv-parse/sync');
 const router            = express.Router();
 const HiringRequisition = require('../models/HiringRequisition');
+const { triggerNewRequisition, triggerUpdateRequisition } = require('../emails');
 
 // ─── Checklist scoring ──────────────────────────────────────────────────────
 // Mirrors the exact same 3-branch logic used by the Exit module's FMS
@@ -374,6 +375,11 @@ router.post('/', async (req, res) => {
       not_yet_due:      scored.not_yet_due,
       fms_score:        scored.fms_score,
     });
+
+    // Fire-and-forget, same pattern as onboarding's triggerNewOnboarding —
+    // never block the response on email delivery.
+    triggerNewRequisition(doc).catch(console.error);
+
     res.status(201).json({ success: true, data: doc });
   } catch (err) {
     console.error('[hiringrequisitions POST]', err);
@@ -408,6 +414,10 @@ router.patch('/:id', async (req, res) => {
     // when nothing about the checklist itself was touched (e.g. a day
     // passing can turn "Pending" into "Overdue").
     doc = await rescoreAndSave(doc._id);
+
+    // Fire-and-forget update email — routes to the cancellation email or
+    // the routine progress email depending on hiring_status.
+    triggerUpdateRequisition(doc).catch(console.error);
 
     res.json({ success: true, data: doc });
   } catch (err) {
