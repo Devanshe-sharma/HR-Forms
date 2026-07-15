@@ -55,6 +55,12 @@ type Department  = { dept_id: number | string | null; department: string; dept_h
 type Designation = { dept_id: number | string | null; department: string; desig_id: number | string | null; designation: string; role_document_link?: string; jd_link?: string };
 type RoleMasterData = { departments: Department[]; designations: Designation[]; employees: Employee[] };
 
+// Current-employee shape used just for the Requisitioner dropdown — sourced
+// from Onboarding (the single source of truth for who currently works
+// here), not RoleMaster, which can include stale/legacy rows for people
+// who've since left or were never real Onboarding records to begin with.
+type CurrentEmployee = { full_name: string; official_email: string };
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Props — asModal=true strips Sidebar/Navbar and fires callbacks
 // ─────────────────────────────────────────────────────────────────────────────
@@ -98,6 +104,7 @@ export default function NewRequisitionForm({ asModal = false, onSuccess, onClose
   const navigate = useNavigate();
 
   const [roleData,             setRoleData]             = useState<RoleMasterData | null>(null);
+  const [currentEmployees,     setCurrentEmployees]     = useState<CurrentEmployee[]>([]);
   const [filteredDesignations, setFilteredDesignations] = useState<Designation[]>([]);
   const [loading,              setLoading]              = useState(true);
   const [submitLoading,        setSubmitLoading]        = useState(false);
@@ -146,11 +153,28 @@ export default function NewRequisitionForm({ asModal = false, onSuccess, onClose
       .then(json => { if (json?.next_serial) setValue('serial_no', json.next_serial); })
       .catch(() => {});
 
+  // RoleMaster still supplies departments/designations. The Requisitioner
+  // dropdown, though, comes from Onboarding's eligible-employees route —
+  // the same "currently joined, not exited" source used across Salary
+  // Revision and the rest of the HR portal — instead of RoleMaster's own
+  // employee rows, which can include people who've since left or were
+  // never really Onboarding records.
   useEffect(() => {
-    fetch(`${API_BASE}/rolemaster/all`)
-      .then(r => r.json())
-      .then(json => setRoleData(json.data))
-      .catch(() => setError('Failed to load department/designation data. Please refresh.'))
+    Promise.all([
+      fetch(`${API_BASE}/rolemaster/all`).then(r => r.json()),
+      fetch(`${API_BASE}/onboarding/eligible-employees`).then(r => r.json()),
+    ])
+      .then(([roleJson, empJson]) => {
+        setRoleData(roleJson.data);
+        const emps = Array.isArray(empJson?.data) ? empJson.data : [];
+        setCurrentEmployees(
+          emps.map((e: any) => ({
+            full_name: e.full_name || '',
+            official_email: e.official_email || e.email || '',
+          }))
+        );
+      })
+      .catch(() => setError('Failed to load department/designation/employee data. Please refresh.'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -158,10 +182,10 @@ export default function NewRequisitionForm({ asModal = false, onSuccess, onClose
   useEffect(() => { setValue('request_date', format(new Date(), 'dd-MM-yyyy')); }, [setValue]);
 
   useEffect(() => {
-    if (!requisitionerName || !roleData) return;
-    const emp = roleData.employees.find(e => e.full_name === requisitionerName);
+    if (!requisitionerName) return;
+    const emp = currentEmployees.find(e => e.full_name === requisitionerName);
     setValue('requisitioner_email', emp?.official_email ?? '');
-  }, [requisitionerName, roleData, setValue]);
+  }, [requisitionerName, currentEmployees, setValue]);
 
   useEffect(() => {
     if (!hiringDept || !roleData) return;
@@ -340,10 +364,10 @@ const handleBackToDept = () => {
             render={({ field }) => (
               <select {...field} className={`${inputCls} ${errors.requisitioner_name ? 'border-red-400' : ''}`}>
                 <option value="" disabled>
-                  {roleData?.employees.length ? 'Select Requisitioner' : 'No employees found in Role Master'}
+                  {currentEmployees.length ? 'Select Requisitioner' : 'No current employees found'}
                 </option>
-                {roleData?.employees.map(emp => (
-                  <option key={emp.emp_id || emp.full_name} value={emp.full_name}>{emp.full_name}</option>
+                {currentEmployees.map(emp => (
+                  <option key={emp.official_email || emp.full_name} value={emp.full_name}>{emp.full_name}</option>
                 ))}
               </select>
             )}
@@ -617,10 +641,10 @@ const handleBackToDept = () => {
             render={({ field }) => (
               <>
                 <div className="border border-gray-300 rounded-md max-h-48 overflow-y-auto divide-y divide-gray-100">
-                  {(roleData?.employees ?? []).map(emp => {
+                  {currentEmployees.map(emp => {
                     const checked = (field.value ?? []).includes(emp.official_email);
                     return (
-                      <label key={emp.emp_id || emp.full_name} className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                      <label key={emp.official_email || emp.full_name} className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={checked}
@@ -638,7 +662,7 @@ const handleBackToDept = () => {
                 </div>
                 <div className={`flex flex-wrap gap-1.5 mt-2 ${(field.value ?? []).length === 0 ? 'hidden' : ''}`}>
                   {(field.value ?? []).map(email => {
-                    const emp = roleData?.employees.find(e => e.official_email === email);
+                    const emp = currentEmployees.find(e => e.official_email === email);
                     return (
                       <span key={email} className="flex items-center gap-1 bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">
                         {emp?.full_name ?? email}
