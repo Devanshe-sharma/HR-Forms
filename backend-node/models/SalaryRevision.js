@@ -43,12 +43,17 @@ const salaryRevisionSchema = new mongoose.Schema({
   designation  : { type: String, required: [true, 'designation is required'],  trim: true },
   email        : { type: String, required: [true, 'email is required'], trim: true, lowercase: true },
   joiningDate  : { type: Date,   required: [true, 'joiningDate is required'] },
+  
 
   category: {
     type   : String,
     enum   : ['Employee', 'Consultant', 'Intern', 'Temporary Staff', 'Contract Based', 'Part Time'],
     default: 'Employee',
   },
+
+  categoryChanged   : { type: Boolean, default: false },
+  previousCategory  : { type: String,  default: '' },
+  newCategory       : { type: String,  default: null },
 
   // ── Designation change — independent of salary/increment decision ──────
   // Not every revision changes designation. Sometimes only salary changes,

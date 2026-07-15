@@ -1,5 +1,6 @@
 const express = require("express");
 const Onboarding = require('../models/onboardingModel');
+const SalaryRevision = require('../models/SalaryRevision');
 const { signEmail, verifySignature } = require('../utils/accessLinkSigning');
 // Used only by the HR analytics routes, to resolve real historical exit
 // dates for headcount-by-quarter reconstruction (Onboarding only stores
@@ -11,9 +12,6 @@ const Employee = require('../models/Employee');
 const router = express.Router();
 
 // ─── One-time email fields (flag + timestamp pairs) ─────────────────────────
-// These emails only ever get sent once. The *SentAt field is the source of
-// truth for "done" — once it's set, it must never be cleared or re-dated by
-// a later update, no matter what the submitted form sends for the checkbox.
 const EMAIL_FIELDS = [
   ["autoWelcomeEmail", "autoWelcomeEmailSentAt"],
   ["autoReminderEmail", "autoReminderEmailSentAt"],
@@ -21,11 +19,6 @@ const EMAIL_FIELDS = [
   ["employeeConfirmationEmail", "employeeConfirmationEmailSentAt"],
 ];
 
-// ─── Emails that double as checklist tasks ─────────────────────────────────
-// Sending one of these auto-emails IS the checklist task — no separate
-// manual tick should be required. Whenever an email flag is (or becomes)
-// true, its matching checklist item gets marked done automatically, using
-// the email's own sent timestamp as the doneDate.
 const EMAIL_TO_CHECKLIST_ITEM = [
   { flagField: "autoWelcomeEmail", sentAtField: "autoWelcomeEmailSentAt", listName: "PRE-JOINING TASKS", itemName: "Welcome Email Done?" },
   { flagField: "autoReminderEmail", sentAtField: "autoReminderEmailSentAt", listName: "PRE-JOINING TASKS", itemName: "Reminder Email Done?" },
@@ -35,28 +28,24 @@ const EMAIL_TO_CHECKLIST_ITEM = [
 
 function syncEmailChecklistItems(checkLists, emailFields) {
   for (const { flagField, sentAtField, listName, itemName } of EMAIL_TO_CHECKLIST_ITEM) {
-    if (!emailFields[flagField]) continue; // this email was never sent — nothing to sync
+    if (!emailFields[flagField]) continue;
     const list = checkLists.find((l) => l.name === listName);
     if (!list) continue;
     const item = list.itemsList.find((it) => it.name === itemName);
-    if (!item || item.doneDate) continue; // already marked done — don't touch it
+    if (!item || item.doneDate) continue;
     item.checked = true;
     item.doneDate = emailFields[sentAtField] ? new Date(emailFields[sentAtField]) : new Date();
   }
 }
 
-// existing: plain object / doc of current DB values (or null for a brand-new record)
-// body: the incoming request body
 function resolveOneTimeEmails(existing, body) {
   const resolved = {};
   for (const [flagField, sentAtField] of EMAIL_FIELDS) {
     const alreadySent = !!(existing && existing[sentAtField]);
     if (alreadySent) {
-      // Locked in — ignore whatever the form submitted for this field.
       resolved[flagField] = true;
       resolved[sentAtField] = existing[sentAtField];
     } else if (body[flagField]) {
-      // Being sent for the first time right now.
       resolved[flagField] = true;
       resolved[sentAtField] = new Date();
     } else {
@@ -67,7 +56,6 @@ function resolveOneTimeEmails(existing, body) {
   return resolved;
 }
 
-// ─── Scoring helper (mirrors Apps Script `scoring` function) ────────────────
 function scoreChecklist(list, today) {
   let doneInTime = 0,
     doneButDelayed = 0,
@@ -144,13 +132,12 @@ function scoreChecklist(list, today) {
   };
 }
 
-// ─── Build the 4 default checklist groups ──────────────────────────────────
 function buildDefaultCheckLists() {
   return [
     {
       name: "PRE-JOINING TASKS",
       itemsList: [
-        { name: "Welcome Email Done?" },        // ✅ was doneHeader
+        { name: "Welcome Email Done?" },
         { name: "Reminder Email Done?" },
         { name: "Blood Gp Reminder Done?" },
         { name: "Photos Reminder Done?" },
@@ -212,7 +199,7 @@ function buildDefaultCheckLists() {
     },
   ];
 }
-// ─── Assign plan dates (mirrors Apps Script logic) ─────────────────────────
+
 function assignPlanDates(checkLists, joiningStatus, offerAcceptedDate, joinedDate) {
   for (const list of checkLists) {
     let planDate;
@@ -242,11 +229,6 @@ function assignPlanDates(checkLists, joiningStatus, offerAcceptedDate, joinedDat
   }
 }
 
-// ─── Safely turn a Mongoose checklist array into clean plain objects ───────
-// Never spread Mongoose (sub)documents directly — depending on version this
-// can silently drop fields or leak internal Mongoose properties into the
-// object that later gets written back with findByIdAndUpdate. Always route
-// through toObject() and pick the exact fields we care about.
 function toPlainCheckLists(checkLists) {
   return (checkLists || []).map((l) => ({
     name: l.name,
@@ -263,14 +245,6 @@ function toPlainCheckLists(checkLists) {
   }));
 }
 
-// Reconciles an existing record's checklist against the CURRENT
-// buildDefaultCheckLists() template — used whenever a new task gets added
-// to the checklist definitions after records already exist. Matches items
-// by NAME (not array position), so it's safe regardless of where in the
-// list a new task was inserted: existing items keep all their done/plan
-// data untouched, and any task present in the template but missing from
-// the record gets added fresh (inheriting the group's plan date, if any,
-// so it scores consistently with its siblings).
 function reconcileChecklistsWithTemplate(existingCheckLists) {
   const template = buildDefaultCheckLists();
   const existingByGroupName = new Map((existingCheckLists || []).map((g) => [g.name, g]));
@@ -311,49 +285,36 @@ function reconcileChecklistsWithTemplate(existingCheckLists) {
   });
 }
 
-// ─── POST /api/onboarding  — Create new onboarding ────────────────────────
 router.post("/", async (req, res) => {
   try {
     const body = req.body;
-
-    // 1. Build checklist structure
     const checkLists = buildDefaultCheckLists();
 
-    // 2. Map submitted done-states (array of booleans per list) onto itemsList
-    //    Frontend sends: checkLists: [ { itemsList: [true, false, ...] }, ... ]
     if (Array.isArray(body.checkLists)) {
-  body.checkLists.forEach((submittedList, listIdx) => {
-    const submittedItems =
-      submittedList.items ||
-      submittedList.itemsList ||
-      [];
+      body.checkLists.forEach((submittedList, listIdx) => {
+        const submittedItems =
+          submittedList.items ||
+          submittedList.itemsList ||
+          [];
 
-    submittedItems.forEach((item, itemIdx) => {
-      const target = checkLists[listIdx]?.itemsList?.[itemIdx];
+        submittedItems.forEach((item, itemIdx) => {
+          const target = checkLists[listIdx]?.itemsList?.[itemIdx];
+          if (!target) return;
+          const isChecked =
+            typeof item === "boolean"
+              ? item
+              : item?.checked;
+          if (isChecked) {
+            target.checked = true;
+            target.doneDate = new Date();
+          }
+        });
+      });
+    }
 
-      if (!target) return;
-
-      // frontend may send boolean OR object
-      const isChecked =
-        typeof item === "boolean"
-          ? item
-          : item?.checked;
-
-      if (isChecked) {
-        target.checked = true;
-        target.doneDate = new Date();
-      }
-    });
-  });
-}
-
-    // 3. Resolve one-time email flags, then sync their matching checklist
-    //    items — this must happen BEFORE plan dates/scoring below so the
-    //    computed totals (doneInTime, tasksDue, etc.) reflect them.
     const emailFields = resolveOneTimeEmails(null, body);
     syncEmailChecklistItems(checkLists, emailFields);
 
-    // 4. Assign plan dates
     assignPlanDates(
       checkLists,
       body.joiningStatus ?? "",
@@ -361,7 +322,6 @@ router.post("/", async (req, res) => {
       body.joinedDate ? new Date(body.joinedDate) : undefined
     );
 
-    // 5. Score every list
     const today = new Date();
     let doneInTime = 0,
       doneButDelayed = 0,
@@ -385,12 +345,9 @@ router.post("/", async (req, res) => {
     }
 
     const fmsStatus = tasksNotDone === 0 ? "Closed" : "Open";
-
-    // 6. If "Not Joining" override to Closed
     const finalStatus =
       body.joiningStatus === "Not Joining" ? "Closed" : fmsStatus;
 
-    // 7. Build and save document
     const doc = new Onboarding({
       ...body,
       ...emailFields,
@@ -421,8 +378,8 @@ router.post("/", async (req, res) => {
       fmsStatus: finalStatus,
     });
 
-  await doc.save();
-    triggerNewOnboarding(doc).catch(console.error); // fire-and-forget
+    await doc.save();
+    triggerNewOnboarding(doc).catch(console.error);
     res.status(201).json({ success: true, data: doc });
   } catch (err) {
     console.error(err);
@@ -430,23 +387,6 @@ router.post("/", async (req, res) => {
   }
 });
 
-// ─── POST /api/onboarding/backfill-reporting-head-from-rolemaster ──────────
-// One-time backfill: fills reportingHead on existing Onboarding records
-// from RoleMaster's own reporting_manager field — new records already get
-// this set directly via the Onboarding form now, so this is purely for
-// records created before that field existed.
-//
-// Only fills BLANK reportingHead values — never overwrites a value
-// someone has already set (whether manually via the form, or by a prior
-// Salary Revision sync). Matches by official email first (most reliable,
-// since RoleMaster's desig_email_id is role-specific), falling back to
-// exact name match.
-//
-// Uses the raw collection driver rather than RoleMaster's Mongoose model,
-// same reason as getDepartmentTypeMap() above: RoleMaster has a mix of
-// legacy PascalCase-keyed documents and properly schema-shaped ones, and
-// Mongoose's schema-aware .find() silently returns blank for the legacy
-// ones. Checking every known key variant works regardless of shape.
 router.post("/backfill-reporting-head-from-rolemaster", async (req, res) => {
   try {
     const roleRows = await RoleMaster.collection.find({}).toArray();
@@ -462,7 +402,7 @@ router.post("/backfill-reporting-head-from-rolemaster", async (req, res) => {
         r.ReportingManager ??
         "";
       const reportingManager = String(reportingManagerRaw || "").trim();
-      if (!reportingManager) continue; // nothing useful on this row
+      if (!reportingManager) continue;
 
       const emailRaw =
         r.desig_email_id ??
@@ -479,8 +419,6 @@ router.post("/backfill-reporting-head-from-rolemaster", async (req, res) => {
       if (name && !byName.has(name)) byName.set(name, reportingManager);
     }
 
-    // Only records that don't already have a reportingHead set — never
-    // overwrite an existing value.
     const candidates = await Onboarding.find(
       { $or: [{ reportingHead: { $exists: false } }, { reportingHead: "" }] },
       "name officialEmail persEmail"
@@ -517,15 +455,15 @@ router.post("/backfill-reporting-head-from-rolemaster", async (req, res) => {
 router.post("/backfill-empid-from-rolemaster", async (req, res) => {
   try {
     const roleRows = await RoleMaster.collection.find({}).toArray();
- 
+
     const byEmail = new Map();
     const byName = new Map();
- 
+
     for (const r of roleRows) {
       const empIdRaw = r.emp_id ?? r.Emp_id ?? r.Emp_Id ?? r.EmpId ?? "";
       const empId = String(empIdRaw || "").trim();
-      if (!empId) continue; // nothing useful on this row
- 
+      if (!empId) continue;
+
       const emailRaw =
         r.desig_email_id ??
         r["desig Email Id"] ??
@@ -535,26 +473,26 @@ router.post("/backfill-empid-from-rolemaster", async (req, res) => {
         "";
       const email = String(emailRaw || "").trim().toLowerCase();
       if (email && !byEmail.has(email)) byEmail.set(email, empId);
- 
+
       const nameRaw = r.emp_name ?? r.Emp_name ?? r.Emp_Name ?? r.EmpName ?? "";
       const name = String(nameRaw || "").trim().toLowerCase();
       if (name && !byName.has(name)) byName.set(name, empId);
     }
- 
+
     const candidates = await Onboarding.find(
       { $or: [{ empId: { $exists: false } }, { empId: "" }] },
       "name officialEmail persEmail"
     );
- 
+
     let updated = 0;
     const unmatched = [];
- 
+
     for (const doc of candidates) {
       const email = (doc.officialEmail || "").trim().toLowerCase();
       const name = (doc.name || "").trim().toLowerCase();
- 
+
       const empId = (email && byEmail.get(email)) || (name && byName.get(name));
- 
+
       if (empId) {
         await Onboarding.findByIdAndUpdate(doc._id, { empId });
         updated++;
@@ -562,7 +500,7 @@ router.post("/backfill-empid-from-rolemaster", async (req, res) => {
         unmatched.push(doc.name);
       }
     }
- 
+
     res.json({
       success: true,
       message: `Backfilled empId on ${updated} record(s). ${unmatched.length} had no match in Role Master.`,
@@ -574,13 +512,7 @@ router.post("/backfill-empid-from-rolemaster", async (req, res) => {
   }
 });
 
-
-// Anyone with an exit record has left the company — they shouldn't show up
-// Statuses that mean the person has actually left — "Serving Notice Period"
-// still counts as employed, and "Not Exiting"/"Exit Cancelled" mean they
-// never left at all, so neither should exclude someone from the master list.
 const EXITED_STATUS_VALUES = new Set(["Left", "Already Left"]);
-
 
 router.get("/employee-letters-source", async (req, res) => {
   try {
@@ -593,7 +525,7 @@ router.get("/employee-letters-source", async (req, res) => {
       "leaveTravelAllowance annualBonus annualPerformanceIncentive medicalPremium gratuity " +
       "contractAmount contractPeriod salApplicableFrom"
     ).lean();
- 
+
     const employees = docs.map((d) => {
       const isExited = EXITED_STATUS_VALUES.has(d.exitStatus || "");
       return {
@@ -607,7 +539,7 @@ router.get("/employee-letters-source", async (req, res) => {
         employee_category: d.employeeCategory || "",
         is_current: !isExited,
         is_exited: isExited,
- 
+
         annual_ctc: d.annualCtc || 0,
         monthly_ctc: d.monthlyCtc || 0,
         basic: d.basicSal ?? "",
@@ -617,8 +549,6 @@ router.get("/employee-letters-source", async (req, res) => {
         gross_monthly: d.grossMonthly ?? "",
         employer_pf: d.empEpf ?? "",
         employer_esi: d.empEsic ?? "",
-        // Telephone: single underlying field, mapped to both frontend
-        // field names — see note above.
         telephone_allowance: d.telephoneReimbursement ?? "",
         telephone_reimbursement_annual: d.telephoneReimbursement ?? "",
         medical_reimbursement_annual: d.medicalReimbursement ?? "",
@@ -636,7 +566,7 @@ router.get("/employee-letters-source", async (req, res) => {
         sal_applicable_from: d.salApplicableFrom || null,
       };
     });
- 
+
     res.json({ success: true, data: employees });
   } catch (err) {
     console.error(err);
@@ -644,169 +574,44 @@ router.get("/employee-letters-source", async (req, res) => {
   }
 });
 
-// ─── GET /api/onboarding/eligible-employees  — Salary Revision employee source ──
-// Salary Revision used to pull its employee picker from a separate Employee
-// collection. Onboarding is now the single source of truth for who's
-// actually joined, so this shapes Onboarding records into the same fields
-// Salary Revision's UI already expects. Uses the onboarding record's own
-// _id as "employee_id" so revisions can be linked straight back to it.
-// Onboarding's own exitStatus field (kept in sync by the Exit module
-// whenever an exit is created/updated) is checked directly here — no live
-// join to the Exit collection needed.
-// ─── POST /api/onboarding/reconcile-checklist-template ─────────────────────
-// Backfills any checklist task that's been added to buildDefaultCheckLists()
-// since a record was created — e.g. adding "Add Employee to BO WhatsApp Gp
-// Done?" to POST-JOINING TASKS. Existing items are matched by name and left
-// completely untouched; only genuinely missing tasks get added. Safe to
-// re-run anytime, including after future task additions.
-// ─── POST /api/onboarding/sync-dept-and-exitstatus-from-sheet ──────────────
-// Updates ONLY the dept and exitStatus fields on existing Onboarding
-// records, from a corrected master sheet export — deliberately narrow so
-// it doesn't touch anything else (salary, checklists, dates, etc.) that
-// already lives correctly in MongoDB.
-// Body: { csv: "<raw CSV file contents as a string>" }
-// Matching: Official Email → Personal Email → exact Name, in that order.
-// Exit Status: only applied when the sheet's value is non-blank ("Left") —
-// a blank cell means "not tracked here," not "definitely not exited," so
-// it must never silently clear an exitStatus already set via the Exit
-// module's own sync.
-router.post(
-  "/sync-dept-and-exitstatus-from-sheet",
-  express.text({ type: "*/*", limit: "10mb" }),
-  async (req, res) => {
+router.get("/eligible-employees", async (req, res) => {
   try {
-    // Accepts EITHER a raw CSV text body (Content-Type: text/plain — the
-    // recommended way, since PowerShell's ConvertTo-Json can silently
-    // corrupt very large strings when JSON-wrapping them) OR the older
-    // { csv: "<file contents>" } JSON form, for backward compatibility.
-    let csvText;
-    if (typeof req.body === "string" && req.body.trim()) {
-      csvText = req.body;
-    } else if (req.body && typeof req.body.csv === "string") {
-      csvText = req.body.csv;
-    }
+    const docs = await Onboarding.find({ joiningStatus: "Joined" })
+      .select(
+        "name dept designation officialEmail persEmail joinedDate employeeCategory exitStatus managementLevel " +
+        "annualCtc basicSal hraSal grossMonthly empEpf gratuity annualBonus " +
+        "annualPerformanceIncentive medicalPremium travelAllowance telephoneReimbursement reportingHead"
+      )
+      .lean();
 
-    if (!csvText) {
-      return res.status(400).json({
-        success: false,
-        message: "Provide the raw CSV as the request body (Content-Type: text/plain), or { csv: \"<file contents>\" } as JSON",
-      });
-    }
+    const activeDocs = docs.filter((d) => !EXITED_STATUS_VALUES.has(d.exitStatus || ""));
 
-    const { parse: parseCsv } = require("csv-parse/sync");
-    const records = parseCsv(csvText, {
-      columns: true,
-      skip_empty_lines: true,
-      trim: false,
-      relax_quotes: true, // tolerate stray quote characters (e.g. from corrupted special characters)
-    });
+    const employees = activeDocs.map((d) => ({
+      _id: String(d._id),
+      employee_id: String(d._id),
+      full_name: d.name || "",
+      department: d.dept || "",
+      designation: d.designation || "",
+      email: d.officialEmail || d.persEmail || "",
+      official_email: d.officialEmail || "",
+      joining_date: d.joinedDate || null,
+      employee_category: d.employeeCategory || "",
+      management_level: d.managementLevel || "",
+      annual_ctc: d.annualCtc || 0,
+      basic: d.basicSal ?? "",
+      hra: d.hraSal ?? "",
+      gross_monthly: d.grossMonthly ?? "",
+      employer_pf: d.empEpf ?? "",
+      gratuity: d.gratuity ?? "",
+      annual_bonus: d.annualBonus ?? "",
+      annual_performance_incentive: d.annualPerformanceIncentive ?? "",
+      medical_premium: d.medicalPremium ?? "",
+      travel_allowance: d.travelAllowance ?? "",
+      telephone_allowance: d.telephoneReimbursement ?? "",
+      reporting_head: d.reportingHead || "",
+    }));
 
-    const all = await Onboarding.find({}, "name officialEmail persEmail dept exitStatus joinedDate").lean();
-
-    // Parses the sheet's date formats (DD/MM/YYYY, DD MMM YY, MMM D, YYYY)
-    // — same approach used for the standalone Exit CSV import.
-    const MONTH_MAP = { jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11 };
-    function parseSheetDate(raw) {
-      if (!raw) return null;
-      const s = String(raw).trim();
-      if (!s || s.toUpperCase() === "NA") return null;
-      let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-      if (m) { const d = new Date(Date.UTC(+m[3], +m[2]-1, +m[1])); if (!isNaN(d)) return d; }
-      m = s.match(/^(\d{1,2})\s+([A-Za-z]{3})\w*\s+(\d{2,4})$/);
-      if (m) { const mon = MONTH_MAP[m[2].toLowerCase()]; let y=+m[3]; if(y<100)y+=2000; if(mon!==undefined){const d=new Date(Date.UTC(y,mon,+m[1])); if(!isNaN(d))return d;} }
-      m = s.match(/^([A-Za-z]{3})\w*\s+(\d{1,2}),\s*(\d{4})$/);
-      if (m) { const mon = MONTH_MAP[m[1].toLowerCase()]; if(mon!==undefined){const d=new Date(Date.UTC(+m[3],mon,+m[2])); if(!isNaN(d))return d;} }
-      const fb = new Date(s);
-      return isNaN(fb) ? null : fb;
-    }
-
-    let updated = 0;
-    const unmatched = [];
-    const skippedRehires = [];
-
-    for (const row of records) {
-      const name = (row["Name"] || "").trim();
-      if (!name) continue;
-
-      const officialEmail = (row["Official Email"] || "").trim().toLowerCase();
-      const persEmail = (row["Personal Email"] || "").trim().toLowerCase();
-      const sheetDept = (row["Dept"] || "").trim();
-      const sheetExitStatus = (row["Exit Status"] || "").trim();
-
-      // Personal email FIRST — official addresses (like hr.head@company.com)
-      // are often role-based and get reused across different successive
-      // people, which would otherwise misattribute one person's exit onto
-      // whoever currently holds that same official email.
-      let match = null;
-      if (persEmail) {
-        match = all.find((o) => (o.persEmail || "").trim().toLowerCase() === persEmail);
-      }
-      if (!match && officialEmail) {
-        match = all.find((o) => (o.officialEmail || "").trim().toLowerCase() === officialEmail);
-      }
-      if (!match) {
-        match = all.find((o) => (o.name || "").trim().toLowerCase() === name.toLowerCase());
-      }
-
-      if (!match) {
-        unmatched.push(name);
-        continue;
-      }
-
-      const setFields = {};
-      if (sheetDept) setFields.dept = sheetDept;
-
-      if (sheetExitStatus) {
-        // Rehire-aware: if this person's own joinedDate is AFTER the
-        // sheet's exit reference date, this "Left" entry predates their
-        // current stint (e.g. shared official email with a predecessor,
-        // or a genuine earlier exit before they were rehired) — don't
-        // mark them exited while they're actually currently employed.
-        const exitRefDate = parseSheetDate(row["Left Date"]) || parseSheetDate(row["Planned Exit Date"]) || parseSheetDate(row["Resignation Email Sent on"]);
-        const joinedDate = match.joinedDate ? new Date(match.joinedDate) : null;
-
-        if (joinedDate && exitRefDate && joinedDate > exitRefDate) {
-          skippedRehires.push(name);
-        } else {
-          setFields.exitStatus = sheetExitStatus;
-          // No point tracking onboarding tasks for someone who's actually
-          // gone — "Serving Notice Period" stays open (still employed).
-          if (["Left", "Already Left"].includes(sheetExitStatus)) {
-            setFields.fmsStatus = "Closed";
-          }
-        }
-      }
-
-      if (Object.keys(setFields).length > 0) {
-        await Onboarding.findByIdAndUpdate(match._id, setFields);
-        updated++;
-      }
-    }
-
-    res.json({
-      success: true,
-      message: `Updated ${updated} record(s). ${unmatched.length} row(s) had no matching Onboarding record. ${skippedRehires.length} exit status(es) skipped as likely rehires.`,
-      unmatched,
-      skippedRehires,
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// ─── POST /api/onboarding/close-fms-for-exited ─────────────────────────────
-// One-time backfill: closes fmsStatus on every onboarding record whose
-// exitStatus is already "Left" or "Already Left" but whose fmsStatus is
-// still "Open" — for anyone who got marked exited before this
-// auto-close behavior existed. Safe to re-run anytime.
-router.post("/close-fms-for-exited", async (req, res) => {
-  try {
-    const result = await Onboarding.updateMany(
-      { exitStatus: { $in: ["Left", "Already Left"] }, fmsStatus: { $ne: "Closed" } },
-      { $set: { fmsStatus: "Closed" } }
-    );
-    res.json({ success: true, message: `Closed FMS on ${result.modifiedCount} already-exited record(s)` });
+    res.json({ success: true, data: employees });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: err.message });
@@ -855,54 +660,129 @@ router.post("/reconcile-checklist-template", async (req, res) => {
   }
 });
 
-// ─── GET /api/onboarding/employee-master ───────────────────────────────────
-// The real employee master — built entirely from Onboarding, replacing the
-// old Dept & Designation Master sheet (which was placeholder data, never
-// kept in sync with reality). Includes EVERY employee ever onboarded —
-// current AND exited — each flagged with is_current/is_exited, plus
-// department and designation lists derived from what's actually in use
-// across real records, instead of a separate stale sheet.
-// ─── GET /api/onboarding/employee-master ───────────────────────────────────
-// The real employee master — WHO exists, built entirely from Onboarding.
-// Includes EVERY employee ever onboarded — current AND exited — each
-// flagged with is_current/is_exited. Deliberately does NOT include
-// department/designation option lists: those are owned by the actual Dept
-// & Designation Master, since a new department can legitimately exist with
-// zero employees in it yet (e.g. before the first hire) — deriving that
-// list from Onboarding would make it impossible to add one in advance.
-// ============================================================
-// HR ANALYTICS: Teeth-to-Tail Ratio
-// ============================================================
-// "Teeth" = Delivery departments, "Tail" = Support departments — read
-// directly from RoleMaster's own department_type field (the real Dept &
-// Designation Master, set via the "Type" dropdown on that page), NOT
-// guessed from department name patterns. Any department without a Type
-// set yet (or a name that doesn't match anything in RoleMaster at all)
-// falls into "Uncategorized" so it stays visible rather than being
-// silently miscounted either way.
-//
-// NOTE: assumes the RoleMaster model is at '../models/RoleMaster' — if
-// your actual file has a different name/casing, adjust this require to
-// match (same class of issue we hit with onboarding/exit model filenames).
+router.post(
+  "/sync-dept-and-exitstatus-from-sheet",
+  express.text({ type: "*/*", limit: "10mb" }),
+  async (req, res) => {
+  try {
+    let csvText;
+    if (typeof req.body === "string" && req.body.trim()) {
+      csvText = req.body;
+    } else if (req.body && typeof req.body.csv === "string") {
+      csvText = req.body.csv;
+    }
+
+    if (!csvText) {
+      return res.status(400).json({
+        success: false,
+        message: "Provide the raw CSV as the request body (Content-Type: text/plain), or { csv: \"<file contents>\" } as JSON",
+      });
+    }
+
+    const { parse: parseCsv } = require("csv-parse/sync");
+    const records = parseCsv(csvText, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: false,
+      relax_quotes: true,
+    });
+
+    const all = await Onboarding.find({}, "name officialEmail persEmail dept exitStatus joinedDate").lean();
+
+    const MONTH_MAP = { jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11 };
+    function parseSheetDate(raw) {
+      if (!raw) return null;
+      const s = String(raw).trim();
+      if (!s || s.toUpperCase() === "NA") return null;
+      let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (m) { const d = new Date(Date.UTC(+m[3], +m[2]-1, +m[1])); if (!isNaN(d)) return d; }
+      m = s.match(/^(\d{1,2})\s+([A-Za-z]{3})\w*\s+(\d{2,4})$/);
+      if (m) { const mon = MONTH_MAP[m[2].toLowerCase()]; let y=+m[3]; if(y<100)y+=2000; if(mon!==undefined){const d=new Date(Date.UTC(y,mon,+m[1])); if(!isNaN(d))return d;} }
+      m = s.match(/^([A-Za-z]{3})\w*\s+(\d{1,2}),\s*(\d{4})$/);
+      if (m) { const mon = MONTH_MAP[m[1].toLowerCase()]; if(mon!==undefined){const d=new Date(Date.UTC(+m[3],mon,+m[2])); if(!isNaN(d))return d;} }
+      const fb = new Date(s);
+      return isNaN(fb) ? null : fb;
+    }
+
+    let updated = 0;
+    const unmatched = [];
+    const skippedRehires = [];
+
+    for (const row of records) {
+      const name = (row["Name"] || "").trim();
+      if (!name) continue;
+
+      const officialEmail = (row["Official Email"] || "").trim().toLowerCase();
+      const persEmail = (row["Personal Email"] || "").trim().toLowerCase();
+      const sheetDept = (row["Dept"] || "").trim();
+      const sheetExitStatus = (row["Exit Status"] || "").trim();
+
+      let match = null;
+      if (persEmail) {
+        match = all.find((o) => (o.persEmail || "").trim().toLowerCase() === persEmail);
+      }
+      if (!match && officialEmail) {
+        match = all.find((o) => (o.officialEmail || "").trim().toLowerCase() === officialEmail);
+      }
+      if (!match) {
+        match = all.find((o) => (o.name || "").trim().toLowerCase() === name.toLowerCase());
+      }
+
+      if (!match) {
+        unmatched.push(name);
+        continue;
+      }
+
+      const setFields = {};
+      if (sheetDept) setFields.dept = sheetDept;
+
+      if (sheetExitStatus) {
+        const exitRefDate = parseSheetDate(row["Left Date"]) || parseSheetDate(row["Planned Exit Date"]) || parseSheetDate(row["Resignation Email Sent on"]);
+        const joinedDate = match.joinedDate ? new Date(match.joinedDate) : null;
+
+        if (joinedDate && exitRefDate && joinedDate > exitRefDate) {
+          skippedRehires.push(name);
+        } else {
+          setFields.exitStatus = sheetExitStatus;
+          if (["Left", "Already Left"].includes(sheetExitStatus)) {
+            setFields.fmsStatus = "Closed";
+          }
+        }
+      }
+
+      if (Object.keys(setFields).length > 0) {
+        await Onboarding.findByIdAndUpdate(match._id, setFields);
+        updated++;
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Updated ${updated} record(s). ${unmatched.length} row(s) had no matching Onboarding record. ${skippedRehires.length} exit status(es) skipped as likely rehires.`,
+      unmatched,
+      skippedRehires,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.post("/close-fms-for-exited", async (req, res) => {
+  try {
+    const result = await Onboarding.updateMany(
+      { exitStatus: { $in: ["Left", "Already Left"] }, fmsStatus: { $ne: "Closed" } },
+      { $set: { fmsStatus: "Closed" } }
+    );
+    res.json({ success: true, message: `Closed FMS on ${result.modifiedCount} already-exited record(s)` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 const RoleMaster = require("../models/role_master");
 
-// RoleMaster stores one row PER designation under each department, so the
-// same department name can appear many times with potentially different
-// department_type values across rows (e.g. if only some designations were
-// updated). This picks whichever row ACTUALLY has a Type set for that
-// department — a blank Type on one designation row must never override a
-// real one set on another row for the same department.
-// RoleMaster has a mix of legacy raw-imported documents (using PascalCase
-// keys like "Department" / "Department Type (Delivery or Support)" — and
-// even a typo'd "Department Type (Deliveryor Support)" on at least one
-// document) and properly schema-shaped documents (lowercase "department" /
-// "department_type"). Mongoose's schema-aware .find() silently returns
-// blank for every legacy document, since their real Type value lives under
-// a different literal key than the schema expects — that's why so many
-// departments showed Uncategorized despite clearly having a Type visible
-// in the raw data. Reading via the raw collection driver and checking
-// every known key variant fixes this regardless of which shape a given
-// document happens to be in.
 async function getDepartmentTypeMap() {
   const rows = await RoleMaster.collection.find({}).toArray();
   const map = new Map();
@@ -919,19 +799,14 @@ async function getDepartmentTypeMap() {
     const type = String(typeRaw || "").trim();
 
     if (type) {
-      map.set(dept, type); // a real Type always wins, whenever it's found
+      map.set(dept, type);
     } else if (!map.has(dept)) {
-      map.set(dept, ""); // reserve the key so the department is still known
+      map.set(dept, "");
     }
   }
   return map;
 }
 
-// Onboarding sometimes uses abbreviations or slightly different spellings
-// than the canonical department name in RoleMaster. This maps the known
-// ones onto RoleMaster's real name so they resolve to the same Type
-// instead of silently falling into Uncategorized. Add to this as new
-// mismatches turn up.
 const DEPARTMENT_ALIASES = {
   "tcs": "temporary staffing",
   "daa": "data analytics and automation",
@@ -940,20 +815,8 @@ const DEPARTMENT_ALIASES = {
   "hr": "human resources",
   "design & develpoment": "engineering",
   "support": "administration",
-  // "iab": "internal audit board", — NOT added yet: "Internal Audit
-  // Board" doesn't exist as a department in RoleMaster at all, so this
-  // alias would still resolve to nothing. Either add that department to
-  // the Dept & Designation Master with a Type set, or tell us which
-  // existing department it should actually map to instead.
 };
 
-// Resolves an Onboarding dept string to whichever RoleMaster department
-// name it should be treated as, before looking up its Type. Handles:
-//   - exact match (already canonical)
-//   - known aliases/abbreviations (see DEPARTMENT_ALIASES)
-//   - compound "A/B" values — tries each half against both the alias map
-//     and RoleMaster directly, since these look like dual-department
-//     entries rather than a single real department name
 function resolveDeptKey(dept, deptTypeMap) {
   const d = (dept || "").trim().toLowerCase();
   if (!d) return null;
@@ -979,13 +842,11 @@ function categorizeDept(dept, deptTypeMap) {
   return "Uncategorized";
 }
 
-// Last instant of the given quarter (1-4) in the given year, in UTC.
 function quarterEndDate(year, quarter) {
-  const endMonth = quarter * 3; // 3, 6, 9, 12
+  const endMonth = quarter * 3;
   return new Date(Date.UTC(year, endMonth, 0, 23, 59, 59));
 }
 
-// ─── GET /api/onboarding/analytics/teeth-to-tail?year=YYYY ────────────────
 router.get("/analytics/teeth-to-tail", async (req, res) => {
   try {
     const year = parseInt(req.query.year, 10) || new Date().getFullYear();
@@ -1007,11 +868,6 @@ router.get("/analytics/teeth-to-tail", async (req, res) => {
       return isNaN(t) ? -Infinity : t;
     };
 
-    // Resolve each exited employee's real exit date by matching against the
-    // Exit collection (persEmail first, officialEmail fallback), taking
-    // whichever of their exit records is chronologically latest — same
-    // approach used for the live exitStatus sync, so a re-exit after a
-    // rehire is still handled correctly here.
     function resolveExitDate(emp) {
       const persEmail = (emp.persEmail || "").trim().toLowerCase();
       const officialEmail = (emp.officialEmail || "").trim().toLowerCase();
@@ -1047,17 +903,12 @@ router.get("/analytics/teeth-to-tail", async (req, res) => {
       for (const emp of employees) {
         if (!emp.joinedDate) continue;
         const joined = new Date(emp.joinedDate);
-        if (joined > asOf) continue; // hadn't joined by this quarter-end yet
+        if (joined > asOf) continue;
 
         if (emp.isMarkedExited) {
           if (emp.resolvedExitDate) {
-            // We know exactly when — only exclude from quarters at/after that date.
             if (emp.resolvedExitDate <= asOf) continue;
           } else {
-            // Marked exited (e.g. via the master sheet) but with no formal
-            // Exit record to pin down a date. Safer to treat them as
-            // excluded from every quarter than to risk silently counting
-            // someone who's actually gone as still active.
             continue;
           }
         }
@@ -1081,11 +932,6 @@ router.get("/analytics/teeth-to-tail", async (req, res) => {
       };
     });
 
-    // Department-level breakdown (current employees, independent of the
-    // selected year/quarter) — shows exactly which departments are driving
-    // the Uncategorized count, so it's obvious what needs a Type set in
-    // the Dept & Designation Master rather than just seeing a mystery
-    // number.
     const currentEmployees = docs.filter((d) => !EXITED.has(d.exitStatus || ""));
     const deptCounts = {};
     for (const d of currentEmployees) {
@@ -1097,7 +943,6 @@ router.get("/analytics/teeth-to-tail", async (req, res) => {
     }
     const departmentBreakdown = Object.values(deptCounts).sort((a, b) => b.count - a.count);
 
-    // Only offer years that actually have joining data, plus the current year.
     const joinYears = docs
       .map((d) => (d.joinedDate ? new Date(d.joinedDate).getFullYear() : null))
       .filter(Boolean);
@@ -1113,36 +958,32 @@ router.get("/analytics/teeth-to-tail", async (req, res) => {
   }
 });
 
-// ─── GET /api/onboarding/analytics/gender ──────────────────────────────────
-// Gender split among CURRENT employees only (joined and not exited) —
-// overall counts, plus a per-department breakdown so it's clear whether
-// any imbalance is company-wide or concentrated in specific departments.
 router.get("/analytics/gender", async (req, res) => {
   try {
     const year = parseInt(req.query.year, 10) || new Date().getFullYear();
- 
+
     const docs = await Onboarding.find(
       {},
       "gender dept joinedDate joiningStatus exitStatus persEmail officialEmail"
     ).lean();
- 
+
     const exits = await Exit.find(
       {},
       "persEmail officialEmail leftDate plannedExitDate resignationDate"
     ).lean();
- 
+
     const EXITED = new Set(["Left", "Already Left"]);
- 
+
     const exitDateOfRecord = (e) => {
       const d = e.leftDate || e.plannedExitDate || e.resignationDate;
       const t = d ? new Date(d).getTime() : NaN;
       return isNaN(t) ? -Infinity : t;
     };
- 
+
     function resolveExitDate(emp) {
       const persEmail = (emp.persEmail || "").trim().toLowerCase();
       const officialEmail = (emp.officialEmail || "").trim().toLowerCase();
- 
+
       let candidates = [];
       if (persEmail) {
         candidates = exits.filter((e) => (e.persEmail || "").trim().toLowerCase() === persEmail);
@@ -1151,7 +992,7 @@ router.get("/analytics/gender", async (req, res) => {
         candidates = exits.filter((e) => (e.officialEmail || "").trim().toLowerCase() === officialEmail);
       }
       if (candidates.length === 0) return null;
- 
+
       const latest = candidates.reduce(
         (l, e) => (!l || exitDateOfRecord(e) > exitDateOfRecord(l) ? e : l),
         null
@@ -1159,39 +1000,36 @@ router.get("/analytics/gender", async (req, res) => {
       const d = latest.leftDate || latest.plannedExitDate || latest.resignationDate;
       return d ? new Date(d) : null;
     }
- 
+
     const employees = docs.map((d) => ({
       ...d,
       isMarkedExited: EXITED.has(d.exitStatus || ""),
       resolvedExitDate: EXITED.has(d.exitStatus || "") ? resolveExitDate(d) : null,
     }));
- 
+
     const quarters = [1, 2, 3, 4].map((q) => {
       const asOf = quarterEndDate(year, q);
       const genderCounts = {};
- 
+
       for (const emp of employees) {
         if (!emp.joinedDate) continue;
         const joined = new Date(emp.joinedDate);
-        if (joined > asOf) continue; // hadn't joined by this quarter-end yet
- 
+        if (joined > asOf) continue;
+
         if (emp.isMarkedExited) {
           if (emp.resolvedExitDate) {
             if (emp.resolvedExitDate <= asOf) continue;
           } else {
-            // Marked exited but no formal Exit record to pin a date —
-            // same conservative call Teeth-to-Tail makes: exclude rather
-            // than risk counting someone who's actually gone.
             continue;
           }
         }
- 
+
         const g = (emp.gender || "").trim() || "Not Specified";
         genderCounts[g] = (genderCounts[g] || 0) + 1;
       }
- 
+
       const total = Object.values(genderCounts).reduce((s, c) => s + c, 0);
- 
+
       return {
         quarter: `Q${q}`,
         asOf: asOf.toISOString(),
@@ -1199,34 +1037,30 @@ router.get("/analytics/gender", async (req, res) => {
         genderCounts,
       };
     });
- 
-    // Current snapshot — used for the By Department breakdown, same as
-    // Teeth-to-Tail's own department breakdown (always current, never
-    // historicized per quarter).
+
     const current = docs.filter((d) => !EXITED.has(d.exitStatus || ""));
     const genderCounts = {};
     const byDept = {};
- 
+
     for (const d of current) {
       const g = (d.gender || "").trim() || "Not Specified";
       genderCounts[g] = (genderCounts[g] || 0) + 1;
- 
+
       const dept = (d.dept || "").trim() || "Unassigned";
       if (!byDept[dept]) byDept[dept] = {};
       byDept[dept][g] = (byDept[dept][g] || 0) + 1;
     }
- 
+
     const genders = Object.keys(genderCounts).sort();
     const overall = genders.map((g) => ({ gender: g, count: genderCounts[g] }));
- 
+
     const departments = Object.keys(byDept).sort();
     const byDepartment = departments.map((dept) => {
       const row = { department: dept };
       genders.forEach((g) => { row[g] = byDept[dept][g] || 0; });
       return row;
     });
- 
-    // Only offer years that actually have joining data, plus the current year.
+
     const joinYears = docs
       .map((d) => (d.joinedDate ? new Date(d.joinedDate).getFullYear() : null))
       .filter(Boolean);
@@ -1234,7 +1068,7 @@ router.get("/analytics/gender", async (req, res) => {
     const maxYear = Math.max(new Date().getFullYear(), ...(joinYears.length ? joinYears : [year]));
     const availableYears = [];
     for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
- 
+
     res.json({
       success: true,
       year,
@@ -1251,12 +1085,6 @@ router.get("/analytics/gender", async (req, res) => {
   }
 });
 
-
-// ─── GET /api/onboarding/verify-access ──────────────────────────────────────
-// ACL gate: checks whether the given official email belongs to a CURRENT
-// (not exited) employee in Onboarding — the single source of truth. Used
-// by the frontend's ProtectedRoute to decide whether someone reaching the
-// portal via the ?name=&email= link should actually get in.
 router.get("/verify-access", async (req, res) => {
   try {
     const email = (req.query.email || "").trim().toLowerCase();
@@ -1266,12 +1094,6 @@ router.get("/verify-access", async (req, res) => {
       return res.json({ success: true, allowed: false, reason: "missing_email" });
     }
 
-    // The signature proves this exact email came from a link we actually
-    // generated — without it, anyone could edit ?email= in the URL to any
-    // other real employee's address and get treated as that person. This
-    // check has nothing to do with whether the email belongs to a real
-    // employee (that's checked separately below) — it's specifically
-    // about whether THIS request is allowed to claim to BE that email.
     if (!verifySignature(email, sig)) {
       return res.json({ success: true, allowed: false, reason: "invalid_signature" });
     }
@@ -1303,12 +1125,6 @@ router.get("/verify-access", async (req, res) => {
   }
 });
 
-// ─── GET /api/onboarding/generate-access-link ──────────────────────────────
-// Produces a signed link for a specific current employee. Intended to be
-// called by trusted internal systems only (e.g. whatever currently sends
-// onboarding welcome emails) — never expose this to the public internet
-// without its own auth, since anyone who can call it can mint a valid
-// link for any employee.
 router.get("/generate-access-link", async (req, res) => {
   try {
     const email = (req.query.email || "").trim().toLowerCase();
@@ -1341,7 +1157,7 @@ router.get("/employee-master", async (req, res) => {
       {},
       "name empId dept designation officialEmail persEmail mobile joiningStatus exitStatus joinedDate reportingHead employeeCategory managementLevel"
     ).lean();
- 
+
     const employees = docs.map((d) => {
       const isExited = EXITED_STATUS_VALUES.has(d.exitStatus || "");
       const isCurrent = d.joiningStatus === "Joined" && !isExited;
@@ -1372,55 +1188,6 @@ router.get("/employee-master", async (req, res) => {
   }
 });
 
-router.get("/eligible-employees", async (req, res) => {
-  try {
-    const docs = await Onboarding.find({ joiningStatus: "Joined" })
-      .select(
-        "name dept designation officialEmail persEmail joinedDate employeeCategory exitStatus managementLevel " +
-        "annualCtc basicSal hraSal grossMonthly empEpf gratuity annualBonus " +
-        "annualPerformanceIncentive medicalPremium travelAllowance telephoneReimbursement reportingHead"
-      )
-      .lean();
-
-    const activeDocs = docs.filter((d) => !EXITED_STATUS_VALUES.has(d.exitStatus || ""));
-
-    const employees = activeDocs.map((d) => ({
-      _id: String(d._id),
-      employee_id: String(d._id),
-      full_name: d.name || "",
-      department: d.dept || "",
-      designation: d.designation || "",
-      email: d.officialEmail || d.persEmail || "",
-      official_email: d.officialEmail || "",
-      joining_date: d.joinedDate || null,
-      employee_category: d.employeeCategory || "",
-      management_level: d.managementLevel || "",
-      management_level: d.managementLevel || "",
-      annual_ctc: d.annualCtc || 0,
-      basic: d.basicSal ?? "",
-      hra: d.hraSal ?? "",
-      gross_monthly: d.grossMonthly ?? "",
-      employer_pf: d.empEpf ?? "",
-      gratuity: d.gratuity ?? "",
-      annual_bonus: d.annualBonus ?? "",
-      annual_performance_incentive: d.annualPerformanceIncentive ?? "",
-      medical_premium: d.medicalPremium ?? "",
-      travel_allowance: d.travelAllowance ?? "",
-      telephone_allowance: d.telephoneReimbursement ?? "",
-      reporting_head: d.reportingHead || "",
-    }));
-
-    res.json({ success: true, data: employees });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// ─── GET /api/onboarding  — List all (open first) ─────────────────────────
-// Shows every onboarding record, including employees who have since
-// exited — this stays a full historical view. The exit-exclusion only
-// applies to the employee master list below.
 router.get("/", async (req, res) => {
   try {
     res.set("Cache-Control", "no-store");
@@ -1433,7 +1200,6 @@ router.get("/", async (req, res) => {
   }
 });
 
-// ─── GET /api/onboarding/:id  — Single record with full checklists ─────────
 router.get("/:id", async (req, res) => {
   try {
     const doc = await Onboarding.findById(req.params.id);
@@ -1447,7 +1213,6 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// ─── ONE-TIME MIGRATION: backfill task names ──────────────────────────────
 router.post("/migrate/fix-names", async (req, res) => {
   try {
     const template = buildDefaultCheckLists();
@@ -1479,16 +1244,12 @@ router.post("/migrate/fix-names", async (req, res) => {
   }
 });
 
-
-
-// ─── PUT /api/onboarding/:id  — Update onboarding ─────────────────────────
 router.put("/:id", async (req, res) => {
   try {
     const body = req.body;
     const existing = await Onboarding.findById(req.params.id);
     if (!existing) return res.status(404).json({ success: false, message: "Not found" });
 
-    // ─── Sync to Employee when joiningStatus flips to "Joined" ───────────────
     const newStatus = body.joiningStatus;
     const wasNotJoined = existing.joiningStatus !== 'Joined';
 
@@ -1497,7 +1258,7 @@ router.put("/:id", async (req, res) => {
         $or: [
           { official_email: existing.officialEmail },
           { employee_id:    body.emp_id || existing.emp_id || '' },
-        ].filter(c => Object.values(c)[0]) // skip empty string matches
+        ].filter(c => Object.values(c)[0])
       });
 
       if (!empExists) {
@@ -1521,7 +1282,6 @@ router.put("/:id", async (req, res) => {
         });
         console.log(`[Onboarding] ✅ Employee record created for ${existing.name}`);
       } else {
-        // Already exists — just update joining status
         await Employee.findByIdAndUpdate(empExists._id, {
           joining_status: 'Joined',
           joining_date:   body.joinedDate || existing.joinedDate || empExists.joining_date,
@@ -1529,12 +1289,7 @@ router.put("/:id", async (req, res) => {
         console.log(`[Onboarding] ✅ Employee record updated for ${existing.name}`);
       }
     }
-    // ─────────────────────────────────────────────────────────────────────────
 
-    // Re-use existing checklist structure — routed through toObject() and
-    // toPlainCheckLists() so we're mutating clean plain objects, never raw
-    // Mongoose subdocuments (spreading those directly is what silently broke
-    // ticked items not saving).
     const existingPlain = existing.toObject();
     const checkLists = toPlainCheckLists(existingPlain.checkLists);
 
@@ -1553,9 +1308,6 @@ router.put("/:id", async (req, res) => {
       });
     }
 
-    // One-time emails: never unsend, never re-date, once sent always "Done".
-    // Resolved here (before plan dates/scoring) so the sync below can mark
-    // matching checklist items done in time for the totals to include them.
     const emailFields = resolveOneTimeEmails(existingPlain, body);
     syncEmailChecklistItems(checkLists, emailFields);
 
@@ -1603,9 +1355,9 @@ router.put("/:id", async (req, res) => {
     );
 
     if (process.env.SEND_UPDATE_ONBOARDING_EMAILS !== 'false') {
-  triggerUpdateOnboarding(updated).catch(console.error);
-}
-res.json({ success: true, data: updated });
+      triggerUpdateOnboarding(updated).catch(console.error);
+    }
+    res.json({ success: true, data: updated });
 
   } catch (err) {
     console.error(err);
@@ -1619,20 +1371,17 @@ router.get("/analytics/interns", async (req, res) => {
       {},
       "employeeCategory dept joiningStatus exitStatus"
     ).lean();
- 
+
     const current = docs.filter(
       (d) => d.joiningStatus === "Joined" && !EXITED_STATUS_VALUES.has(d.exitStatus || "")
     );
- 
+
     const isIntern = (d) => (d.employeeCategory || "").trim().toLowerCase() === "intern";
- 
+
     const total = current.length;
     const internsCount = current.filter(isIntern).length;
     const internPct = total > 0 ? Math.round((internsCount / total) * 1000) / 10 : 0;
- 
-    // Per-department breakdown — same "reveal on click" UI pattern as
-    // Teeth-to-Tail's department breakdown, so it's clear WHERE interns
-    // are concentrated rather than just seeing one company-wide number.
+
     const byDept = {};
     for (const d of current) {
       const dept = (d.dept || "").trim() || "Unassigned";
@@ -1646,7 +1395,7 @@ router.get("/analytics/interns", async (req, res) => {
         pct: row.total > 0 ? Math.round((row.interns / row.total) * 1000) / 10 : 0,
       }))
       .sort((a, b) => b.interns - a.interns || a.department.localeCompare(b.department));
- 
+
     res.json({
       success: true,
       total,
@@ -1661,18 +1410,10 @@ router.get("/analytics/interns", async (req, res) => {
   }
 });
 
-// ─── Shared recompute logic used by both resync routes below ──────────────
-// Rebuilds item-level planDates and every derived score/summary field from
-// scratch, using clean plain objects (never a raw Mongoose subdoc spread).
-// This repairs records saved before the checklist-merge fix, where item
-// planDate could get silently dropped even though the group-level planDate
-// saved fine.
 async function recomputeOnboarding(existing) {
   const existingPlain = existing.toObject();
   const checkLists = toPlainCheckLists(existingPlain.checkLists);
 
-  // Repair any email/checklist mismatch too — e.g. an email flag that's
-  // true but whose matching checklist item was never marked done.
   syncEmailChecklistItems(checkLists, existingPlain);
 
   assignPlanDates(
@@ -1708,10 +1449,6 @@ async function recomputeOnboarding(existing) {
   );
 }
 
-// ─── ONE-TIME FIX: recompute a single record's checklist + summary fields ──
-// Call this for any joinee whose dashboard "Done/Total" numbers don't match
-// what the expanded checklist actually shows (e.g. items stuck on "NYD"
-// despite the group Plan date being set).
 router.post("/:id/resync", async (req, res) => {
   try {
     const existing = await Onboarding.findById(req.params.id);
@@ -1724,7 +1461,6 @@ router.post("/:id/resync", async (req, res) => {
   }
 });
 
-// ─── ONE-TIME FIX: recompute every record in one call ──────────────────────
 router.post("/resync-all", async (req, res) => {
   try {
     const docs = await Onboarding.find();
@@ -1740,20 +1476,6 @@ router.post("/resync-all", async (req, res) => {
   }
 });
 
-// ============================================================
-// ONE-TIME LEGACY GOOGLE-SHEET IMPORT MIGRATION
-// ============================================================
-// Old Google-Sheet-imported records were inserted directly into the
-// `onboardings` collection using the sheet's own column names (PascalCase,
-// spaces, "Done?" suffixes) instead of this app's camelCase schema fields.
-// Mongoose only ever hydrates fields declared in the schema, so these
-// records come back from Onboarding.find() with name/dept/checkLists etc.
-// all blank — the data is there, just under field names Mongoose ignores.
-// This transforms each legacy-shaped document IN PLACE into the current
-// schema's shape (same _id), then removes the old junk keys. Safe to
-// re-run: after the first run no document has a "Name" field anymore, so
-// the filter below matches nothing on subsequent calls.
-
 const MONTH_MAP = {
   jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
   jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
@@ -1764,7 +1486,6 @@ function parseLegacyDate(raw) {
   const s = String(raw).trim();
   if (!s || s.toUpperCase() === "NA") return null;
 
-  // Expected legacy format: "22 Jun 26"
   const m = s.match(/^(\d{1,2})\s+([A-Za-z]{3})\w*\s+(\d{2,4})$/);
   if (m) {
     const day = parseInt(m[1], 10);
@@ -1799,7 +1520,7 @@ const LEGACY_STRING_FIELDS = {
   "Official Email": "officialEmail",
   "Dept": "dept",
   "Designation": "designation",
-  "Employee Category": "employeeCategory", // "Intern" is kept as-is, not remapped
+  "Employee Category": "employeeCategory",
   "Management Level": "managementLevel",
   "Name of Buddy": "nameOfBuddy",
   "Authorised System": "laptopPc",
@@ -1822,7 +1543,6 @@ const LEGACY_STRING_FIELDS = {
   "You Will transfer Knowledge to": "knowledgeTransferTo",
 };
 
-// Legacy columns needing normalization on top of a rename
 const LEGACY_NORMALIZED_FIELDS = {
   "Joining Status": {
     destField: "joiningStatus",
@@ -1873,8 +1593,6 @@ const LEGACY_NUMBER_FIELDS = {
   "Probation Duration(in months)": "probationDuration",
 };
 
-// Direct summary numbers from the sheet — used as a fallback for records
-// with no per-task data (recomputed below whenever task data does exist).
 const LEGACY_SUMMARY_NUMBER_FIELDS = {
   "Total Tasks": "totalTasks",
   "Done in Time": "doneInTime",
@@ -1885,9 +1603,6 @@ const LEGACY_SUMMARY_NUMBER_FIELDS = {
   "FMS Score": "fmsScore",
 };
 
-// Dates are kept as originally recorded in the sheet — NOT regenerated via
-// assignPlanDates()'s day-offset rules, since that would overwrite real
-// historical plan dates with guesses.
 const LEGACY_DATE_FIELDS = {
   "Offer Accepted Date": "offerAcceptedDate",
   "Planned Joining Date": "plannedJoiningDate",
@@ -1900,10 +1615,6 @@ const LEGACY_DATE_FIELDS = {
   "Revision Due Date": "salRevisionDueDate",
 };
 
-// Every top-level field the current schema actually declares — anything on
-// a legacy raw document that ISN'T in this list gets removed once migrated,
-// so no old sheet junk (including odd leftovers like "Employee Ser No")
-// lingers in the collection.
 const SCHEMA_FIELD_WHITELIST = new Set([
   "_id", "__v", "createdAt", "updatedAt",
   "rowNo", "name", "gender", "persEmail", "mobile", "officialEmail", "dept", "designation",
@@ -1951,7 +1662,7 @@ function buildLegacyChecklists(rawDoc) {
         name: itemName,
         planDate,
         doneDate,
-        score: 0,       // recomputed fresh below via scoreChecklist()
+        score: 0,
         status: "Pending",
         daysLeft: 0,
         checked: !!doneDate,
@@ -2010,9 +1721,6 @@ router.post("/migrate/legacy-import", async (req, res) => {
         if (rawDoc[oldKey] !== undefined) setFields[newKey] = toNum(rawDoc[oldKey], 0);
       }
 
-      // Checklist reconstruction — only recompute fresh scores/statuses when
-      // there's real task data to work with. If there's none, leave it
-      // empty rather than inventing a fake 42-task skeleton.
       const { checkLists, hasAnyTaskData } = buildLegacyChecklists(rawDoc);
       if (hasAnyTaskData) {
         const today = new Date();
@@ -2044,7 +1752,6 @@ router.post("/migrate/legacy-import", async (req, res) => {
         setFields.checkLists = [];
       }
 
-      // Remove everything not part of the current schema.
       const unsetFields = {};
       for (const key of Object.keys(rawDoc)) {
         if (!SCHEMA_FIELD_WHITELIST.has(key)) unsetFields[key] = "";
@@ -2064,10 +1771,6 @@ router.post("/migrate/legacy-import", async (req, res) => {
   }
 });
 
-// ─── ONE-TIME BULK ACTION: close every onboarding joined before a date ─────
-// Marks fmsStatus = "Closed" for anyone whose joinedDate is earlier than the
-// given cutoff. Doesn't touch checklist data or task counts — just flips
-// the status, since these are old joiners no longer being actively tracked.
 router.post("/close-before-date", async (req, res) => {
   try {
     const cutoff = req.body?.date ? new Date(req.body.date) : new Date("2026-01-01T00:00:00.000Z");
@@ -2090,12 +1793,80 @@ router.post("/close-before-date", async (req, res) => {
   }
 });
 
-// ─── DELETE /api/onboarding/:id ────────────────────────────────────────────
 router.delete("/:id", async (req, res) => {
   try {
     await Onboarding.findByIdAndDelete(req.params.id);
     res.json({ success: true, message: "Deleted" });
   } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.get("/analytics/intern-conversions", async (req, res) => {
+  try {
+    const CONVERTIBLE_FROM = ["Intern", "Contract Based"];
+
+    const revisions = await SalaryRevision.find(
+      { categoryChanged: true },
+      "onboardingId previousCategory newCategory createdAt applicableDate"
+    ).lean();
+
+    const current = await Onboarding.find(
+      {},
+      "name dept employeeCategory joiningStatus exitStatus"
+    ).lean();
+
+    const currentById = new Map(current.map((c) => [String(c._id), c]));
+
+    const byEmployee = new Map();
+    for (const r of revisions) {
+      if (!r.onboardingId) continue;
+      if (!CONVERTIBLE_FROM.includes(r.previousCategory)) continue;
+      if (r.newCategory !== "Employee") continue;
+
+      const key = String(r.onboardingId);
+      const existing = byEmployee.get(key);
+      if (!existing || new Date(r.createdAt) > new Date(existing.createdAt)) {
+        byEmployee.set(key, r);
+      }
+    }
+
+    const conversions = [];
+    for (const [onboardingId, r] of byEmployee) {
+      const emp = currentById.get(onboardingId);
+      if (!emp) continue;
+      if (EXITED_STATUS_VALUES.has(emp.exitStatus || "")) continue;
+      if (emp.employeeCategory !== "Employee") continue;
+
+      conversions.push({
+        name: emp.name,
+        department: emp.dept || "",
+        previousCategory: r.previousCategory,
+        conversionDate: r.applicableDate || r.createdAt || null,
+      });
+    }
+
+    conversions.sort(
+      (a, b) => new Date(b.conversionDate || 0).getTime() - new Date(a.conversionDate || 0).getTime()
+    );
+
+    const byDept = {};
+    for (const c of conversions) {
+      const dept = c.department || "Unassigned";
+      byDept[dept] = (byDept[dept] || 0) + 1;
+    }
+    const departmentBreakdown = Object.entries(byDept)
+      .map(([department, count]) => ({ department, count }))
+      .sort((a, b) => b.count - a.count);
+
+    res.json({
+      success: true,
+      total: conversions.length,
+      conversions,
+      departmentBreakdown,
+    });
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ success: false, message: err.message });
   }
 });

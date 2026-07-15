@@ -42,9 +42,15 @@ router.get('/:id', asyncHandler(async (req, res) => {
 // Frontend payload now also supports (all optional):
 // {
 //   onboardingId, previousDesignation, newDesignation,
-//   previousReportingHead, newReportingHead,
+//   previousReportingHead, newReportingHead, previousCategory,
 // }
-// designationChanged / reportingHeadChanged are derived, not sent directly.
+// designationChanged / reportingHeadChanged / categoryChanged are derived,
+// not sent directly. previousCategory is captured once, at creation time,
+// from the employee's category AT THAT MOMENT — it is never overwritten
+// afterward, even if the Manager step later changes category on this same
+// revision. That's what makes it possible to tell "this revision recorded
+// a category change" apart from "this revision was just created with
+// whatever category the employee already had."
 
 router.post('/', asyncHandler(async (req, res) => {
   const {
@@ -63,6 +69,7 @@ router.post('/', asyncHandler(async (req, res) => {
     newDesignation,
     previousReportingHead,
     newReportingHead,
+    previousCategory,
   } = req.body;
 
   if (!employeeCode || !employeeName || !department || !designation || !email || !joiningDate || previousCtc == null) {
@@ -99,6 +106,13 @@ router.post('/', asyncHandler(async (req, res) => {
     previousReportingHead : previousReportingHead || '',
     newReportingHead       : reportingHeadChanged ? newReportingHead : null,
 
+    // Category has no "changed" signal yet at creation — it only becomes
+    // true if the Manager step later submits a DIFFERENT category than
+    // this. previousCategory is fixed here and never touched again.
+    categoryChanged  : false,
+    previousCategory : previousCategory || category || 'Employee',
+    newCategory      : null,
+
     created_by    : user,
     updated_by    : user,
     createdBy     : user,
@@ -132,8 +146,12 @@ router.post('/', asyncHandler(async (req, res) => {
 }));
 
 // ─── PUT /api/salary-revisions/:id/manager ───────────────────────────────────
-// Manager can also propose a designation change and/or a reporting-head
-// change here, independently of whether they pick increment or PIP.
+// Manager can also propose a designation change, a reporting-head change,
+// and/or a category change here, independently of whether they pick
+// increment or PIP. Category change is tracked the exact same way
+// designation/reporting-head already are: compare the submitted value
+// against previousCategory (fixed at creation, never touched again), and
+// only set categoryChanged/newCategory if it's genuinely different.
 
 router.put('/:id/manager', asyncHandler(async (req, res) => {
   const {
@@ -174,7 +192,16 @@ router.put('/:id/manager', asyncHandler(async (req, res) => {
   }
 
   if (applicableDate !== undefined) revision.applicableDate = applicableDate ? new Date(applicableDate) : null;
-  if (category)                     revision.category = category;
+
+  // Category change — tracked the same way as designation/reporting head:
+  // compare against the FIXED previousCategory from creation time, not
+  // whatever revision.category currently happens to hold.
+  if (category) {
+    const changed = category !== revision.previousCategory;
+    revision.categoryChanged = changed;
+    revision.newCategory = changed ? category : null;
+    revision.category = category; // still the single "current" value everything else (e.g. Onboarding sync) reads
+  }
 
   // Designation change — independent toggle
   if (newDesignation !== undefined) {
@@ -274,7 +301,9 @@ router.put('/:id/management', asyncHandler(async (req, res) => {
 // "0% increment, no category change" finalization still confirms the
 // current CTC/category as the latest figures — same reasoning as the
 // designation/reporting-head "changed" flags, just applied to fields that
-// don't have their own explicit changed flag).
+// don't have their own explicit changed flag for THIS purpose — category
+// now has categoryChanged too, but Onboarding still gets the current
+// value unconditionally, same as CTC/applicable date).
 router.put('/:id/hr', asyncHandler(async (req, res) => {
   const { notes, applicableDate, newCtc } = req.body;
 
@@ -317,12 +346,6 @@ router.put('/:id/hr', asyncHandler(async (req, res) => {
       annualCtc: finalCtc,
       salApplicableFrom: appDate,
       salReviewStatus: 'Revised',
-      // Category has no dedicated "changed" flag the way designation and
-      // reporting head do, so — same as CTC/applicable date — it's synced
-      // unconditionally with whatever the revision ended up recording.
-      // This is the field that matters for e.g. an intern converting to a
-      // full-time Employee mid-revision: whatever category the Manager
-      // step set is what lands on Onboarding once HR finalises.
       employeeCategory: revision.category,
     };
     if (revision.designationChanged && revision.newDesignation) {
@@ -334,11 +357,9 @@ router.put('/:id/hr', asyncHandler(async (req, res) => {
 
     // Only ever target by onboardingId — a real Mongo ObjectId set at
     // creation time. Previously this fell back to revision.employeeCode,
-    // which is NOT guaranteed to be a valid ObjectId (it happens to be
-    // one today only because of how the frontend's current employee
-    // source populates it) — that fallback could silently target nothing
-    // and fail the whole sync without any visible error, exactly the
-    // failure mode worth avoiding here.
+    // which is NOT guaranteed to be a valid ObjectId — that fallback
+    // could silently target nothing and fail the whole sync without any
+    // visible error, exactly the failure mode worth avoiding here.
     if (revision.onboardingId) {
       await Onboarding.findByIdAndUpdate(revision.onboardingId, { $set: onboardingUpdate });
     } else {

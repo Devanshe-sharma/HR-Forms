@@ -302,6 +302,7 @@ function AddRevisionModal({ open, onClose, onAdded, showToast, employees }: {
         previousCtc:sel.annual_ctc||0,
         previousDesignation:sel.designation,
         previousReportingHead:sel.reporting_head||'',
+        previousCategory:sel.employee_category||'Employee',
         pmsScores:pms.filter(p=>p.period.trim()),
       });
       if (data.success||data._id||data.data){ showToast('Revision created','success'); onAdded(data.data||data); onClose(); }
@@ -977,6 +978,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
           previousCtc   : emp.annual_ctc || 0,
           previousDesignation: emp.designation,
           previousReportingHead: (emp as any).reporting_head || '',
+          previousCategory: emp.employee_category || 'Employee',
           pmsScores     : pmsRows.filter(r => r.period.trim()),
         });
         const created = createRes.data?.data || createRes.data;

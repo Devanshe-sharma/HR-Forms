@@ -19,6 +19,7 @@ import SchoolIcon from "@mui/icons-material/SchoolOutlined";
 import WorkIcon from "@mui/icons-material/WorkOutline";
 import HowToRegIcon from "@mui/icons-material/HowToRegOutlined";
 import ExitToAppIcon from "@mui/icons-material/ExitToAppOutlined";
+import SwapHorizIcon from "@mui/icons-material/SwapHorizOutlined";
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
@@ -117,6 +118,23 @@ interface KpiQuarterRow {
 }
 interface KpiQuarterResponse {
   quarters: KpiQuarterRow[];
+}
+
+interface InternConversionRow {
+  name: string;
+  department: string;
+  previousCategory: string;
+  conversionDate: string | null;
+}
+interface InternConversionDeptRow {
+  department: string;
+  count: number;
+}
+interface InternConversionsResponse {
+  success: boolean;
+  total: number;
+  conversions: InternConversionRow[];
+  departmentBreakdown: InternConversionDeptRow[];
 }
 
 // ─── Small building blocks ─────────────────────────────────────────────────
@@ -768,6 +786,124 @@ const InternsWidget: React.FC = () => {
   );
 };
 
+// ─── Intern Conversions widget ──────────────────────────────────────────────
+// Employees who converted from Intern/Contract Based to full-time Employee
+// — detected via Salary Revision history (see the backend route's own
+// comment for exactly how and what it can/can't see). Current snapshot,
+// no year/quarter filter, for the same reason Interns has none: this
+// isn't a dated event series, it's a running list of who's converted so
+// far.
+
+const InternConversionsWidget: React.FC = () => {
+  const [data, setData] = useState<InternConversionsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showList, setShowList] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    axios.get(`${API}/onboarding/analytics/intern-conversions`, { params: { _t: Date.now() } })
+      .then((res) => setData(res.data))
+      .catch(() => toast.error("Failed to load intern conversion data"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const conversions = data?.conversions ?? [];
+  const departmentBreakdown = data?.departmentBreakdown ?? [];
+
+  return (
+    <Box sx={{ bgcolor: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", p: 3, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+      <Box sx={{ mb: 2.5 }}>
+        <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
+          Intern → Full-Time Conversions
+        </Typography>
+        <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
+          Detected from Salary Revision history — only captures conversions that went through at least one revision while still Intern/Contract Based
+        </Typography>
+      </Box>
+
+      {loading || !data ? (
+        <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
+          <CircularProgress size={26} sx={{ color: ACCENT }} />
+        </Box>
+      ) : (
+        <>
+          <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexWrap: "wrap" }}>
+            <StatCard
+              label="Total Conversions"
+              value={data.total}
+              color={ACCENT}
+              bg="#eef2ff"
+              onClick={() => setShowList((v) => !v)}
+              active={showList}
+            />
+          </Box>
+
+          {showList && (
+            <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap", mb: 3 }}>
+              <Box sx={{ flex: "2 1 380px", minWidth: 320 }}>
+                <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                  Converted Employees
+                </Typography>
+                {conversions.length === 0 ? (
+                  <Typography fontSize="0.8rem" color="#94a3b8">
+                    No conversions recorded yet.
+                  </Typography>
+                ) : (
+                  <Box sx={{ border: "1px solid #e2e8f0", borderRadius: "10px", overflow: "hidden", maxHeight: 320, overflowY: "auto" }}>
+                    {conversions.map((c, i) => (
+                      <Box
+                        key={`${c.name}-${i}`}
+                        sx={{
+                          display: "flex", justifyContent: "space-between", alignItems: "center",
+                          px: 2, py: 1, bgcolor: "#fff",
+                          borderTop: i > 0 ? "1px solid #f1f5f9" : "none",
+                        }}
+                      >
+                        <Box>
+                          <Typography fontSize="0.8rem" color="#1e293b" fontWeight={500}>{c.name}</Typography>
+                          <Typography fontSize="0.68rem" color="#94a3b8">{c.department || "—"} · was {c.previousCategory}</Typography>
+                        </Box>
+                        <Typography fontSize="0.72rem" color="#64748b">
+                          {c.conversionDate ? new Date(c.conversionDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+
+              <Box sx={{ flex: "1 1 220px", minWidth: 200 }}>
+                <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                  By Department
+                </Typography>
+                {departmentBreakdown.length === 0 ? (
+                  <Typography fontSize="0.8rem" color="#94a3b8">No data yet.</Typography>
+                ) : (
+                  <Box sx={{ border: "1px solid #e2e8f0", borderRadius: "10px", overflow: "hidden" }}>
+                    {departmentBreakdown.map((row, i) => (
+                      <Box
+                        key={row.department}
+                        sx={{
+                          display: "flex", justifyContent: "space-between", alignItems: "center",
+                          px: 2, py: 1, bgcolor: "#fff",
+                          borderTop: i > 0 ? "1px solid #f1f5f9" : "none",
+                        }}
+                      >
+                        <Typography fontSize="0.8rem" color="#1e293b" fontWeight={500}>{row.department}</Typography>
+                        <Typography fontSize="0.8rem" fontWeight={700} color={ACCENT}>{row.count}</Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+            </Box>
+          )}
+        </>
+      )}
+    </Box>
+  );
+};
+
 // ─── Landing summary card ────────────────────────────────────────────────────
 // Fetches just enough to show one headline number — independent of whatever
 // full widget opens when clicked, so the widgets above stay completely
@@ -908,12 +1044,19 @@ async function fetchKpiSummary(moduleKey: string): Promise<CardSummary> {
   return { value: `${pct}%`, sublabel: `${onTime} of ${completed} tasks on time this year` };
 }
 
+async function fetchInternConversionsSummary(): Promise<CardSummary> {
+  const res = await axios.get(`${API}/onboarding/analytics/intern-conversions`, { params: { _t: Date.now() } });
+  const total = res.data?.total ?? 0;
+  if (total === 0) return { value: "0", sublabel: "No conversions recorded yet via Salary Revision" };
+  return { value: String(total), sublabel: `Intern/Contract Based → Employee, via Salary Revision` };
+}
+
 // ─── Root page ──────────────────────────────────────────────────────────────
 // Default view is a fixed 3x2 grid of equal-size summary cards — no
 // scrolling. Clicking a card opens that area's full existing widget
 // (unchanged from before) inside a modal.
 
-type CardKey = "teeth" | "gender" | "interns" | "recruitment" | "onboarding" | "exit";
+type CardKey = "teeth" | "gender" | "interns" | "internConversions" | "recruitment" | "onboarding" | "exit";
 
 const HRAnalyticsDashboard: React.FC = () => {
   const [activeCard, setActiveCard] = useState<CardKey | null>(null);
@@ -929,6 +1072,7 @@ const HRAnalyticsDashboard: React.FC = () => {
     { key: "teeth", title: "Teeth-to-Tail Ratio", icon: <BalanceIcon />, color: ACCENT, bg: "#eef2ff", fetchSummary: fetchTeethToTailSummary },
     { key: "gender", title: "Gender Distribution", icon: <WcIcon />, color: "#db2777", bg: "#fdf2f8", fetchSummary: fetchGenderSummary },
     { key: "interns", title: "Interns", icon: <SchoolIcon />, color: INTERN_COLOR, bg: "#f5f3ff", fetchSummary: fetchInternsSummary },
+    { key: "internConversions", title: "Intern → Full-Time", icon: <SwapHorizIcon />, color: "#0d9488", bg: "#f0fdfa", fetchSummary: fetchInternConversionsSummary },
     { key: "recruitment", title: "Recruitment On-Time %", icon: <WorkIcon />, color: "#0284c7", bg: "#eff6ff", fetchSummary: () => fetchKpiSummary("recruitment") },
     { key: "onboarding", title: "Onboarding On-Time %", icon: <HowToRegIcon />, color: "#059669", bg: "#f0fdf4", fetchSummary: () => fetchKpiSummary("onboarding") },
     { key: "exit", title: "Exit On-Time %", icon: <ExitToAppIcon />, color: "#d97706", bg: "#fffbeb", fetchSummary: () => fetchKpiSummary("exit") },
@@ -955,8 +1099,8 @@ const HRAnalyticsDashboard: React.FC = () => {
           <Box sx={{
             flex: 1, minHeight: 0,
             display: "grid",
-            gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", md: "repeat(3, 1fr)" },
-            gridTemplateRows: { xs: "repeat(6, minmax(140px, 1fr))", sm: "repeat(3, minmax(140px, 1fr))", md: "repeat(2, 1fr)" },
+            gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", md: "repeat(4, 1fr)" },
+            gridTemplateRows: { xs: "repeat(7, minmax(140px, 1fr))", sm: "repeat(4, minmax(140px, 1fr))", md: "repeat(2, 1fr)" },
             gap: 2,
             overflow: { xs: "auto", md: "hidden" },
           }}>
@@ -995,6 +1139,7 @@ const HRAnalyticsDashboard: React.FC = () => {
           {activeCard === "teeth" && <TeethToTailWidget />}
           {activeCard === "gender" && <GenderDistributionWidget />}
           {activeCard === "interns" && <InternsWidget />}
+          {activeCard === "internConversions" && <InternConversionsWidget />}
           {(activeCard === "recruitment" || activeCard === "onboarding" || activeCard === "exit") && activeModuleLabel && (
             <ModuleKpiRow moduleKey={activeCard} label={activeModuleLabel} />
           )}
