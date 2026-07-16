@@ -5,8 +5,14 @@ const exitInstructionsToAllTemplate = require("../templates/exitInstructionsToAl
 async function sendExitInstructionsToAll(doc) {
   const dateStr = dateToDD_MMM_YY(doc.plannedExitDate);
   const { subject, html } = exitInstructionsToAllTemplate(doc, dateStr);
-  const to = (doc.employeesInCc || []).join(",") || process.env.HR_HEAD_EMAIL || "hr.head@briskolive.com";
-  const cc = process.env.DEFAULT_CC_EMAILS || "";
+
+  // Company-wide notice — matches the old Apps Script's own
+  // sendInstructionsToAll(), which always went to "all@briskolive.com"
+  // regardless of anything else. Previously this incorrectly used
+  // employeesInCc as the primary recipient instead of going company-wide.
+  const to = process.env.ALL_EMPLOYEES_EMAIL || "all@briskolive.com";
+  const cc = (doc.employeesInCc || []).filter(Boolean).join(",");
+
   await sendEmail({ to, subject, html, cc });
 }
 

@@ -180,6 +180,12 @@ const NewExit: React.FC = () => {
     CHECKLIST_DEFS.map((l) => l.items.map(() => false))
   );
 
+  // Thank-you screen: shows a brief loader, then a confirmation message —
+  // same pattern already used on New Onboarding, so the form doesn't just
+  // silently reset with only a toast to notice.
+  const [showThankYou, setShowThankYou] = useState(false);
+  const [thankYouLoading, setThankYouLoading] = useState(true);
+
   const exitStatus = watch("exitStatus");
   const selectedDept = watch("dept");
   const selectedName = watch("name");
@@ -251,6 +257,15 @@ const NewExit: React.FC = () => {
     });
   };
 
+  const resetFormState = () => {
+    reset();
+    setCheckStates(CHECKLIST_DEFS.map((l) => l.items.map(() => false)));
+    setResignationDate(null);
+    setPlannedExitDate(null);
+    setLeftDate(null);
+    setEmployeesInCc([]);
+  };
+
   const onSubmit: SubmitHandler<FormValues> = async (data) => {
     try {
       const payload = {
@@ -269,16 +284,20 @@ const NewExit: React.FC = () => {
       };
 
       await axios.post(`${API_BASE}/exit`, payload);
-      toast.success("Exit entry created successfully!");
-      reset();
-      setCheckStates(CHECKLIST_DEFS.map((l) => l.items.map(() => false)));
-      setResignationDate(null);
-      setPlannedExitDate(null);
-      setLeftDate(null);
-      setEmployeesInCc([]);
+
+      // Show the thank-you screen (loader first, then confirmation)
+      // instead of resetting the form immediately.
+      setShowThankYou(true);
+      setThankYouLoading(true);
+      setTimeout(() => setThankYouLoading(false), 1200);
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? "Submission failed");
     }
+  };
+
+  const handleThankYouDone = () => {
+    setShowThankYou(false);
+    resetFormState();
   };
 
   // ─── Field helpers ──────────────────────────────────────────────────────
@@ -652,6 +671,37 @@ const NewExit: React.FC = () => {
             </form>
           </div>
         </LocalizationProvider>
+
+        {/* Thank-you overlay: brief loader, then confirmation */}
+        {showThankYou && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
+            <div className="bg-white rounded-2xl shadow-2xl p-10 max-w-md w-full text-center">
+              {thankYouLoading ? (
+                <>
+                  <div className="w-14 h-14 mx-auto mb-5 border-4 border-red-100 border-t-red-600 rounded-full animate-spin" />
+                  <h2 className="text-lg font-bold text-slate-700">Submitting Exit…</h2>
+                  <p className="text-sm text-slate-400 mt-1">Just a moment</p>
+                </>
+              ) : (
+                <>
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
+                    <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <h2 className="text-2xl font-bold text-slate-800 mb-2">Thank You!</h2>
+                  <p className="text-sm text-slate-500 mb-6">Exit entry has been submitted successfully.</p>
+                  <button
+                    onClick={handleThankYouDone}
+                    className="px-8 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold shadow transition"
+                  >
+                    Add Another Exit Entry
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </Box>
     </Box>
   );

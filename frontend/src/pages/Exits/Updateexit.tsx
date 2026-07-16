@@ -180,6 +180,12 @@ const UpdateExit: React.FC = () => {
   const [newLeftDate, setNewLeftDate] = useState<Dayjs | null>(null);
   const [employeesInCc, setEmployeesInCc] = useState<string[]>([]);
 
+  // Thank-you screen: shows a brief loader, then a confirmation message —
+  // same pattern used on New Exit / New Onboarding, instead of the update
+  // just silently clearing with only a toast to notice.
+  const [showThankYou, setShowThankYou] = useState(false);
+  const [thankYouLoading, setThankYouLoading] = useState(true);
+
   const {
     register, control, handleSubmit, reset, watch,
     formState: { isSubmitting },
@@ -249,6 +255,13 @@ const UpdateExit: React.FC = () => {
 
   const fmtDate = (d?: string) => (d ? dayjs(d).format("DD MMM YYYY") : "—");
 
+  const clearSelection = () => {
+    setSelectedId("");
+    setDetail(null);
+    reset();
+    setNewTicks([]);
+  };
+
   const onSubmit: SubmitHandler<FormValues> = async (data) => {
     if (!selectedId || !detail) {
       toast.error("Please select an exit entry first");
@@ -280,14 +293,20 @@ const UpdateExit: React.FC = () => {
 
     try {
       await axios.put(`${API}/exit/${selectedId}`, payload);
-      toast.success("Exit updated successfully!");
-      setSelectedId("");
-      setDetail(null);
-      reset();
-      setNewTicks([]);
+
+      // Show the thank-you screen (loader first, then confirmation)
+      // instead of clearing the selection immediately.
+      setShowThankYou(true);
+      setThankYouLoading(true);
+      setTimeout(() => setThankYouLoading(false), 1200);
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? "Update failed");
     }
+  };
+
+  const handleThankYouDone = () => {
+    setShowThankYou(false);
+    clearSelection();
   };
 
   // ── Style helpers ───────────────────────────────────────────────────────
@@ -666,7 +685,7 @@ const UpdateExit: React.FC = () => {
               <div className="flex justify-end gap-3 pb-8">
                 <button
                   type="button"
-                  onClick={() => { setSelectedId(""); setDetail(null); reset(); setNewTicks([]); }}
+                  onClick={clearSelection}
                   className="px-6 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition"
                 >
                   Cancel
@@ -687,6 +706,37 @@ const UpdateExit: React.FC = () => {
             </form>
           )}
         </div>
+
+        {/* Thank-you overlay: brief loader, then confirmation */}
+        {showThankYou && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
+            <div className="bg-white rounded-2xl shadow-2xl p-10 max-w-md w-full text-center">
+              {thankYouLoading ? (
+                <>
+                  <div className="w-14 h-14 mx-auto mb-5 border-4 border-red-100 border-t-red-600 rounded-full animate-spin" />
+                  <h2 className="text-lg font-bold text-slate-700">Updating Exit…</h2>
+                  <p className="text-sm text-slate-400 mt-1">Just a moment</p>
+                </>
+              ) : (
+                <>
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
+                    <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <h2 className="text-2xl font-bold text-slate-800 mb-2">Thank You!</h2>
+                  <p className="text-sm text-slate-500 mb-6">Exit entry has been updated successfully.</p>
+                  <button
+                    onClick={handleThankYouDone}
+                    className="px-8 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold shadow transition"
+                  >
+                    Update Another Entry
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </LocalizationProvider>
   );

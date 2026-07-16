@@ -5,8 +5,11 @@ const exitInstructionsToAllAlreadyTemplate = require("../templates/exitInstructi
 async function sendExitInstructionsToAllAlready(doc) {
   const dateStr = dateToDD_MMM_YY(doc.leftDate);
   const { subject, html } = exitInstructionsToAllAlreadyTemplate(doc, dateStr);
-  const to = (doc.employeesInCc || []).join(",") || process.env.HR_HEAD_EMAIL || "hr.head@briskolive.com";
-  const cc = process.env.DEFAULT_CC_EMAILS || "";
+
+  // Company-wide notice — same fix as sendExitInstructionsToAll.
+  const to = process.env.ALL_EMPLOYEES_EMAIL || "all@briskolive.com";
+  const cc = (doc.employeesInCc || []).filter(Boolean).join(",");
+
   await sendEmail({ to, subject, html, cc });
 }
 

@@ -3,8 +3,16 @@ const exitAcceptanceAlreadyTemplate = require("../templates/exitAcceptanceAlread
 
 async function sendExitAcceptanceAlready(doc) {
   const { subject, html } = exitAcceptanceAlreadyTemplate(doc);
-  const to = (doc.employeesInCc || []).join(",") || process.env.HR_HEAD_EMAIL || "hr.head@briskolive.com";
-  const cc = process.env.DEFAULT_CC_EMAILS || "";
+
+  // Goes to HR / whoever's tracking the exit — same fix as
+  // sendExitProgress.
+  const to = process.env.HR_HEAD_EMAIL || "hr.head@briskolive.com";
+  const ccList = [
+    ...(doc.employeesInCc || []),
+    ...(process.env.DEFAULT_CC_EMAILS ? process.env.DEFAULT_CC_EMAILS.split(",") : []),
+  ];
+  const cc = ccList.filter(Boolean).join(",");
+
   await sendEmail({ to, subject, html, cc });
 }
 
