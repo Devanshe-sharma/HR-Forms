@@ -61,7 +61,6 @@ export default function RequisitionDashboard() {
   const [rows,     setRows]     = useState<Requisition[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState<string | null>(null);
-  const [savingId, setSavingId] = useState<string | null>(null);
 
   const [search,       setSearch]       = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -121,23 +120,6 @@ export default function RequisitionDashboard() {
       return true;
     });
   }, [rows, cardFilter, filterStatus, search]);
-
-  const saveStatus = async (id: string, field: 'hiring_status' | 'fmsStatus', value: string) => {
-    setSavingId(id);
-    try {
-      const res = await fetch(`${API_BASE}/hiringrequisitions/${id}/status`, {
-        method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ [field]: value }),
-      });
-      if (!res.ok) throw new Error('Save failed');
-      setRows(prev => prev.map(r => r._id === id ? { ...r, [field]: value } : r));
-    } catch {
-      setError('Failed to save — please try again');
-    } finally {
-      setSavingId(null);
-    }
-  };
 
   const anyModalOpen = newModalOpen || updateModalOpen;
 
@@ -279,7 +261,7 @@ export default function RequisitionDashboard() {
                       </tr>
                     )}
                     {filteredRows.map(row => (
-                      <tr key={row._id} onClick={() => openEdit(row._id)} className={`hover:bg-gray-50 transition cursor-pointer ${savingId === row._id ? 'opacity-50' : ''}`} >
+                      <tr key={row._id} onClick={() => openEdit(row._id)} className="hover:bg-gray-50 transition cursor-pointer">
                         <td className="px-3 py-2.5">{row.serial_no}</td>
                         <td className="px-3 py-2.5">
                           <span className="block font-medium">{row.designation}</span>
@@ -292,33 +274,36 @@ export default function RequisitionDashboard() {
                         <td className="px-3 py-2.5">{row.request_date || '—'}</td>
                         <td className="px-3 py-2.5">{row.planned_joined || '—'}</td>
 
-                        <td className="px-3 py-2.5 relative" onClick={e => e.stopPropagation()}>
+                        {/* Hiring Status — read-only display. Previously
+                            an inline dropdown here called
+                            PATCH /:id/status directly, which bypasses
+                            rescoreAndSave AND the update email trigger
+                            entirely — every change made this way silently
+                            skipped both. All changes now have to go
+                            through the Update Requisition form, which
+                            uses the real PATCH /:id route (rescoring +
+                            email included). */}
+                        <td className="px-3 py-2.5">
                           {row.hiring_status && (
                             <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CHIP[row.hiring_status] ?? 'bg-gray-100 text-gray-700'}`}>
                               {row.hiring_status}
                             </span>
                           )}
-                          <select
-                            value={row.hiring_status || ''}
-                            onChange={e => saveStatus(row._id, 'hiring_status', e.target.value)}
-                            disabled={savingId === row._id}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                          >
-                            {HIRING_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                          </select>
                         </td>
 
-                        <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
-                          <button
-                            onClick={() => saveStatus(row._id, 'fmsStatus', row.fmsStatus === 'Open' ? 'Closed' : 'Open')}
-                            className={`px-2 py-0.5 rounded-full text-xs font-medium transition ${
+                        {/* FMS Status — read-only. Computed automatically
+                            from checklist completion server-side. */}
+                        <td className="px-3 py-2.5">
+                          <span
+                            title="Computed automatically from checklist completion"
+                            className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
                               row.fmsStatus === 'Open'
-                                ? 'bg-green-100 text-green-800 hover:bg-green-200'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-gray-100 text-gray-700'
                             }`}
                           >
                             {row.fmsStatus}
-                          </button>
+                          </span>
                         </td>
 
                         <td className={`px-3 py-2.5 text-right font-medium ${
@@ -336,7 +321,7 @@ export default function RequisitionDashboard() {
                         <td className="px-3 py-2.5 text-center">
                           <button
                             title="Update this requisition"
-                            onClick={() => openEdit(row._id)}
+                            onClick={e => { e.stopPropagation(); openEdit(row._id); }}
                             className="p-1.5 rounded-md text-blue-600 hover:bg-blue-50 transition"
                           >
                             <Edit2 size={15} />

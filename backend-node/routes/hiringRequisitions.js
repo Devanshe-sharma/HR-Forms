@@ -8,6 +8,22 @@ const { triggerNewRequisition, triggerUpdateRequisition } = require('../emails')
 // Mirrors the exact same 3-branch logic used by the Exit module's FMS
 // scoring: for each task, compare its plan date and done date against
 // today to determine score/status/daysLeft, then aggregate totals.
+//
+// Two fixes bundled in here:
+// 1. plan/done are now normalized to midnight before any diff, matching
+//    the treatment today already got — previously only today was
+//    zeroed, so a task's real done timestamp (whatever time someone
+//    actually ticked the checkbox) could throw the day-count off by
+//    exactly one day even when it was genuinely done on time on the
+//    correct calendar day.
+// 2. fms_status is now computed HERE, automatically, from whether every
+//    task is Done/Done(Delayed) — mirroring the old Apps Script's
+//    "if (tasksNotDone === 0) fmsStatus = Closed" auto-close behavior.
+//    This was never ported to the Node backend at all: fmsStatus used to
+//    be a pure manual toggle with no connection to checklist completion.
+//    Every call site that runs this function now persists fms_status
+//    directly — there is no longer any path where fmsStatus is set by
+//    anything other than this calculation.
 function scoreChecklistTasks(tasks, today = new Date()) {
   today = new Date(today);
   today.setHours(0, 0, 0, 0);
@@ -17,6 +33,9 @@ function scoreChecklistTasks(tasks, today = new Date()) {
   const scored = (tasks || []).map((t) => {
     const plan = t.plan ? new Date(t.plan) : null;
     const done = t.done ? new Date(t.done) : null;
+    if (plan) plan.setHours(0, 0, 0, 0);
+    if (done) done.setHours(0, 0, 0, 0);
+
     let score = null, status = '', daysLeft = null;
 
     if (done) {
@@ -73,6 +92,11 @@ function scoreChecklistTasks(tasks, today = new Date()) {
     };
   });
 
+  // Every task is either Done or Done (Delayed) — none are Overdue,
+  // Pending, or Not Yet Due — so the whole requisition auto-closes.
+  const tasksNotDone = tasksOverdue + tasksDue + notYetDue;
+  const fmsStatus = tasksNotDone === 0 ? 'Closed' : 'Open';
+
   return {
     checklist_tasks: scored,
     total_tasks:      scored.length,
@@ -82,6 +106,7 @@ function scoreChecklistTasks(tasks, today = new Date()) {
     tasks_due:        tasksDue,
     not_yet_due:      notYetDue,
     fms_score:        fmsScore,
+    fms_status:       fmsStatus,
   };
 }
 
@@ -100,6 +125,7 @@ async function rescoreAndSave(id) {
   doc.tasks_due        = scored.tasks_due;
   doc.not_yet_due      = scored.not_yet_due;
   doc.fms_score        = scored.fms_score;
+  doc.fmsStatus        = scored.fms_status;
 
   await doc.save();
   return doc;
@@ -374,6 +400,10 @@ router.post('/', async (req, res) => {
       tasks_due:        scored.tasks_due,
       not_yet_due:      scored.not_yet_due,
       fms_score:        scored.fms_score,
+      // Comes after the ...req.body spread so it always wins — fmsStatus
+      // is never something the frontend gets to set directly, only ever
+      // this computed value.
+      fmsStatus:        scored.fms_status,
     });
 
     // Fire-and-forget, same pattern as onboarding's triggerNewOnboarding —
@@ -390,7 +420,11 @@ router.post('/', async (req, res) => {
 // PATCH /api/hiringrequisitions/:id — update any fields (dashboard edits)
 router.patch('/:id', async (req, res) => {
   try {
-    const { _id, __v, createdAt, updatedAt, serial_no, ...updates } = req.body;
+    // fmsStatus is deliberately excluded here too — it's fully computed
+    // by scoreChecklistTasks/rescoreAndSave below now (auto-closes once
+    // every task is Done/Done (Delayed), mirroring the old Apps Script's
+    // behavior), never something a client request gets to set directly.
+    const { _id, __v, createdAt, updatedAt, serial_no, fmsStatus, ...updates } = req.body;
 
     // Append a history entry
     const historyEntry = {
@@ -427,12 +461,16 @@ router.patch('/:id', async (req, res) => {
 });
 
 // PATCH /api/hiringrequisitions/:id/status — status-only update (quick action from table)
+// fmsStatus is no longer accepted here — it's fully computed from
+// checklist completion (see scoreChecklistTasks), never manually set.
+// hiring_status remains a genuine manual field: it's a workflow state
+// HR chooses (New, Offer Sent, Cancelled, etc.), unrelated to whether
+// the FMS checklist itself is complete.
 router.patch('/:id/status', async (req, res) => {
   try {
-    const { hiring_status, fmsStatus } = req.body;
+    const { hiring_status } = req.body;
     const updates = {};
     if (hiring_status) updates.hiring_status = hiring_status;
-    if (fmsStatus)     updates.fmsStatus     = fmsStatus;
 
     const doc = await HiringRequisition.findByIdAndUpdate(
       req.params.id,
