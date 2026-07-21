@@ -1871,4 +1871,38 @@ router.get("/analytics/intern-conversions", async (req, res) => {
   }
 });
 
+//test
+
+const sendReminderEmailTest    = require('../emails/senders/sendReminderEmail');
+const sendEmployeeFeedbackTest = require('../emails/senders/sendEmployeeFeedback');
+ 
+router.post('/test-reminder-and-feedback-email', async (req, res) => {
+  try {
+    const persEmail = (req.query.persEmail || '').trim().toLowerCase();
+    if (!persEmail) {
+      return res.status(400).json({ success: false, message: 'Provide ?persEmail=<email> as a query parameter' });
+    }
+ 
+    const escaped = persEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const doc = await Onboarding.findOne({
+      persEmail: { $regex: `^${escaped}$`, $options: 'i' },
+    }).lean();
+ 
+    if (!doc) {
+      return res.status(404).json({ success: false, message: `No onboarding record found with persEmail ${persEmail}` });
+    }
+ 
+    await sendReminderEmailTest(doc);
+    await sendEmployeeFeedbackTest(doc);
+ 
+    res.json({
+      success: true,
+      message: `Test reminder + feedback emails fired for ${doc.name} — check ${doc.persEmail}'s inbox directly for the real "To" field.`,
+    });
+  } catch (err) {
+    console.error('[test-reminder-and-feedback-email]', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 module.exports = router;
