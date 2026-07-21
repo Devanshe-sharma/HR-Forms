@@ -1,12 +1,8 @@
 ﻿const signature = require("../utils/signature");
+const formatDateIST = require("../utils/formatDateIST");
 
 function reminderTemplate({ name, plannedJoiningDate }) {
-  const date = plannedJoiningDate
-    ? (() => {
-        const d = new Date(plannedJoiningDate);
-        return `${d.getDate()} ${d.toLocaleString("default", { month: "short" })}${d.getFullYear()}`;
-      })()
-    : "Pending";
+  const date = formatDateIST(plannedJoiningDate) || "Pending";
 
   const html = `
     <p>Dear ${name},</p>
@@ -22,4 +18,3 @@ function reminderTemplate({ name, plannedJoiningDate }) {
 }
 
 module.exports = reminderTemplate;
-

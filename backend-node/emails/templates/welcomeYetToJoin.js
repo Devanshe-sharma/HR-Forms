@@ -1,12 +1,8 @@
 ﻿const signature = require("../utils/signature");
+const formatDateIST = require("../utils/formatDateIST");
 
 function welcomeYetToJoinTemplate({ name, dept, deptLink, designation, designationLink, plannedJoiningDate }) {
-  const date = plannedJoiningDate
-    ? (() => {
-        const d = new Date(plannedJoiningDate);
-        return `${d.getDate()} ${d.toLocaleString("default", { month: "short" })} ${d.getFullYear()}`;
-      })()
-    : "Pending";
+  const date = formatDateIST(plannedJoiningDate) || "Pending";
 
   const html = `
     <p>Dear ${name},</p>
@@ -61,5 +57,3 @@ function welcomeYetToJoinTemplate({ name, dept, deptLink, designation, designati
 }
 
 module.exports = welcomeYetToJoinTemplate;
-
-
