@@ -1,12 +1,8 @@
 ﻿const signature = require("../utils/signature");
+const formatDateIST = require("../utils/formatDateIST");
 
 function instructionsToAllAlreadyJoinedTemplate({ name, email, mobile, dept, deptLink, designation, designationLink, joinedDate }) {
-  const date = joinedDate
-    ? (() => {
-        const d = new Date(joinedDate);
-        return `${d.getDate()} ${d.toLocaleString("default", { month: "short" })}${d.getFullYear()}`;
-      })()
-    : "Pending";
+  const date = formatDateIST(joinedDate) || "Pending";
 
   const html = `
     <p>Dear All,</p>
@@ -47,4 +43,3 @@ function instructionsToAllAlreadyJoinedTemplate({ name, email, mobile, dept, dep
 }
 
 module.exports = instructionsToAllAlreadyJoinedTemplate;
-

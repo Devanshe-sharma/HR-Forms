@@ -1,12 +1,8 @@
 ﻿const signature = require("../utils/signature");
+const formatDateIST = require("../utils/formatDateIST");
 
 function instructionsToAllTemplate({ name, email, mobile, dept, deptLink, designation, designationLink, plannedJoiningDate }) {
-  const date = plannedJoiningDate
-    ? (() => {
-        const d = new Date(plannedJoiningDate);
-        return `${d.getDate()} ${d.toLocaleString("default", { month: "short" })}${d.getFullYear()}`;
-      })()
-    : "Pending";
+  const date = formatDateIST(plannedJoiningDate) || "Pending";
 
   const html = `
     <p>Dear All,</p>
@@ -48,4 +44,3 @@ function instructionsToAllTemplate({ name, email, mobile, dept, deptLink, design
 }
 
 module.exports = instructionsToAllTemplate;
-
