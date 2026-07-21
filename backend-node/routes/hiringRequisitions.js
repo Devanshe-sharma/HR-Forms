@@ -4,6 +4,21 @@ const router            = express.Router();
 const HiringRequisition = require('../models/HiringRequisition');
 const { triggerNewRequisition, triggerUpdateRequisition } = require('../emails');
 
+// hiring_status values that mean this requisition is over — regardless
+// of whether every checklist task got ticked. "On Hold" or "Not
+// Accepted" doesn't mean someone forgot to finish the checklist, it
+// means hiring isn't actively progressing anymore and shouldn't keep
+// showing as Open just because a task like "Tea Party" never got
+// checked. "Cancelled" is this system's equivalent of the old sheet's
+// "Hiring Stopped" status (see the note in sendRequisitionCancelled.js).
+const HIRING_STATUS_FORCES_CLOSED = new Set([
+  "Not Accepted",
+  "Not Joined",
+  "On Hold",
+  "Joined",
+  "Cancelled",
+]);
+
 // ─── Checklist scoring ──────────────────────────────────────────────────────
 // Mirrors the exact same 3-branch logic used by the Exit module's FMS
 // scoring: for each task, compare its plan date and done date against
@@ -23,7 +38,9 @@ const { triggerNewRequisition, triggerUpdateRequisition } = require('../emails')
 //    be a pure manual toggle with no connection to checklist completion.
 //    Every call site that runs this function now persists fms_status
 //    directly — there is no longer any path where fmsStatus is set by
-//    anything other than this calculation.
+//    anything other than this calculation (or the hiring_status override
+//    applied on top of it at each call site — see
+//    HIRING_STATUS_FORCES_CLOSED above).
 function scoreChecklistTasks(tasks, today = new Date()) {
   today = new Date(today);
   today.setHours(0, 0, 0, 0);
@@ -125,7 +142,14 @@ async function rescoreAndSave(id) {
   doc.tasks_due        = scored.tasks_due;
   doc.not_yet_due      = scored.not_yet_due;
   doc.fms_score        = scored.fms_score;
-  doc.fmsStatus        = scored.fms_status;
+
+  // fmsStatus closes either because every checklist task is done, OR
+  // because hiring_status itself represents an end state — see
+  // HIRING_STATUS_FORCES_CLOSED above. The override always wins over the
+  // checklist-based computation.
+  doc.fmsStatus = HIRING_STATUS_FORCES_CLOSED.has(doc.hiring_status)
+    ? 'Closed'
+    : scored.fms_status;
 
   await doc.save();
   return doc;
@@ -401,9 +425,13 @@ router.post('/', async (req, res) => {
       not_yet_due:      scored.not_yet_due,
       fms_score:        scored.fms_score,
       // Comes after the ...req.body spread so it always wins — fmsStatus
-      // is never something the frontend gets to set directly, only ever
-      // this computed value.
-      fmsStatus:        scored.fms_status,
+      // is never something the frontend gets to set directly. Same
+      // hiring_status override as rescoreAndSave, applied here too in
+      // case someone picks e.g. "On Hold" or "Cancelled" right at
+      // creation time.
+      fmsStatus: HIRING_STATUS_FORCES_CLOSED.has(req.body.hiring_status)
+        ? 'Closed'
+        : scored.fms_status,
     });
 
     // Fire-and-forget, same pattern as onboarding's triggerNewOnboarding —

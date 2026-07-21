@@ -5,6 +5,25 @@ import toast from 'react-hot-toast';
 import { Field, EditField, EditSelect } from './ApplicantFieldComponents';
 import { ApplicantRecord, API_BASE } from './applicantTypes';
 
+// The resume field stores whatever the upload pipeline saved — a
+// RELATIVE path like "/uploads/resumes/xyz.pdf", since that's what the
+// backend's multer + static-file route actually returns. Rendered as-is
+// in an <a href>, a relative path resolves against the FRONTEND's own
+// domain (e.g. hr.briskolive.com), not the backend server that actually
+// serves the file — a guaranteed 404 regardless of whether the upload
+// itself worked correctly.
+//
+// This still supports the manual "paste a link" fallback this component
+// already offered before the auto-upload pipeline existed — if someone
+// pastes a full external URL directly (e.g. a Google Drive link), that's
+// left completely untouched rather than getting double-prefixed.
+function resolveResumeUrl(resume?: string): string {
+  if (!resume) return '';
+  if (/^https?:\/\//i.test(resume)) return resume; // already absolute — leave alone
+  const origin = API_BASE.replace(/\/api\/?$/, '');
+  return `${origin}${resume.startsWith('/') ? '' : '/'}${resume}`;
+}
+
 const CandidateInformationTab = ({
   record, mode, setMode, onSave,
 }: {
@@ -170,15 +189,21 @@ const CandidateInformationTab = ({
         </div>
       </section>
 
-      {/* Resume — separate from the other links since, unlike LinkedIn/
-          Facebook/Video (which the candidate fills in themselves), nothing
-          currently uploads a resume automatically, so HR needs a way to
-          paste one in manually until that pipeline exists. */}
+      {/* Resume — the upload pipeline (multer + FormData on the
+          application form) does actually save this now, as a relative
+          path like "/uploads/resumes/xyz.pdf". resolveResumeUrl() turns
+          that into a real absolute URL against the backend's own origin
+          before it's ever used as a link — otherwise the browser tries
+          to resolve it against the FRONTEND's domain instead, which
+          404s regardless of whether the upload worked. The manual
+          "paste a link" edit fallback below is left in place too, for
+          anyone who wants to link an external resume (e.g. Google
+          Drive) instead of relying on the upload. */}
       <section>
         <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Resume</p>
         {mode === 'view' ? (
           draft.resume ? (
-            <a href={draft.resume} target="_blank" rel="noreferrer"
+            <a href={resolveResumeUrl(draft.resume)} target="_blank" rel="noreferrer"
               className="inline-flex items-center gap-1.5 text-xs text-teal-600 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-lg transition">
               <ExternalLink size={12} /> View Resume
             </a>
