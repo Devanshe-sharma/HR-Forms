@@ -1,8 +1,8 @@
 // pages/Recruitment/AllApplicants.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Mail, Phone, Loader2, Eye, X, ClipboardList, CheckSquare, User, UserCheck,
-  ExternalLink, Video,
+  ExternalLink, Video, Search, SlidersHorizontal, RotateCcw,
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import Sidebar from '../../components/Sidebar';
@@ -172,6 +172,95 @@ const ApplicantModal = ({
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Filter bar
+// ─────────────────────────────────────────────────────────────────────────────
+const FilterBar = ({
+  search, setSearch,
+  profileFilter, setProfileFilter, profileOptions,
+  ctcFilter, setCtcFilter, ctcOptions,
+  locationFilter, setLocationFilter, locationOptions,
+  experienceFilter, setExperienceFilter,
+  onReset, hasActiveFilters,
+}: {
+  search: string; setSearch: (v: string) => void;
+  profileFilter: string; setProfileFilter: (v: string) => void; profileOptions: string[];
+  ctcFilter: string; setCtcFilter: (v: string) => void; ctcOptions: string[];
+  locationFilter: string; setLocationFilter: (v: string) => void; locationOptions: string[];
+  experienceFilter: string; setExperienceFilter: (v: string) => void;
+  onReset: () => void; hasActiveFilters: boolean;
+}) => (
+  <div className="bg-white rounded-lg shadow border border-gray-200 p-4 mb-4">
+    <div className="flex flex-wrap items-center gap-3">
+      {/* Search */}
+      <div className="relative flex-1 min-w-[200px] max-w-xs">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search name, email, phone..."
+          className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-lime-400 focus:border-transparent"
+        />
+      </div>
+
+      <div className="hidden sm:flex items-center gap-1 text-gray-400 text-xs font-semibold px-1">
+        <SlidersHorizontal size={13} /> Filters
+      </div>
+
+      {/* Profile */}
+      <select
+        value={profileFilter}
+        onChange={(e) => setProfileFilter(e.target.value)}
+        className="text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-600 focus:outline-none focus:ring-2 focus:ring-lime-400 bg-white"
+      >
+        <option value="">All Profiles</option>
+        {profileOptions.map((p) => <option key={p} value={p}>{p}</option>)}
+      </select>
+
+      {/* Expected CTC */}
+      <select
+        value={ctcFilter}
+        onChange={(e) => setCtcFilter(e.target.value)}
+        className="text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-600 focus:outline-none focus:ring-2 focus:ring-lime-400 bg-white"
+      >
+        <option value="">All Expected CTC</option>
+        {ctcOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+      </select>
+
+      {/* Location */}
+      <select
+        value={locationFilter}
+        onChange={(e) => setLocationFilter(e.target.value)}
+        className="text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-600 focus:outline-none focus:ring-2 focus:ring-lime-400 bg-white"
+      >
+        <option value="">All Locations</option>
+        {locationOptions.map((l) => <option key={l} value={l}>{l}</option>)}
+      </select>
+
+      {/* Experience */}
+      <select
+        value={experienceFilter}
+        onChange={(e) => setExperienceFilter(e.target.value)}
+        className="text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-600 focus:outline-none focus:ring-2 focus:ring-lime-400 bg-white"
+      >
+        <option value="">All Experience</option>
+        <option value="Yes">Experienced</option>
+        <option value="No">Fresher</option>
+      </select>
+
+      {hasActiveFilters && (
+        <button
+          onClick={onReset}
+          className="flex items-center gap-1 text-xs font-semibold text-gray-400 hover:text-red-500 px-2 py-2 transition"
+        >
+          <RotateCcw size={13} /> Reset
+        </button>
+      )}
+    </div>
+  </div>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main page — Applicant Records table
 // ─────────────────────────────────────────────────────────────────────────────
 const AllApplicants: React.FC = () => {
@@ -179,6 +268,13 @@ const AllApplicants: React.FC = () => {
   const [loading,    setLoading]    = useState(true);
   const [selected,   setSelected]   = useState<ApplicantRecord | null>(null);
   const [initialTab, setInitialTab] = useState<TabId>('details');
+
+  // Filter state
+  const [search,           setSearch]           = useState('');
+  const [profileFilter,    setProfileFilter]    = useState('');
+  const [ctcFilter,        setCtcFilter]        = useState('');
+  const [locationFilter,   setLocationFilter]   = useState('');
+  const [experienceFilter, setExperienceFilter] = useState('');
 
   useEffect(() => {
     fetch(`${API_BASE}/applicant-records`)
@@ -195,6 +291,48 @@ const AllApplicants: React.FC = () => {
   const openModal = (record: ApplicantRecord, tab: TabId = 'details') => {
     setInitialTab(tab);
     setSelected(record);
+  };
+
+  // Unique dropdown options derived from the loaded records
+  const profileOptions = useMemo(
+    () => Array.from(new Set(records.map((r) => r.designation).filter(Boolean))) as string[],
+    [records]
+  );
+  const ctcOptions = useMemo(
+    () => Array.from(new Set(records.map((r) => r.expected_monthly_ctc).filter(Boolean))) as string[],
+    [records]
+  );
+  const locationOptions = useMemo(() => {
+    const locs = records.map((r) => [r.city, r.state].filter(Boolean).join(', ')).filter(Boolean);
+    return Array.from(new Set(locs));
+  }, [records]);
+
+  const filteredRecords = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return records.filter((r) => {
+      const matchesSearch =
+        !term ||
+        r.full_name?.toLowerCase().includes(term) ||
+        r.email?.toLowerCase().includes(term) ||
+        r.phone?.toLowerCase().includes(term);
+
+      const matchesProfile  = !profileFilter    || r.designation === profileFilter;
+      const matchesCtc      = !ctcFilter        || r.expected_monthly_ctc === ctcFilter;
+      const matchesLocation = !locationFilter   || [r.city, r.state].filter(Boolean).join(', ') === locationFilter;
+      const matchesExp      = !experienceFilter || r.experience === experienceFilter;
+
+      return matchesSearch && matchesProfile && matchesCtc && matchesLocation && matchesExp;
+    });
+  }, [records, search, profileFilter, ctcFilter, locationFilter, experienceFilter]);
+
+  const hasActiveFilters = !!(search || profileFilter || ctcFilter || locationFilter || experienceFilter);
+
+  const resetFilters = () => {
+    setSearch('');
+    setProfileFilter('');
+    setCtcFilter('');
+    setLocationFilter('');
+    setExperienceFilter('');
   };
 
   return (
@@ -223,9 +361,20 @@ const AllApplicants: React.FC = () => {
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-bold text-gray-800">Recruitment Tracker</h1>
             <span className="bg-blue-600 text-white px-3 py-1 rounded-full text-sm">
-              {records.length} Applicants
+              {filteredRecords.length} of {records.length} Applicants
             </span>
           </div>
+
+          {!loading && records.length > 0 && (
+            <FilterBar
+              search={search} setSearch={setSearch}
+              profileFilter={profileFilter} setProfileFilter={setProfileFilter} profileOptions={profileOptions}
+              ctcFilter={ctcFilter} setCtcFilter={setCtcFilter} ctcOptions={ctcOptions}
+              locationFilter={locationFilter} setLocationFilter={setLocationFilter} locationOptions={locationOptions}
+              experienceFilter={experienceFilter} setExperienceFilter={setExperienceFilter}
+              onReset={resetFilters} hasActiveFilters={hasActiveFilters}
+            />
+          )}
 
           {loading ? (
             <div className="flex justify-center mt-20">
@@ -233,6 +382,8 @@ const AllApplicants: React.FC = () => {
             </div>
           ) : records.length === 0 ? (
             <div className="text-center mt-20 text-gray-400">No applications yet.</div>
+          ) : filteredRecords.length === 0 ? (
+            <div className="text-center mt-20 text-gray-400">No applicants match your filters.</div>
           ) : (
             <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
               <table className="w-full text-left text-sm">
@@ -240,19 +391,17 @@ const AllApplicants: React.FC = () => {
                   <tr>
                     <th className="p-4">Name</th>
                     <th className="p-4">Contact</th>
-                    <th className="p-4">Designation</th>
+                    <th className="p-4">Profile</th>
                     <th className="p-4">Current CTC</th>
                     <th className="p-4">Expected CTC</th>
                     <th className="p-4">Exp</th>
                     <th className="p-4">Location</th>
-                    
-                  
                     <th className="p-4">Status</th>
                     <th className="p-4 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {records.map((r) => (
+                  {filteredRecords.map((r) => (
                     <tr key={r._id} className="hover:bg-gray-50 transition-colors">
                       <td className="p-4 font-bold text-gray-900">{r.full_name}</td>
                       <td className="p-4 space-y-1">
@@ -270,9 +419,6 @@ const AllApplicants: React.FC = () => {
                         </span>
                       </td>
                       <td className="p-4 text-gray-500 text-xs">{[r.city, r.state].filter(Boolean).join(', ')}</td>
-                      
-                      
-                      
                       <td className="p-4">
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${STATUS_COLORS[r.status] || 'bg-gray-100 text-gray-600'}`}>
                           {r.status}
