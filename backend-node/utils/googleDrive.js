@@ -46,6 +46,7 @@ async function uploadResumeToDrive(fileBuffer, originalName, mimeType) {
 
   const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}-${originalName}`;
 
+console.log('DEBUG about to call files.create with supportsAllDrives:', true, 'folder:', FOLDER_ID);
   const { data: file } = await drive.files.create({
     requestBody: {
       name: uniqueName,
