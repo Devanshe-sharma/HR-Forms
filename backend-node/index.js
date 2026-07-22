@@ -1,7 +1,7 @@
 require('dotenv').config();
 
 const express = require('express');
-
+const path = require('path');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const cron = require('node-cron');
@@ -12,15 +12,26 @@ const geoRoutes = require('./routes/geo');
 
 
 
-
+const PRODUCTION_ORIGINS = [
+  'http://3.110.162.1:3000',
+  'http://hr.briskolive.com',
+  'https://hr.briskolive.com',
+]
 /* ─────────────────── MIDDLEWARE ─────────────────── */
 app.use(cors({
-  origin: [
-    'http://3.110.162.1:3000',
-    'http://localhost:3000',
-    'http://localhost:8080',
-    'http://hr.briskolive.com'
-  ],
+  origin: (origin, callback) => {
+    // No Origin header at all — same-origin requests, curl, server-to-
+    // server calls, etc. Always allow.
+    if (!origin) return callback(null, true);
+ 
+    if (PRODUCTION_ORIGINS.includes(origin)) return callback(null, true);
+ 
+    // Any localhost port, any protocol (http covers the normal dev
+    // server case).
+    if (/^http:\/\/localhost:\d+$/.test(origin)) return callback(null, true);
+ 
+    return callback(new Error(`Not allowed by CORS: ${origin}`));
+  },
   allowedHeaders: ['Content-Type', 'Authorization', 'x-user-role'],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
@@ -44,7 +55,7 @@ console.log("ENV CHECK:", {
 /* ─────────────────── ROUTES ─────────────────── */
 app.get('/', (req, res) => res.send('Backend server is alive!'));
 
-
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/employees',          require('./routes/employees'));
 app.use('/api/confirmations',      require('./routes/confirmations'));
 app.use('/api/roles',              require('./routes/roles'));

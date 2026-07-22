@@ -1,35 +1,17 @@
 // routes/candidateApplications.js
 const express = require('express');
-const path    = require('path');
-const fs      = require('fs');
 const multer  = require('multer');
 const router  = express.Router();
 const CandidateApplication = require('../models/Candidateapplication');
 const ApplicantRecord      = require('../models/ApplicantRecord');
 const { triggerCandidateApplication } = require('../emails');
+const { uploadResumeToDrive } = require('../utils/googleDrive');
 
-// ─── Resume upload ──────────────────────────────────────────────────────────
-// Stored on local disk under uploads/resumes — make sure index.js serves
-// this directory statically:
-//   app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-// If this app already uploads files elsewhere via a different storage
-// backend (e.g. Google Drive — this project's .env has Google service
-// account credentials, used for Dept Orientation's own upload dialog),
-// swap this multer.diskStorage for whatever that same mechanism is,
-// instead of introducing a second, inconsistent storage location.
-const RESUME_UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'resumes');
-if (!fs.existsSync(RESUME_UPLOAD_DIR)) fs.mkdirSync(RESUME_UPLOAD_DIR, { recursive: true });
-
-const resumeStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, RESUME_UPLOAD_DIR),
-  filename: (req, file, cb) => {
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${unique}${path.extname(file.originalname)}`);
-  },
-});
-
+// Memory storage — no local disk write at all. The file buffer goes
+// straight to Google Drive via uploadResumeToDrive() inside the route
+// handler below, instead of ever touching this server's filesystem.
 const uploadResume = multer({
-  storage: resumeStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (req, file, cb) => {
     if (file.mimetype === 'application/pdf') cb(null, true);
@@ -49,20 +31,20 @@ const FIELDS_TO_COPY = [
   'resume',
 ];
 
-// POST /api/candidate-applications  — submit form
-// The frontend now sends multipart/form-data (FormData with the resume
-// file attached under the field name "resume"), not JSON — multer parses
-// the other fields into req.body as strings and hands the file separately
-// via req.file. This single route handles both the file and the rest of
-// the form together, so a resume upload can never succeed while the
-// surrounding application silently fails (or vice versa).
 router.post('/', uploadResume.single('resume'), async (req, res) => {
   try {
-    const resumePath = req.file ? `/uploads/resumes/${req.file.filename}` : '';
+    // Upload to Drive first — resume ends up as a real, publicly-viewable
+    // Drive link (see uploadResumeToDrive's own comments for exactly how
+    // that permission gets set), not a local disk path. If there's no
+    // file attached at all, this is simply skipped and resume stays ''.
+    let resumeLink = '';
+    if (req.file) {
+      resumeLink = await uploadResumeToDrive(req.file.buffer, req.file.originalname, req.file.mimetype);
+    }
 
     const doc = await CandidateApplication.create({
       ...req.body,
-      resume: resumePath,
+      resume: resumeLink,
     });
 
     // Seed an ApplicantRecord for the HR dashboard (fire-and-forget)
@@ -79,9 +61,10 @@ router.post('/', uploadResume.single('resume'), async (req, res) => {
 
     res.status(201).json({ success: true, data: doc });
   } catch (err) {
-    // If multer's fileFilter rejected the upload (wrong file type) or the
-    // file exceeded the size limit, err.message already describes exactly
-    // why — surfaced as-is rather than a generic failure.
+    // If multer's fileFilter rejected the upload (wrong file type), the
+    // file exceeded the size limit, or the Drive upload itself failed
+    // (e.g. missing/invalid credentials), err.message already describes
+    // exactly why — surfaced as-is rather than a generic failure.
     console.error('Candidate application error:', err);
     res.status(400).json({ success: false, message: err.message });
   }
@@ -118,7 +101,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /api/candidate-applications/:id  — single record
 router.get('/:id', async (req, res) => {
   try {
     const doc = await CandidateApplication.findById(req.params.id);
