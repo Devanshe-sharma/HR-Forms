@@ -6,12 +6,19 @@ const FOLDER_ID = process.env.GOOGLE_DRIVE_RESUME_FOLDER_ID;
 function getDriveClient() {
   const privateKey = (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
 
-  const auth = new google.auth.JWT(
-    process.env.GOOGLE_CLIENT_EMAIL,
-    null,
-    privateKey,
-    ['https://www.googleapis.com/auth/drive']
-  );
+  // Modern google-auth-library (v8+, which current googleapis versions
+  // depend on) expects a single options object here — { email, key,
+  // scopes } — not the old positional-argument signature
+  // (email, keyFile, key, scopes) this used before. With the old
+  // signature, the constructor never actually assigned our key string
+  // to its internal "key" property at all, which is exactly why gtoken
+  // reported "No key or keyFile set" even with a perfectly
+  // correctly-formatted PEM key being passed in.
+  const auth = new google.auth.JWT({
+    email: process.env.GOOGLE_CLIENT_EMAIL,
+    key: privateKey,
+    scopes: ['https://www.googleapis.com/auth/drive'],
+  });
 
   return google.drive({ version: 'v3', auth });
 }
