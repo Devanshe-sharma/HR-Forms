@@ -9,12 +9,12 @@ export default function Home() {
         </h1>
 
         <div className="space-y-10">
-          <Link
+          {/* <Link
             to="/company-orientation"
             className="block px-16 py-8 bg-lime-600 text-white text-3xl font-bold rounded-2xl hover:bg-lime-700 transition shadow-2xl transform hover:scale-105"
           >
             Open HR Dashboard →
-          </Link>
+          </Link> */}
 
           <Link
             to="/outsider-dashboard"
