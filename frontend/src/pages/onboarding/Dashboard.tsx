@@ -54,9 +54,6 @@ interface OnboardingRow {
   plannedJoiningDate?: string;
   joinedDate?: string;
   confirmationDueDate?: string;
-  // Existing field, kept in sync from the Confirmations module (see
-  // syncConfirmationStatusToOnboarding in routes/confirmations.js) — no
-  // schema change here, just surfacing it as a tag in the view modal.
   confirmationStatus?: string;
   salRevisionDueDate?: string;
   nameOfBuddy?: string;
@@ -91,9 +88,6 @@ const JOINING_STATUS_STYLE: Record<string, { bg: string; color: string }> = {
   "Not Joining":        { bg: "#fef2f2", color: "#dc2626" },
 };
 
-// Onboarding's exitStatus field is synced from the Exit module — only
-// "Left"/"Already Left" mean the person has actually gone; the others mean
-// they're still employed (mid-notice, or the exit never happened).
 const EXIT_STATUS_STYLE: Record<string, { bg: string; color: string }> = {
   "Left":                  { bg: "#fef2f2", color: "#dc2626" },
   "Already Left":          { bg: "#fef2f2", color: "#dc2626" },
@@ -102,15 +96,12 @@ const EXIT_STATUS_STYLE: Record<string, { bg: string; color: string }> = {
   "Exit Cancelled":        { bg: "#f8fafc", color: "#64748b" },
 };
 
-// Confirmation status text carries variable detail (e.g. "On PIP /
-// Extended (3 mo)"), so this matches on substring rather than an exact
-// Record lookup — same four buckets the Confirmations module itself uses.
 const confirmationStatusStyle = (status?: string): { bg: string; color: string } => {
   if (!status) return { bg: "#f8fafc", color: "#94a3b8" };
   if (status.includes("Confirmed") && !status.includes("Not")) return { bg: "#ecfdf5", color: "#059669" };
   if (status.includes("Not Confirmed")) return { bg: "#fef2f2", color: "#dc2626" };
   if (status.includes("PIP") || status.includes("Extended")) return { bg: "#eff6ff", color: "#2563eb" };
-  return { bg: "#fef3c7", color: "#d97706" }; // On Probation (with or without "— Confirmation In Progress")
+  return { bg: "#fef3c7", color: "#d97706" };
 };
 
 // ─── Pill component ───────────────────────────────────────────────────────────
@@ -166,9 +157,6 @@ const OnboardingDashboard: React.FC = () => {
   const [viewModal, setViewModal] = useState<{ row: OnboardingRow; lists: CheckList[] } | null>(null);
   const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
 
-  // "Left"/"Already Left" mean the person has actually gone — "Serving
-  // Notice Period" is still employed, and "Not Exiting"/"Exit Cancelled"
-  // mean the exit never happened, matching the backend's own rule.
   const isExited = (r: OnboardingRow) =>
     r.exitStatus === "Left" || r.exitStatus === "Already Left";
 
@@ -182,9 +170,6 @@ const OnboardingDashboard: React.FC = () => {
   useEffect(() => {
     load();
 
-    // Refetch whenever the user comes back to this tab/window — covers the
-    // common case of updating a record in another tab (or the Update
-    // Onboarding page) and switching back here without a manual reload.
     const onFocus = () => load(true);
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", () => {
@@ -203,9 +188,6 @@ const OnboardingDashboard: React.FC = () => {
       });
       if (!res.data?.success) throw new Error("Bad response");
       const data: OnboardingRow[] = res.data.data ?? [];
-      // Sort by the person's actual joining date — joinedDate if they've
-      // joined, otherwise plannedJoiningDate for anyone still upcoming.
-      // Records with neither sink to the bottom.
       const sortKey = (r: OnboardingRow) => {
         const d = r.joinedDate ?? r.plannedJoiningDate;
         return d ? new Date(d).getTime() : -Infinity;
@@ -408,6 +390,7 @@ const OnboardingDashboard: React.FC = () => {
                   return (
                     <Box
                       key={row._id}
+                      onClick={() => openViewModal(row)}
                       sx={{
                         display: "grid",
                         gridTemplateColumns: "2fr 1fr 1fr 90px 120px 90px 90px",
@@ -416,6 +399,7 @@ const OnboardingDashboard: React.FC = () => {
                         alignItems: "center",
                         bgcolor: isClosed ? "#f8fafc" : "transparent",
                         opacity: isClosed ? 0.6 : 1,
+                        cursor: "pointer",
                         "&:hover": { bgcolor: isClosed ? "#f1f5f9" : "#fafbff" },
                         transition: "background 0.1s",
                       }}
@@ -522,7 +506,7 @@ const OnboardingDashboard: React.FC = () => {
                       </Box>
 
                       {/* Actions */}
-                      <Box sx={{ display: "flex", gap: 0.7 }}>
+                      <Box sx={{ display: "flex", gap: 0.7 }} onClick={(e) => e.stopPropagation()}>
                         <Tooltip title="View all details">
                           <button
                             onClick={() => openViewModal(row)}
@@ -638,11 +622,6 @@ const OnboardingDashboard: React.FC = () => {
                       padding: "2px 8px", borderRadius: 20,
                     }}>{viewModal.row.employeeCategory}</span>
                   )}
-                  {/* Confirmation status — synced from the Confirmations
-                      module (probation / review in progress / on PIP-
-                      extended / confirmed / not confirmed). Colored
-                      distinctly (unlike the other header pills above)
-                      since this one carries real urgency at a glance. */}
                   {viewModal.row.confirmationStatus && (() => {
                     const s = confirmationStatusStyle(viewModal.row.confirmationStatus);
                     return (

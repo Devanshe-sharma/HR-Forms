@@ -373,6 +373,7 @@ const ExitDashboard: React.FC = () => {
                   return (
                     <Box
                       key={row._id}
+                      onClick={() => openViewModal(row)}
                       sx={{
                         display: "grid",
                         gridTemplateColumns: "2fr 1fr 1fr 90px 120px 90px 90px",
@@ -381,6 +382,7 @@ const ExitDashboard: React.FC = () => {
                         alignItems: "center",
                         bgcolor: isClosed ? "#f8fafc" : "transparent",
                         opacity: isClosed ? 0.6 : 1,
+                        cursor: "pointer",
                         "&:hover": { bgcolor: isClosed ? "#f1f5f9" : "#fafbff" },
                         transition: "background 0.1s",
                       }}
@@ -489,7 +491,7 @@ const ExitDashboard: React.FC = () => {
                       </Box>
 
                       {/* Actions */}
-                      <Box sx={{ display: "flex", gap: 0.7 }}>
+                      <Box sx={{ display: "flex", gap: 0.7 }} onClick={(e) => e.stopPropagation()}>
                         <Tooltip title="View all details">
                           <button
                             onClick={() => openViewModal(row)}
