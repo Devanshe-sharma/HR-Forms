@@ -1,6 +1,4 @@
-﻿const signature = require("../utils/signature");
-
-function candidateApplicationReceivedTemplate(doc) {
+﻿function candidateApplicationReceivedTemplate(doc) {
   const html = `
     <p>Dear ${doc.full_name},</p>
     <p>
@@ -13,7 +11,7 @@ function candidateApplicationReceivedTemplate(doc) {
       You can also learn more about us at
       <a href="https://www.briskolive.com">www.briskolive.com</a>.
     </p>
-    ${signature()}
+    <p>HR Team<br>Brisk Olive</p>
   `;
   return {
     subject: `Application Received – ${doc.designation}`,
