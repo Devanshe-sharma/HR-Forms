@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Loader2, X, ChevronLeft } from 'lucide-react';
 import type { DeptResult } from '../Recruitment/Deptmodal';
 
@@ -6,7 +6,7 @@ import type { DeptResult } from '../Recruitment/Deptmodal';
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 export type NewDesignationResult = {
-  desig_id:           number | string;
+  desig_id:           string;
   designation:        string;
   dept_id:            number | string;
   department:         string;
@@ -15,6 +15,11 @@ export type NewDesignationResult = {
   role_document_link: string;
   jd_link:            string;
   deptWasNew:         boolean;   // whether dept was freshly created in step 1
+};
+
+type ExistingDesignation = {
+  desig_id: number | string | null;
+  dept_id:  number | string | null;
 };
 
 interface Props {
@@ -35,7 +40,13 @@ const errCls   = 'text-xs text-red-600 mt-1';
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 export default function DesignationModal({ open, dept, onClose, onBack, onSaved }: Props) {
+  // desig_id is a composite ID: dept_id (2 digits) + sequence-within-that-
+  // dept (2 digits) — e.g. dept "01" with 5 existing designations under
+  // it produces "0106" for the 6th. Kept as a STRING throughout — never
+  // converted to Number(), which would silently drop the leading zeros
+  // and destroy the format (Number("0106") === 106).
   const [desigId,           setDesigId]           = useState('');
+  const [idsLoading,        setIdsLoading]        = useState(false);
   const [desigName,         setDesigName]         = useState('');
   const [roleDocLink,       setRoleDocLink]       = useState('');
   const [jdLink,            setJdLink]            = useState('');
@@ -45,11 +56,39 @@ export default function DesignationModal({ open, dept, onClose, onBack, onSaved 
   const [error,             setError]             = useState<string | null>(null);
   const [fieldErrors,       setFieldErrors]       = useState<Record<string, string>>({});
 
+  // Fetch the current designation list once this step opens, purely to
+  // compute the next available desig_id for THIS department specifically.
+  useEffect(() => {
+    if (!open || !dept) return;
+    setIdsLoading(true);
+    setError(null);
+
+    const deptIdPadded = String(dept.dept_id ?? '').padStart(2, '0');
+
+    fetch(`${API_BASE}/rolemaster/all`)
+      .then(r => r.json())
+      .then(json => {
+        const designations: ExistingDesignation[] = json.data?.designations ?? [];
+
+        // Count only designations belonging to THIS department — the
+        // sequence portion restarts per department, it isn't a global
+        // count across every designation.
+        const countInThisDept = designations.filter((d) => {
+          const dDeptPadded = String(d.dept_id ?? '').padStart(2, '0');
+          return dDeptPadded === deptIdPadded;
+        }).length;
+
+        const sequence = String(countInThisDept + 1).padStart(2, '0');
+        setDesigId(`${deptIdPadded}${sequence}`);
+      })
+      .catch(() => setError('Failed to compute the next designation ID. Please refresh.'))
+      .finally(() => setIdsLoading(false));
+  }, [open, dept]);
+
   if (!open || !dept) return null;
 
   const validate = () => {
     const errs: Record<string, string> = {};
-    if (!desigId.trim())   errs.desig_id   = 'Designation ID is required';
     if (!desigName.trim()) errs.designation = 'Designation name is required';
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
@@ -68,7 +107,7 @@ export default function DesignationModal({ open, dept, onClose, onBack, onSaved 
             department:         dept.department,
             dept_head_email:    dept.dept_head_email,
             dept_group_email:   dept.dept_group_email  || null,
-            desig_id:           Number(desigId),
+            desig_id:           desigId, // string, keeps leading zeros intact
             designation:        desigName.trim(),
             role_document_link: roleDocLink.trim()     || null,
             jd_link:            jdLink.trim()          || null,
@@ -81,7 +120,7 @@ export default function DesignationModal({ open, dept, onClose, onBack, onSaved 
         throw new Error(e.message || e.error || 'Failed to save designation');
       }
       onSaved({
-        desig_id:           Number(desigId),
+        desig_id:           desigId,
         designation:        desigName.trim(),
         dept_id:            dept.dept_id,
         department:         dept.department,
@@ -92,7 +131,7 @@ export default function DesignationModal({ open, dept, onClose, onBack, onSaved 
         deptWasNew:         dept.isNew,
       });
       // reset for next use
-      setDesigId(''); setDesigName(''); setRoleDocLink('');
+      setDesigName(''); setRoleDocLink('');
       setJdLink(''); setManagementLevel(''); setReportingManager('');
     } catch (err: any) {
       setError(err.message || 'Failed to save designation');
@@ -137,15 +176,13 @@ export default function DesignationModal({ open, dept, onClose, onBack, onSaved 
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className={labelCls}>Designation ID (numeric) *</label>
+                <label className={labelCls}>Designation ID (auto-generated)</label>
                 <input
-                  className={`${inputCls} ${fieldErrors.desig_id ? 'border-red-400' : ''}`}
-                  type="number"
-                  placeholder="e.g. 45"
-                  value={desigId}
-                  onChange={e => setDesigId(e.target.value)}
+                  className={inputCls}
+                  value={idsLoading ? 'Loading…' : desigId}
+                  disabled
+                  readOnly
                 />
-                {fieldErrors.desig_id && <p className={errCls}>{fieldErrors.desig_id}</p>}
               </div>
               <div>
                 <label className={labelCls}>Management Level</label>
@@ -246,7 +283,7 @@ export default function DesignationModal({ open, dept, onClose, onBack, onSaved 
             </button>
             <button
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || idsLoading}
               className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 transition"
             >
               {saving && <Loader2 size={14} className="animate-spin" />}

@@ -25,6 +25,8 @@ const schema = z.object({
   designation_existing:       z.string().optional(),
   designation_new:            z.string().optional(),
   candidate_experience_level: z.enum(['Fresher', 'Experienced']).optional(),
+  reporting_manager:          z.string().optional(),
+  budget:                     z.coerce.number().optional(),
   request_date:               z.string().optional(),
   select_joining_days:        z.string().min(1, 'Please select joining days'),
   plan_start_sharing_cvs:     z.string().optional(),
@@ -52,7 +54,19 @@ type FormData = z.infer<typeof schema>;
 
 type Employee    = { emp_id: string; full_name: string; official_email: string; department: string; designation: string };
 type Department  = { dept_id: number | string | null; department: string; dept_head_email?: string; dept_group_email?: string };
-type Designation = { dept_id: number | string | null; department: string; desig_id: number | string | null; designation: string; role_document_link?: string; jd_link?: string };
+type Designation = {
+  dept_id: number | string | null;
+  department: string;
+  desig_id: number | string | null;
+  designation: string;
+  role_document_link?: string;
+  jd_link?: string;
+  JD_Link?: string;
+  ['JD Link']?: string;
+  reporting_manager?: string;
+  Reporting_Manager?: string;
+  ['Reporting Manager']?: string;
+};
 type RoleMasterData = { departments: Department[]; designations: Designation[]; employees: Employee[] };
 
 // Current-employee shape used just for the Requisitioner dropdown — sourced
@@ -202,10 +216,20 @@ export default function NewRequisitionForm({ asModal = false, onSuccess, onClose
     if (designationType === 'existing' && designationExisting && roleData) {
       const des = roleData.designations.find(d => d.designation === designationExisting);
       setValue('role_link', des?.role_document_link ?? '');
-      setValue('jd_link',   des?.jd_link ?? '');
+      setValue('jd_link',   des?.jd_link ?? des?.JD_Link ?? des?.['JD Link'] ?? '');
+      setValue('reporting_manager', des?.reporting_manager ?? des?.Reporting_Manager ?? des?.['Reporting Manager'] ?? '');
+
+      // TEMPORARY — remove once JD/Reporting Manager auto-fill is
+      // confirmed working. If both still came back empty despite the
+      // Master genuinely having values, this shows the real raw record
+      // so we can see its actual field names instead of guessing again.
+      if (!des?.jd_link && !des?.JD_Link && !des?.['JD Link']) {
+        console.log('DEBUG auto-fill — JD/Reporting Manager not found. Raw matched record:', des);
+      }
     } else if (designationType === 'new') {
       setValue('role_link', '');
       setValue('jd_link',   '');
+      setValue('reporting_manager', '');
     }
   }, [designationType, designationExisting, roleData, setValue]);
 
@@ -546,6 +570,26 @@ const handleBackToDept = () => {
                 </div>
               </div>
             )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className={labelCls}>Reporting Manager{designationType === 'existing' && designationExisting ? ' (auto-filled — editable)' : ''}</label>
+                <input
+                  {...register('reporting_manager')}
+                  className={inputCls}
+                  placeholder="Name of reporting manager"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Budget (₹)</label>
+                <input
+                  {...register('budget')}
+                  type="number"
+                  className={inputCls}
+                  placeholder="Annual budget for this position"
+                />
+              </div>
+            </div>
 
             {(designationExisting || newDesigResult) && (
               <div>

@@ -43,7 +43,11 @@ export default function DeptModal({ open, prefillDept, onClose, onNext }: Props)
   const [selected,       setSelected]       = useState<ExistingDept | null>(null);
   const [error,          setError]          = useState<string | null>(null);
 
-  // new dept form fields
+  // new dept form fields — dept_id is auto-generated as a 2-digit
+  // zero-padded string (e.g. "01", "02", ... "12"), one above whatever
+  // the highest existing numeric dept_id currently is. Never typed by
+  // hand, and never stored as a plain number — Number("01") would drop
+  // the leading zero and break the format entirely.
   const [newDeptId,         setNewDeptId]         = useState('');
   const [newDeptName,       setNewDeptName]       = useState('');
   const [newDeptHeadEmail,  setNewDeptHeadEmail]  = useState('');
@@ -61,7 +65,19 @@ export default function DeptModal({ open, prefillDept, onClose, onNext }: Props)
     setMode('pick');
     fetch(`${API_BASE}/rolemaster/all`)
       .then(r => r.json())
-      .then(json => setDepartments(json.data?.departments ?? []))
+      .then(json => {
+        const depts: ExistingDept[] = json.data?.departments ?? [];
+        setDepartments(depts);
+
+        // Highest existing numeric dept_id, +1, padded to 2 digits.
+        // Parsing with parseInt so a dept_id already stored as "01"
+        // still contributes 1 to the max correctly.
+        const maxId = depts.reduce((max, d) => {
+          const n = parseInt(String(d.dept_id ?? ''), 10);
+          return Number.isFinite(n) && n > max ? n : max;
+        }, 0);
+        setNewDeptId(String(maxId + 1).padStart(2, '0'));
+      })
       .catch(() => setError('Failed to load departments. Please refresh.'))
       .finally(() => setLoading(false));
   }, [open]);
@@ -87,7 +103,6 @@ export default function DeptModal({ open, prefillDept, onClose, onNext }: Props)
   // ── Create new dept ───────────────────────────────────────────────────────
   const validateNew = () => {
     const errs: Record<string, string> = {};
-    if (!newDeptId.trim())         errs.dept_id         = 'Dept ID is required';
     if (!newDeptName.trim())       errs.department      = 'Department name is required';
     if (!newDeptHeadEmail.trim())  errs.dept_head_email = 'Dept head email is required';
     setFieldErrors(errs);
@@ -95,15 +110,15 @@ export default function DeptModal({ open, prefillDept, onClose, onNext }: Props)
   };
 
   const handleCreateDept = () => {
-  if (!validateNew()) return;
-  onNext({
-    dept_id:          Number(newDeptId),
-    department:       newDeptName.trim(),
-    dept_head_email:  newDeptHeadEmail.trim(),
-    dept_group_email: newDeptGroupEmail.trim(),
-    isNew:            true,
-  });
-};
+    if (!validateNew()) return;
+    onNext({
+      dept_id:          newDeptId, // kept as a zero-padded string, e.g. "01"
+      department:       newDeptName.trim(),
+      dept_head_email:  newDeptHeadEmail.trim(),
+      dept_group_email: newDeptGroupEmail.trim(),
+      isNew:            true,
+    });
+  };
 
   // ─────────────────────────────────────────────────────────────────────────
   // Render
@@ -202,15 +217,13 @@ export default function DeptModal({ open, prefillDept, onClose, onNext }: Props)
             /* ── New dept form ── */
             <div className="space-y-3">
               <div>
-                <label className={labelCls}>Dept ID (numeric) *</label>
+                <label className={labelCls}>Dept ID (auto-generated)</label>
                 <input
-                  className={`${inputCls} ${fieldErrors.dept_id ? 'border-red-400' : ''}`}
-                  type="number"
-                  placeholder="e.g. 12"
+                  className={inputCls}
                   value={newDeptId}
-                  onChange={e => setNewDeptId(e.target.value)}
+                  disabled
+                  readOnly
                 />
-                {fieldErrors.dept_id && <p className={errCls}>{fieldErrors.dept_id}</p>}
               </div>
               <div>
                 <label className={labelCls}>Department Name *</label>

@@ -21,6 +21,8 @@ type Requisition = {
   hiring_status: string;
   fmsStatus: 'Open' | 'Closed';
   candidate_experience_level?: string;
+  reporting_manager?: string;
+  budget?: number;
   fms_score?: number;
   total_tasks?: number;
   done_in_time?: number;
@@ -69,10 +71,12 @@ export default function RequisitionDashboard() {
   const modal  = searchParams.get('modal');
   const editId = searchParams.get('id');
 
-  const newModalOpen = modal === 'new';
+  const newModalOpen    = modal === 'new';
+  const viewModalOpen   = modal === 'view'   && !!editId;
   const updateModalOpen = modal === 'update' && !!editId;
 
   const openNew    = () => navigate('/recruitment?modal=new');
+  const openView   = (id: string) => navigate(`/recruitment?modal=view&id=${id}`);
   const openEdit   = (id: string) => navigate(`/recruitment?modal=update&id=${id}`);
   const closeModal = () => navigate('/recruitment');
 
@@ -121,7 +125,7 @@ export default function RequisitionDashboard() {
     });
   }, [rows, cardFilter, filterStatus, search]);
 
-  const anyModalOpen = newModalOpen || updateModalOpen;
+  const anyModalOpen = newModalOpen || viewModalOpen || updateModalOpen;
 
   const CARDS: { key: CardFilter; label: string; value: number; color: string; bg: string }[] = [
     { key: 'all',     label: 'Total Requisitions', value: counts.total,   color: '#3B82F6', bg: '#EFF6FF' },
@@ -260,75 +264,73 @@ export default function RequisitionDashboard() {
                         <td colSpan={16} className="py-12 text-center text-gray-400">No requisitions match the current filters</td>
                       </tr>
                     )}
-                    {filteredRows.map(row => (
-                      <tr key={row._id} onClick={() => openEdit(row._id)} className="hover:bg-gray-50 transition cursor-pointer">
-                        <td className="px-3 py-2.5">{row.serial_no}</td>
-                        <td className="px-3 py-2.5">
-                          <span className="block font-medium">{row.designation}</span>
-                          {row.candidate_experience_level && (
-                            <span className="text-xs text-gray-400">{row.candidate_experience_level}</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5">{row.hiring_dept}</td>
-                        <td className="px-3 py-2.5">{row.requisitioner_name}</td>
-                        <td className="px-3 py-2.5">{row.request_date || '—'}</td>
-                        <td className="px-3 py-2.5">{row.planned_joined || '—'}</td>
+                    {filteredRows.map(row => {
+                      return (
+                        <tr key={row._id} onClick={() => openView(row._id)} className="hover:bg-gray-50 transition cursor-pointer">
+                          <td className="px-3 py-2.5">{row.serial_no}</td>
+                          <td className="px-3 py-2.5">
+                            <span className="block font-medium">{row.designation}</span>
+                            {row.candidate_experience_level && (
+                              <span className="text-xs text-gray-400">{row.candidate_experience_level}</span>
+                            )}
+                          </td>
 
-                        {/* Hiring Status — read-only display. Previously
-                            an inline dropdown here called
-                            PATCH /:id/status directly, which bypasses
-                            rescoreAndSave AND the update email trigger
-                            entirely — every change made this way silently
-                            skipped both. All changes now have to go
-                            through the Update Requisition form, which
-                            uses the real PATCH /:id route (rescoring +
-                            email included). */}
-                        <td className="px-3 py-2.5">
-                          {row.hiring_status && (
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CHIP[row.hiring_status] ?? 'bg-gray-100 text-gray-700'}`}>
-                              {row.hiring_status}
+                          <td className="px-3 py-2.5">{row.hiring_dept}</td>
+                          <td className="px-3 py-2.5">{row.requisitioner_name}</td>
+                          <td className="px-3 py-2.5">{row.request_date || '—'}</td>
+                          <td className="px-3 py-2.5">{row.planned_joined || '—'}</td>
+
+                          {/* Hiring Status — read-only display. All
+                              changes go through the Update Requisition
+                              form, which uses the real PATCH /:id route
+                              (rescoring + email included). */}
+                          <td className="px-3 py-2.5">
+                            {row.hiring_status && (
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CHIP[row.hiring_status] ?? 'bg-gray-100 text-gray-700'}`}>
+                                {row.hiring_status}
+                              </span>
+                            )}
+                          </td>
+
+                          {/* FMS Status — read-only. Computed automatically
+                              from checklist completion server-side. */}
+                          <td className="px-3 py-2.5">
+                            <span
+                              title="Computed automatically from checklist completion"
+                              className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                                row.fmsStatus === 'Open'
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-gray-100 text-gray-700'
+                              }`}
+                            >
+                              {row.fmsStatus}
                             </span>
-                          )}
-                        </td>
+                          </td>
 
-                        {/* FMS Status — read-only. Computed automatically
-                            from checklist completion server-side. */}
-                        <td className="px-3 py-2.5">
-                          <span
-                            title="Computed automatically from checklist completion"
-                            className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                              row.fmsStatus === 'Open'
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-gray-100 text-gray-700'
-                            }`}
-                          >
-                            {row.fmsStatus}
-                          </span>
-                        </td>
+                          <td className={`px-3 py-2.5 text-right font-medium ${
+                            (row.fms_score ?? 0) < 0 ? 'text-red-600' : 'text-gray-700'
+                          }`}>
+                            {row.fms_score ?? 0}
+                          </td>
+                          <td className="px-3 py-2.5 text-right text-gray-500">{row.total_tasks ?? 0}</td>
+                          <td className="px-3 py-2.5 text-right text-green-700">{row.done_in_time ?? 0}</td>
+                          <td className="px-3 py-2.5 text-right text-blue-700">{row.done_but_delayed ?? 0}</td>
+                          <td className="px-3 py-2.5 text-right text-yellow-700">{row.tasks_due ?? 0}</td>
+                          <td className="px-3 py-2.5 text-right text-red-700 font-medium">{row.tasks_overdue ?? 0}</td>
+                          <td className="px-3 py-2.5 text-right text-gray-400">{row.not_yet_due ?? 0}</td>
 
-                        <td className={`px-3 py-2.5 text-right font-medium ${
-                          (row.fms_score ?? 0) < 0 ? 'text-red-600' : 'text-gray-700'
-                        }`}>
-                          {row.fms_score ?? 0}
-                        </td>
-                        <td className="px-3 py-2.5 text-right text-gray-500">{row.total_tasks ?? 0}</td>
-                        <td className="px-3 py-2.5 text-right text-green-700">{row.done_in_time ?? 0}</td>
-                        <td className="px-3 py-2.5 text-right text-blue-700">{row.done_but_delayed ?? 0}</td>
-                        <td className="px-3 py-2.5 text-right text-yellow-700">{row.tasks_due ?? 0}</td>
-                        <td className="px-3 py-2.5 text-right text-red-700 font-medium">{row.tasks_overdue ?? 0}</td>
-                        <td className="px-3 py-2.5 text-right text-gray-400">{row.not_yet_due ?? 0}</td>
-
-                        <td className="px-3 py-2.5 text-center">
-                          <button
-                            title="Update this requisition"
-                            onClick={e => { e.stopPropagation(); openEdit(row._id); }}
-                            className="p-1.5 rounded-md text-blue-600 hover:bg-blue-50 transition"
-                          >
-                            <Edit2 size={15} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                          <td className="px-3 py-2.5 text-center">
+                            <button
+                              title="Update this requisition"
+                              onClick={e => { e.stopPropagation(); openEdit(row._id); }}
+                              className="p-1.5 rounded-md text-blue-600 hover:bg-blue-50 transition"
+                            >
+                              <Edit2 size={15} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -353,6 +355,22 @@ export default function RequisitionDashboard() {
           onSuccess={() => { closeModal(); fetchData(); }}
           onClose={closeModal}
         />
+      </Modal>
+
+      <Modal
+        open={viewModalOpen}
+        onClose={closeModal}
+        title="View Hiring Requisition"
+        maxWidth="max-w-4xl"
+      >
+        {editId && (
+          <UpdateRequisition
+            id={editId}
+            asModal
+            viewOnly
+            onClose={closeModal}
+          />
+        )}
       </Modal>
 
       <Modal

@@ -8,4 +8,5 @@ module.exports = {
   triggerUpdateExit:            require("./triggers/triggerExit").triggerUpdateExit,
   triggerNewRequisition:        require("./triggers/triggerNewRequisition"),
   triggerUpdateRequisition:     require("./triggers/triggerUpdateRequisition"),
+  triggerDailyApplicantSummary: require("./triggers/triggerDailyApplicantSummary"),
 };

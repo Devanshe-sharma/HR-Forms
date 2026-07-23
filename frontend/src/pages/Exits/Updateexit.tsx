@@ -74,6 +74,10 @@ interface ExitDetail {
   autoExitEmailDept?: boolean; autoExitEmailDeptSentAt?: string;
   autoReminderEmail?: boolean; autoReminderEmailSentAt?: string;
   autoInstructionsToAllEmail?: boolean; autoInstructionsToAllEmailSentAt?: string;
+  // Gates when checklist scoring actually starts — see backend's
+  // scoreChecklist isApproved branch and PATCH /:id/approve.
+  hr_approved_at?: string | null;
+  createdAt?: string;
 }
 
 // ─── Zod Schema ─────────────────────────────────────────────────────────────
@@ -149,6 +153,7 @@ const STATUS_BADGE: Record<string, string> = {
   "OVERDUE": "bg-red-100 text-red-700",
   "PENDING": "bg-yellow-100 text-yellow-700",
   "NOT YET DUE": "bg-slate-100 text-slate-500",
+  "AWAITING APPROVAL": "bg-slate-100 text-slate-400 italic",
 };
 
 const EXIT_STATUS_STYLE: Record<string, { bg: string; text: string }> = {
@@ -173,6 +178,7 @@ const UpdateExit: React.FC = () => {
   const [selectedId, setSelectedId] = useState<string>(id ?? "");
   const [loadingExit, setLoadingExit] = useState(false);
   const [detail, setDetail] = useState<ExitDetail | null>(null);
+  const [approveLoading, setApproveLoading] = useState(false);
 
   const [newTicks, setNewTicks] = useState<boolean[][]>([]);
 
@@ -205,7 +211,7 @@ const UpdateExit: React.FC = () => {
       .catch(() => toast.error("Failed to load exit list"));
   }, []);
 
-  useEffect(() => {
+  const loadDetail = () => {
     if (!selectedId) { setDetail(null); return; }
     setLoadingExit(true);
     axios.get<{ data: ExitDetail }>(`${API}/exit/${selectedId}`)
@@ -230,7 +236,23 @@ const UpdateExit: React.FC = () => {
       })
       .catch(() => toast.error("Failed to load exit details"))
       .finally(() => setLoadingExit(false));
-  }, [selectedId]);
+  };
+
+  useEffect(() => { loadDetail(); }, [selectedId]);
+
+  const handleApprove = async () => {
+    if (!selectedId) return;
+    setApproveLoading(true);
+    try {
+      await axios.patch(`${API}/exit/${selectedId}/approve`);
+      toast.success("Exit approved — checklist scoring is now active");
+      loadDetail(); // refetch — items now have real plan dates instead of "AWAITING APPROVAL"
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? "Failed to approve");
+    } finally {
+      setApproveLoading(false);
+    }
+  };
 
   const getItemState = (listIdx: number, itemIdx: number): CheckItemState | undefined =>
     detail?.checkLists?.[listIdx]?.itemsList?.[itemIdx];
@@ -321,6 +343,20 @@ const UpdateExit: React.FC = () => {
     </div>
   );
 
+  // Approval deadline display — same 3-day target concept as
+  // HiringRequisition, computed from record creation since Exit has no
+  // separate "request_date" equivalent.
+  const approvalInfo = (() => {
+    if (!detail?.createdAt) return null;
+    const created = dayjs(detail.createdAt).startOf("day");
+    const deadline = created.add(3, "day");
+    const today = dayjs().startOf("day");
+    const daysOverdue = !detail.hr_approved_at && today.isAfter(deadline)
+      ? today.diff(deadline, "day")
+      : 0;
+    return { deadline, daysOverdue };
+  })();
+
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
       <div className="min-h-screen bg-slate-50">
@@ -392,6 +428,47 @@ const UpdateExit: React.FC = () => {
                   </span>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* HR Approval — gates when checklist scoring actually starts.
+              Every item sits at "AWAITING APPROVAL" (no score, no plan
+              date) until this happens. The 3-day figure is a target for
+              HR, not a hard block — approving late still works, it just
+              adds the delay as extra time on top of the normal +5/+15
+              day checklist windows (see backend's assignExitPlanDates),
+              so HR's own delay doesn't unfairly eat into the timeline.
+              resignationDate/leftDate themselves are never shifted. */}
+          {detail && approvalInfo && (
+            <div className={`rounded-2xl border p-5 shadow-sm ${
+              detail.hr_approved_at
+                ? "bg-green-50 border-green-200"
+                : approvalInfo.daysOverdue > 0
+                  ? "bg-red-50 border-red-200"
+                  : "bg-amber-50 border-amber-200"
+            }`}>
+              {detail.hr_approved_at ? (
+                <p className="text-sm text-green-800">
+                  ✅ Approved on <b>{fmtDate(detail.hr_approved_at)}</b> — checklist scoring is active.
+                </p>
+              ) : (
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <p className={`text-sm ${approvalInfo.daysOverdue > 0 ? "text-red-800" : "text-amber-800"}`}>
+                    ⏳ <b>Awaiting HR Approval</b> — target: within 3 days of filing (by {approvalInfo.deadline.format("DD MMM YYYY")}).
+                    {approvalInfo.daysOverdue > 0 && <> <b>{approvalInfo.daysOverdue} day{approvalInfo.daysOverdue === 1 ? "" : "s"} overdue.</b></>}
+                    {" "}Checklist scoring hasn't started yet.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleApprove}
+                    disabled={approveLoading}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition whitespace-nowrap"
+                  >
+                    {approveLoading && <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                    {approveLoading ? "Approving..." : "Approve Exit"}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

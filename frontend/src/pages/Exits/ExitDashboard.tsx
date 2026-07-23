@@ -55,6 +55,9 @@ interface ExitRow {
   remarks?: string;
   createdAt?: string;
   checkLists?: CheckList[];
+  // Gates when checklist scoring actually starts — see the backend's
+  // PATCH /:id/approve and scoreChecklist isApproved branch.
+  hr_approved_at?: string | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -66,11 +69,12 @@ const fmtY = (d?: string | null) => d ? dayjs(d).format("DD MMM YY") : "—";
 const GROUP_COLORS = ["#dc2626", "#d97706", "#475569"];
 
 const STATUS_COLOR: Record<string, { bg: string; text: string; short: string }> = {
-  "DONE":           { bg: "#f0fdf4", text: "#15803d", short: "DONE"  },
-  "DONE (DELAYED)": { bg: "#eff6ff", text: "#1d4ed8", short: "DELAY" },
-  "OVERDUE":        { bg: "#fef2f2", text: "#dc2626", short: "OVER"  },
-  "PENDING":        { bg: "#fffbeb", text: "#d97706", short: "PEND"  },
-  "NOT YET DUE":    { bg: "#f8fafc", text: "#94a3b8", short: "NYD"   },
+  "DONE":              { bg: "#f0fdf4", text: "#15803d", short: "DONE"  },
+  "DONE (DELAYED)":    { bg: "#eff6ff", text: "#1d4ed8", short: "DELAY" },
+  "OVERDUE":           { bg: "#fef2f2", text: "#dc2626", short: "OVER"  },
+  "PENDING":           { bg: "#fffbeb", text: "#d97706", short: "PEND"  },
+  "NOT YET DUE":       { bg: "#f8fafc", text: "#94a3b8", short: "NYD"   },
+  "AWAITING APPROVAL": { bg: "#f8fafc", text: "#cbd5e1", short: "AWAIT" },
 };
 
 const EXIT_STATUS_STYLE: Record<string, { bg: string; color: string }> = {
@@ -184,7 +188,7 @@ const ExitDashboard: React.FC = () => {
     try {
       const res = await axios.get(`${API}/exit/${row._id}`, { params: { _t: Date.now() } });
       const lists: CheckList[] = res.data.data?.checkLists ?? [];
-      setViewModal({ row, lists });
+      setViewModal({ row: { ...row, hr_approved_at: res.data.data?.hr_approved_at }, lists });
     } catch {
       toast.error("Failed to load details");
     } finally {
@@ -418,6 +422,16 @@ const ExitDashboard: React.FC = () => {
                           bg={isClosed ? "#f1f5f9" : esStyle.bg}
                           color={isClosed ? "#94a3b8" : esStyle.color}
                         />
+                        {/* Approval date — gates when checklist scoring
+                            starts (see backend's PATCH /:id/approve).
+                            Shown directly in the row list now, not just
+                            buried in the view modal. */}
+                        <Typography fontSize="0.6rem" fontWeight={600}
+                          color={row.hr_approved_at ? "#15803d" : "#d97706"}>
+                          {row.hr_approved_at
+                            ? `Approved: ${fmtY(row.hr_approved_at)}`
+                            : "Awaiting Approval"}
+                        </Typography>
                         {(row.fmsScore ?? 0) !== 0 && (
                           <Typography fontSize="0.62rem"
                             color={isClosed ? "#94a3b8" : (row.fmsScore ?? 0) < 0 ? "#dc2626" : "#15803d"} fontWeight={700}>
@@ -584,6 +598,17 @@ const ExitDashboard: React.FC = () => {
                       padding: "2px 8px", borderRadius: 20,
                     }}>FMS: {viewModal.row.fmsStatus}</span>
                   )}
+                  {/* Approval pill — gates when checklist scoring actually
+                      starts (see backend's PATCH /:id/approve). This
+                      view is read-only; approving happens on the Edit
+                      (UpdateExit) page. */}
+                  <span style={{
+                    fontSize: "0.62rem", fontWeight: 700,
+                    background: "rgba(255,255,255,0.2)", color: "#fff",
+                    padding: "2px 8px", borderRadius: 20,
+                  }}>
+                    {viewModal.row.hr_approved_at ? "✅ Approved" : "⏳ Awaiting Approval"}
+                  </span>
                 </Box>
               </Box>
               <button
@@ -642,6 +667,7 @@ const ExitDashboard: React.FC = () => {
                 <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
                   {[
                     { label: "Resignation Date", value: viewModal.row.resignationDate },
+                    { label: "Approval Date", value: viewModal.row.hr_approved_at },
                     { label: "Planned Exit",     value: viewModal.row.plannedExitDate },
                     { label: "Left On",          value: viewModal.row.leftDate },
                   ].map(({ label, value }) => (

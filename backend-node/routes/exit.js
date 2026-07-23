@@ -51,10 +51,32 @@ function resolveOneTimeExitEmails(existing, body) {
   return { resolved, newlyTriggered };
 }
 
-// ─── Scoring helper (identical logic to Onboarding's) ───────────────────────
-function scoreChecklist(list, today) {
+// ─── Scoring helper (identical logic to Onboarding's, plus the same
+// approval gate HiringRequisition now has) ──────────────────────────────────
+// isApproved defaults to true so every existing call site that doesn't
+// pass it explicitly keeps behaving exactly as before — only the specific
+// call sites that were deliberately updated below (create, update,
+// approve) actually pass isApproved through based on the record's real
+// hr_approved_at state.
+function scoreChecklist(list, today, isApproved = true) {
   let doneInTime = 0, doneButDelayed = 0, tasksOverdue = 0,
       tasksDue = 0, notYetDue = 0, fmsScore = 0, tasksNotDone = 0;
+
+  // Nothing scores at all until HR has actually approved the exit —
+  // every item sits in "Awaiting Approval", no score, not counted as
+  // overdue/pending. Still counted toward tasksNotDone (it genuinely
+  // isn't done), which is what keeps fmsStatus correctly Open rather
+  // than accidentally auto-closing just because nothing's been scored.
+  if (!isApproved) {
+    for (const item of list.itemsList) {
+      item.score = 0;
+      item.status = "AWAITING APPROVAL";
+      item.daysLeft = null;
+      notYetDue++;
+      tasksNotDone++;
+    }
+    return { doneInTime, doneButDelayed, tasksOverdue, tasksDue, notYetDue, fmsScore, tasksNotDone };
+  }
 
   for (const item of list.itemsList) {
     const planDate = item.planDate instanceof Date ? item.planDate : null;
@@ -137,30 +159,37 @@ function buildDefaultCheckLists() {
   ];
 }
 
-// ─── Assign plan dates — mirrors the Apps Script's baseDateStr logic ────────
-// PRE-EXIT TASKS:  base = resignationDate (Serving Notice Period) or
-//                  leftDate (Already Left / Left)          → +5 days
-// EXIT-DAY / POST-EXIT TASKS: base = leftDate, for any status that has one
-//                                                            → +15 days
-function assignExitPlanDates(checkLists, exitStatus, resignationDate, leftDate) {
+// ─── Assign plan dates — hybrid base per group ──────────────────────────────
+// PRE-EXIT TASKS (send exit email, check references, etc.) CAN happen
+// during someone's notice period, so they're based on approvalDate + 5
+// days — counting from when HR actually reviewed the exit, not from
+// something that hasn't happened yet.
+//
+// EXIT-DAY TASKS (sign exit form, tea party, return assets) are due ON
+// the actual last day itself — leftDate (once known) or plannedExitDate
+// as a fallback estimate while still serving notice, +0 days.
+//
+// POST-EXIT TASKS (FnF salary, deactivate accounts, experience letter)
+// get 5 days of grace after that same anchor date to actually complete
+// the wrap-up work once the person is gone.
+function assignExitPlanDates(checkLists, approvalDate, leftDate, plannedExitDate) {
   for (const list of checkLists) {
-    let baseDate;
+    let base, offsetDays;
 
     if (list.name === "PRE-EXIT TASKS") {
-      if (exitStatus === "Serving Notice Period" && resignationDate) {
-        baseDate = new Date(resignationDate);
-      } else if (["Already Left", "Left"].includes(exitStatus) && leftDate) {
-        baseDate = new Date(leftDate);
-      }
-    } else if (["EXIT-DAY TASKS", "POST-EXIT TASKS"].includes(list.name)) {
-      if (leftDate && ["Already Left", "Left", "Serving Notice Period"].includes(exitStatus)) {
-        baseDate = new Date(leftDate);
-      }
+      base = approvalDate ? new Date(approvalDate) : null;
+      offsetDays = 5;
+    } else if (list.name === "EXIT-DAY TASKS") {
+      base = (leftDate || plannedExitDate) ? new Date(leftDate || plannedExitDate) : null;
+      offsetDays = 0;
+    } else {
+      // POST-EXIT TASKS
+      base = (leftDate || plannedExitDate) ? new Date(leftDate || plannedExitDate) : null;
+      offsetDays = 5;
     }
 
-    if (baseDate && !isNaN(baseDate.getTime())) {
-      const offsetDays = list.name === "PRE-EXIT TASKS" ? 5 : 15;
-      const planDate = new Date(baseDate);
+    if (base && !isNaN(base.getTime())) {
+      const planDate = new Date(base);
       planDate.setDate(planDate.getDate() + offsetDays);
       list.planDate = planDate;
       for (const item of list.itemsList) item.planDate = planDate;
@@ -343,6 +372,10 @@ async function syncExitStatusToOnboarding(exitDoc) {
 }
 
 // ─── POST /api/exit  — Create new exit ────────────────────────────────────
+// New exits start UNAPPROVED — checklist plan dates are NOT assigned at
+// all yet (assignExitPlanDates is skipped entirely, same as
+// HiringRequisition seeding with no milestones), and every item scores as
+// "Awaiting Approval" until PATCH /:id/approve happens.
 router.post("/", async (req, res) => {
   try {
     const body = req.body;
@@ -363,12 +396,8 @@ router.post("/", async (req, res) => {
       });
     }
 
-    assignExitPlanDates(
-      checkLists,
-      body.exitStatus ?? "",
-      body.resignationDate ? new Date(body.resignationDate) : undefined,
-      body.leftDate ? new Date(body.leftDate) : undefined
-    );
+    // assignExitPlanDates deliberately NOT called here — nothing has a
+    // meaningful plan date until approval happens.
 
     const today = new Date();
     let doneInTime = 0, doneButDelayed = 0, tasksOverdue = 0,
@@ -377,7 +406,7 @@ router.post("/", async (req, res) => {
     const totalTasks = checkLists.reduce((s, l) => s + l.itemsList.length, 0);
 
     for (const list of checkLists) {
-      const r = scoreChecklist(list, today);
+      const r = scoreChecklist(list, today, false); // isApproved: false
       doneInTime += r.doneInTime;
       doneButDelayed += r.doneButDelayed;
       tasksOverdue += r.tasksOverdue;
@@ -393,6 +422,7 @@ router.post("/", async (req, res) => {
     const doc = new Exit({
       ...body,
       ...emailFields,
+      hr_approved_at: null,
       resignationDate: body.resignationDate ? new Date(body.resignationDate) : undefined,
       plannedExitDate: body.plannedExitDate ? new Date(body.plannedExitDate) : undefined,
       leftDate: body.leftDate ? new Date(body.leftDate) : undefined,
@@ -415,6 +445,60 @@ router.post("/", async (req, res) => {
     triggerNewExit({ ...doc.toObject(), ...newlyTriggered }).catch(console.error);
     syncExitStatusToOnboarding(doc).catch(console.error);
     res.status(201).json({ success: true, data: doc });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── PATCH /api/exit/:id/approve — HR's explicit approval action ──────────
+// Every checklist item stays gated at "Awaiting Approval" until this
+// happens. The delay between record creation and approval is added as an
+// EXTRA offset on top of the fixed +5/+15 day windows (see
+// assignExitPlanDates) — resignationDate and leftDate themselves are never
+// touched, since those are real, factual dates, not internal targets.
+router.patch("/:id/approve", async (req, res) => {
+  try {
+    const doc = await Exit.findById(req.params.id);
+    if (!doc) return res.status(404).json({ success: false, message: "Not found" });
+
+    if (doc.hr_approved_at) {
+      return res.status(400).json({ success: false, message: "This exit has already been approved." });
+    }
+
+    const now = new Date();
+    doc.hr_approved_at = now;
+
+    const checkLists = toPlainCheckLists(doc.toObject().checkLists);
+    assignExitPlanDates(checkLists, now, doc.leftDate, doc.plannedExitDate);
+
+    const today = new Date();
+    let doneInTime = 0, doneButDelayed = 0, tasksOverdue = 0,
+        tasksDue = 0, notYetDue = 0, fmsScore = 0, tasksNotDone = 0;
+
+    for (const list of checkLists) {
+      const r = scoreChecklist(list, today, true); // isApproved: true
+      doneInTime += r.doneInTime;
+      doneButDelayed += r.doneButDelayed;
+      tasksOverdue += r.tasksOverdue;
+      tasksDue += r.tasksDue;
+      notYetDue += r.notYetDue;
+      fmsScore += r.fmsScore;
+      tasksNotDone += r.tasksNotDone;
+    }
+
+    doc.checkLists = checkLists;
+    doc.totalTasks = checkLists.reduce((s, l) => s + l.itemsList.length, 0);
+    doc.doneInTime = doneInTime;
+    doc.doneButDelayed = doneButDelayed;
+    doc.tasksOverdue = tasksOverdue;
+    doc.tasksDue = tasksDue;
+    doc.notYetDue = notYetDue;
+    doc.fmsScore = fmsScore;
+    doc.fmsStatus = deriveFmsStatus(doc.exitStatus, tasksNotDone);
+
+    await doc.save();
+    res.json({ success: true, data: doc });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: err.message });
@@ -451,13 +535,14 @@ router.post("/reconcile-checklist-template", async (req, res) => {
     for (const existing of docs) {
       const existingPlain = existing.toObject();
       const checkLists = reconcileChecklistsWithTemplate(existingPlain.checkLists);
+      const isApproved = !!existing.hr_approved_at;
 
       const today = new Date();
       let doneInTime = 0, doneButDelayed = 0, tasksOverdue = 0,
           tasksDue = 0, notYetDue = 0, fmsScore = 0, tasksNotDone = 0;
 
       for (const list of checkLists) {
-        const r = scoreChecklist(list, today);
+        const r = scoreChecklist(list, today, isApproved);
         doneInTime += r.doneInTime;
         doneButDelayed += r.doneButDelayed;
         tasksOverdue += r.tasksOverdue;
@@ -629,11 +714,17 @@ router.get("/:id", async (req, res) => {
 });
 
 // ─── PUT /api/exit/:id  — Update exit ─────────────────────────────────────
+// assignExitPlanDates + real scoring only run if the record is ALREADY
+// approved. An unapproved record just keeps getting scored as "Awaiting
+// Approval" through every update until PATCH /:id/approve actually
+// happens — updating other fields on it doesn't sneak it past the gate.
 router.put("/:id", async (req, res) => {
   try {
     const body = req.body;
     const existing = await Exit.findById(req.params.id);
     if (!existing) return res.status(404).json({ success: false, message: "Not found" });
+
+    const isApproved = !!existing.hr_approved_at;
 
     const existingPlain = existing.toObject();
     const checkLists = toPlainCheckLists(existingPlain.checkLists);
@@ -656,15 +747,18 @@ router.put("/:id", async (req, res) => {
     const resolvedExitStatus = body.exitStatus ?? existing.exitStatus ?? "";
     const resolvedResignationDate = body.resignationDate ? new Date(body.resignationDate) : existing.resignationDate;
     const resolvedLeftDate = body.leftDate ? new Date(body.leftDate) : existing.leftDate;
+    const resolvedPlannedExitDate = body.plannedExitDate ? new Date(body.plannedExitDate) : existing.plannedExitDate;
 
-    assignExitPlanDates(checkLists, resolvedExitStatus, resolvedResignationDate, resolvedLeftDate);
+    if (isApproved) {
+      assignExitPlanDates(checkLists, existing.hr_approved_at, resolvedLeftDate, resolvedPlannedExitDate);
+    }
 
     const today = new Date();
     let doneInTime = 0, doneButDelayed = 0, tasksOverdue = 0,
         tasksDue = 0, notYetDue = 0, fmsScore = 0, tasksNotDone = 0;
 
     for (const list of checkLists) {
-      const r = scoreChecklist(list, today);
+      const r = scoreChecklist(list, today, isApproved);
       doneInTime += r.doneInTime;
       doneButDelayed += r.doneButDelayed;
       tasksOverdue += r.tasksOverdue;
@@ -684,7 +778,7 @@ router.put("/:id", async (req, res) => {
         ...emailFields,
         exitStatus: resolvedExitStatus,
         resignationDate: resolvedResignationDate,
-        plannedExitDate: body.plannedExitDate ? new Date(body.plannedExitDate) : existing.plannedExitDate,
+        plannedExitDate: resolvedPlannedExitDate,
         leftDate: resolvedLeftDate,
         employeesInCc: body.employeesInCc !== undefined ? normalizeCc(body.employeesInCc) : existing.employeesInCc,
         checkLists,
@@ -887,6 +981,11 @@ function toStrOrEmpty(v) {
 // Body: { csv: "<raw CSV file contents as a string>" }
 // Safe to re-run: skips any row whose name+officialEmail combo already
 // exists in the collection.
+//
+// Legacy rows predate the approval gate entirely — treated as
+// already-approved (hr_approved_at = the best available date on the row:
+// leftDate, falling back to resignationDate, falling back to now), same
+// reasoning as HiringRequisition's backfill route.
 router.post("/migrate/import-legacy-csv", async (req, res) => {
   try {
     const csvText = req.body?.csv;
@@ -915,7 +1014,7 @@ router.post("/migrate/import-legacy-csv", async (req, res) => {
         const today = new Date();
         let tasksNotDone = 0;
         for (const list of checkLists) {
-          const r = scoreChecklist(list, today);
+          const r = scoreChecklist(list, today, true); // legacy — treated as already approved
           doneInTime += r.doneInTime;
           doneButDelayed += r.doneButDelayed;
           tasksOverdue += r.tasksOverdue;
@@ -933,8 +1032,13 @@ router.post("/migrate/import-legacy-csv", async (req, res) => {
         ? (rawFmsStatus.toLowerCase() === "closed" ? "Closed" : "Open")
         : deriveFmsStatus(exitStatus, hasAnyTaskData ? tasksDue + tasksOverdue + notYetDue : 0);
 
+      const resignationDate = parseLegacyExitDate(row["Resignation Email Sent on"]);
+      const leftDate = parseLegacyExitDate(row["Left Date"]);
+      const approvalDate = leftDate || resignationDate || new Date();
+
       const doc = new Exit({
         name,
+        hr_approved_at: approvalDate,
         persEmail: toStrOrEmpty(row["Personal Email"]),
         mobile: toStrOrEmpty(row["Mobile"]),
         officialEmail,
@@ -948,9 +1052,9 @@ router.post("/migrate/import-legacy-csv", async (req, res) => {
         remarks: toStrOrEmpty(row["Remarks"]),
         exitType: toStrOrEmpty(row["Exit Type"]),
         exitStatus,
-        resignationDate: parseLegacyExitDate(row["Resignation Email Sent on"]),
+        resignationDate,
         plannedExitDate: parseLegacyExitDate(row["Planned Exit Date"]),
-        leftDate: parseLegacyExitDate(row["Left Date"]),
+        leftDate,
         employeesInCc: normalizeCc(row["Employees In Cc"]),
         checkLists: hasAnyTaskData ? checkLists : [],
         totalTasks,
@@ -979,7 +1083,7 @@ router.post("/migrate/import-legacy-csv", async (req, res) => {
 // Anything on a raw imported document that ISN'T in this list gets removed
 // once transformed, so no leftover raw CSV column names linger.
 const EXIT_SCHEMA_FIELD_WHITELIST = new Set([
-  "_id", "__v", "createdAt", "updatedAt",
+  "_id", "__v", "createdAt", "updatedAt", "hr_approved_at",
   "rowNo", "name", "gender", "persEmail", "mobile", "officialEmail", "dept", "designation",
   "dept_id", "desig_id", "deptLink", "designationLink", "noticePeriod", "transferKnowledge",
   "reason", "remarks", "exitType", "resignationDate", "plannedExitDate", "leftDate", "exitStatus",
@@ -1000,6 +1104,8 @@ const EXIT_SCHEMA_FIELD_WHITELIST = new Set([
 // document IN PLACE (same _id) into the schema's real shape, then removes
 // the old keys. Safe to re-run — matches only documents that still have
 // the raw "Name of Person Being Exit" field.
+//
+// Same "legacy predates approval gate" treatment as the CSV import above.
 router.post("/migrate/legacy-import", async (req, res) => {
   try {
     const rawDocs = await Exit.collection.find({ "Name of Person Being Exit": { $exists: true } }).toArray();
@@ -1018,7 +1124,7 @@ router.post("/migrate/legacy-import", async (req, res) => {
       if (hasAnyTaskData) {
         const today = new Date();
         for (const list of checkLists) {
-          const r = scoreChecklist(list, today);
+          const r = scoreChecklist(list, today, true); // legacy — treated as already approved
           doneInTime += r.doneInTime;
           doneButDelayed += r.doneButDelayed;
           tasksOverdue += r.tasksOverdue;
@@ -1033,8 +1139,13 @@ router.post("/migrate/legacy-import", async (req, res) => {
         ? (rawFmsStatus.toLowerCase() === "closed" ? "Closed" : "Open")
         : deriveFmsStatus(exitStatus, hasAnyTaskData ? tasksDue + tasksOverdue + notYetDue : 0);
 
+      const resignationDate = parseLegacyExitDate(rawDoc["Resignation Email Sent on"]);
+      const leftDate = parseLegacyExitDate(rawDoc["Left Date"]);
+      const approvalDate = leftDate || resignationDate || new Date();
+
       const setFields = {
         name,
+        hr_approved_at: approvalDate,
         persEmail: toStrOrEmpty(rawDoc["Personal Email"]),
         mobile: toStrOrEmpty(rawDoc["Mobile"]),
         officialEmail: toStrOrEmpty(rawDoc["Official Email"]),
@@ -1048,9 +1159,9 @@ router.post("/migrate/legacy-import", async (req, res) => {
         remarks: toStrOrEmpty(rawDoc["Remarks"]),
         exitType: toStrOrEmpty(rawDoc["Exit Type"]),
         exitStatus,
-        resignationDate: parseLegacyExitDate(rawDoc["Resignation Email Sent on"]),
+        resignationDate,
         plannedExitDate: parseLegacyExitDate(rawDoc["Planned Exit Date"]),
-        leftDate: parseLegacyExitDate(rawDoc["Left Date"]),
+        leftDate,
         employeesInCc: normalizeCc(rawDoc["Employees In Cc"]),
         checkLists: hasAnyTaskData ? checkLists : [],
         totalTasks,

@@ -5,18 +5,35 @@ const HiringRequisition = require('../models/HiringRequisition');
 const { triggerNewRequisition, triggerUpdateRequisition } = require('../emails');
 
 // hiring_status values that mean this requisition is over — regardless
-// of whether every checklist task got ticked. "On Hold" or "Not
-// Accepted" doesn't mean someone forgot to finish the checklist, it
-// means hiring isn't actively progressing anymore and shouldn't keep
-// showing as Open just because a task like "Tea Party" never got
-// checked. "Cancelled" is this system's equivalent of the old sheet's
-// "Hiring Stopped" status (see the note in sendRequisitionCancelled.js).
+// of whether every checklist task got ticked. "On Hold" doesn't mean
+// someone forgot to finish the checklist, it means hiring isn't
+// actively progressing anymore and shouldn't keep showing as Open just
+// because a task like "Tea Party" never got checked. "Cancelled" is
+// this system's equivalent of the old sheet's "Hiring Stopped" status
+// (see the note in sendRequisitionCancelled.js). "Not Accepted" and
+// "Not Joined" were deliberately removed from this set — those cases
+// still want the checklist to genuinely be completed before closing,
+// rather than auto-closing just from the status alone.
 const HIRING_STATUS_FORCES_CLOSED = new Set([
-  "Not Accepted",
-  "Not Joined",
   "On Hold",
   "Joined",
   "Cancelled",
+]);
+
+// hiring_status values where checklist SCORING (not fmsStatus — that's a
+// completely separate concept, governed only by HIRING_STATUS_FORCES_
+// CLOSED above) is held in a neutral state. While the process is
+// waiting on something outside HR's own control — a candidate deciding
+// on an offer, or the aftermath of a decline/no-show — a task with a
+// passed plan date shouldn't accrue an "Overdue" penalty the same way
+// it would if HR were simply behind schedule. Tasks that would
+// otherwise be marked Overdue are instead marked "On Hold": no score
+// penalty, not counted as genuinely overdue. fmsStatus itself is
+// entirely unaffected by this and stays computed exactly as before.
+const HIRING_STATUS_SCORING_ON_HOLD = new Set([
+  "Offer Sent",
+  "Not Accepted",
+  "Not Joined",
 ]);
 
 // ─── Checklist scoring ──────────────────────────────────────────────────────
@@ -41,11 +58,43 @@ const HIRING_STATUS_FORCES_CLOSED = new Set([
 //    anything other than this calculation (or the hiring_status override
 //    applied on top of it at each call site — see
 //    HIRING_STATUS_FORCES_CLOSED above).
-function scoreChecklistTasks(tasks, today = new Date()) {
+function scoreChecklistTasks(tasks, hiringStatus, isApproved, today = new Date()) {
   today = new Date(today);
   today.setHours(0, 0, 0, 0);
 
-  let doneInTime = 0, doneButDelayed = 0, tasksOverdue = 0, tasksDue = 0, notYetDue = 0, fmsScore = 0;
+  // Nothing scores at all until HR has actually approved the
+  // requisition — every task sits in "Awaiting Approval" with no plan,
+  // no score, not counted as overdue/pending/anything else. This is
+  // checked first and completely bypasses the rest of the function,
+  // since a task genuinely has no meaningful plan date to judge against
+  // yet (see deriveEffectiveMilestones/the approve route — plan dates
+  // for all 12 tasks only actually get computed once approval happens).
+  if (!isApproved) {
+    const scored = (tasks || []).map((t) => ({
+      task: t.task,
+      plan: null,
+      done: t.done || null,
+      score: null,
+      status: 'Awaiting Approval',
+      daysLeft: null,
+    }));
+    return {
+      checklist_tasks:  scored,
+      total_tasks:      scored.length,
+      done_in_time:     0,
+      done_but_delayed: 0,
+      tasks_overdue:    0,
+      tasks_due:        0,
+      not_yet_due:      scored.length,
+      tasks_on_hold:    0,
+      fms_score:        0,
+      fms_status:       'Open',
+    };
+  }
+
+  const scoringOnHold = HIRING_STATUS_SCORING_ON_HOLD.has(hiringStatus);
+
+  let doneInTime = 0, doneButDelayed = 0, tasksOverdue = 0, tasksDue = 0, notYetDue = 0, tasksOnHold = 0, fmsScore = 0;
 
   const scored = (tasks || []).map((t) => {
     const plan = t.plan ? new Date(t.plan) : null;
@@ -80,11 +129,21 @@ function scoreChecklistTasks(tasks, today = new Date()) {
       }
     } else if (plan) {
       if (plan.getTime() - today.getTime() < 0) {
-        // Overdue — not done, and the deadline has passed. -1 per day late.
-        score = Math.round((plan.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        status = 'Overdue';
-        daysLeft = score;
-        tasksOverdue++;
+        if (scoringOnHold) {
+          // Would otherwise be Overdue, but hiring_status says this is
+          // waiting on something outside HR's control — no penalty,
+          // not counted as genuinely overdue.
+          score = 0;
+          status = 'On Hold';
+          daysLeft = Math.round((plan.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          tasksOnHold++;
+        } else {
+          // Overdue — not done, and the deadline has passed. -1 per day late.
+          score = Math.round((plan.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          status = 'Overdue';
+          daysLeft = score;
+          tasksOverdue++;
+        }
       } else {
         // Not yet due, but a deadline is scheduled.
         status = 'Pending';
@@ -110,8 +169,11 @@ function scoreChecklistTasks(tasks, today = new Date()) {
   });
 
   // Every task is either Done or Done (Delayed) — none are Overdue,
-  // Pending, or Not Yet Due — so the whole requisition auto-closes.
-  const tasksNotDone = tasksOverdue + tasksDue + notYetDue;
+  // Pending, Not Yet Due, or On Hold — so the whole requisition
+  // auto-closes. tasksOnHold counts toward "not done" here even though
+  // it doesn't count toward the score penalty — a task being held from
+  // penalty doesn't mean it's actually complete.
+  const tasksNotDone = tasksOverdue + tasksDue + notYetDue + tasksOnHold;
   const fmsStatus = tasksNotDone === 0 ? 'Closed' : 'Open';
 
   return {
@@ -122,6 +184,7 @@ function scoreChecklistTasks(tasks, today = new Date()) {
     tasks_overdue:    tasksOverdue,
     tasks_due:        tasksDue,
     not_yet_due:      notYetDue,
+    tasks_on_hold:    tasksOnHold,
     fms_score:        fmsScore,
     fms_status:       fmsStatus,
   };
@@ -133,7 +196,7 @@ async function rescoreAndSave(id) {
   const doc = await HiringRequisition.findById(id);
   if (!doc) return null;
 
-  const scored = scoreChecklistTasks(doc.checklist_tasks);
+  const scored = scoreChecklistTasks(doc.checklist_tasks, doc.hiring_status, !!doc.hr_approved_at);
   doc.checklist_tasks  = scored.checklist_tasks;
   doc.total_tasks      = scored.total_tasks;
   doc.done_in_time     = scored.done_in_time;
@@ -141,6 +204,7 @@ async function rescoreAndSave(id) {
   doc.tasks_overdue    = scored.tasks_overdue;
   doc.tasks_due        = scored.tasks_due;
   doc.not_yet_due      = scored.not_yet_due;
+  doc.tasks_on_hold     = scored.tasks_on_hold;
   doc.fms_score        = scored.fms_score;
 
   // fmsStatus closes either because every checklist task is done, OR
@@ -175,9 +239,45 @@ const HR_CHECKLIST_TASK_NAMES = [
   'Kept All in Cc',
 ];
 
-function seedChecklistTasks() {
+// Which of the requisition's 4 planned-milestone fields each checklist
+// task's own plan date should derive from — mirrors the old Apps
+// Script's four checklist groups exactly (Shortlisting Checklist,
+// Interviews Checklist, Offer Checklist, General Feedback), just
+// flattened into this one 12-item list instead of nested groups. This
+// connection never existed in the Node rewrite at all — every task was
+// seeded with plan: null regardless of what the requisition's own
+// planned dates said, which meant nothing could ever become Overdue (or
+// score negative) no matter how much time passed.
+const TASK_PLAN_SOURCE = {
+  'Role n JD Checked':                   'plan_start_sharing_cvs',
+  'Checked Internally for Candidates':   'plan_start_sharing_cvs',
+  'Emailed Internally For References':   'plan_start_sharing_cvs',
+  'Emailed Others For Reference':        'plan_start_sharing_cvs',
+  'Thanked All Applicants':              'plan_start_sharing_cvs',
+  'Emailed Shortlisted Candidates':      'plan_start_sharing_cvs',
+  'All Interviews Logged':               'planned_interviews_started',
+  'Asked Interviewers To Use Role Doc':  'planned_interviews_started',
+  'Asked Interviewers to Use Tests':     'planned_interviews_started',
+  'Asked Interviewers To Hire Only Best': 'planned_interviews_started',
+  'Asked Confirmation in 2 Days':        'planned_offer_accepted',
+  'Kept All in Cc':                      'planned_joined',
+};
+
+// milestones is the requisition's own { plan_start_sharing_cvs,
+// planned_interviews_started, planned_offer_accepted, planned_joined }
+// — each task's plan date is looked up from whichever of those four
+// fields TASK_PLAN_SOURCE says it belongs to. Falls back to null if a
+// milestone was never set on the requisition (matching the previous
+// behavior for that one field only, rather than silently defaulting to
+// some other date).
+function seedChecklistTasks(milestones = {}) {
   return HR_CHECKLIST_TASK_NAMES.map((task) => ({
-    task, plan: null, done: null, score: null, status: '', daysLeft: null,
+    task,
+    plan: milestones[TASK_PLAN_SOURCE[task]] || null,
+    done: null,
+    score: null,
+    status: '',
+    daysLeft: null,
   }));
 }
 
@@ -249,7 +349,7 @@ router.post('/import-legacy-checklist-csv', express.text({ type: '*/*', limit: '
         plan: parseSheetDate(row[`${taskName} Plan?`]),
         done: parseSheetDate(row[`${taskName} Done?`]),
       }));
-      const scored = scoreChecklistTasks(freshTasks);
+      const scored = scoreChecklistTasks(freshTasks, doc.hiring_status, !!doc.hr_approved_at);
 
       doc.checklist_tasks  = scored.checklist_tasks;
       doc.total_tasks      = scored.total_tasks;
@@ -258,6 +358,7 @@ router.post('/import-legacy-checklist-csv', express.text({ type: '*/*', limit: '
       doc.tasks_overdue    = scored.tasks_overdue;
       doc.tasks_due        = scored.tasks_due;
       doc.not_yet_due      = scored.not_yet_due;
+      doc.tasks_on_hold     = scored.tasks_on_hold;
       doc.fms_score        = scored.fms_score;
 
       const backfillIfBlank = (field, sheetValue) => {
@@ -301,7 +402,12 @@ router.post('/backfill-checklists', async (req, res) => {
 
     let updated = 0;
     for (const doc of docs) {
-      const scored = scoreChecklistTasks(seedChecklistTasks());
+      const scored = scoreChecklistTasks(seedChecklistTasks({
+        plan_start_sharing_cvs:     doc.plan_start_sharing_cvs,
+        planned_interviews_started: doc.planned_interviews_started,
+        planned_offer_accepted:     doc.planned_offer_accepted,
+        planned_joined:             doc.planned_joined,
+      }), doc.hiring_status, true); // legacy records predate the approval gate — treat as already approved rather than retroactively blocking scoring on records already mid-process
       doc.checklist_tasks  = scored.checklist_tasks;
       doc.total_tasks      = scored.total_tasks;
       doc.done_in_time     = scored.done_in_time;
@@ -309,6 +415,7 @@ router.post('/backfill-checklists', async (req, res) => {
       doc.tasks_overdue    = scored.tasks_overdue;
       doc.tasks_due        = scored.tasks_due;
       doc.not_yet_due      = scored.not_yet_due;
+      doc.tasks_on_hold     = scored.tasks_on_hold;
       doc.fms_score        = scored.fms_score;
       await doc.save();
       updated++;
@@ -410,8 +517,15 @@ router.post('/', async (req, res) => {
     // checklist_tasks at all today (they're shown as disabled/informational
     // only), so always seed the real 12-item list here rather than trusting
     // req.body — this is what gives scoring something to work with.
+    //
+    // No milestones are passed in here at all — a brand-new requisition
+    // is never approved yet, so scoreChecklistTasks below overrides
+    // every task's plan to null regardless (see the isApproved-false
+    // branch). Real plan dates only get derived once HR actually
+    // approves it, via PATCH /:id/approve, using the approval-date-
+    // shifted milestones rather than these raw as-filed ones.
     const seedTasks = req.body.checklist_tasks?.length ? req.body.checklist_tasks : seedChecklistTasks();
-    const scored = scoreChecklistTasks(seedTasks);
+    const scored = scoreChecklistTasks(seedTasks, req.body.hiring_status, false);
 
     const doc = await HiringRequisition.create({
       ...req.body,
@@ -423,6 +537,7 @@ router.post('/', async (req, res) => {
       tasks_overdue:    scored.tasks_overdue,
       tasks_due:        scored.tasks_due,
       not_yet_due:      scored.not_yet_due,
+      tasks_on_hold:    scored.tasks_on_hold,
       fms_score:        scored.fms_score,
       // Comes after the ...req.body spread so it always wins — fmsStatus
       // is never something the frontend gets to set directly. Same
@@ -485,6 +600,67 @@ router.patch('/:id', async (req, res) => {
   } catch (err) {
     console.error('[hiringrequisitions PATCH]', err);
     res.status(500).json({ success: false, error: 'Failed to update requisition' });
+  }
+});
+
+// PATCH /api/hiringrequisitions/:id/approve — HR's explicit approval
+// action. Every checklist task stays gated at "Awaiting Approval" (see
+// scoreChecklistTasks's isApproved check) until this happens — meant to
+// give HR a genuine window to review a brand-new requisition before the
+// clock on checklist deadlines starts ticking against them.
+//
+// The requisition's own 4 as-filed milestone dates are shifted forward
+// by however many calendar days approval actually took, before being
+// used to derive the 12 tasks' real plan dates for the first time — so
+// HR taking a couple of days to approve doesn't unfairly eat into the
+// timeline for work that could only start once approval happened.
+router.patch('/:id/approve', async (req, res) => {
+  try {
+    const doc = await HiringRequisition.findById(req.params.id);
+    if (!doc) return res.status(404).json({ success: false, error: 'Not found' });
+
+    if (doc.hr_approved_at) {
+      return res.status(400).json({ success: false, error: 'This requisition has already been approved.' });
+    }
+
+    const now = new Date();
+    doc.hr_approved_at = now;
+
+    // Calendar-day shift, not a raw millisecond difference — approving
+    // a few hours into day 2 counts as a 1-day shift, not a fractional
+    // one that would throw off every derived plan date by a few hours.
+    const requestDate = new Date(doc.request_date);
+    requestDate.setHours(0, 0, 0, 0);
+    const approvalDate = new Date(now);
+    approvalDate.setHours(0, 0, 0, 0);
+    const shiftDays = Math.round((approvalDate.getTime() - requestDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    const shiftDate = (dateStr) => {
+      if (!dateStr) return null;
+      const d = new Date(dateStr);
+      d.setDate(d.getDate() + shiftDays);
+      return d;
+    };
+
+    doc.checklist_tasks = seedChecklistTasks({
+      plan_start_sharing_cvs:     shiftDate(doc.plan_start_sharing_cvs),
+      planned_interviews_started: shiftDate(doc.planned_interviews_started),
+      planned_offer_accepted:     shiftDate(doc.planned_offer_accepted),
+      planned_joined:             shiftDate(doc.planned_joined),
+    });
+
+    await doc.save();
+
+    // rescoreAndSave re-fetches fresh and scores against the just-saved
+    // hr_approved_at + real plan dates — this is what actually flips
+    // every task from "Awaiting Approval" into its real Pending/Overdue/
+    // Not Yet Due state in one atomic step.
+    const rescored = await rescoreAndSave(doc._id);
+
+    res.json({ success: true, data: rescored, shiftDays });
+  } catch (err) {
+    console.error('[hiringrequisitions PATCH /:id/approve]', err);
+    res.status(500).json({ success: false, error: 'Failed to approve requisition' });
   }
 });
 

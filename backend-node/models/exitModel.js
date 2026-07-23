@@ -36,6 +36,12 @@ const exitSchema = new mongoose.Schema(
   {
     rowNo: Number,
 
+    // Gates when checklist scoring actually starts — same concept as
+    // HiringRequisition's hr_approved_at. Every checklist item sits at
+    // "Awaiting Approval" (no score, not counted overdue/pending) until
+    // this is set. See exit.js's PATCH /:id/approve.
+    hr_approved_at: { type: Date, default: null },
+
     // ── BASIC INFO ───────────────────────────────────────────
     name: String,
     gender: String,

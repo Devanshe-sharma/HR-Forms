@@ -1,6 +1,6 @@
 ﻿const signature = require("../utils/signature");
 
-function newCandidateApplicationTemplate(doc) {
+function newCandidateApplicationTemplate(doc, jdLink) {
   const html = `
     <p>Dear All,</p>
     <p>
@@ -10,6 +10,7 @@ function newCandidateApplicationTemplate(doc) {
     </p>
     <ul>
       <li>Profile Applied For: <b>${doc.designation || "-"}</b></li>
+      ${jdLink ? `<li>Job Description: <a href="${jdLink}" target="_blank">View JD</a></li>` : ""}
       <li>Highest Qualification: <b>${doc.highest_qualification || "-"}</b></li>
       <li>Previous Experience: <b>${doc.experience || "-"}</b>${doc.experience === "Yes" ? ` (${doc.total_experience || "-"} yrs, current CTC: ${doc.current_ctc || "-"}, notice period: ${doc.notice_period || "-"} days)` : ""}</li>
       <li>Expected Annual CTC: <b>${doc.expected_monthly_ctc || "-"}</b></li>

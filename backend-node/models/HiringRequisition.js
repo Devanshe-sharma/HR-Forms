@@ -32,6 +32,7 @@ const HiringRequisitionSchema = new Schema(
   {
     // ── Auto-generated ────────────────────────────────────────────────────────
     serial_no: { type: Number, required: true, unique: true, index: true },
+    hr_approved_at: { type: Date, default: null },
 
     // ── Requester details ────────────────────────────────────────────────────
     requisitioner_name:  { type: String, required: true, trim: true },
@@ -42,6 +43,8 @@ const HiringRequisitionSchema = new Schema(
     hiring_dept:       { type: String, required: true, trim: true },
     hiring_dept_email: { type: String, trim: true, default: '' },
     dept_group_email:  { type: String, trim: true, default: '' },
+    reporting_manager: { type: String, default: '' },
+    budget: { type: Number, default: null },
 
     designation_status: { type: String, enum: ['existing', 'new'], required: true }, // sheet: "Designation Exists?"
     designation:         { type: String, required: true, trim: true },

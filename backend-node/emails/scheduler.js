@@ -10,6 +10,7 @@ const { sendOnDayFeedbackReminder } = require('./emailOnDayFeedback');
 const { sendQuarterlyOutingApprovalRequest } = require('./emailQuarterlyOutingApproval');
 const { sendUpcomingOutingReminder } = require('./emailUpcomingOutingReminder');
 const sendWeeklyExitSummary = require('./senders/sendWeeklyExitSummary');
+const sendDailyApplicantSummary = require('./senders/sendDailyApplicantSummary');
 
 // Import models for auto-archive/complete
 const Outing = require('../models/Outing');
@@ -100,6 +101,20 @@ function startEmailScheduler() {
       console.log(`Weekly exit summary sent — ${result.openCount} open exit(s)`);
     } catch (err) {
       console.error('Weekly exit summary failed:', err);
+    }
+  }, { timezone: tz });
+
+  // 9. Daily candidate applicant summary — 9am, covering the full
+  // previous calendar day's applications. Replaces the old immediate
+  // per-application HR email (disabled in triggerCandidateApplication.js)
+  // so HR gets one batched digest instead of being pinged for every
+  // single submission throughout the day.
+  cron.schedule('0 9 * * *', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending daily applicant summary`);
+    try {
+      await sendDailyApplicantSummary();
+    } catch (err) {
+      console.error('Daily applicant summary failed:', err);
     }
   }, { timezone: tz });
 
