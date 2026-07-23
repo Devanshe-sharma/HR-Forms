@@ -1,4 +1,4 @@
-﻿function candidateApplicationReceivedTemplate(doc, jdLink) {
+function candidateApplicationReceivedTemplate(doc, jdLink) {
   const html = `
     <p>Dear ${doc.full_name},</p>
     <p>
