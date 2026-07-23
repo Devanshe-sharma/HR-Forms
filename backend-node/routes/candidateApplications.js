@@ -33,14 +33,18 @@ const FIELDS_TO_COPY = [
 
 router.post('/', uploadResume.single('resume'), async (req, res) => {
   try {
+    // Resume is mandatory — the frontend already blocks submission
+    // without one, but that's only client-side; this is the real,
+    // enforced check, since a direct API call could otherwise bypass
+    // the frontend entirely and still create a resume-less record.
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'Resume is required.' });
+    }
+
     // Upload to Drive first — resume ends up as a real, publicly-viewable
     // Drive link (see uploadResumeToDrive's own comments for exactly how
-    // that permission gets set), not a local disk path. If there's no
-    // file attached at all, this is simply skipped and resume stays ''.
-    let resumeLink = '';
-    if (req.file) {
-      resumeLink = await uploadResumeToDrive(req.file.buffer, req.file.originalname, req.file.mimetype);
-    }
+    // that permission gets set), not a local disk path.
+    const resumeLink = await uploadResumeToDrive(req.file.buffer, req.file.originalname, req.file.mimetype);
 
     const doc = await CandidateApplication.create({
       ...req.body,

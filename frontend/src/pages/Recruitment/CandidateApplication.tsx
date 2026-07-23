@@ -25,7 +25,6 @@ const formSchema = z.object({
   pin_code:              z.string().length(6, 'Must be 6 digits'),
   relocation:            z.enum(['Yes', 'No']),
 
-  // No longer user-selected — comes from the job posting URL params
   job_id:                 z.union([z.string(), z.number()]).optional(),
   designation:             z.string().min(1, 'No role selected — please apply from the careers page'),
   designation_id:          z.number().optional(),
@@ -113,9 +112,6 @@ export default function CandidateApplicationPage() {
   const watchedState = watch('state');
   const experience   = watch('experience');
 
-  // ── Load job details from job_id in URL ──────────────────────────────────────
-  // This replaces the old "pick a profile from dropdown" flow entirely —
-  // the candidate already chose a job by clicking it on the careers page.
   useEffect(() => {
     if (!jobIdParam) {
       setJobError('No job selected. Please apply from the careers page.');
@@ -134,9 +130,6 @@ export default function CandidateApplicationPage() {
           setValue('job_id', matched.serial_no, { shouldValidate: true });
           setValue('designation', matched.designation, { shouldValidate: true });
         } else if (designationParam) {
-          // Fallback: job no longer 'Open' (filled/closed) but we still have
-          // the designation passed from the click — let candidate proceed,
-          // but flag that this role may no longer be active.
           setJob({
             serial_no: Number(jobIdParam),
             designation: designationParam,
@@ -152,7 +145,6 @@ export default function CandidateApplicationPage() {
         setLoadingJob(false);
       })
       .catch(() => {
-        // Network failure — fall back to URL params alone if present
         if (designationParam) {
           setJob({
             serial_no: Number(jobIdParam),
@@ -168,7 +160,6 @@ export default function CandidateApplicationPage() {
       });
   }, [jobIdParam, designationParam, setValue]);
 
-  // ── Countries ───────────────────────────────────────────────────────────────
   useEffect(() => {
     fetch(`${API_BASE}/geo/countries`)
       .then((r) => r.json())
@@ -183,7 +174,6 @@ export default function CandidateApplicationPage() {
       });
   }, []);
 
-  // ── States ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     setLoadingStates(true);
     fetch(`${API_BASE}/geo/states`)
@@ -198,7 +188,6 @@ export default function CandidateApplicationPage() {
       });
   }, []);
 
-  // ── Cities (on state change) ─────────────────────────────────────────────────
   useEffect(() => {
     if (!watchedState) { setCities([]); setValue('city', ''); return; }
     setLoadingCities(true);
@@ -214,17 +203,12 @@ export default function CandidateApplicationPage() {
       });
   }, [watchedState, setValue]);
 
-  // ── Country code options for react-select ────────────────────────────────────
   const countryOptions = countries.map((c) => ({
     value: c.dialCode,
     label: `${c.dialCode} ${c.name}`,
   }));
 
   // ── Resume file handler ───────────────────────────────────────────────────────
-  // Validated client-side too (type + size) so a candidate gets immediate
-  // feedback instead of only finding out after a round trip to the server
-  // — the backend's own multer fileFilter/limits are the real enforcement,
-  // this is just a faster first check.
   const handleResumeChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
     if (!file) { setResumeFile(null); setResumeError(null); return; }
@@ -245,11 +229,17 @@ export default function CandidateApplicationPage() {
   };
 
   // ── Submit ───────────────────────────────────────────────────────────────────
-  // Sent as multipart/form-data (not JSON) so the resume file — a real
-  // File object — can actually travel in the same request as the rest of
-  // the form. A plain JSON body has no way to carry binary file data at
-  // all, which is why the resume was never reaching the server before.
   const onSubmit = async (data: FormData) => {
+    // Resume is mandatory. It lives outside react-hook-form's own
+    // validation (it's plain File state, not a registered field), so
+    // this has to be checked explicitly here rather than through the
+    // zod schema — without this, the form would happily submit with no
+    // resume at all, since the backend used to silently accept that too.
+    if (!resumeFile) {
+      setResumeError('Resume is required');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const formData = new FormData();
@@ -281,14 +271,10 @@ export default function CandidateApplicationPage() {
       formData.append('facebookLink', data.facebookLink || '');
       formData.append('linkedin', data.linkedin || '');
       formData.append('short_video_url', data.short_video_url || '');
-      if (resumeFile) formData.append('resume', resumeFile);
+      formData.append('resume', resumeFile);
 
       const res = await fetch(`${API_BASE}/candidate-applications`, {
         method: 'POST',
-        // No Content-Type header here — the browser sets the multipart
-        // boundary itself when the body is a FormData instance. Setting
-        // it manually breaks the upload, since the boundary string
-        // wouldn't match what's actually in the body.
         body: formData,
       });
 
@@ -305,13 +291,11 @@ export default function CandidateApplicationPage() {
     }
   };
 
-  // ── Styles ───────────────────────────────────────────────────────────────────
   const inputCls  = 'w-full px-4 py-3 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-lime-400 focus:border-lime-500 text-sm transition';
   const selectCls = inputCls;
   const errCls    = 'text-red-500 text-xs mt-1';
   const labelCls  = 'block text-sm font-semibold text-gray-700 mb-1.5';
 
-  // ── react-select shared styles ───────────────────────────────────────────────
   const reactSelectStyles = {
     control: (base: any, state: any) => ({
       ...base,
@@ -330,7 +314,6 @@ export default function CandidateApplicationPage() {
     }),
   };
 
-  // ── Success screen ───────────────────────────────────────────────────────────
   if (submitted) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-lime-50">
@@ -343,7 +326,6 @@ export default function CandidateApplicationPage() {
     );
   }
 
-  // ── No job selected at all — block the form entirely ────────────────────────
   if (!loadingJob && !job) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
@@ -362,13 +344,11 @@ export default function CandidateApplicationPage() {
     <div className="min-h-screen bg-gray-50 py-10 px-4">
       <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-lg overflow-hidden">
 
-        {/* Header */}
         <div className="bg-lime-600 px-8 py-6">
           <h1 className="text-2xl font-bold text-white">Candidate Application</h1>
           <p className="text-lime-100 text-sm mt-1">Fill in your details to apply. All fields marked * are required.</p>
         </div>
 
-        {/* Job context banner — replaces the old profile dropdown */}
         <div className="px-8 pt-6">
           {loadingJob ? (
             <div className="h-20 bg-gray-100 rounded-xl animate-pulse" />
@@ -409,12 +389,10 @@ export default function CandidateApplicationPage() {
           className="px-8 py-8 space-y-8"
         >
 
-          {/* Hidden job context fields — locked, not user-editable */}
           <input type="hidden" {...register('job_id')} />
           <input type="hidden" {...register('designation')} />
           {errors.designation && <p className={errCls}>{errors.designation.message}</p>}
 
-          {/* ── Personal Info ── */}
           <section>
             <h2 className="text-base font-bold text-gray-500 uppercase tracking-widest mb-5">Personal Information</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -437,12 +415,10 @@ export default function CandidateApplicationPage() {
                 {errors.dob && <p className={errCls}>{errors.dob.message}</p>}
               </div>
 
-              {/* Mobile */}
               <div className="md:col-span-2">
                 <label className={labelCls}>Mobile Number *</label>
                 <div className="flex gap-3 items-start">
 
-                  {/* Searchable country code */}
                   <div className="w-44 shrink-0">
                     <Select
                       options={countryOptions}
@@ -458,7 +434,6 @@ export default function CandidateApplicationPage() {
                     />
                   </div>
 
-                  {/* Phone number */}
                   <input
                     type="tel"
                     {...register('mobile')}
@@ -476,7 +451,6 @@ export default function CandidateApplicationPage() {
             </div>
           </section>
 
-          {/* ── Location ── */}
           <section>
             <h2 className="text-base font-bold text-gray-500 uppercase tracking-widest mb-5">Location</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -528,7 +502,6 @@ export default function CandidateApplicationPage() {
             </div>
           </section>
 
-          {/* ── Professional ── */}
           <section>
             <h2 className="text-base font-bold text-gray-500 uppercase tracking-widest mb-5">Professional Details</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -539,7 +512,6 @@ export default function CandidateApplicationPage() {
                 {errors.highest_qualification && <p className={errCls}>{errors.highest_qualification.message}</p>}
               </div>
 
-              {/* Experience toggle */}
               <div className="md:col-span-2">
                 <label className={labelCls}>Previous Work Experience? *</label>
                 <div className="flex gap-6 mt-2">
@@ -578,7 +550,6 @@ export default function CandidateApplicationPage() {
             </div>
           </section>
 
-          {/* ── Language Proficiency ── */}
           <section>
             <h2 className="text-base font-bold text-gray-500 uppercase tracking-widest mb-5">Language Proficiency</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -608,7 +579,6 @@ export default function CandidateApplicationPage() {
             </div>
           </section>
 
-          {/* ── Optional Links ── */}
           <section>
             <h2 className="text-base font-bold text-gray-500 uppercase tracking-widest mb-5">
               Social & Media <span className="text-gray-400 normal-case font-normal tracking-normal">(Optional)</span>
@@ -629,9 +599,9 @@ export default function CandidateApplicationPage() {
             </div>
           </section>
 
-          {/* ── Resume Upload ── */}
+          {/* ── Resume Upload — now mandatory ── */}
           <section>
-            <h2 className="text-base font-bold text-gray-500 uppercase tracking-widest mb-5">Resume</h2>
+            <h2 className="text-base font-bold text-gray-500 uppercase tracking-widest mb-5">Resume *</h2>
             <input
               type="file"
               accept=".pdf"
@@ -642,7 +612,6 @@ export default function CandidateApplicationPage() {
             {resumeError && <p className={errCls}>{resumeError}</p>}
           </section>
 
-          {/* ── Submit ── */}
           <div className="pt-2">
             <button
               type="submit"
