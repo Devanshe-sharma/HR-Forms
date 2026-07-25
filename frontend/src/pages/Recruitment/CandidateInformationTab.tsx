@@ -1,9 +1,17 @@
 // pages/Recruitment/CandidateInformationTab.tsx
 import React, { useState, useEffect } from 'react';
-import { ExternalLink, Video, Loader2, Edit2, Save } from 'lucide-react';
+import { ExternalLink, Video, Loader2, Edit2, Save, Sparkles, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Field, EditField, EditSelect } from './ApplicantFieldComponents';
 import { ApplicantRecord, API_BASE } from './applicantTypes';
+
+// AI fit fields — kept as a local extension of ApplicantRecord rather
+// than editing applicantTypes.ts directly, since these are optional
+// additions that don't change any existing behavior.
+type ApplicantRecordWithAI = ApplicantRecord & {
+  ai_fit_score?: number | null;
+  ai_fit_summary?: string;
+};
 
 // The resume field stores whatever the upload pipeline saved — a
 // RELATIVE path like "/uploads/resumes/xyz.pdf", since that's what the
@@ -27,15 +35,41 @@ function resolveResumeUrl(resume?: string): string {
 const CandidateInformationTab = ({
   record, mode, setMode, onSave,
 }: {
-  record: ApplicantRecord;
+  record: ApplicantRecordWithAI;
   mode: 'view' | 'edit';
   setMode: (m: 'view' | 'edit') => void;
   onSave: (updated: ApplicantRecord) => void;
 }) => {
-  const [draft,  setDraft]  = useState<ApplicantRecord>(record);
+  const [draft,  setDraft]  = useState<ApplicantRecordWithAI>(record);
   const [saving, setSaving] = useState(false);
 
+  // JD link for this candidate's matching requisition — fetched once
+  // per record, shown directly here rather than only surfacing on the
+  // backend's own internal lookup. Analyzing from this tab sends this
+  // exact value along with the request, so there's no way for the
+  // score to end up based on a different JD than what's actually shown
+  // on screen.
+  const [jdLink,     setJdLink]     = useState<string | null>(null);
+  const [jdError,    setJdError]    = useState<string | null>(null);
+  const [loadingJd,  setLoadingJd]  = useState(true);
+  const [analyzing,  setAnalyzing]  = useState(false);
+
   useEffect(() => { setDraft(record); }, [record]);
+
+  useEffect(() => {
+    setLoadingJd(true);
+    setJdLink(null);
+    setJdError(null);
+
+    fetch(`${API_BASE}/applicant-records/${record._id}/jd-link`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success) setJdLink(json.data.jdLink);
+        else setJdError(json.message || 'Could not fetch JD link');
+      })
+      .catch(() => setJdError('Could not fetch JD link'))
+      .finally(() => setLoadingJd(false));
+  }, [record._id]);
 
   const handleChange = (name: string, value: string) =>
     setDraft((p) => ({ ...p, [name]: value }));
@@ -57,6 +91,26 @@ const CandidateInformationTab = ({
       toast.error('Failed to save');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleAnalyze = async () => {
+    if (!jdLink) return;
+    setAnalyzing(true);
+    try {
+      const res = await fetch(`${API_BASE}/applicant-records/${record._id}/analyze`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ jdLink }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Analysis failed');
+      onSave(json.data);
+      toast.success(`Fit score: ${json.data.ai_fit_score}/10`);
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to analyze');
+    } finally {
+      setAnalyzing(false);
     }
   };
 
@@ -90,6 +144,54 @@ const CandidateInformationTab = ({
           </>
         )}
       </div>
+
+      {/* JD + AI Fit — shown up top since it's the main context for
+          reviewing whether this candidate is worth pursuing */}
+      <section className="bg-gray-50 rounded-xl p-4">
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Job Description & Fit</p>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            {loadingJd ? (
+              <span className="flex items-center gap-1.5 text-sm text-gray-400">
+                <Loader2 size={13} className="animate-spin" /> Loading JD…
+              </span>
+            ) : jdLink ? (
+              <a href={jdLink} target="_blank" rel="noreferrer"
+                className="flex items-center gap-1.5 text-sm text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition">
+                <FileText size={14} /> View Job Description
+              </a>
+            ) : (
+              <span className="text-sm text-gray-400">{jdError || 'No JD available'}</span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {draft.ai_fit_score != null && (
+              <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                draft.ai_fit_score >= 8 ? 'bg-green-100 text-green-700'
+                  : draft.ai_fit_score >= 5 ? 'bg-amber-100 text-amber-700'
+                  : 'bg-red-100 text-red-700'
+              }`}>
+                Fit: {draft.ai_fit_score}/10
+              </span>
+            )}
+            <button
+              onClick={handleAnalyze}
+              disabled={!jdLink || analyzing}
+              title={!jdLink ? 'No JD available to analyze against' : 'Analyze fit'}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition"
+            >
+              {analyzing
+                ? <Loader2 size={13} className="animate-spin" />
+                : <Sparkles size={13} />}
+              {draft.ai_fit_score != null ? 'Re-analyze' : 'Analyze Fit'}
+            </button>
+          </div>
+        </div>
+        {draft.ai_fit_summary && (
+          <p className="text-sm text-gray-600 mt-3">{draft.ai_fit_summary}</p>
+        )}
+      </section>
 
       {/* Personal */}
       <section>

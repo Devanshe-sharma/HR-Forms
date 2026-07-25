@@ -14,6 +14,13 @@ const candidateApplicationSchema = new mongoose.Schema(
     pin_code:              { type: String, required: true },
     relocation:            { type: String, enum: ['Yes', 'No'], required: true },
 
+    // job_id was missing entirely — every submission's job_id value was
+    // being silently dropped by Mongoose's default strict schema mode,
+    // which is why the JD-lookup-by-job_id logic in the confirmation and
+    // HR notification emails has never actually been able to find
+    // anything (doc.job_id was always undefined once read back from the
+    // database, regardless of what the form actually submitted).
+    job_id:                { type: Number },
     designation:           { type: String, required: true },
     designation_id:        { type: Number },
 
@@ -46,6 +53,15 @@ const candidateApplicationSchema = new mongoose.Schema(
       enum: ['New', 'Reviewed', 'Shortlisted', 'Rejected'],
       default: 'New',
     },
+
+    // AI fit analysis against the matching requisition's JD — populated
+    // on demand via POST /api/applicant-records/:id/analyze, not
+    // automatically on every save (200+ applications means running this
+    // for every single one unprompted would be a real, ongoing API
+    // cost — this only runs when someone actually asks for it).
+    ai_fit_score:    { type: Number, default: null },   // 1-10
+    ai_fit_summary:  { type: String, default: '' },
+    ai_analyzed_at:  { type: Date, default: null },
   },
   { timestamps: true }
 );

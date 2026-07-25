@@ -22,7 +22,7 @@ const uploadResume = multer({
 const FIELDS_TO_COPY = [
   'full_name', 'email', 'phone', 'whatsapp_same', 'dob',
   'country', 'state', 'city', 'pin_code', 'relocation',
-  'designation', 'designation_id', 'highest_qualification',
+  'job_id', 'designation', 'designation_id', 'highest_qualification',
   'experience', 'total_experience', 'current_ctc', 'notice_period',
   'expected_monthly_ctc',
   'hindi_read', 'hindi_write', 'hindi_speak',

@@ -82,6 +82,11 @@ const applicantRecordSchema = new mongoose.Schema(
     city:                  { type: String, default: '' },
     pin_code:              { type: String, default: '' },
     relocation:            { type: String, default: '' },
+    // job_id was missing here too, same gap as CandidateApplication —
+    // needed so the AI analysis endpoint can look up the matching
+    // requisition's JD without an extra round trip through
+    // applicationRef every time.
+    job_id:                { type: Number, default: null },
     designation:           { type: String, default: '' },
     designation_id:        { type: Number, default: null },
     highest_qualification: { type: String, default: '' },
@@ -101,13 +106,10 @@ const applicantRecordSchema = new mongoose.Schema(
     facebookLink:    { type: String, default: '' },
     linkedin:        { type: String, default: '' },
     short_video_url: { type: String, default: '' },
-    // Resume link — the candidate application form has a file input for
-    // this, but that upload was never actually wired to send the file
-    // anywhere on submit, so this stayed empty for every record. Adding
-    // the field here so HR at least has somewhere to view/paste a
-    // resume link directly; the candidate-side upload pipeline (actually
-    // storing the uploaded file and populating this automatically) is a
-    // separate, larger piece not addressed by this change.
+    // Resume link — now correctly populated by the fixed Drive upload
+    // pipeline in routes/candidateApplications.js (the note that used
+    // to be here about this never being wired up is no longer accurate
+    // as of tonight's resume upload fix).
     resume:          { type: String, default: '' },
 
     // ── HR workflow fields ────────────────────────────────────────────────────
@@ -119,6 +121,15 @@ const applicantRecordSchema = new mongoose.Schema(
     },
 
     internalNotes: { type: String, default: '' },
+
+    // ── AI fit analysis against the matching requisition's JD — populated
+    // on demand via POST /api/applicant-records/:id/analyze, never
+    // automatically. Stored here (not just on the original
+    // CandidateApplication) since this is what the dashboard actually
+    // reads from directly.
+    ai_fit_score:    { type: Number, default: null },   // 1-10
+    ai_fit_summary:  { type: String, default: '' },
+    ai_analyzed_at:  { type: Date, default: null },
 
     // ── Stage 1: Screener Round (HR) ──────────────────────────────────────────
     // Kept as its own group of fields, distinct from interviewRounds — this is
