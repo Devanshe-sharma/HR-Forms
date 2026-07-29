@@ -24,6 +24,8 @@ const managementDecisionSchema = new mongoose.Schema({
 const hrDecisionSchema = new mongoose.Schema({
   newCtc        : { type: Number, default: null },
   applicableDate: { type: Date,   default: null },
+  newContractStartDate: { type: Date, default: null },
+  newContractEndDate  : { type: Date, default: null },
   notes         : { type: String, default: '' },
   submittedAt   : { type: Date,   default: null },
 }, { _id: false });
@@ -43,7 +45,14 @@ const salaryRevisionSchema = new mongoose.Schema({
   designation  : { type: String, required: [true, 'designation is required'],  trim: true },
   email        : { type: String, required: [true, 'email is required'], trim: true, lowercase: true },
   joiningDate  : { type: Date,   required: [true, 'joiningDate is required'] },
-  
+
+  // Contract dates (current, snapshotted at creation like joiningDate/previousCtc)
+  contractStartDate: { type: Date, default: null },
+  contractEndDate  : { type: Date, default: null },
+  // Revised contract dates — set by HR at finalisation, mirrors newCtc
+  newContractStartDate: { type: Date, default: null },
+  newContractEndDate  : { type: Date, default: null },
+
 
   category: {
     type   : String,

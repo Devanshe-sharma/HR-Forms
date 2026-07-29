@@ -33,7 +33,7 @@ type ApplicantRecordWithAI = ApplicantRecord & {
 // ─────────────────────────────────────────────────────────────────────────────
 const TABS = [
   { id: 'details',   label: 'Candidate Information', icon: User },
-  { id: 'screener',  label: 'Screener Round',         icon: UserCheck },
+  { id: 'screener',  label: 'HR Round',         icon: UserCheck },
   { id: 'interview', label: 'Interview Round',        icon: ClipboardList },
   { id: 'offer',     label: 'Offer & Placement',      icon: CheckSquare },
 ] as const;

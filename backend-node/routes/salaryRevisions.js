@@ -18,6 +18,77 @@ router.get('/', asyncHandler(async (req, res) => {
   res.status(200).json(revisions);
 }));
 
+// ─── GET /api/salary-revisions/analytics/increments ──────────────────────────
+// Increment stats for HR Dashboard: average increment %, employees with a
+// low increment (<9%), and high performers (>20%) — filtered to one year at
+// a time. "Year" for a revision is its applicableDate (when the new CTC
+// actually kicks in), falling back to createdAt for older records that
+// never had one set. Only 'completed' revisions with a real increment
+// figure are considered — PIP revisions never set finalIncrementPct, so
+// they're naturally excluded rather than counted as a 0% increment.
+//
+// Also excluded: revisions where the category changed from Intern/Contract
+// Based to Employee. Converting off a stipend onto a full CTC structure
+// produces a huge % jump that isn't a real merit increment — counting it
+// would falsely inflate the average and stuff the High Performer bucket
+// with conversions rather than actual raises.
+
+const CONVERTED_FROM = ['Intern', 'Contract Based'];
+const MAX_ANALYTIC_INCREMENT = 50;
+const isConversion = (r) => {
+  if (!CONVERTED_FROM.includes(r.previousCategory)) return false;
+  if (r.categoryChanged) return r.newCategory === 'Employee';
+  return r.category === 'Employee';
+};
+
+router.get('/analytics/increments', asyncHandler(async (req, res) => {
+  const raw = await SalaryRevision.find({
+    stage: 'completed',
+  }, 'employeeName department designation finalIncrementPct previousCtc newCtc applicableDate createdAt categoryChanged previousCategory newCategory').lean();
+  console.log('[analytics/increments] rawCount=', raw.length);
+  const completed = raw
+    .filter((r) => r.finalIncrementPct != null && !isConversion(r) && r.finalIncrementPct <= MAX_ANALYTIC_INCREMENT);
+  console.log('[analytics/increments] filteredCount=', completed.length);
+
+  const yearOf = (r) => new Date(r.applicableDate || r.createdAt).getFullYear();
+
+  const availableYears = Array.from(new Set(completed.map(yearOf))).sort((a, b) => b - a);
+  const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+
+  const inYear = completed.filter((r) => yearOf(r) === year);
+
+  const toRow = (r) => ({
+    employeeName: r.employeeName,
+    department: r.department,
+    designation: r.designation,
+    finalIncrementPct: r.finalIncrementPct,
+    previousCtc: r.previousCtc,
+    newCtc: r.newCtc,
+    applicableDate: r.applicableDate || r.createdAt,
+  });
+
+  const lowIncrementList = inYear.filter((r) => r.finalIncrementPct < 9).map(toRow)
+    .sort((a, b) => a.finalIncrementPct - b.finalIncrementPct);
+  const highPerformerList = inYear.filter((r) => r.finalIncrementPct >= 20).map(toRow)
+    .sort((a, b) => b.finalIncrementPct - a.finalIncrementPct);
+
+  const avgIncrementPct = inYear.length
+    ? Math.round((inYear.reduce((s, r) => s + r.finalIncrementPct, 0) / inYear.length) * 10) / 10
+    : null;
+
+  res.status(200).json({
+    success: true,
+    year,
+    availableYears: availableYears.length ? availableYears : [year],
+    total: inYear.length,
+    avgIncrementPct,
+    lowIncrementCount: lowIncrementList.length,
+    lowIncrementList,
+    highPerformerCount: highPerformerList.length,
+    highPerformerList,
+  });
+}));
+
 // ─── GET /api/salary-revisions/history/:employeeCode ─────────────────────────
 // All revisions for one employee, newest first — used to show past history
 // separately from whichever one is currently driving the dashboard.
@@ -36,6 +107,105 @@ router.get('/:id', asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Salary revision not found' });
   }
   res.status(200).json({ success: true, data: revision });
+}));
+
+router.put('/:id', asyncHandler(async (req, res) => {
+  const {
+    applicableDate,
+    previousCtc,
+    newCtc,
+    finalIncrementPct,
+    stage,
+    designationChanged,
+    previousDesignation,
+    newDesignation,
+    reportingHeadChanged,
+    previousReportingHead,
+    newReportingHead,
+    managerDecision,
+    managementDecision,
+    hrDecision,
+  } = req.body;
+
+  const revision = await SalaryRevision.findById(req.params.id);
+  if (!revision) {
+    return res.status(404).json({ success: false, message: 'Salary revision not found' });
+  }
+
+  const setNumber = (value) => (value != null && value !== '' ? Number(value) : null);
+  const safeDate = (value) => (value ? new Date(value) : null);
+
+  if (previousCtc != null && previousCtc !== '') {
+    revision.previousCtc = Number(previousCtc);
+  }
+
+  if (newCtc != null && newCtc !== '') {
+    revision.newCtc = Number(newCtc);
+  }
+
+  if (finalIncrementPct != null && finalIncrementPct !== '') {
+    revision.finalIncrementPct = Number(finalIncrementPct);
+    revision.managementDecision = revision.managementDecision || {};
+    revision.managementDecision.finalPct = Number(finalIncrementPct);
+
+    if (revision.previousCtc != null) {
+      revision.newCtc = Math.round(revision.previousCtc * (1 + Number(finalIncrementPct) / 100));
+    }
+  }
+
+  if ((newCtc != null && newCtc !== '') && revision.previousCtc != null && revision.previousCtc !== 0) {
+    revision.finalIncrementPct = Math.round(((revision.newCtc - revision.previousCtc) / revision.previousCtc) * 100 * 100) / 100;
+    revision.managementDecision = revision.managementDecision || {};
+    revision.managementDecision.finalPct = revision.finalIncrementPct;
+  }
+
+  if (applicableDate) {
+    revision.applicableDate = new Date(applicableDate);
+  }
+
+  if (stage) revision.stage = stage;
+  if (designationChanged != null) revision.designationChanged = Boolean(designationChanged);
+  if (previousDesignation != null) revision.previousDesignation = previousDesignation;
+  if (newDesignation != null) revision.newDesignation = newDesignation;
+  if (reportingHeadChanged != null) revision.reportingHeadChanged = Boolean(reportingHeadChanged);
+  if (previousReportingHead != null) revision.previousReportingHead = previousReportingHead;
+  if (newReportingHead != null) revision.newReportingHead = newReportingHead;
+
+  if (managerDecision && typeof managerDecision === 'object') {
+    revision.managerDecision = {
+      decision         : managerDecision.decision ?? revision.managerDecision.decision,
+      recommendedPct   : setNumber(managerDecision.recommendedPct) ?? revision.managerDecision.recommendedPct,
+      pipDurationMonths: setNumber(managerDecision.pipDurationMonths) ?? revision.managerDecision.pipDurationMonths,
+      pipNewDueDate    : safeDate(managerDecision.pipNewDueDate) ?? revision.managerDecision.pipNewDueDate,
+      reason           : managerDecision.reason ?? revision.managerDecision.reason,
+      submittedAt      : managerDecision.submittedAt ? safeDate(managerDecision.submittedAt) : revision.managerDecision.submittedAt,
+    };
+  }
+
+  if (managementDecision && typeof managementDecision === 'object') {
+    revision.managementDecision = {
+      finalPct   : setNumber(managementDecision.finalPct) ?? revision.managementDecision.finalPct,
+      pipApproved: managementDecision.pipApproved != null ? Boolean(managementDecision.pipApproved) : revision.managementDecision.pipApproved,
+      reason     : managementDecision.reason ?? revision.managementDecision.reason,
+      submittedAt: managementDecision.submittedAt ? safeDate(managementDecision.submittedAt) : revision.managementDecision.submittedAt,
+    };
+  }
+
+  if (hrDecision && typeof hrDecision === 'object') {
+    revision.hrDecision = {
+      newCtc             : setNumber(hrDecision.newCtc) ?? revision.hrDecision.newCtc,
+      applicableDate     : safeDate(hrDecision.applicableDate) ?? revision.hrDecision.applicableDate,
+      newContractStartDate: safeDate(hrDecision.newContractStartDate) ?? revision.hrDecision.newContractStartDate,
+      newContractEndDate  : safeDate(hrDecision.newContractEndDate) ?? revision.hrDecision.newContractEndDate,
+      notes              : hrDecision.notes ?? revision.hrDecision.notes,
+      submittedAt        : hrDecision.submittedAt ? safeDate(hrDecision.submittedAt) : revision.hrDecision.submittedAt,
+    };
+  }
+
+  revision.updatedBy = caller(req);
+  await revision.save();
+
+  res.status(200).json({ success: true, data: revision, message: 'Revision updated successfully' });
 }));
 
 // ─── POST /api/salary-revisions ──────────────────────────────────────────────
@@ -61,6 +231,8 @@ router.post('/', asyncHandler(async (req, res) => {
     designation,
     email,
     joiningDate,
+    contractStartDate,
+    contractEndDate,
     category,
     applicableDate,
     previousCtc,
@@ -92,6 +264,8 @@ router.post('/', asyncHandler(async (req, res) => {
     designation,
     email,
     joiningDate   : new Date(joiningDate),
+    contractStartDate: contractStartDate ? new Date(contractStartDate) : null,
+    contractEndDate  : contractEndDate ? new Date(contractEndDate) : null,
     category      : category || 'Employee',
     applicableDate: applicableDate ? new Date(applicableDate) : null,
     previousCtc   : Number(previousCtc),
@@ -305,7 +479,7 @@ router.put('/:id/management', asyncHandler(async (req, res) => {
 // now has categoryChanged too, but Onboarding still gets the current
 // value unconditionally, same as CTC/applicable date).
 router.put('/:id/hr', asyncHandler(async (req, res) => {
-  const { notes, applicableDate, newCtc } = req.body;
+  const { notes, applicableDate, newCtc, newContractStartDate, newContractEndDate } = req.body;
 
   const revision = await SalaryRevision.findById(req.params.id);
   if (!revision) {
@@ -321,16 +495,22 @@ router.put('/:id/hr', asyncHandler(async (req, res) => {
 
   const finalCtc = Number(newCtc) || revision.newCtc || revision.previousCtc;
   const appDate  = applicableDate ? new Date(applicableDate) : revision.applicableDate;
+  const newCStart = newContractStartDate ? new Date(newContractStartDate) : null;
+  const newCEnd   = newContractEndDate ? new Date(newContractEndDate) : null;
 
   revision.hrDecision = {
     newCtc        : finalCtc,
     applicableDate: appDate,
+    newContractStartDate: newCStart,
+    newContractEndDate  : newCEnd,
     notes         : (notes || '').trim(),
     submittedAt   : new Date(),
   };
 
   revision.newCtc           = finalCtc;
   revision.applicableDate   = appDate;
+  revision.newContractStartDate = newCStart;
+  revision.newContractEndDate   = newCEnd;
   revision.finalIncrementPct = revision.managementDecision?.finalPct ?? revision.finalIncrementPct ?? 0;
   revision.stage            = 'completed';
   revision.updatedBy        = caller(req);
@@ -354,6 +534,8 @@ router.put('/:id/hr', asyncHandler(async (req, res) => {
     if (revision.reportingHeadChanged && revision.newReportingHead) {
       onboardingUpdate.reportingHead = revision.newReportingHead;
     }
+    if (newCStart) onboardingUpdate.contractStartDate = newCStart;
+    if (newCEnd)   onboardingUpdate.contractEndDate   = newCEnd;
 
     // Only ever target by onboardingId — a real Mongo ObjectId set at
     // creation time. Previously this fell back to revision.employeeCode,

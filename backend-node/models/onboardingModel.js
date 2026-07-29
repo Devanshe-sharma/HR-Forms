@@ -193,6 +193,16 @@ const onboardingSchema = new mongoose.Schema(
 
     contractAmount: Number,
     contractPeriod: Number,
+    contractStartDate: Date,
+    contractEndDate: Date,
+    // Full renewal history — every past contract period, oldest first.
+    // contractStartDate/contractEndDate above always mirror the LAST
+    // entry here (the current/latest period); endDate is null for a
+    // period that's ongoing with no end date decided yet.
+    contractHistory: {
+      type: [{ startDate: Date, endDate: { type: Date, default: null } }],
+      default: [],
+    },
     equivalentMonthlyCtc: Number,
 
     // ============================================================

@@ -11,7 +11,7 @@ import { TemplateModal } from './FeedbackTemplate';
 
 const emptyRound = (): Omit<InterviewRound, '_id'> => ({
   roundNumber:   1,
-  stage:         'HR Screening',
+  stage:         'HR Round',
   customStage:   '',
   scheduledDate: '',
   interviewer:   '',
@@ -38,13 +38,13 @@ const RoundForm = ({
       {data.stage === 'Other' && (
         <EditField  label="Custom Stage" name="customStage"  value={data.customStage || ''}  onChange={(_, v) => onChange('customStage', v)} />
       )}
-      <EditField  label="Date"         name="scheduledDate" value={data.scheduledDate || ''} onChange={(_, v) => onChange('scheduledDate', v)} type="date" />
-      <EditField  label="Interviewer"  name="interviewer"   value={data.interviewer || ''}   onChange={(_, v) => onChange('interviewer', v)} />
-      <EditSelect label="Mode"         name="mode"          value={data.mode || ''}          options={MODE_OPTIONS}   onChange={(_, v) => onChange('mode', v)} />
-      <EditSelect label="Result"       name="result"        value={data.result || ''}        options={RESULT_OPTIONS} onChange={(_, v) => onChange('result', v)} />
+      <EditField  label="Interview Date"   name="scheduledDate" value={data.scheduledDate || ''} onChange={(_, v) => onChange('scheduledDate', v)} type="date" />
+      <EditField  label="Interviewer Name" name="interviewer"   value={data.interviewer || ''}   onChange={(_, v) => onChange('interviewer', v)} />
+      <EditSelect label="Interview Type"  name="mode"          value={data.mode || ''}          options={MODE_OPTIONS}   onChange={(_, v) => onChange('mode', v)} />
+      <EditSelect label="Result"          name="result"        value={data.result || ''}        options={RESULT_OPTIONS} onChange={(_, v) => onChange('result', v)} />
       <div className="col-span-2 md:col-span-3">
         <div className="flex items-center justify-between mb-0.5">
-          <label className="text-xs text-gray-400 font-medium uppercase tracking-wide block">Feedback / Notes</label>
+          <label className="text-xs text-gray-400 font-medium uppercase tracking-wide block">Remarks</label>
           <button
             onClick={() => setTemplateOpen(true)}
             className="text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition"
@@ -62,6 +62,7 @@ const RoundForm = ({
           screenerName={data.interviewer || ''}
           existingText={data.feedback || ''}
           defaultRound={roundLabel}
+          title="Interview Feedback Template"
         />
       </div>
       <div className="col-span-2 md:col-span-3 flex gap-2 justify-end">
@@ -180,13 +181,15 @@ const InterviewRoundTab = ({
               </span>
               <div>
                 <p className="text-sm font-bold text-gray-800">
-                  {r.stage === 'Other' ? r.customStage || 'Other' : r.stage}
+                  {r.stage === 'Other' ? r.customStage || 'Other' : r.stage === 'HR Screening' ? 'HR Round' : r.stage}
                 </p>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {r.scheduledDate ? new Date(r.scheduledDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Date TBD'}
-                  {r.interviewer && ` · ${r.interviewer}`}
-                  {r.mode && r.mode !== 'Not decided' && ` · ${r.mode}`}
-                </p>
+                <div className="mt-1 space-y-1 text-sm">
+                  <p className="font-semibold text-gray-700 text-base">
+                    {r.scheduledDate ? new Date(r.scheduledDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Date TBD'}
+                  </p>
+                  {r.interviewer && <p className="font-semibold text-gray-700 text-base">{r.interviewer}</p>}
+                  {r.mode && r.mode !== 'Not decided' && <p className="text-sm text-gray-500">{r.mode}</p>}
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">

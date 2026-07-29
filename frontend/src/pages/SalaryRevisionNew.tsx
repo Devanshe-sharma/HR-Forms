@@ -4,7 +4,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, Button, TextField, Select, MenuItem, FormControl, InputLabel,
   Avatar, Stack, IconButton, Divider, Slider, Autocomplete, Switch, FormControlLabel,
-  Checkbox, InputAdornment,
+  Checkbox, InputAdornment, Popover,
 } from '@mui/material';
 import {
   ArrowBack      as ArrowBackIcon,
@@ -50,6 +50,8 @@ interface ManagementDecision {
 interface HrDecision {
   newCtc      : number | null;
   applicableDate: string | null;
+  newContractStartDate: string | null;
+  newContractEndDate  : string | null;
   notes       : string;
   submittedAt : string | null;
 }
@@ -63,6 +65,10 @@ interface SalaryRevision {
   designation       : string;
   email             : string;
   joiningDate       : string;
+  contractStartDate : string | null;
+  contractEndDate   : string | null;
+  newContractStartDate: string | null;
+  newContractEndDate  : string | null;
   category          : string;
   applicableDate    : string | null;
   previousCtc       : number;
@@ -81,6 +87,22 @@ interface SalaryRevision {
   reportingHeadChanged  : boolean;
   previousReportingHead : string;
   newReportingHead      : string | null;
+  _periodStart      : Date | null;
+  _periodEnd        : Date | null;
+}
+
+function formatIncrementPct(revision: SalaryRevision): string | null {
+  if (revision.finalIncrementPct != null) {
+    return `${revision.finalIncrementPct >= 0 ? '+' : ''}${revision.finalIncrementPct.toFixed(2).replace(/\.00$/, '')}%`;
+  }
+
+  const prev = revision.previousCtc ?? 0;
+  const next = revision.newCtc ?? 0;
+  if (!prev || !next) return null;
+
+  const pct = ((next - prev) / prev) * 100;
+  if (!Number.isFinite(pct)) return null;
+  return `${pct >= 0 ? '+' : ''}${Math.round(pct * 100) / 100}%`;
 }
 
 interface Employee {
@@ -95,6 +117,9 @@ interface Employee {
   employee_category: string;
   annual_ctc       : number;
   reporting_head?  : string;
+  contract_start_date?: string | null;
+  contract_end_date?  : string | null;
+  contract_history?   : { start_date: string | null; end_date: string | null }[];
 }
 
 // CTC Components — shared across this page AND the Employee Letters page,
@@ -129,10 +154,10 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 
 const initials = (n: string) => n.split(' ').map(w=>w[0]).filter(Boolean).slice(0,2).join('').toUpperCase();
 
-const fmtDate = (d?: string|null) => {
+const fmtDate = (d?: string|Date|null) => {
   if (!d) return '—';
   try { return new Date(d).toLocaleDateString('en-IN',{ day:'2-digit', month:'short', year:'numeric' }); }
-  catch { return d; }
+  catch { return String(d); }
 };
 
 const fmtCurrency = (n?: number|null) => {
@@ -298,6 +323,7 @@ function AddRevisionModal({ open, onClose, onAdded, showToast, employees }: {
         employeeCode:sel.employee_id, employeeName:sel.full_name,
         department:sel.department, designation:sel.designation,
         email:sel.email, joiningDate:sel.joining_date,
+        contractStartDate:sel.contract_start_date||null, contractEndDate:sel.contract_end_date||null,
         category:cat, applicableDate:appDate||null,
         previousCtc:sel.annual_ctc||0,
         previousDesignation:sel.designation,
@@ -348,7 +374,8 @@ function AddRevisionModal({ open, onClose, onAdded, showToast, employees }: {
                 <Box sx={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:1.2 }}>
                   {[['Designation',sel.designation||'—'],['Email',sel.email||'—'],
                     ['Joining Date',fmtDate(sel.joining_date)],['Previous CTC',fmtCurrency(sel.annual_ctc)],
-                    ['Due Date (11m)',fmtDate(due?.toISOString())]
+                    ['Due Date (11m)',fmtDate(due?.toISOString())],
+                    ['Contract Start',fmtDate(sel.contract_start_date)],['Contract End',fmtDate(sel.contract_end_date)]
                   ].map(([l,v])=>(
                     <Box key={l}><Typography fontSize={10} color="text.secondary">{l}</Typography>
                       <Typography fontSize={12} fontWeight={600}>{v}</Typography></Box>
@@ -633,33 +660,55 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
   const [search,   setSearch]   = useState('');
   const [dept,     setDept]     = useState('All');
   const [stage,    setStage]    = useState('All');
+  const [historyAnchor, setHistoryAnchor] = useState<{ el:HTMLElement; emp:Employee }|null>(null);
 
+  // Every revision an employee has ever had, newest first (records already
+  // arrive sorted that way) — NOT collapsed to just the latest, because a
+  // "completed" revision from a past cycle must not shadow a new cycle
+  // that's now due (e.g. last year's completed revision shouldn't make an
+  // employee whose annual review is due again this year look "done").
   const revisionMap = useMemo(()=>{
-    const m=new Map<string,SalaryRevision>();
-    records.forEach(r=>{ if (!m.has(r.employeeCode)) m.set(r.employeeCode, r); });
+    const m=new Map<string,SalaryRevision[]>();
+    records.forEach(r=>{
+      const arr=m.get(r.employeeCode)||[];
+      arr.push(r);
+      m.set(r.employeeCode, arr);
+    });
     return m;
   },[records]);
+
+  // The revision (if any) that belongs to a given due-cycle year, identified
+  // by when it was created. If an employee's only revision is from an
+  // earlier year than the cycle being viewed, this returns undefined —
+  // which the UI already renders as "No Record" / "Pending", correctly
+  // prompting a fresh revision instead of showing the stale old one.
+  const revisionForYear = useCallback((employeeId:string, year:number): SalaryRevision|undefined => {
+    const list = revisionMap.get(employeeId) || [];
+    return list.find(r => new Date(r.createdAt).getFullYear() === year);
+  }, [revisionMap]);
 
   const eligibleEmps = useMemo(()=>employees.filter(e=>e.joining_date&&isEligible(e.joining_date)),[employees]);
 
   const allEmps = eligibleEmps;
   const depts=['All',...Array.from(new Set(allEmps.map(e=>e.department).filter(Boolean)))];
 
+  const cycleYear = showAll ? now.getFullYear() : selYear;
+
   const filtered=useMemo(()=>allEmps.filter(e=>{
     if (!e.joining_date) return false;
-    const rec=revisionMap.get(e.employee_id);
+    const rec=revisionForYear(e.employee_id, cycleYear);
     const monthOk=showAll||isDueIn(e.joining_date,selMonth,selYear);
     const searchOk=!search||e.full_name.toLowerCase().includes(search.toLowerCase());
     const deptOk=dept==='All'||e.department===dept;
     const stageOk=stage==='All'?true:stage==='no_record'?!rec:rec?.stage===stage;
     return monthOk&&searchOk&&deptOk&&stageOk;
-  }),[allEmps,showAll,selMonth,selYear,search,dept,stage,revisionMap]);
+  }),[allEmps,showAll,selMonth,selYear,search,dept,stage,cycleYear,revisionForYear]);
 
   const stats={
     due:filtered.length,
-    noRec:filtered.filter(e=>!revisionMap.get(e.employee_id)).length,
-    pending:filtered.filter(e=>{ const r=revisionMap.get(e.employee_id); return r&&r.stage!=='completed'; }).length,
-    completed:filtered.filter(e=>revisionMap.get(e.employee_id)?.stage==='completed').length,
+    noRec:filtered.filter(e=>!revisionForYear(e.employee_id, cycleYear)).length,
+    pending:filtered.filter(e=>{ const r=revisionForYear(e.employee_id, cycleYear); return r&&r.stage!=='completed'; }).length,
+    completed:filtered.filter(e=>revisionForYear(e.employee_id, cycleYear)?.stage==='completed').length,
   };
 
   return (
@@ -743,16 +792,17 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
                   <TableCell>Decision</TableCell>
                   <TableCell>New CTC</TableCell>
                   <TableCell>Stage</TableCell>
+                  <TableCell>Contract</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {filtered.length===0&&(
-                  <TableRow><TableCell colSpan={8} align="center" sx={{ py:6, color:'text.secondary', fontSize:13 }}>
+                  <TableRow><TableCell colSpan={9} align="center" sx={{ py:6, color:'text.secondary', fontSize:13 }}>
                     {showAll?'No eligible employees found':`No employees due in ${MONTHS[selMonth]} ${selYear}`}
                   </TableCell></TableRow>
                 )}
                 {filtered.map(emp=>{
-                  const rec=revisionMap.get(emp.employee_id);
+                  const rec=revisionForYear(emp.employee_id, cycleYear);
                   const dueDate=showAll
                     ? anniversaryDateForYear(emp.joining_date!, now.getFullYear())
                     : anniversaryDateForYear(emp.joining_date!, selYear);
@@ -776,7 +826,7 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
                           {fmtDate(dueDate.toISOString())}
                         </Typography>
                       </TableCell>
-                      <TableCell sx={{ fontSize:12 }}>{fmtCurrency(emp.annual_ctc)}</TableCell>
+                      <TableCell sx={{ fontSize:12 }}>{fmtCurrency(rec?.previousCtc ?? emp.annual_ctc)}</TableCell>
                       <TableCell>
                         {rec?<DecisionChip decision={rec.managerDecision?.decision}/>
                           :<Chip label="No Record" size="small" sx={{ bgcolor:'#fef2f2', color:'#dc2626', fontSize:10 }}/>}
@@ -786,6 +836,19 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
                         {rec?<StageChip stage={rec.stage}/>
                           :<Chip label="Pending" size="small" sx={{ bgcolor:'#fffbeb', color:'#d97706', fontSize:10 }}/>}
                       </TableCell>
+                      <TableCell sx={{ fontSize:12 }}>
+                        {emp.contract_start_date ? (
+                          <>
+                            {fmtDate(emp.contract_start_date)} → {emp.contract_end_date?fmtDate(emp.contract_end_date):'Ongoing'}
+                            {(emp.contract_history?.length||0)>1 && (
+                              <Typography component="span" onClick={(e)=>{ e.stopPropagation(); setHistoryAnchor({ el:e.currentTarget, emp }); }}
+                                sx={{ display:'block', fontSize:11, color:ACCENT, cursor:'pointer', fontWeight:600, '&:hover':{ textDecoration:'underline' } }}>
+                                Previous Contract
+                              </Typography>
+                            )}
+                          </>
+                        ) : '—'}
+                      </TableCell>
                     </TableRow>
                   );
                 })}
@@ -794,6 +857,36 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
           </TableContainer>
         )}
       </Box>
+
+      <Popover
+        open={!!historyAnchor}
+        anchorEl={historyAnchor?.el}
+        onClose={()=>setHistoryAnchor(null)}
+        anchorOrigin={{ vertical:'bottom', horizontal:'left' }}
+        onClick={(e)=>e.stopPropagation()}
+      >
+        <Box sx={{ p:2, minWidth:260, maxWidth:340 }}>
+          <Typography fontSize={12} fontWeight={700} mb={1}>
+            {historyAnchor?.emp.full_name} — Contract History
+          </Typography>
+          <Stack spacing={0.75}>
+            {(historyAnchor?.emp.contract_history||[]).map((p,i,arr)=>{
+              const isLatest=i===arr.length-1;
+              return (
+                <Box key={i} sx={{ display:'flex', justifyContent:'space-between', gap:2, p:0.75,
+                  bgcolor:isLatest?'#f0fdf4':'#f8fafc', borderRadius:1 }}>
+                  <Typography fontSize={11} color={isLatest?'#059669':'text.secondary'} fontWeight={isLatest?600:400}>
+                    Contract {i+1}{isLatest?' (current)':''}
+                  </Typography>
+                  <Typography fontSize={11} fontWeight={500} textAlign="right">
+                    {fmtDate(p.start_date)} → {p.end_date?fmtDate(p.end_date):'Ongoing'}
+                  </Typography>
+                </Box>
+              );
+            })}
+          </Stack>
+        </Box>
+      </Popover>
     </Box>
   );
 }
@@ -803,11 +896,241 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
 function HistoryPanel({ employeeCode }: { employeeCode: string }) {
   const [history, setHistory] = useState<SalaryRevision[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedRevision, setSelectedRevision] = useState<SalaryRevision | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editValues, setEditValues] = useState<any>({
+    applicableDate: '',
+    previousCtc: '',
+    newCtc: '',
+    finalIncrementPct: '',
+    stage: 'pending_manager',
+    designationChanged: false,
+    previousDesignation: '',
+    newDesignation: '',
+    reportingHeadChanged: false,
+    previousReportingHead: '',
+    newReportingHead: '',
+    managerDecision: {
+      decision: 'increment',
+      recommendedPct: '',
+      reason: '',
+      pipDurationMonths: '',
+      pipNewDueDate: '',
+    },
+    managementDecision: {
+      finalPct: '',
+      reason: '',
+      pipApproved: true,
+    },
+    hrDecision: {
+      newContractStartDate: '',
+      newContractEndDate: '',
+      notes: '',
+    },
+  });
+  const [editError, setEditError] = useState<string | null>(null);
+  const [saveBusy, setSaveBusy] = useState(false);
+
+  useEffect(() => {
+    if (!selectedRevision) return;
+    setEditMode(false);
+    setEditError(null);
+    setEditValues({
+      applicableDate: selectedRevision.applicableDate ? new Date(selectedRevision.applicableDate).toISOString().split('T')[0] : '',
+      previousCtc: selectedRevision.previousCtc != null ? String(selectedRevision.previousCtc) : '',
+      newCtc: selectedRevision.newCtc != null ? String(selectedRevision.newCtc) : '',
+      finalIncrementPct: selectedRevision.finalIncrementPct != null ? String(selectedRevision.finalIncrementPct) : '',
+      stage: selectedRevision.stage,
+      designationChanged: selectedRevision.designationChanged,
+      previousDesignation: selectedRevision.previousDesignation || '',
+      newDesignation: selectedRevision.newDesignation || '',
+      reportingHeadChanged: selectedRevision.reportingHeadChanged,
+      previousReportingHead: selectedRevision.previousReportingHead || '',
+      newReportingHead: selectedRevision.newReportingHead || '',
+      managerDecision: {
+        decision: selectedRevision.managerDecision?.decision || 'increment',
+        recommendedPct: selectedRevision.managerDecision?.recommendedPct != null ? String(selectedRevision.managerDecision.recommendedPct) : '',
+        reason: selectedRevision.managerDecision?.reason || '',
+        pipDurationMonths: selectedRevision.managerDecision?.pipDurationMonths != null ? String(selectedRevision.managerDecision.pipDurationMonths) : '',
+        pipNewDueDate: selectedRevision.managerDecision?.pipNewDueDate ? new Date(selectedRevision.managerDecision.pipNewDueDate).toISOString().split('T')[0] : '',
+      },
+      managementDecision: {
+        finalPct: selectedRevision.managementDecision?.finalPct != null ? String(selectedRevision.managementDecision.finalPct) : '',
+        reason: selectedRevision.managementDecision?.reason || '',
+        pipApproved: selectedRevision.managementDecision?.pipApproved ?? true,
+      },
+      hrDecision: {
+        newContractStartDate: selectedRevision.hrDecision?.newContractStartDate ? new Date(selectedRevision.hrDecision.newContractStartDate).toISOString().split('T')[0] : '',
+        newContractEndDate: selectedRevision.hrDecision?.newContractEndDate ? new Date(selectedRevision.hrDecision.newContractEndDate).toISOString().split('T')[0] : '',
+        notes: selectedRevision.hrDecision?.notes || '',
+      },
+    });
+  }, [selectedRevision]);
+
+  const savePastIncrement = async () => {
+    if (!selectedRevision) return;
+    setEditError(null);
+
+    const payload: any = {
+      applicableDate: editValues.applicableDate || null,
+      previousCtc: editValues.previousCtc !== '' ? Number(editValues.previousCtc) : undefined,
+      newCtc: editValues.newCtc !== '' ? Number(editValues.newCtc) : undefined,
+      finalIncrementPct: editValues.finalIncrementPct !== '' ? Number(editValues.finalIncrementPct) : undefined,
+      stage: editValues.stage,
+      designationChanged: editValues.designationChanged,
+      previousDesignation: editValues.previousDesignation,
+      newDesignation: editValues.newDesignation,
+      reportingHeadChanged: editValues.reportingHeadChanged,
+      previousReportingHead: editValues.previousReportingHead,
+      newReportingHead: editValues.newReportingHead,
+      managerDecision: {
+        decision: editValues.managerDecision.decision,
+        recommendedPct: editValues.managerDecision.recommendedPct !== '' ? Number(editValues.managerDecision.recommendedPct) : null,
+        reason: editValues.managerDecision.reason,
+        pipDurationMonths: editValues.managerDecision.pipDurationMonths !== '' ? Number(editValues.managerDecision.pipDurationMonths) : null,
+        pipNewDueDate: editValues.managerDecision.pipNewDueDate || null,
+      },
+      managementDecision: {
+        finalPct: editValues.managementDecision.finalPct !== '' ? Number(editValues.managementDecision.finalPct) : null,
+        reason: editValues.managementDecision.reason,
+        pipApproved: editValues.managementDecision.pipApproved,
+      },
+      hrDecision: {
+        newContractStartDate: editValues.hrDecision.newContractStartDate || null,
+        newContractEndDate: editValues.hrDecision.newContractEndDate || null,
+        notes: editValues.hrDecision.notes || '',
+      },
+    };
+
+    if (payload.previousCtc != null && Number.isNaN(payload.previousCtc)) {
+      setEditError('Enter a valid previous CTC amount.');
+      return;
+    }
+    if (payload.newCtc != null && Number.isNaN(payload.newCtc)) {
+      setEditError('Enter a valid new CTC amount.');
+      return;
+    }
+    if (payload.finalIncrementPct != null && Number.isNaN(payload.finalIncrementPct)) {
+      setEditError('Enter a valid increment percentage.');
+      return;
+    }
+    if (payload.managerDecision.recommendedPct != null && Number.isNaN(payload.managerDecision.recommendedPct)) {
+      setEditError('Enter a valid manager recommended percentage.');
+      return;
+    }
+    if (payload.managementDecision.finalPct != null && Number.isNaN(payload.managementDecision.finalPct)) {
+      setEditError('Enter a valid management final percentage.');
+      return;
+    }
+
+    setSaveBusy(true);
+    try {
+      const { data } = await axios.put(`${API}/${selectedRevision._id}`, payload);
+      if (!data.success) {
+        throw new Error(data.message || 'Save failed');
+      }
+
+      const updatedRevision = { ...selectedRevision, ...data.data } as SalaryRevision;
+      setSelectedRevision(updatedRevision);
+      setHistory((prev) => prev.map((item) => item._id === updatedRevision._id ? updatedRevision : item));
+      setEditMode(false);
+    } catch (err: any) {
+      setEditError(err?.response?.data?.message || err?.message || 'Save failed');
+    } finally {
+      setSaveBusy(false);
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditMode(false);
+    if (selectedRevision) {
+      setEditValues((prev: any) => ({
+        ...prev,
+        applicableDate: selectedRevision.applicableDate ? new Date(selectedRevision.applicableDate).toISOString().split('T')[0] : '',
+        previousCtc: selectedRevision.previousCtc != null ? String(selectedRevision.previousCtc) : '',
+        newCtc: selectedRevision.newCtc != null ? String(selectedRevision.newCtc) : '',
+        finalIncrementPct: selectedRevision.finalIncrementPct != null ? String(selectedRevision.finalIncrementPct) : '',
+        stage: selectedRevision.stage,
+        designationChanged: selectedRevision.designationChanged,
+        previousDesignation: selectedRevision.previousDesignation || '',
+        newDesignation: selectedRevision.newDesignation || '',
+        reportingHeadChanged: selectedRevision.reportingHeadChanged,
+        previousReportingHead: selectedRevision.previousReportingHead || '',
+        newReportingHead: selectedRevision.newReportingHead || '',
+        managerDecision: {
+          decision: selectedRevision.managerDecision?.decision || 'increment',
+          recommendedPct: selectedRevision.managerDecision?.recommendedPct != null ? String(selectedRevision.managerDecision.recommendedPct) : '',
+          reason: selectedRevision.managerDecision?.reason || '',
+          pipDurationMonths: selectedRevision.managerDecision?.pipDurationMonths != null ? String(selectedRevision.managerDecision.pipDurationMonths) : '',
+          pipNewDueDate: selectedRevision.managerDecision?.pipNewDueDate ? new Date(selectedRevision.managerDecision.pipNewDueDate).toISOString().split('T')[0] : '',
+        },
+        managementDecision: {
+          finalPct: selectedRevision.managementDecision?.finalPct != null ? String(selectedRevision.managementDecision.finalPct) : '',
+          reason: selectedRevision.managementDecision?.reason || '',
+          pipApproved: selectedRevision.managementDecision?.pipApproved ?? true,
+        },
+        hrDecision: {
+          newContractStartDate: selectedRevision.hrDecision?.newContractStartDate ? new Date(selectedRevision.hrDecision.newContractStartDate).toISOString().split('T')[0] : '',
+          newContractEndDate: selectedRevision.hrDecision?.newContractEndDate ? new Date(selectedRevision.hrDecision.newContractEndDate).toISOString().split('T')[0] : '',
+          notes: selectedRevision.hrDecision?.notes || '',
+        },
+      }));
+      setEditError(null);
+    }
+  };
 
   useEffect(() => {
     setLoading(true);
-    axios.get(`${API}/history/${employeeCode}`)
-      .then(r => setHistory(r.data?.data ?? []))
+    // Fetch revisions and the onboarding record so we can compute the
+    // effective contract period for each revision. We prefer HR-finalised
+    // dates, then any revision-level dates, then fall back to the
+    // onboarding `contractHistory` entry that covered the revision's
+    // `createdAt` timestamp. Finally sort by that effective start date
+    // descending so the newest contract period appears first.
+    Promise.all([
+      axios.get(`${API}/history/${employeeCode}`),
+      axios.get(`${API_BASE}/onboarding/${employeeCode}`),
+    ])
+      .then(([revRes, onbRes]) => {
+        const items = revRes.data?.data ?? [];
+        const onb = onbRes.data?.data || null;
+        const hist = Array.isArray(onb?.contractHistory) ? onb.contractHistory.map((p: any) => ({
+          start: p.startDate ? new Date(p.startDate) : null,
+          end: p.endDate ? new Date(p.endDate) : null,
+        })) : [];
+
+        const findHistoryForDate = (d: Date | null) => {
+          if (!d) return null;
+          for (let i = hist.length - 1; i >= 0; i--) {
+            const entry = hist[i];
+            if (!entry.start) continue;
+            if (entry.start <= d && (!entry.end || entry.end >= d)) return entry;
+          }
+          return hist[hist.length - 1] ?? null;
+        };
+
+        const enriched = items.map((it: any) => {
+          const created = it.createdAt ? new Date(it.createdAt) : null;
+          const hrStart = it.hrDecision?.newContractStartDate ? new Date(it.hrDecision.newContractStartDate) : null;
+          const hrEnd   = it.hrDecision?.newContractEndDate ? new Date(it.hrDecision.newContractEndDate) : null;
+          const revStart = it.newContractStartDate ? new Date(it.newContractStartDate) : (it.contractStartDate ? new Date(it.contractStartDate) : null);
+          const revEnd   = it.newContractEndDate ? new Date(it.newContractEndDate) : (it.contractEndDate ? new Date(it.contractEndDate) : null);
+
+          const histMatch = findHistoryForDate(created);
+          const periodStart = hrStart || revStart || histMatch?.start || (it.applicableDate ? new Date(it.applicableDate) : null) || created;
+          const periodEnd   = hrEnd   || revEnd   || histMatch?.end || null;
+
+          return { ...it, _periodStart: periodStart, _periodEnd: periodEnd };
+        });
+
+        enriched.sort((a: any, b: any) => {
+          const aT = a._periodStart ? new Date(a._periodStart).getTime() : 0;
+          const bT = b._periodStart ? new Date(b._periodStart).getTime() : 0;
+          return bT - aT;
+        });
+
+        setHistory(enriched as SalaryRevision[]);
+      })
       .catch(() => setHistory([]))
       .finally(() => setLoading(false));
   }, [employeeCode]);
@@ -816,51 +1139,251 @@ function HistoryPanel({ employeeCode }: { employeeCode: string }) {
   if (!history.length) return <Typography fontSize={12} color="text.secondary">No past revisions for this employee.</Typography>;
 
   return (
-    <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
-      <TableContainer>
-        <Table size="small">
-          <TableHead>
-            <TableRow sx={{ '& th': TH }}>
-              <TableCell>Date</TableCell>
-              <TableCell>Decision</TableCell>
-              <TableCell>Designation</TableCell>
-              <TableCell>Reporting Head</TableCell>
-              <TableCell>CTC</TableCell>
-              <TableCell>Stage</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {history.map((h, i) => (
-              <TableRow key={h._id} sx={{ bgcolor: i === 0 ? '#f8fafc' : 'transparent' }}>
-                <TableCell sx={{ fontSize: 12 }}>
-                  {fmtDate(h.createdAt)}
-                  {i === 0 && <Chip label="Latest" size="small" sx={{ ml: 0.7, fontSize: 9, height: 16, bgcolor: '#eef2ff', color: ACCENT }}/>}
-                </TableCell>
-                <TableCell><DecisionChip decision={h.managerDecision?.decision}/></TableCell>
-                <TableCell sx={{ fontSize: 12 }}>
-                  {h.designationChanged
-                    ? <>{h.previousDesignation} → <strong>{h.newDesignation}</strong></>
-                    : <span style={{ color: '#94a3b8' }}>No change</span>}
-                </TableCell>
-                <TableCell sx={{ fontSize: 12 }}>
-                  {h.reportingHeadChanged
-                    ? <>{h.previousReportingHead || '—'} → <strong>{h.newReportingHead}</strong></>
-                    : <span style={{ color: '#94a3b8' }}>No change</span>}
-                </TableCell>
-                <TableCell sx={{ fontSize: 12 }}>
-                  {fmtCurrency(h.previousCtc)} → <strong style={{ color: '#059669' }}>{fmtCurrency(h.newCtc)}</strong>
-                </TableCell>
-                <TableCell><StageChip stage={h.stage}/></TableCell>
+    <>
+      <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow sx={{ '& th': TH }}>
+                <TableCell>Contract Period</TableCell>
+                <TableCell>Decision</TableCell>
+                <TableCell>Designation</TableCell>
+                <TableCell>Reporting Head</TableCell>
+                <TableCell>CTC</TableCell>
+                <TableCell>Stage</TableCell>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-    </Paper>
+            </TableHead>
+            <TableBody>
+              {history.map((h, i) => {
+                const contractStart = h._periodStart || (h.newContractStartDate ? new Date(h.newContractStartDate) : (h.contractStartDate ? new Date(h.contractStartDate) : null));
+                const contractEnd = h._periodEnd || (h.newContractEndDate ? new Date(h.newContractEndDate) : (h.contractEndDate ? new Date(h.contractEndDate) : null));
+                return (
+                  <TableRow key={h._id}
+                    onClick={() => setSelectedRevision(h)}
+                    sx={{ cursor: 'pointer', bgcolor: i === 0 ? '#f8fafc' : 'transparent', '&:hover': { bgcolor: '#eef2ff' } }}>
+                    <TableCell sx={{ fontSize: 12 }}>
+                      {contractStart
+                        ? <>{fmtDate(contractStart)} → {contractEnd ? fmtDate(contractEnd) : 'Ongoing'}</>
+                        : <span style={{ color: '#94a3b8' }}>—</span>}
+                      {i === 0 && <Chip label="Latest" size="small" sx={{ ml: 0.7, fontSize: 9, height: 16, bgcolor: '#eef2ff', color: ACCENT }}/> }
+                    </TableCell>
+                    <TableCell><DecisionChip decision={h.managerDecision?.decision}/></TableCell>
+                    <TableCell sx={{ fontSize: 12 }}>
+                      {h.designationChanged
+                        ? <>{h.previousDesignation} → <strong>{h.newDesignation}</strong></>
+                        : <span style={{ color: '#94a3b8' }}>No change</span>}
+                    </TableCell>
+                  <TableCell sx={{ fontSize: 12 }}>
+                    {h.reportingHeadChanged
+                      ? <>{h.previousReportingHead || '—'} → <strong>{h.newReportingHead}</strong></>
+                      : <span style={{ color: '#94a3b8' }}>No change</span>}
+                  </TableCell>
+                  <TableCell sx={{ fontSize: 12 }}>
+                    {fmtCurrency(h.previousCtc)} → <strong style={{ color: '#059669' }}>{fmtCurrency(h.newCtc)}</strong>
+                    {formatIncrementPct(h) && (
+                      <Typography component="span" sx={{ display: 'block', fontSize: 11, color: '#475569', mt: 0.3 }}>
+                        {formatIncrementPct(h)}
+                      </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell><StageChip stage={h.stage}/></TableCell>
+                </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
+
+      <Modal open={!!selectedRevision} onClose={() => setSelectedRevision(null)}>
+        <Box sx={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', width:{ xs:'95vw', sm:640 }, maxHeight:'85vh', overflowY:'auto', bgcolor:'white', borderRadius:2, p:3, outline:'none' }}>
+          <Box sx={{ display:'flex', justifyContent:'space-between', alignItems:'center', mb:2 }}>
+            <Box>
+              <Typography fontSize={16} fontWeight={700}>Past Contract Details</Typography>
+              <Typography fontSize={12} color="text.secondary">Click outside or the close button to dismiss.</Typography>
+            </Box>
+            <IconButton size="small" onClick={() => setSelectedRevision(null)}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Box>
+          {selectedRevision && (
+            <Stack spacing={1.25}>
+              <Box sx={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:1.5, mb:1 }}>
+                <Box>
+                  <Typography fontSize={11} color="text.secondary">Contract Period</Typography>
+                  <Typography fontSize={13} fontWeight={600}>
+                    {selectedRevision._periodStart ? fmtDate(selectedRevision._periodStart as any as string) : '—'} → {selectedRevision._periodEnd ? fmtDate(selectedRevision._periodEnd as any as string) : 'Ongoing'}
+                  </Typography>
+                </Box>
+                <Box>
+                  <Typography fontSize={11} color="text.secondary">Applicable Date</Typography>
+                  <Typography fontSize={13} fontWeight={600}>{fmtDate(selectedRevision.applicableDate)}</Typography>
+                </Box>
+              </Box>
+
+              <Box sx={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:1.5 }}>
+                <Box>
+                  <Typography fontSize={11} color="text.secondary">Previous CTC</Typography>
+                  <Typography fontSize={13} fontWeight={600}>{fmtCurrency(selectedRevision.previousCtc)}</Typography>
+                </Box>
+                <Box>
+                  <Typography fontSize={11} color="text.secondary">New CTC</Typography>
+                  <Typography fontSize={13} fontWeight={600}>{fmtCurrency(selectedRevision.newCtc)}</Typography>
+                </Box>
+              </Box>
+
+              {editMode ? (
+                <Box sx={{ mt: 1, display: 'grid', gap: 1 }}> 
+                  <TextField
+                    label="Applicable Date"
+                    size="small"
+                    type="date"
+                    value={editValues.applicableDate}
+                    onChange={(e) => setEditValues((prev:any) => ({ ...prev, applicableDate: e.target.value }))}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                  <TextField
+                    label="Previous CTC"
+                    size="small"
+                    value={editValues.previousCtc}
+                    onChange={(e) => setEditValues((prev:any) => ({ ...prev, previousCtc: e.target.value }))}
+                    inputProps={{ inputMode: 'numeric' }}
+                  />
+                  <TextField
+                    label="New CTC"
+                    size="small"
+                    value={editValues.newCtc}
+                    onChange={(e) => setEditValues((prev:any) => ({ ...prev, newCtc: e.target.value }))}
+                    inputProps={{ inputMode: 'numeric' }}
+                  />
+                  <TextField
+                    label="Increment %"
+                    size="small"
+                    value={editValues.finalIncrementPct}
+                    onChange={(e) => setEditValues((prev:any) => ({ ...prev, finalIncrementPct: e.target.value }))}
+                    inputProps={{ inputMode: 'decimal' }}
+                  />
+                  <TextField
+                    label="New Designation"
+                    size="small"
+                    value={editValues.newDesignation}
+                    onChange={(e) => setEditValues((prev:any) => ({ ...prev, newDesignation: e.target.value, designationChanged: true }))}
+                  />
+                  <TextField
+                    label="New Reporting Head"
+                    size="small"
+                    value={editValues.newReportingHead}
+                    onChange={(e) => setEditValues((prev:any) => ({ ...prev, newReportingHead: e.target.value, reportingHeadChanged: true }))}
+                  />
+                  <TextField
+                    label="HR Contract Start"
+                    size="small"
+                    type="date"
+                    value={editValues.hrDecision.newContractStartDate}
+                    onChange={(e) => setEditValues((prev:any) => ({ ...prev, hrDecision: { ...prev.hrDecision, newContractStartDate: e.target.value } }))}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                  <TextField
+                    label="HR Contract End"
+                    size="small"
+                    type="date"
+                    value={editValues.hrDecision.newContractEndDate}
+                    onChange={(e) => setEditValues((prev:any) => ({ ...prev, hrDecision: { ...prev.hrDecision, newContractEndDate: e.target.value } }))}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                  <TextField
+                    label="HR Notes"
+                    size="small"
+                    multiline
+                    rows={3}
+                    value={editValues.hrDecision.notes}
+                    onChange={(e) => setEditValues((prev:any) => ({ ...prev, hrDecision: { ...prev.hrDecision, notes: e.target.value } }))}
+                  />
+                  {editError && <Typography fontSize={12} color="error">{editError}</Typography>}
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    <Button size="small" variant="contained" onClick={savePastIncrement} disabled={saveBusy}>
+                      Save
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={cancelEdit} disabled={saveBusy}>
+                      Cancel
+                    </Button>
+                  </Box>
+                </Box>
+              ) : (
+                formatIncrementPct(selectedRevision) && (
+                  <Box sx={{ mt: 1 }}>
+                    <Typography fontSize={11} color="text.secondary">Increment %</Typography>
+                    <Typography fontSize={13} fontWeight={600} color="#059669">
+                      {formatIncrementPct(selectedRevision)}
+                    </Typography>
+                  </Box>
+                )
+              )}
+
+              <Divider />
+
+              <Box sx={{ display:'flex', gap:1, flexWrap:'wrap', alignItems:'center' }}>
+                <Typography fontSize={11} color="text.secondary">Decision</Typography>
+                <Typography fontSize={13} fontWeight={600}>{selectedRevision.managerDecision?.decision ? selectedRevision.managerDecision.decision.toUpperCase() : 'Pending'}</Typography>
+                <Button size="small" variant="outlined" onClick={() => setEditMode(true)}>
+                  Edit Increment
+                </Button>
+              </Box>
+              {selectedRevision.managerDecision?.reason && (
+                <Typography fontSize={12} color="text.secondary">Reason: {selectedRevision.managerDecision.reason}</Typography>
+              )}
+
+              <Box>
+                <Typography fontSize={11} color="text.secondary">Stage</Typography>
+                <StageChip stage={selectedRevision.stage} />
+              </Box>
+
+              <Divider />
+
+              <Box>
+                <Typography fontSize={11} color="text.secondary">Designation Change</Typography>
+                {selectedRevision.designationChanged ? (
+                  <Typography fontSize={13} fontWeight={600}>{selectedRevision.previousDesignation || '—'} → {selectedRevision.newDesignation || '—'}</Typography>
+                ) : (
+                  <Typography fontSize={12} color="text.secondary">No change</Typography>
+                )}
+              </Box>
+
+              <Box>
+                <Typography fontSize={11} color="text.secondary">Reporting Head Change</Typography>
+                {selectedRevision.reportingHeadChanged ? (
+                  <Typography fontSize={13} fontWeight={600}>{selectedRevision.previousReportingHead || '—'} → {selectedRevision.newReportingHead || '—'}</Typography>
+                ) : (
+                  <Typography fontSize={12} color="text.secondary">No change</Typography>
+                )}
+              </Box>
+
+              <Divider />
+
+              <Box>
+                <Typography fontSize={11} color="text.secondary">HR Contract Dates</Typography>
+                <Typography fontSize={13} fontWeight={600}>Start: {fmtDate(selectedRevision.hrDecision?.newContractStartDate)}</Typography>
+                <Typography fontSize={13} fontWeight={600}>End: {fmtDate(selectedRevision.hrDecision?.newContractEndDate)}</Typography>
+              </Box>
+
+              <Box>
+                <Typography fontSize={11} color="text.secondary">HR Notes</Typography>
+                <Typography fontSize={12} color="text.secondary">{selectedRevision.hrDecision?.notes || '—'}</Typography>
+              </Box>
+
+              <Box>
+                <Typography fontSize={11} color="text.secondary">Created On</Typography>
+                <Typography fontSize={13} fontWeight={600}>{fmtDate(selectedRevision.createdAt)}</Typography>
+              </Box>
+            </Stack>
+          )}
+        </Box>
+      </Modal>
+    </>
   );
 }
 
-// ─── Revision Detail / Action View ───────────────────────────────────────────
+// ─── Revision Detail / Action View ───────────────────────────────────────────────────────────
 
 function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
   emp          : Employee;
@@ -873,7 +1396,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
 
   // Computed once up front — both the % and $ increment inputs below need
   // this same baseline to stay in sync with each other.
-  const prevCtc = emp.annual_ctc || rec?.previousCtc || 0;
+  const prevCtc = rec?.previousCtc ?? emp.annual_ctc ?? 0;
 
   const [applicableDate, setApplicableDate] = useState(rec?.applicableDate
     ? new Date(rec.applicableDate).toISOString().split('T')[0] : '');
@@ -936,6 +1459,14 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
     rec?.hrDecision?.applicableDate
       ? new Date(rec.hrDecision.applicableDate).toISOString().split('T')[0]
       : applicableDate);
+  const [hrNewContractStart, setHrNewContractStart] = useState(
+    rec?.hrDecision?.newContractStartDate
+      ? new Date(rec.hrDecision.newContractStartDate).toISOString().split('T')[0]
+      : '');
+  const [hrNewContractEnd,   setHrNewContractEnd]   = useState(
+    rec?.hrDecision?.newContractEndDate
+      ? new Date(rec.hrDecision.newContractEndDate).toISOString().split('T')[0]
+      : '');
 
   const [busy, setBusy] = useState(false);
 
@@ -973,6 +1504,8 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
           designation   : emp.designation,
           email         : emp.official_email,
           joiningDate   : emp.joining_date,
+          contractStartDate: emp.contract_start_date||null,
+          contractEndDate  : emp.contract_end_date||null,
           category,
           applicableDate: applicableDate || null,
           previousCtc   : emp.annual_ctc || 0,
@@ -1025,11 +1558,48 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
     if (!rec) return;
     setBusy(true);
     try {
-      const payload={ notes:hrNotes, applicableDate:hrAppDate||null, newCtc };
+      const payload={
+        notes:hrNotes, applicableDate:hrAppDate||null, newCtc,
+        newContractStartDate:hrNewContractStart||null, newContractEndDate:hrNewContractEnd||null,
+      };
       const { data }=await axios.put(`${API}/${rec._id}/hr`,payload);
       if (data.success){ showToast('HR decision saved — revision completed, Onboarding updated','success'); onRecordChange(data.data); }
       else showToast(data.message||'Failed','error');
     } catch(e:any){ showToast(e?.response?.data?.message||'Failed','error'); }
+    finally { setBusy(false); }
+  };
+
+  // Lets HR kick off an additional revision for this same employee even
+  // though a completed one already exists for this cycle — needed when an
+  // off-cycle/contract-linked increment comes up separately from the
+  // annual review that's already been finalised. The old completed
+  // revision stays exactly as-is in History; this just creates a new one.
+  const startNewRevision = async () => {
+    if (!window.confirm('Start a new salary revision for this employee? The completed one stays in history.')) return;
+    setBusy(true);
+    try {
+      const { data } = await axios.post(API, {
+        onboardingId: emp._id,
+        employeeCode: emp.employee_id,
+        employeeName: emp.full_name,
+        department: emp.department,
+        designation: emp.designation,
+        email: emp.official_email,
+        joiningDate: emp.joining_date,
+        contractStartDate: emp.contract_start_date || null,
+        contractEndDate: emp.contract_end_date || null,
+        category: emp.employee_category || 'Employee',
+        applicableDate: null,
+        previousCtc: emp.annual_ctc || 0,
+        previousDesignation: emp.designation,
+        previousReportingHead: (emp as any).reporting_head || '',
+        previousCategory: emp.employee_category || 'Employee',
+        pmsScores: [],
+      });
+      const created = data?.data || data;
+      if (created?._id) { showToast('New revision started', 'success'); onRecordChange(created); }
+      else showToast(data.message || 'Failed to start new revision', 'error');
+    } catch (e: any) { showToast(e?.response?.data?.message || 'Failed', 'error'); }
     finally { setBusy(false); }
   };
 
@@ -1056,6 +1626,12 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
         {rec&&<DecisionChip decision={rec.managerDecision?.decision}/>}
         {rec&&<StageChip stage={rec.stage}/>}
         {!rec&&<Chip label="No revision record" size="small" sx={{ bgcolor:'#fef2f2', color:'#dc2626' }}/>}
+        {isCompleted&&(
+          <Button size="small" variant="outlined" onClick={startNewRevision} disabled={busy}
+            sx={{ textTransform:'none', fontWeight:600, borderColor: ACCENT, color: ACCENT }}>
+            {busy?<CircularProgress size={16}/>:'Start New Revision'}
+          </Button>
+        )}
       </Box>
 
       <FlowBanner/>
@@ -1108,6 +1684,8 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                 ['Reporting Head', (emp as any).reporting_head || '—'],
                 ['Joining Date',  fmtDate(emp.joining_date||rec?.joiningDate)],
                 ['Previous CTC',  fmtCurrency(prevCtc)],
+                ['Contract Start', fmtDate(emp.contract_start_date||rec?.contractStartDate)],
+                ['Contract End',   fmtDate(emp.contract_end_date||rec?.contractEndDate)],
               ].map(([l,v])=>(
                 <Box key={l} sx={{ display:'flex', justifyContent:'space-between', gap:2 }}>
                   <Typography fontSize={12} color="text.secondary">{l}</Typography>
@@ -1115,6 +1693,30 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                 </Box>
               ))}
             </Stack>
+          </Paper>
+
+          <Paper variant="outlined" sx={{ flex:'1 1 260px', borderRadius:2, p:2.5 }}>
+            <Typography fontWeight={700} fontSize={13} mb={1.5}>Contract History</Typography>
+            {(emp.contract_history && emp.contract_history.length>0) ? (
+              <Stack spacing={1}>
+                {emp.contract_history.map((p,i)=>{
+                  const isLatest = i===emp.contract_history!.length-1;
+                  return (
+                    <Box key={i} sx={{ display:'flex', justifyContent:'space-between', gap:2, p:0.75,
+                      bgcolor: isLatest?'#f0fdf4':'#f8fafc', borderRadius:1 }}>
+                      <Typography fontSize={12} color={isLatest?'#059669':'text.secondary'} fontWeight={isLatest?600:400}>
+                        Contract {i+1}{isLatest?' (current)':''}
+                      </Typography>
+                      <Typography fontSize={12} fontWeight={500} textAlign="right">
+                        {fmtDate(p.start_date)} → {p.end_date?fmtDate(p.end_date):'Ongoing'}
+                      </Typography>
+                    </Box>
+                  );
+                })}
+              </Stack>
+            ) : (
+              <Typography fontSize={12} color="text.secondary">No contract history on record.</Typography>
+            )}
           </Paper>
 
           <Paper variant="outlined" sx={{ flex:'1 1 280px', borderRadius:2, p:2.5 }}>
@@ -1410,6 +2012,14 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                   value={hrAppDate} onChange={e=>setHrAppDate(e.target.value)}
                   InputLabelProps={{ shrink:true }} disabled={!isHr} fullWidth/>
 
+                <TextField label="New Contract Start Date" type="date" size="small"
+                  value={hrNewContractStart} onChange={e=>setHrNewContractStart(e.target.value)}
+                  InputLabelProps={{ shrink:true }} disabled={!isHr} fullWidth/>
+
+                <TextField label="New Contract End Date" type="date" size="small"
+                  value={hrNewContractEnd} onChange={e=>setHrNewContractEnd(e.target.value)}
+                  InputLabelProps={{ shrink:true }} disabled={!isHr} fullWidth/>
+
                 <TextField label="HR Notes" multiline rows={3} size="small"
                   value={hrNotes} onChange={e=>setHrNotes(e.target.value)}
                   disabled={!isHr} fullWidth/>
@@ -1427,6 +2037,11 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                     <Typography fontSize={11} color="text.secondary" mt={0.5}>
                       Applicable from {fmtDate(rec?.hrDecision?.applicableDate||rec?.applicableDate)}. Onboarding record updated with latest values.
                     </Typography>
+                    {rec?.hrDecision?.newContractStartDate&&(
+                      <Typography fontSize={11} color="text.secondary" mt={0.5}>
+                        New contract: {fmtDate(rec?.hrDecision?.newContractStartDate)} – {fmtDate(rec?.hrDecision?.newContractEndDate)}
+                      </Typography>
+                    )}
                   </Box>
                 )}
               </Stack>
@@ -1572,6 +2187,7 @@ export default function SalaryRevisionPage() {
 
             {view==='detail'&&selEmp&&(
               <RevisionDetailView
+                key={`${selEmp._id}_${selRec?._id||'new'}`}
                 emp={selEmp}
                 rec={selRec}
                 onBack={()=>{ setView('dashboard'); setSelEmp(null); setSelRec(undefined); loadData(); }}

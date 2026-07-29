@@ -6,7 +6,8 @@ import {
 import { Close as CloseIcon } from "@mui/icons-material";
 
 export const TEMPLATE_FIELDS = [
-  { id: "linkedin",    label: "LinkedIn",             section: "Candidate" },
+  { id: "resume",      label: "View Resume",          section: "Candidate" },
+  { id: "linkedin",    label: "LinkedIn profile",     section: "Candidate" },
   { id: "native",      label: "Native",               section: "Candidate" },
   { id: "residing",    label: "Residing",             section: "Candidate" },
   { id: "commute",     label: "Commute",              section: "Candidate" },
@@ -16,18 +17,20 @@ export const TEMPLATE_FIELDS = [
   { id: "experience",  label: "Experience",           section: "Professional" },
   { id: "ctc",         label: "CTC",                  section: "Professional" },
   { id: "ectc",        label: "ECTC",                 section: "Professional" },
-  { id: "recomctc",    label: "Recom. CTC",           section: "Professional" },
+  { id: "recomctc",    label: "Recommended CTC",      section: "Professional" },
+  { id: "reason",      label: "Reason",               section: "Professional" },
   { id: "noticep",     label: "Notice Period",        section: "Professional" },
   { id: "whenjoin",    label: "When can join",        section: "Professional" },
-  { id: "reason",      label: "Reason for leaving",   section: "Professional", full: true },
   { id: "coreskills",  label: "Core Skills",          section: "Professional", full: true },
+  { id: "projects",    label: "Projects",             section: "Professional" },
+  { id: "certifications", label: "Certifications",   section: "Professional" },
   { id: "commskills",  label: "Communication Skills", section: "Assessment" },
   { id: "stability",   label: "Stability",            section: "Assessment" },
-  { id: "attitude",    label: "Attitude",             section: "Assessment" },
+  { id: "attitude",    label: "Attitude / DISC Summary", section: "Assessment" },
   { id: "education",   label: "Education",            section: "Assessment" },
   { id: "hobbies",     label: "Hobbies",              section: "Assessment" },
   { id: "bond",        label: "Bond",                 section: "Assessment" },
-  { id: "remarks",     label: "HR Remarks",           section: "Assessment", multiline: true, full: true },
+  { id: "remarks",     label: "Remarks",              section: "Assessment", multiline: true, full: true },
 ] as const;
 
 export const SECTIONS = ["Candidate", "Professional", "Assessment"] as const;
@@ -41,28 +44,31 @@ export const EMPTY_TEMPLATE = Object.fromEntries(
 ) as Record<TemplateFieldId, string>;
 
 const LABEL_MAP: Record<TemplateFieldId, string> = {
-  linkedin:   "LinkedIn",
-  native:     "Native",
-  residing:   "Residing",
-  commute:    "Commute",
-  age:        "Age",
-  family:     "Family",
+  resume:      "View Resume",
+  linkedin:    "LinkedIn profile",
+  native:      "Native",
+  residing:    "Residing",
+  commute:     "Commute",
+  age:         "Age",
+  family:      "Family",
   maritalStatus: "Marital Status",
-  experience: "Experience",
-  ctc:        "CTC",
-  ectc:       "ECTC",
-  recomctc:   "Recom. CTC",
-  noticep:    "Notice Period",
-  whenjoin:   "When can join",
-  reason:     "Reason for leaving",
-  coreskills: "Core Skills",
-  commskills: "Communication Skills",
-  stability:  "Stability",
-  attitude:   "Attitude",
-  education:  "Education",
-  hobbies:    "Hobbies",
-  bond:       "Bond",
-  remarks:    "HR Remarks",
+  experience:  "Experience",
+  ctc:         "CTC",
+  ectc:        "ECTC",
+  recomctc:    "Recommended CTC",
+  reason:      "Reason",
+  noticep:     "Notice Period",
+  whenjoin:    "When can join",
+  coreskills:  "Core Skills",
+  projects:    "Projects",
+  certifications: "Certifications",
+  commskills:  "Communication Skills",
+  stability:   "Stability",
+  attitude:    "Attitude / DISC Summary",
+  education:   "Education",
+  hobbies:     "Hobbies",
+  bond:        "Bond",
+  remarks:     "Remarks",
 };
 
 type TemplateModalProps = {
@@ -72,6 +78,7 @@ type TemplateModalProps = {
   screenerName?: string;
   existingText?: string;
   defaultRound?: string;
+  title?: string;
 };
 
 export function buildFormattedText(vals: TemplateVals) {
@@ -95,27 +102,54 @@ export function parseFormattedText(text?: string): TemplateVals | null {
     result.__screener = headerMatch[2].trim();
   }
 
-  const LABEL_TO_ID = Object.fromEntries(
-    Object.entries(LABEL_MAP).map(([id, label]) => [label, id])
-  ) as Record<string, TemplateFieldId>;
+  const aliasMap: Array<[TemplateFieldId, string[]]> = [
+    ['resume', ['View Resume']],
+    ['linkedin', ['LinkedIn profile', 'LinkedIn']],
+    ['native', ['Native']],
+    ['residing', ['Residing']],
+    ['commute', ['Commute']],
+    ['age', ['Age']],
+    ['family', ['Family']],
+    ['maritalStatus', ['Marital Status']],
+    ['experience', ['Experience']],
+    ['ctc', ['CTC']],
+    ['ectc', ['ECTC']],
+    ['recomctc', ['Recommended CTC', 'Recom. CTC']],
+    ['reason', ['Reason', 'Reason for leaving']],
+    ['noticep', ['Notice Period']],
+    ['whenjoin', ['When can join']],
+    ['coreskills', ['Core Skills']],
+    ['projects', ['Projects']],
+    ['certifications', ['Certifications']],
+    ['commskills', ['Communication Skills']],
+    ['stability', ['Stability']],
+    ['attitude', ['Attitude / DISC Summary', 'Attitude']],
+    ['education', ['Education']],
+    ['hobbies', ['Hobbies']],
+    ['bond', ['Bond']],
+    ['remarks', ['Remarks', 'HR Remarks']],
+  ];
 
-  for (const [label, id] of Object.entries(LABEL_TO_ID)) {
-    const escaped = label.replace(/\./g, "\\.");
-    const match = text.match(new RegExp(`^${escaped}:\\s*(.*)$`, "m"));
-    if (match) {
-      result[id] = match[1].replace(/^[A-Za-z\s.]+:\s*/, "").trim();
+  for (const [id, labels] of aliasMap) {
+    for (const label of labels) {
+      const escaped = label.replace(/\./g, "\\.");
+      const match = text.match(new RegExp(`^${escaped}:\\s*(.*)$`, "m"));
+      if (match) {
+        result[id] = match[1].trim();
+        break;
+      }
     }
   }
 
   return result;
 }
 
-export const TemplateModal = ({ open, onClose, onInsert, screenerName, existingText, defaultRound }: TemplateModalProps) => {
+export const TemplateModal = ({ open, onClose, onInsert, screenerName, existingText, defaultRound, title }: TemplateModalProps) => {
   const [vals, setVals] = useState(() => {
     const parsed = parseFormattedText(existingText);
     return parsed
       ? { ...parsed }
-      : { ...EMPTY_TEMPLATE, __round: defaultRound || "Screening Round", __screener: screenerName || "" };
+      : { ...EMPTY_TEMPLATE, __round: defaultRound || "HR Round", __screener: screenerName || "" };
   });
   const [preview, setPreview] = useState(false);
 
@@ -125,11 +159,11 @@ export const TemplateModal = ({ open, onClose, onInsert, screenerName, existingT
       setVals({
         ...parsed,
         // Always prefer the passed props over whatever was parsed from text
-        __round:    defaultRound  || parsed.__round    || "Screening Round",
+        __round:    defaultRound  || parsed.__round    || "HR Round",
         __screener: screenerName  || parsed.__screener || "",
       });
     } else {
-      setVals({ ...EMPTY_TEMPLATE, __round: defaultRound || "Screening Round", __screener: screenerName || "" });
+      setVals({ ...EMPTY_TEMPLATE, __round: defaultRound || "HR Round", __screener: screenerName || "" });
     }
   }, [existingText, screenerName, defaultRound]);
 
@@ -166,7 +200,7 @@ export const TemplateModal = ({ open, onClose, onInsert, screenerName, existingT
         color: "#fff", py: 1.5, fontSize: "0.9rem", fontWeight: 700,
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
-        Screening Feedback Template
+        {title || 'HR Feedback Template'}
         <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
           <Box sx={{ display: "flex", bgcolor: "rgba(255,255,255,0.15)", borderRadius: 1, p: "2px", gap: "2px" }}>
             {["Edit", "Preview"].map((tab, i) => (

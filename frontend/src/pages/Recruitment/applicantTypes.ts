@@ -89,17 +89,19 @@ export const SCREENER_STATUS_COLORS: Record<string, string> = {
 };
 
 export const STAGE_OPTIONS = [
-  'HR Screening', 'Technical Round 1', 'Technical Round 2',
-  'Manager Round', 'Director Round', 'Assignment / Task',
-  'Culture Fit', 'Final Round', 'Other',
+  'HR Round', 'Technical Round 1', 'Technical Round 2',
+  'Assessment', 'CEO Round', 'MD Round', 'Other',
 ];
 
-export const RESULT_OPTIONS  = ['Pending', 'Pass', 'Fail', 'No Show', 'Rescheduled'];
-export const MODE_OPTIONS    = ['Online', 'Offline', 'Phone', 'Not decided'];
+export const RESULT_OPTIONS  = ['Pending', 'Selected', 'Rejected', 'On Hold'];
+export const MODE_OPTIONS    = ['Face-to-face', 'Video Call', 'Phone', 'Not decided'];
 export const DECISION_OPTIONS = ['Pending', 'Offer Made', 'Rejected', 'On Hold', 'Candidate Withdrew'];
 
 export const RESULT_COLORS: Record<string, string> = {
   Pending:     'bg-gray-100    text-gray-600',
+  Selected:    'bg-green-100   text-green-700',
+  Rejected:    'bg-red-100     text-red-700',
+  'On Hold':   'bg-yellow-100  text-yellow-700',
   Pass:        'bg-green-100   text-green-700',
   Fail:        'bg-red-100     text-red-700',
   'No Show':   'bg-orange-100  text-orange-700',

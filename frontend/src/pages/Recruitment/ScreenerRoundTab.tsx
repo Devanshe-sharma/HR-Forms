@@ -1,15 +1,12 @@
 // pages/Recruitment/ScreenerRoundTab.tsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Loader2, Edit2, Save, UserCheck } from 'lucide-react';
+import { Loader2, Edit2, Save, UserCheck, ChevronDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Field, EditSelect } from './ApplicantFieldComponents';
 import { ApplicantRecord, API_BASE, SCREENER_STATUS_OPTIONS, SCREENER_STATUS_COLORS } from './applicantTypes';
 import { TemplateModal } from './FeedbackTemplate';
 
-// Screener name list is sourced from Onboarding's HR department employees —
-// the single source of truth for current staff — instead of a separate
-// Employee collection.
 const ScreenerRoundTab = ({
   record, mode, setMode, onSave,
 }: {
@@ -23,9 +20,9 @@ const ScreenerRoundTab = ({
     screenerStatus: record.screenerStatus || '',
     screenerNotes:  record.screenerNotes  || '',
   });
-  const [hrNames, setHrNames] = useState<string[]>([]);
-  const [saving,  setSaving]  = useState(false);
-  const [templateOpen, setTemplateOpen] = useState(false);
+  const [hrNames,       setHrNames]       = useState<string[]>([]);
+  const [saving,        setSaving]        = useState(false);
+  const [templateOpen,  setTemplateOpen]  = useState(false);
 
   useEffect(() => {
     setDraft({
@@ -77,16 +74,22 @@ const ScreenerRoundTab = ({
     }
   };
 
+  // Status color — falls back to a neutral style if no match
+  const statusColor = draft.screenerStatus
+    ? SCREENER_STATUS_COLORS[draft.screenerStatus] || 'bg-gray-100 text-gray-600'
+    : null;
+
   return (
-    <div className="space-y-6">
-      {/* Edit / Save bar */}
+    <div className="space-y-5">
+
+      {/* ── Edit / Save bar ── */}
       <div className="flex justify-end gap-2">
         {mode === 'view' ? (
           <button
             onClick={() => setMode('edit')}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-lime-700 bg-lime-50 hover:bg-lime-100 rounded-lg transition"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-lime-700 bg-lime-50 hover:bg-lime-100 rounded-lg transition"
           >
-            <Edit2 size={13} /> Edit Screener Round
+            <Edit2 size={13} /> Edit
           </button>
         ) : (
           <>
@@ -99,63 +102,157 @@ const ScreenerRoundTab = ({
                 });
                 setMode('view');
               }}
-              className="px-3 py-1.5 text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+              className="px-4 py-2 text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
             >
               Cancel
             </button>
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-lime-600 hover:bg-lime-700 disabled:opacity-60 rounded-lg transition"
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-lime-600 hover:bg-lime-700 disabled:opacity-60 rounded-lg transition"
             >
               {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-              Save
+              {saving ? 'Saving…' : 'Save'}
             </button>
           </>
         )}
       </div>
 
-      {record.screenerStatus && mode === 'view' && (
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-gray-100 bg-gray-50">
-          <UserCheck size={20} className="text-gray-400" />
-          <div>
-            <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Screener Decision</p>
-            <span className={`text-sm font-bold px-2 py-0.5 rounded-full ${SCREENER_STATUS_COLORS[record.screenerStatus] || 'bg-gray-100 text-gray-600'}`}>
-              {record.screenerStatus}
+      {/* ── Decision banner — always visible, even when status is empty ── */}
+      <div className={`flex items-center gap-4 p-4 rounded-xl border ${
+        draft.screenerStatus
+          ? 'border-gray-100 bg-gray-50'
+          : 'border-dashed border-gray-200 bg-gray-50/50'
+      }`}>
+        <UserCheck size={22} className={draft.screenerStatus ? 'text-gray-400' : 'text-gray-300'} />
+        <div className="flex-1 min-w-0">
+          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+            Screener Decision
+          </p>
+          {draft.screenerStatus ? (
+            <span className={`inline-block text-sm font-bold px-2.5 py-0.5 rounded-full ${statusColor}`}>
+              {draft.screenerStatus}
             </span>
-          </div>
+          ) : (
+            <span className="text-sm text-gray-400 italic">
+              No decision recorded yet
+            </span>
+          )}
         </div>
-      )}
+        {draft.screenerName && (
+          <div className="text-right flex-shrink-0">
+            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">By</p>
+            <p className="text-sm font-semibold text-gray-700">{draft.screenerName}</p>
+          </div>
+        )}
+      </div>
 
+      {/* ── Screener fields ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {mode === 'view' ? (
           <>
-            <Field label="Screener Name" value={draft.screenerName} />
-            <Field label="Status"        value={draft.screenerStatus} />
+            <div>
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">
+                Screener Name
+              </p>
+              <p className="text-sm font-medium text-gray-800">
+                {draft.screenerName || <span className="text-gray-400 italic">Not assigned</span>}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">
+                Status
+              </p>
+              {draft.screenerStatus ? (
+                <span className={`inline-block text-sm font-semibold px-2.5 py-0.5 rounded-full ${statusColor}`}>
+                  {draft.screenerStatus}
+                </span>
+              ) : (
+                <p className="text-sm text-gray-400 italic">Not set</p>
+              )}
+            </div>
           </>
         ) : (
           <>
-            <EditSelect label="Screener Name" name="screenerName" value={draft.screenerName} options={screenerOptions} onChange={handleChange} />
-            <EditSelect label="Status"         name="screenerStatus" value={draft.screenerStatus} options={SCREENER_STATUS_OPTIONS} onChange={handleChange} />
+            {/* Screener name dropdown */}
+            <div>
+              <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">
+                Screener Name
+              </label>
+              <div className="relative">
+                <select
+                  value={draft.screenerName}
+                  onChange={e => handleChange('screenerName', e.target.value)}
+                  className="w-full appearance-none border border-gray-200 rounded-lg px-3 py-2 pr-8 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-lime-400 focus:border-lime-400 transition"
+                >
+                  <option value="">— Select screener —</option>
+                  {screenerOptions.map(n => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+                <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Status dropdown — default is blank "Select", NOT Shortlisted */}
+            <div>
+              <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">
+                Status
+              </label>
+              <div className="relative">
+                <select
+                  value={draft.screenerStatus}
+                  onChange={e => handleChange('screenerStatus', e.target.value)}
+                  className="w-full appearance-none border border-gray-200 rounded-lg px-3 py-2 pr-8 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-lime-400 focus:border-lime-400 transition"
+                >
+                  {/* ← blank default — not Shortlisted */}
+                  <option value="">— Select status —</option>
+                  {SCREENER_STATUS_OPTIONS.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+                <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
           </>
         )}
       </div>
 
+      {/* ── Notes / Feedback ── */}
       <div>
-        <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-1">Detailed Feedback</p>
-        {mode === 'edit' && (
-          <div className="flex justify-end mb-1.5">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">
+            Detailed Feedback
+          </p>
+          {mode === 'edit' && (
             <button
               onClick={() => setTemplateOpen(true)}
               className="text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition"
             >
               {draft.screenerNotes ? 'Edit via template' : 'Use template'}
             </button>
+          )}
+        </div>
+
+        {mode === 'edit' ? (
+          <textarea
+            value={draft.screenerNotes}
+            onChange={e => handleChange('screenerNotes', e.target.value)}
+            rows={6}
+            placeholder="Enter screener feedback…"
+            className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-lime-400 resize-none transition"
+          />
+        ) : (
+          <div className="bg-gray-50 rounded-xl px-4 py-3 min-h-[80px]">
+            {draft.screenerNotes ? (
+              <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed font-mono">
+                {draft.screenerNotes}
+              </p>
+            ) : (
+              <p className="text-sm text-gray-400 italic">No feedback recorded yet</p>
+            )}
           </div>
         )}
-        <p className="text-sm text-gray-800 whitespace-pre-wrap bg-gray-50 rounded-lg px-3 py-2 min-h-[60px] font-mono">
-          {draft.screenerNotes || '—'}
-        </p>
       </div>
 
       <TemplateModal
@@ -164,7 +261,8 @@ const ScreenerRoundTab = ({
         onInsert={(text: string) => handleChange('screenerNotes', text)}
         screenerName={draft.screenerName}
         existingText={draft.screenerNotes}
-        defaultRound="Screener Round"
+        defaultRound="HR Round"
+        title="HR Feedback Template"
       />
     </div>
   );
