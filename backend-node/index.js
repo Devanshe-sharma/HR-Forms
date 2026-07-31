@@ -108,7 +108,7 @@ app.use('/api/salary-revisions',   require('./routes/salaryRevisions'));
 const FRONTEND_DIST = path.join(__dirname, '../frontend/dist');
 app.use(express.static(FRONTEND_DIST));
 
-app.get('*', (req, res) => {
+app.use((req, res) => {
   res.sendFile(path.join(FRONTEND_DIST, 'index.html'));
 });
 
