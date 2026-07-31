@@ -245,6 +245,15 @@ const onboardingSchema = new mongoose.Schema(
     // to empty so existing documents are unaffected.
     reportingHead: { type: String, default: "" },
 
+    // ── REFERRAL (confidential, same convention as Exit's Asked-to-Leave
+    // fields) — referredPerformance/referredReason are HR-internal notes
+    // on how a referral turned out. Never referenced by any email
+    // template, and never included in an aggregate dashboard stat's
+    // per-employee/per-department breakdown — only an overall percentage.
+    referred: { type: Boolean, default: false },
+    referredPerformance: { type: String, default: "" },
+    referredReason: { type: String, default: "" },
+
     // ============================================================
     // SECTION 10: CALCULATED (66-75)
     // ============================================================
