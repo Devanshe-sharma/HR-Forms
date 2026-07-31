@@ -1,0 +1,3 @@
+(node:12572) [MONGOOSE] Warning: mongoose: Duplicate schema index on {"emp_id":1} for model "RoleMaster". This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:12572) [MONGOOSE] Warning: mongoose: Duplicate schema index on {"management_level":1} for model "RoleMaster". This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
