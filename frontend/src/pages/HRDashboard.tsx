@@ -181,6 +181,23 @@ interface PipResponse {
   performedAfterPipPct: number | null;
 }
 
+// Aggregate-only — the backend deliberately never returns names or the
+// confidential reason fields for this endpoint, so there's nothing here
+// to accidentally render either.
+interface AskedToLeaveDeptRow {
+  department: string;
+  askedToLeaveCount: number;
+  totalExits: number;
+  pct: number;
+}
+interface AskedToLeaveResponse {
+  success: boolean;
+  totalExits: number;
+  askedToLeaveCount: number;
+  askedToLeavePct: number;
+  departmentBreakdown: AskedToLeaveDeptRow[];
+}
+
 // ─── Small building blocks ─────────────────────────────────────────────────
 
 const FilterPillRow: React.FC<{
@@ -1249,6 +1266,95 @@ const PipAnalyticsWidget: React.FC = () => {
   );
 };
 
+// ─── Asked to Leave widget ──────────────────────────────────────────────────
+// Aggregate percentage only — deliberately no names, no reasons, no
+// per-employee detail anywhere in this widget or the endpoint it reads
+// from. Department breakdown is counts only, same confidentiality rule.
+
+const AskedToLeaveWidget: React.FC = () => {
+  const [data, setData] = useState<AskedToLeaveResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showBreakdown, setShowBreakdown] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    axios.get(`${API}/exit/analytics/asked-to-leave`, { params: { _t: Date.now() } })
+      .then((res) => setData(res.data))
+      .catch(() => toast.error("Failed to load Asked to Leave data"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const departmentBreakdown = data?.departmentBreakdown ?? [];
+
+  return (
+    <Box sx={{ bgcolor: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", p: 3, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+      <Box sx={{ mb: 2.5 }}>
+        <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
+          Asked to Leave
+        </Typography>
+        <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
+          Share of all exits classified as "Asked to Leave" — aggregate numbers only, no employee names or reasons shown
+        </Typography>
+      </Box>
+
+      {loading || !data ? (
+        <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
+          <CircularProgress size={26} sx={{ color: ACCENT }} />
+        </Box>
+      ) : (
+        <>
+          <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexWrap: "wrap" }}>
+            <StatCard label="Total Exits" value={data.totalExits} color={ACCENT} bg="#eef2ff" />
+            <StatCard label="Asked to Leave" value={data.askedToLeaveCount} color="#dc2626" bg="#fef2f2" />
+            <StatCard
+              label="% Asked to Leave"
+              value={`${data.askedToLeavePct}%`}
+              color="#dc2626"
+              bg="#fef2f2"
+              onClick={() => setShowBreakdown((v) => !v)}
+              active={showBreakdown}
+            />
+          </Box>
+
+          {showBreakdown && (
+            <Box sx={{ mb: 1 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                By Department (counts only)
+              </Typography>
+              {departmentBreakdown.length === 0 ? (
+                <Typography fontSize="0.8rem" color="#94a3b8">No data yet.</Typography>
+              ) : (
+                <Box sx={{ border: "1px solid #e2e8f0", borderRadius: "10px", overflow: "hidden" }}>
+                  {departmentBreakdown.map((row, i) => (
+                    <Box
+                      key={row.department}
+                      sx={{
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                        px: 2, py: 1, bgcolor: "#fff",
+                        borderTop: i > 0 ? "1px solid #f1f5f9" : "none",
+                      }}
+                    >
+                      <Typography fontSize="0.8rem" color="#1e293b" fontWeight={500}>{row.department}</Typography>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                        <span style={{
+                          fontSize: "0.65rem", fontWeight: 700, color: "#dc2626",
+                          background: "#dc262615", padding: "2px 8px", borderRadius: 20,
+                        }}>
+                          {row.askedToLeaveCount} of {row.totalExits} ({row.pct}%)
+                        </span>
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+              )}
+            </Box>
+          )}
+        </>
+      )}
+    </Box>
+  );
+};
+
 // ─── Placeholder cards — KPIs not wired to data yet, shown as empty
 // "coming soon" boxes so the dashboard reflects the full metric set the
 // business wants tracked, ahead of the backend work to populate them. ─────
@@ -1300,7 +1406,6 @@ const UPCOMING_METRICS: UpcomingMetric[] = [
   { title: "Salary Revision Timeliness Rate (%)", icon: <PaidIcon />, color: ACCENT, bg: "#eef2ff" },
   { title: "Trainings Conducted vs Planned", icon: <MenuBookIcon />, color: "#0d9488", bg: "#f0fdfa" },
   { title: "Employee Confirmation Timeliness Rate (%)", icon: <AssignmentTurnedInIcon />, color: "#2563eb", bg: "#eff6ff" },
-  { title: "Asked to Leave (%)", icon: <PersonRemoveIcon />, color: "#dc2626", bg: "#fef2f2" },
   { title: "Offer Dropout (%)", icon: <CancelIcon />, color: "#db2777", bg: "#fdf2f8" },
 ];
 
@@ -1396,12 +1501,21 @@ async function fetchInternConversionsSummary(): Promise<CardSummary> {
   return { value: String(total), sublabel: `Intern/Contract Based → Employee, via Salary Revision` };
 }
 
+async function fetchAskedToLeaveSummary(): Promise<CardSummary> {
+  const res = await axios.get(`${API}/exit/analytics/asked-to-leave`, { params: { _t: Date.now() } });
+  const totalExits = res.data?.totalExits ?? 0;
+  const askedToLeaveCount = res.data?.askedToLeaveCount ?? 0;
+  const pct = res.data?.askedToLeavePct ?? 0;
+  if (totalExits === 0) return { value: "—", sublabel: "No exits recorded yet" };
+  return { value: `${pct}%`, sublabel: `${askedToLeaveCount} of ${totalExits} exits` };
+}
+
 // ─── Root page ──────────────────────────────────────────────────────────────
 // Default view is a fixed 3x2 grid of equal-size summary cards — no
 // scrolling. Clicking a card opens that area's full existing widget
 // (unchanged from before) inside a modal.
 
-type CardKey = "teeth" | "gender" | "interns" | "internConversions" | "increments" | "pip" | "recruitment" | "onboarding" | "exit";
+type CardKey = "teeth" | "gender" | "interns" | "internConversions" | "increments" | "pip" | "askedToLeave" | "recruitment" | "onboarding" | "exit";
 
 const HRAnalyticsDashboard: React.FC = () => {
   const [activeCard, setActiveCard] = useState<CardKey | null>(null);
@@ -1420,6 +1534,7 @@ const HRAnalyticsDashboard: React.FC = () => {
     { key: "internConversions", title: "Intern to Employee", icon: <SwapHorizIcon />, color: "#0d9488", bg: "#f0fdfa", fetchSummary: fetchInternConversionsSummary },
     { key: "increments", title: "Salary Increments (%)", icon: <TrendingUpIcon />, color: "#7c3aed", bg: "#f5f3ff", fetchSummary: fetchIncrementSummary },
     { key: "pip", title: "PIP (%)", icon: <AssessmentIcon />, color: "#d97706", bg: "#fffbeb", fetchSummary: fetchPipSummary },
+    { key: "askedToLeave", title: "Asked to Leave (%)", icon: <PersonRemoveIcon />, color: "#dc2626", bg: "#fef2f2", fetchSummary: fetchAskedToLeaveSummary },
     { key: "recruitment", title: "Recruitment On-Time (%)", icon: <WorkIcon />, color: "#0284c7", bg: "#eff6ff", fetchSummary: () => fetchKpiSummary("recruitment") },
     { key: "onboarding", title: "Onboarding On-Time (%)", icon: <HowToRegIcon />, color: "#059669", bg: "#f0fdf4", fetchSummary: () => fetchKpiSummary("onboarding") },
     { key: "exit", title: "Exit On-Time (%)", icon: <ExitToAppIcon />, color: "#d97706", bg: "#fffbeb", fetchSummary: () => fetchKpiSummary("exit") },
@@ -1510,6 +1625,7 @@ const HRAnalyticsDashboard: React.FC = () => {
           {activeCard === "internConversions" && <InternConversionsWidget />}
           {activeCard === "increments" && <IncrementAnalyticsWidget />}
           {activeCard === "pip" && <PipAnalyticsWidget />}
+          {activeCard === "askedToLeave" && <AskedToLeaveWidget />}
           {(activeCard === "recruitment" || activeCard === "onboarding" || activeCard === "exit") && activeModuleLabel && (
             <ModuleKpiRow moduleKey={activeCard} label={activeModuleLabel} />
           )}
