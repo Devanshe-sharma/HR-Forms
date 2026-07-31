@@ -200,6 +200,14 @@ interface ReferredResponse {
   referredPct: number;
 }
 
+// Aggregate-only, same confidentiality rule as the others above.
+interface OfferDropoutResponse {
+  success: boolean;
+  total: number;
+  dropoutCount: number;
+  dropoutPct: number;
+}
+
 // ─── Small building blocks ─────────────────────────────────────────────────
 
 const FilterPillRow: React.FC<{
@@ -1331,6 +1339,48 @@ const ReferredWidget: React.FC = () => {
   );
 };
 
+// ─── Offer Dropout widget ────────────────────────────────────────────────
+// Aggregate percentage only — no names, no department breakdown, same
+// confidentiality rule as the widgets above.
+
+const OfferDropoutWidget: React.FC = () => {
+  const [data, setData] = useState<OfferDropoutResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    axios.get(`${API}/onboarding/analytics/offer-dropout`, { params: { _t: Date.now() } })
+      .then((res) => setData(res.data))
+      .catch(() => toast.error("Failed to load offer dropout data"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <Box sx={{ bgcolor: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", p: 3, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+      <Box sx={{ mb: 2.5 }}>
+        <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
+          Offer Dropout
+        </Typography>
+        <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
+          Share of all onboardings marked "Not Joining" — a single aggregate number, no employee names or department breakdown shown
+        </Typography>
+      </Box>
+
+      {loading || !data ? (
+        <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
+          <CircularProgress size={26} sx={{ color: ACCENT }} />
+        </Box>
+      ) : (
+        <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
+          <StatCard label="Total Onboardings" value={data.total} color={ACCENT} bg="#eef2ff" />
+          <StatCard label="Not Joining" value={data.dropoutCount} color="#db2777" bg="#fdf2f8" />
+          <StatCard label="% Dropout" value={`${data.dropoutPct}%`} color="#db2777" bg="#fdf2f8" />
+        </Box>
+      )}
+    </Box>
+  );
+};
+
 // ─── Placeholder cards — KPIs not wired to data yet, shown as empty
 // "coming soon" boxes so the dashboard reflects the full metric set the
 // business wants tracked, ahead of the backend work to populate them. ─────
@@ -1381,7 +1431,6 @@ const UPCOMING_METRICS: UpcomingMetric[] = [
   { title: "Salary Revision Timeliness Rate (%)", icon: <PaidIcon />, color: ACCENT, bg: "#eef2ff" },
   { title: "Trainings Conducted vs Planned", icon: <MenuBookIcon />, color: "#0d9488", bg: "#f0fdfa" },
   { title: "Employee Confirmation Timeliness Rate (%)", icon: <AssignmentTurnedInIcon />, color: "#2563eb", bg: "#eff6ff" },
-  { title: "Offer Dropout (%)", icon: <CancelIcon />, color: "#db2777", bg: "#fdf2f8" },
 ];
 
 // ─── Summary fetchers — each mirrors the "All Quarters, most recent" logic
@@ -1495,12 +1544,21 @@ async function fetchReferredSummary(): Promise<CardSummary> {
   return { value: `${pct}%`, sublabel: `${referredCount} of ${total} who ever joined` };
 }
 
+async function fetchOfferDropoutSummary(): Promise<CardSummary> {
+  const res = await axios.get(`${API}/onboarding/analytics/offer-dropout`, { params: { _t: Date.now() } });
+  const total = res.data?.total ?? 0;
+  const dropoutCount = res.data?.dropoutCount ?? 0;
+  const pct = res.data?.dropoutPct ?? 0;
+  if (total === 0) return { value: "—", sublabel: "No onboardings recorded yet" };
+  return { value: `${pct}%`, sublabel: `${dropoutCount} of ${total} onboardings` };
+}
+
 // ─── Root page ──────────────────────────────────────────────────────────────
 // Default view is a fixed 3x2 grid of equal-size summary cards — no
 // scrolling. Clicking a card opens that area's full existing widget
 // (unchanged from before) inside a modal.
 
-type CardKey = "teeth" | "gender" | "interns" | "internConversions" | "increments" | "pip" | "askedToLeave" | "referred" | "recruitment" | "onboarding" | "exit";
+type CardKey = "teeth" | "gender" | "interns" | "internConversions" | "increments" | "pip" | "askedToLeave" | "referred" | "offerDropout" | "recruitment" | "onboarding" | "exit";
 
 const HRAnalyticsDashboard: React.FC = () => {
   const [activeCard, setActiveCard] = useState<CardKey | null>(null);
@@ -1521,6 +1579,7 @@ const HRAnalyticsDashboard: React.FC = () => {
     { key: "pip", title: "PIP (%)", icon: <AssessmentIcon />, color: "#d97706", bg: "#fffbeb", fetchSummary: fetchPipSummary },
     { key: "askedToLeave", title: "Asked to Leave (%)", icon: <PersonRemoveIcon />, color: "#dc2626", bg: "#fef2f2", fetchSummary: fetchAskedToLeaveSummary },
     { key: "referred", title: "Referred Employees (%)", icon: <GroupAddIcon />, color: "#0284c7", bg: "#eff6ff", fetchSummary: fetchReferredSummary },
+    { key: "offerDropout", title: "Offer Dropout (%)", icon: <CancelIcon />, color: "#db2777", bg: "#fdf2f8", fetchSummary: fetchOfferDropoutSummary },
     { key: "recruitment", title: "Recruitment On-Time (%)", icon: <WorkIcon />, color: "#0284c7", bg: "#eff6ff", fetchSummary: () => fetchKpiSummary("recruitment") },
     { key: "onboarding", title: "Onboarding On-Time (%)", icon: <HowToRegIcon />, color: "#059669", bg: "#f0fdf4", fetchSummary: () => fetchKpiSummary("onboarding") },
     { key: "exit", title: "Exit On-Time (%)", icon: <ExitToAppIcon />, color: "#d97706", bg: "#fffbeb", fetchSummary: () => fetchKpiSummary("exit") },
@@ -1613,6 +1672,7 @@ const HRAnalyticsDashboard: React.FC = () => {
           {activeCard === "pip" && <PipAnalyticsWidget />}
           {activeCard === "askedToLeave" && <AskedToLeaveWidget />}
           {activeCard === "referred" && <ReferredWidget />}
+          {activeCard === "offerDropout" && <OfferDropoutWidget />}
           {(activeCard === "recruitment" || activeCard === "onboarding" || activeCard === "exit") && activeModuleLabel && (
             <ModuleKpiRow moduleKey={activeCard} label={activeModuleLabel} />
           )}

@@ -1560,6 +1560,25 @@ router.get("/analytics/referred", async (req, res) => {
   }
 });
 
+// ─── GET /api/onboarding/analytics/offer-dropout ───────────────────────────
+// Offer dropout rate: joiningStatus === "Not Joining" out of ALL onboarding
+// records (not just decided ones) — matches HR's own framing of "out of
+// all onboardings". Aggregate-only, no names/department breakdown: the
+// dropout count is typically small enough that a per-department split
+// would be as identifying as a name.
+router.get("/analytics/offer-dropout", async (req, res) => {
+  try {
+    const total = await Onboarding.countDocuments({});
+    const dropoutCount = await Onboarding.countDocuments({ joiningStatus: "Not Joining" });
+    const dropoutPct = total > 0 ? Math.round((dropoutCount / total) * 1000) / 10 : 0;
+
+    res.json({ success: true, total, dropoutCount, dropoutPct });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 async function recomputeOnboarding(existing) {
   const existingPlain = existing.toObject();
   const checkLists = toPlainCheckLists(existingPlain.checkLists);
