@@ -5,6 +5,8 @@ const sendExitReminder                  = require("../senders/sendExitReminder")
 const sendExitInstructionsToAll         = require("../senders/sendExitInstructionsToAll");
 const sendExitInstructionsToAllAlready  = require("../senders/sendExitInstructionsToAllAlready");
 
+const EXIT_EMAILS_TEMPORARILY_DISABLED = true;
+
 // NOTE on doc's auto-email fields (autoExitEmail, autoReminderEmail,
 // autoInstructionsToAllEmail): the route handler is responsible for only
 // setting these to true on the SPECIFIC call where the checkbox was newly
@@ -16,6 +18,11 @@ const sendExitInstructionsToAllAlready  = require("../senders/sendExitInstructio
 // Tell us what it should trigger and we'll wire it up.
 async function triggerNewExit(doc) {
   try {
+    if (EXIT_EMAILS_TEMPORARILY_DISABLED) {
+      console.log("[triggerNewExit] Exit emails temporarily disabled; skipping send.");
+      return;
+    }
+
     // Exit Cancelled - no progress/checklist email, matching the original
     // Apps Script's early-return behavior.
     if (doc.exitStatus === "Exit Cancelled") {
