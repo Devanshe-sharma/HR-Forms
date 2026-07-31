@@ -1132,6 +1132,8 @@ router.get("/verify-access", async (req, res) => {
   }
 });
 
+const SHARE_PROJECTION = "name empId mobile officialEmail dept designation exitStatus";
+
 router.get("/generate-access-link", async (req, res) => {
   try {
     const email = (req.query.email || "").trim().toLowerCase();
@@ -1139,7 +1141,7 @@ router.get("/generate-access-link", async (req, res) => {
 
     const doc = await Onboarding.findOne(
       { officialEmail: { $regex: `^${email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" } },
-      "name officialEmail exitStatus"
+      SHARE_PROJECTION
     ).lean();
 
     if (!doc) return res.status(404).json({ success: false, message: "No matching employee found" });
@@ -1151,9 +1153,57 @@ router.get("/generate-access-link", async (req, res) => {
     const base = process.env.FRONTEND_URL || "https://hr.briskolive.com";
     const link = `${base}/company-orientation?name=${encodeURIComponent(doc.name || "")}&email=${encodeURIComponent(doc.officialEmail)}&sig=${sig}`;
 
-    res.json({ success: true, link });
+    res.json({
+      success: true,
+      link,
+      employee: {
+        name: doc.name || "",
+        empId: doc.empId || "",
+        mobile: doc.mobile || "",
+        email: doc.officialEmail || "",
+        department: doc.dept || "",
+        designation: doc.designation || "",
+      },
+    });
   } catch (err) {
     console.error("[generate-access-link] error:", err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.post("/share-link", async (req, res) => {
+  try {
+    const email = (req.body.email || req.query.email || "").trim().toLowerCase();
+    if (!email) return res.status(400).json({ success: false, message: "email is required" });
+
+    const doc = await Onboarding.findOne(
+      { officialEmail: { $regex: `^${email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" } },
+      SHARE_PROJECTION
+    ).lean();
+
+    if (!doc) return res.status(404).json({ success: false, message: "No matching employee found" });
+    if (EXITED_STATUS_VALUES.has(doc.exitStatus || "")) {
+      return res.status(400).json({ success: false, message: "This employee has exited" });
+    }
+
+    const sig = signEmail(doc.officialEmail);
+    const base = process.env.FRONTEND_URL || "https://hr.briskolive.com";
+    const link = `${base}/company-orientation?name=${encodeURIComponent(doc.name || "")}&email=${encodeURIComponent(doc.officialEmail)}&sig=${sig}`;
+
+    res.json({
+      success: true,
+      link,
+      employee: {
+        name: doc.name || "",
+        empId: doc.empId || "",
+        mobile: doc.mobile || "",
+        email: doc.officialEmail || "",
+        department: doc.dept || "",
+        designation: doc.designation || "",
+      },
+    });
+  } catch (err) {
+    console.error("[share-link] error:", err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -1371,6 +1421,73 @@ router.put("/:id", async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
+router.get('/:id/contract', async (req, res) => {
+  try {
+    const doc = await Onboarding.findById(req.params.id)
+      .select('contractPeriod contractAmount salApplicableFrom equivalentMonthlyCtc contractHistory')
+      .lean();
+ 
+    if (!doc) return res.status(404).json({ success: false, message: 'Onboarding record not found' });
+ 
+    res.json({ success: true, data: doc });
+  } catch (err) {
+    console.error('[contract GET]', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+ 
+// ─── PUT /api/onboarding/:id/contract ────────────────────────────────────────
+router.put('/:id/contract', async (req, res) => {
+  try {
+    const { id } = req.params;
+ 
+    const {
+      contractPeriod,
+      contractAmount,
+      salApplicableFrom,
+      equivalentMonthlyCtc,
+      updatedBy,
+      remarks,
+    } = req.body;
+ 
+    // Fields to update on the main record
+    const updateData = {
+      ...(contractPeriod       !== undefined && { contractPeriod }),
+      ...(contractAmount       !== undefined && { contractAmount }),
+      ...(salApplicableFrom    !== undefined && { salApplicableFrom }),
+      ...(equivalentMonthlyCtc !== undefined && { equivalentMonthlyCtc }),
+    };
+ 
+    // History entry — one row per save, appended to contractHistory array
+    const historyEntry = {
+      contractPeriod:       contractPeriod       || '',
+      contractAmount:       contractAmount       || '',
+      salApplicableFrom:    salApplicableFrom    || '',
+      equivalentMonthlyCtc: equivalentMonthlyCtc || '',
+      updatedAt:            new Date(),
+      updatedBy:            updatedBy            || 'HR',
+      remarks:              remarks              || '',
+    };
+ 
+    const updated = await Onboarding.findByIdAndUpdate(
+      id,
+      {
+        $set:  updateData,
+        $push: { contractHistory: historyEntry },
+      },
+      { new: true, runValidators: true }
+    );
+ 
+    if (!updated) return res.status(404).json({ success: false, message: 'Onboarding record not found' });
+ 
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    console.error('[contract PUT]', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 
 router.get("/analytics/interns", async (req, res) => {
   try {

@@ -14,30 +14,45 @@ const interviewRoundSchema = new mongoose.Schema(
     stage: {
       type: String,
       enum: [
-        'HR Screening',
         'Technical Round 1',
         'Technical Round 2',
-        'Manager Round',
-        'Director Round',
-        'Assignment / Task',
-        'Culture Fit',
-        'Final Round',
-        'Other',
+        'Assessment (if any)',
+        'CEO Round',
+        'MD Round',
       ],
-      default: 'HR Screening',
+      default: 'Technical Round 1',
     },
-    customStage:    { type: String, default: '' },   // used when stage === 'Other'
+    // Logistics state of this round — separate from `result` (the interview
+    // outcome). A round can be rescheduled/cancelled without that implying
+    // anything about how the candidate actually performed.
+    schedulingStatus: {
+      type: String,
+      enum: ['Scheduled', 'Rescheduled', 'Cancelled'],
+      default: 'Scheduled',
+    },
+    cancellationReason: { type: String, default: '' },   // shown/edited only when schedulingStatus === 'Cancelled'
     scheduledDate:  { type: Date,   default: null },
+    scheduledTime:  { type: String, default: '' },   // free-text "HH:MM", kept separate from scheduledDate
     interviewer:    { type: String, default: '' },
     mode: {
       type: String,
-      enum: ['Online', 'Offline', 'Phone', 'Not decided'],
-      default: 'Not decided',
+      enum: ['Virtual', 'Face-to-Face (F2F)', 'Phone Call', 'Not Decided Yet'],
+      default: 'Not Decided Yet',
     },
+    meetingLink: { type: String, default: '' },   // meeting URL or physical location text
+    // Set either manually by HR, or by the candidate clicking the
+    // Yes/Maybe/Can't-attend buttons in the schedule/reschedule email
+    // (see routes/applicantRecords.js's public /respond endpoint).
+    candidateConfirmation: {
+      type: String,
+      enum: ['Pending', 'Yes', 'Maybe', 'No'],
+      default: 'Pending',
+    },
+    note:      { type: String, default: '' },
     feedback:  { type: String, default: '' },
     result: {
       type: String,
-      enum: ['Pending', 'Pass', 'Fail', 'No Show', 'Rescheduled'],
+      enum: ['Selected', 'Rejected', 'Pending', 'On Hold'],
       default: 'Pending',
     },
   },
@@ -76,6 +91,7 @@ const applicantRecordSchema = new mongoose.Schema(
     email:                 { type: String, default: '' },
     phone:                 { type: String, default: '' },
     whatsapp_same:         { type: Boolean, default: false },
+    whatsappNumber:        { type: String, default: '' },
     dob:                   { type: String, default: '' },
     country:               { type: String, default: '' },
     state:                 { type: String, default: '' },
@@ -89,23 +105,56 @@ const applicantRecordSchema = new mongoose.Schema(
     job_id:                { type: Number, default: null },
     designation:           { type: String, default: '' },
     designation_id:        { type: Number, default: null },
-    highest_qualification: { type: String, default: '' },
-    experience:            { type: String, enum: ['Yes', 'No'], default: 'No' },
-    total_experience:      { type: String, default: '' },
-    current_ctc:           { type: String, default: '' },
-    notice_period:         { type: String, default: '' },
-    expected_monthly_ctc:  { type: String, default: '' },
 
-    hindi_read:    { type: String, default: '' },
-    hindi_write:   { type: String, default: '' },
-    hindi_speak:   { type: String, default: '' },
-    english_read:  { type: String, default: '' },
-    english_write: { type: String, default: '' },
-    english_speak: { type: String, default: '' },
+    // candidateType (Fresher/Experienced/Intern) is now the source of
+    // truth from the application form. `experience` (Yes/No) stays here
+    // unchanged — and is derived from candidateType at seed time in
+    // routes/candidateApplications.js — purely so the existing dashboard
+    // EXP/FRESH badge and filter in AllApplicants.tsx keep working without
+    // the candidate ever being asked the same thing twice.
+    candidateType: { type: String, enum: ['Fresher', 'Experienced', 'Intern', ''], default: '' },
+    experience:    { type: String, enum: ['Yes', 'No'], default: 'No' },
 
-    facebookLink:    { type: String, default: '' },
+    highest_qualification:   { type: String, default: '' },
+    educationSpecialization: { type: String, default: '' },
+    collegeUniversity:       { type: String, default: '' },
+    graduationYear:          { type: Number, default: null },
+    courseName:              { type: String, default: '' },
+    semesterOrYear:          { type: String, default: '' },
+    internshipDuration:      { type: String, default: '' },
+
+    total_experience:     { type: String, default: '' },
+    relevantExperience:   { type: Number, default: null },
+    current_company:      { type: String, default: '' },
+    current_designation:  { type: String, default: '' },
+    current_ctc:          { type: String, default: '' },
+    notice_period:        { type: String, default: '' },
+    // Renamed on CandidateApplication to expected_annual_ctc (the label
+    // always said "Annual" while the old field name said "monthly") — kept
+    // as expected_monthly_ctc here since AllApplicants.tsx/CandidateInformationTab.tsx
+    // already read this exact field name throughout the HR dashboard;
+    // routes/candidateApplications.js maps the renamed source field into
+    // this one at seed time so the dashboard needs no changes.
+    expected_monthly_ctc: { type: String, default: '' },
+    expectedJoiningDate:  { type: Date, default: null },
+
+    primarySkills:   { type: [String], default: [] },
+    secondarySkills: { type: [String], default: [] },
+
+    languagesKnown: { type: [String], default: [] },
+    otherLanguage:  { type: String, default: '' },
+
     linkedin:        { type: String, default: '' },
+    githubPortfolio: { type: String, default: '' },
     short_video_url: { type: String, default: '' },
+    preferredWorkMode: { type: String, default: '' },
+
+    candidateSource: { type: String, default: '' },
+    sourceDetail:    { type: String, default: '' },
+
+    screeningAnswers: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    consentGiven:     { type: Boolean, default: false },
+    consentTimestamp: { type: Date, default: null },
     // Resume link — now correctly populated by the fixed Drive upload
     // pipeline in routes/candidateApplications.js (the note that used
     // to be here about this never being wired up is no longer accurate

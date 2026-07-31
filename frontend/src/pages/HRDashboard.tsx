@@ -21,6 +21,15 @@ import HowToRegIcon from "@mui/icons-material/HowToRegOutlined";
 import ExitToAppIcon from "@mui/icons-material/ExitToAppOutlined";
 import SwapHorizIcon from "@mui/icons-material/SwapHorizOutlined";
 import TrendingUpIcon from "@mui/icons-material/TrendingUpOutlined";
+import AssessmentIcon from "@mui/icons-material/AssessmentOutlined";
+import GroupAddIcon from "@mui/icons-material/GroupAddOutlined";
+import HourglassEmptyIcon from "@mui/icons-material/HourglassEmptyOutlined";
+import AccessTimeIcon from "@mui/icons-material/AccessTimeOutlined";
+import PaidIcon from "@mui/icons-material/PaidOutlined";
+import MenuBookIcon from "@mui/icons-material/MenuBookOutlined";
+import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedInOutlined";
+import PersonRemoveIcon from "@mui/icons-material/PersonRemoveOutlined";
+import CancelIcon from "@mui/icons-material/CancelOutlined";
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
@@ -157,6 +166,19 @@ interface InternConversionsResponse {
   total: number;
   conversions: InternConversionRow[];
   departmentBreakdown: InternConversionDeptRow[];
+}
+
+interface PipListRow {
+  name: string;
+  reviewDate: string | null;
+}
+interface PipResponse {
+  success: boolean;
+  currentlyOnPip: number;
+  currentlyOnPipList: PipListRow[];
+  totalResolved: number;
+  totalImproved: number;
+  performedAfterPipPct: number | null;
 }
 
 // ─── Small building blocks ─────────────────────────────────────────────────
@@ -1142,6 +1164,146 @@ const SummaryCard: React.FC<{
   );
 };
 
+// ─── PIP Analytics widget ───────────────────────────────────────────────────
+// "Currently on PIP" comes from SalaryRevision (stage='on_hold', approved
+// PIP) — the formal post-confirmation PIP HR means day-to-day. "% performed
+// after PIP" also folds in Confirmations extended-probation outcomes (the
+// same thing Onboarding labels "On PIP / Extended") — see the backend
+// route's own comment for exactly how each source resolves.
+
+const PipAnalyticsWidget: React.FC = () => {
+  const [data, setData] = useState<PipResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    axios.get(`${API}/salary-revisions/analytics/pip`, { params: { _t: Date.now() } })
+      .then((res) => setData(res.data))
+      .catch(() => toast.error("Failed to load PIP data"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <Box sx={{ bgcolor: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", p: 3, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+      <Box sx={{ mb: 2.5 }}>
+        <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
+          Performance Improvement Plans (PIP)
+        </Typography>
+        <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
+          Combines formal PIPs (Salary Revision) and extended probation (Confirmations) — closed out via each record's own workflow
+        </Typography>
+      </Box>
+
+      {loading || !data ? (
+        <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
+          <CircularProgress size={26} sx={{ color: ACCENT }} />
+        </Box>
+      ) : (
+        <>
+          <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexWrap: "wrap" }}>
+            <StatCard
+              label="Currently on PIP"
+              value={data.currentlyOnPip}
+              color="#d97706"
+              bg="#fffbeb"
+            />
+            <StatCard
+              label="% Performed After PIP"
+              value={data.performedAfterPipPct != null ? `${data.performedAfterPipPct}%` : "—"}
+              color="#059669"
+              bg="#f0fdf4"
+              hint={data.totalResolved > 0 ? `${data.totalImproved} of ${data.totalResolved} resolved cases improved` : "No PIP has been closed out yet"}
+            />
+          </Box>
+
+          {data.currentlyOnPipList.length > 0 && (
+            <Box>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                Currently on PIP
+              </Typography>
+              <Box sx={{ border: "1px solid #e2e8f0", borderRadius: "10px", overflow: "hidden" }}>
+                {data.currentlyOnPipList.map((row, i) => (
+                  <Box
+                    key={`${row.name}-${i}`}
+                    sx={{
+                      display: "flex", justifyContent: "space-between", alignItems: "center",
+                      px: 2, py: 1, bgcolor: "#fff",
+                      borderTop: i > 0 ? "1px solid #f1f5f9" : "none",
+                    }}
+                  >
+                    <Typography fontSize="0.8rem" color="#1e293b" fontWeight={500}>{row.name}</Typography>
+                    <Typography fontSize="0.72rem" color="#94a3b8">
+                      Review due {row.reviewDate ? new Date(row.reviewDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+              <Typography fontSize="0.68rem" color="#94a3b8" mt={1}>
+                Resolve each one from its Salary Revision record — "Close Out PIP" once the review date is reached.
+              </Typography>
+            </Box>
+          )}
+        </>
+      )}
+    </Box>
+  );
+};
+
+// ─── Placeholder cards — KPIs not wired to data yet, shown as empty
+// "coming soon" boxes so the dashboard reflects the full metric set the
+// business wants tracked, ahead of the backend work to populate them. ─────
+
+const PlaceholderCard: React.FC<{
+  title: string; icon: React.ReactNode; color: string; bg: string;
+}> = ({ title, icon, color, bg }) => (
+  <Box
+    sx={{
+      bgcolor: "#fff", border: "1px dashed #cbd5e1", borderRadius: "16px",
+      p: 2.5, display: "flex", flexDirection: "column",
+      justifyContent: "space-between", height: "100%", minHeight: 0,
+    }}
+  >
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1.5 }}>
+      <Box sx={{
+        width: 38, height: 38, borderRadius: "10px", bgcolor: bg,
+        display: "flex", alignItems: "center", justifyContent: "center", color, flexShrink: 0, opacity: 0.7,
+      }}>
+        {icon}
+      </Box>
+      <Typography fontSize="0.9rem" fontWeight={700} color="#64748b" sx={{ lineHeight: 1.2 }}>
+        {title}
+      </Typography>
+    </Box>
+
+    <Box sx={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+      <Typography fontSize="clamp(1.5rem, 3vw, 2.2rem)" fontWeight={800} sx={{ color: "#e2e8f0", lineHeight: 1.1 }}>
+        —
+      </Typography>
+      <Typography fontSize="0.72rem" color="#94a3b8" mt={0.5}>
+        Data coming soon
+      </Typography>
+    </Box>
+  </Box>
+);
+
+interface UpcomingMetric {
+  title: string;
+  icon: React.ReactNode;
+  color: string;
+  bg: string;
+}
+
+const UPCOMING_METRICS: UpcomingMetric[] = [
+  { title: "Referred Employees (%)", icon: <GroupAddIcon />, color: "#0284c7", bg: "#eff6ff" },
+  { title: "Average Days to Hire (Fresher)", icon: <HourglassEmptyIcon />, color: "#059669", bg: "#f0fdf4" },
+  { title: "Average Days to Hire (Experienced Employee)", icon: <AccessTimeIcon />, color: "#d97706", bg: "#fffbeb" },
+  { title: "Salary Revision Timeliness Rate (%)", icon: <PaidIcon />, color: ACCENT, bg: "#eef2ff" },
+  { title: "Trainings Conducted vs Planned", icon: <MenuBookIcon />, color: "#0d9488", bg: "#f0fdfa" },
+  { title: "Employee Confirmation Timeliness Rate (%)", icon: <AssignmentTurnedInIcon />, color: "#2563eb", bg: "#eff6ff" },
+  { title: "Asked to Leave (%)", icon: <PersonRemoveIcon />, color: "#dc2626", bg: "#fef2f2" },
+  { title: "Offer Dropout (%)", icon: <CancelIcon />, color: "#db2777", bg: "#fdf2f8" },
+];
+
 // ─── Summary fetchers — each mirrors the "All Quarters, most recent" logic
 // already used inside the corresponding full widget, just extracting one
 // headline number instead of the whole dataset. ─────────────────────────────
@@ -1219,6 +1381,14 @@ async function fetchIncrementSummary(): Promise<CardSummary> {
   return { value: `${avg}%`, sublabel: `${low} low (<9%), ${high} high performers (≥20%)` };
 }
 
+async function fetchPipSummary(): Promise<CardSummary> {
+  const res = await axios.get(`${API}/salary-revisions/analytics/pip`, { params: { _t: Date.now() } });
+  const currentlyOnPip: number = res.data?.currentlyOnPip ?? 0;
+  const pct = res.data?.performedAfterPipPct;
+  if (pct == null) return { value: String(currentlyOnPip), sublabel: "Currently on PIP — no closed-out case yet" };
+  return { value: `${pct}%`, sublabel: `Performed after PIP · ${currentlyOnPip} currently on PIP` };
+}
+
 async function fetchInternConversionsSummary(): Promise<CardSummary> {
   const res = await axios.get(`${API}/onboarding/analytics/intern-conversions`, { params: { _t: Date.now() } });
   const total = res.data?.total ?? 0;
@@ -1231,7 +1401,7 @@ async function fetchInternConversionsSummary(): Promise<CardSummary> {
 // scrolling. Clicking a card opens that area's full existing widget
 // (unchanged from before) inside a modal.
 
-type CardKey = "teeth" | "gender" | "interns" | "internConversions" | "increments" | "recruitment" | "onboarding" | "exit";
+type CardKey = "teeth" | "gender" | "interns" | "internConversions" | "increments" | "pip" | "recruitment" | "onboarding" | "exit";
 
 const HRAnalyticsDashboard: React.FC = () => {
   const [activeCard, setActiveCard] = useState<CardKey | null>(null);
@@ -1245,13 +1415,14 @@ const HRAnalyticsDashboard: React.FC = () => {
     fetchSummary: () => Promise<CardSummary>;
   }[] = [
     { key: "teeth", title: "Teeth-to-Tail Ratio", icon: <BalanceIcon />, color: ACCENT, bg: "#eef2ff", fetchSummary: fetchTeethToTailSummary },
-    { key: "gender", title: "Gender Distribution", icon: <WcIcon />, color: "#db2777", bg: "#fdf2f8", fetchSummary: fetchGenderSummary },
-    { key: "interns", title: "Interns", icon: <SchoolIcon />, color: INTERN_COLOR, bg: "#f5f3ff", fetchSummary: fetchInternsSummary },
-    { key: "internConversions", title: "Intern → Full-Time", icon: <SwapHorizIcon />, color: "#0d9488", bg: "#f0fdfa", fetchSummary: fetchInternConversionsSummary },
-    { key: "increments", title: "Salary Increments", icon: <TrendingUpIcon />, color: "#7c3aed", bg: "#f5f3ff", fetchSummary: fetchIncrementSummary },
-    { key: "recruitment", title: "Recruitment On-Time %", icon: <WorkIcon />, color: "#0284c7", bg: "#eff6ff", fetchSummary: () => fetchKpiSummary("recruitment") },
-    { key: "onboarding", title: "Onboarding On-Time %", icon: <HowToRegIcon />, color: "#059669", bg: "#f0fdf4", fetchSummary: () => fetchKpiSummary("onboarding") },
-    { key: "exit", title: "Exit On-Time %", icon: <ExitToAppIcon />, color: "#d97706", bg: "#fffbeb", fetchSummary: () => fetchKpiSummary("exit") },
+    { key: "gender", title: "Gender Ratio", icon: <WcIcon />, color: "#db2777", bg: "#fdf2f8", fetchSummary: fetchGenderSummary },
+    { key: "interns", title: "Interns (%)", icon: <SchoolIcon />, color: INTERN_COLOR, bg: "#f5f3ff", fetchSummary: fetchInternsSummary },
+    { key: "internConversions", title: "Intern to Employee", icon: <SwapHorizIcon />, color: "#0d9488", bg: "#f0fdfa", fetchSummary: fetchInternConversionsSummary },
+    { key: "increments", title: "Salary Increments (%)", icon: <TrendingUpIcon />, color: "#7c3aed", bg: "#f5f3ff", fetchSummary: fetchIncrementSummary },
+    { key: "pip", title: "PIP (%)", icon: <AssessmentIcon />, color: "#d97706", bg: "#fffbeb", fetchSummary: fetchPipSummary },
+    { key: "recruitment", title: "Recruitment On-Time (%)", icon: <WorkIcon />, color: "#0284c7", bg: "#eff6ff", fetchSummary: () => fetchKpiSummary("recruitment") },
+    { key: "onboarding", title: "Onboarding On-Time (%)", icon: <HowToRegIcon />, color: "#059669", bg: "#f0fdf4", fetchSummary: () => fetchKpiSummary("onboarding") },
+    { key: "exit", title: "Exit On-Time (%)", icon: <ExitToAppIcon />, color: "#d97706", bg: "#fffbeb", fetchSummary: () => fetchKpiSummary("exit") },
   ];
 
   const activeModuleLabel = MODULES.find((m) => m.key === activeCard)?.label;
@@ -1261,7 +1432,7 @@ const HRAnalyticsDashboard: React.FC = () => {
       <Sidebar />
       <Box sx={{ flexGrow: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <Navbar />
-        <Box sx={{ p: 2.5, pt: "76px", flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minHeight: 0 }}>
+        <Box sx={{ p: 2.5, pt: "76px", flex: 1, display: "flex", flexDirection: "column", overflow: "auto", minHeight: 0 }}>
           <Box sx={{ mb: 2, flexShrink: 0 }}>
             <Typography variant="h5" fontWeight={700} color="#0f172a" lineHeight={1.2}>
               HR Analytics Dashboard
@@ -1271,14 +1442,13 @@ const HRAnalyticsDashboard: React.FC = () => {
             </Typography>
           </Box>
 
-          {/* Fixed 3x2 grid — fills remaining height, no scroll */}
+          {/* Live metrics — 4x2 grid */}
           <Box sx={{
-            flex: 1, minHeight: 0,
+            flexShrink: 0,
             display: "grid",
             gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", md: "repeat(4, 1fr)" },
-            gridTemplateRows: { xs: "repeat(8, minmax(140px, 1fr))", sm: "repeat(4, minmax(140px, 1fr))", md: "repeat(2, 1fr)" },
+            gridAutoRows: "minmax(140px, 1fr)",
             gap: 2,
-            overflow: { xs: "auto", md: "hidden" },
           }}>
             {cards.map((c) => (
               <SummaryCard
@@ -1290,6 +1460,28 @@ const HRAnalyticsDashboard: React.FC = () => {
                 fetchSummary={c.fetchSummary}
                 onClick={() => setActiveCard(c.key)}
               />
+            ))}
+          </Box>
+
+          {/* Upcoming metrics — not wired to data yet */}
+          <Box sx={{ mt: 3, mb: 1.5, flexShrink: 0 }}>
+            <Typography fontSize="0.95rem" fontWeight={700} color="#0f172a">
+              Upcoming Metrics
+            </Typography>
+            <Typography fontSize="0.75rem" color="#94a3b8">
+              Tracked manually for now — will be wired to live data soon
+            </Typography>
+          </Box>
+          <Box sx={{
+            flexShrink: 0,
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", md: "repeat(3, 1fr)" },
+            gridAutoRows: "minmax(130px, 1fr)",
+            gap: 2,
+            mb: 2,
+          }}>
+            {UPCOMING_METRICS.map((m) => (
+              <PlaceholderCard key={m.title} title={m.title} icon={m.icon} color={m.color} bg={m.bg} />
             ))}
           </Box>
         </Box>
@@ -1317,6 +1509,7 @@ const HRAnalyticsDashboard: React.FC = () => {
           {activeCard === "interns" && <InternsWidget />}
           {activeCard === "internConversions" && <InternConversionsWidget />}
           {activeCard === "increments" && <IncrementAnalyticsWidget />}
+          {activeCard === "pip" && <PipAnalyticsWidget />}
           {(activeCard === "recruitment" || activeCard === "onboarding" || activeCard === "exit") && activeModuleLabel && (
             <ModuleKpiRow moduleKey={activeCard} label={activeModuleLabel} />
           )}

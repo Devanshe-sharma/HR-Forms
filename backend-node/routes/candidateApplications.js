@@ -20,16 +20,24 @@ const uploadResume = multer({
 });
 
 const FIELDS_TO_COPY = [
-  'full_name', 'email', 'phone', 'whatsapp_same', 'dob',
+  'full_name', 'email', 'phone', 'whatsapp_same', 'whatsappNumber', 'dob',
   'country', 'state', 'city', 'pin_code', 'relocation',
-  'job_id', 'designation', 'designation_id', 'highest_qualification',
-  'experience', 'total_experience', 'current_ctc', 'notice_period',
-  'expected_monthly_ctc',
-  'hindi_read', 'hindi_write', 'hindi_speak',
-  'english_read', 'english_write', 'english_speak',
-  'facebookLink', 'linkedin', 'short_video_url',
+  'job_id', 'designation', 'designation_id', 'candidateType',
+  'highest_qualification', 'educationSpecialization', 'collegeUniversity', 'graduationYear',
+  'courseName', 'semesterOrYear', 'internshipDuration',
+  'total_experience', 'relevantExperience', 'current_company', 'current_designation',
+  'current_ctc', 'expected_annual_ctc', 'notice_period', 'expectedJoiningDate',
+  'primarySkills', 'secondarySkills', 'languagesKnown', 'otherLanguage',
+  'linkedin', 'githubPortfolio', 'short_video_url', 'preferredWorkMode',
+  'candidateSource', 'sourceDetail',
   'resume',
 ];
+
+// Fields that arrive as JSON-stringified text because the request is
+// multipart/form-data (required for the resume file) rather than JSON —
+// multipart has no native way to carry arrays/objects, so the frontend
+// stringifies these specific fields and this parses them back.
+const JSON_FIELDS = ['primarySkills', 'secondarySkills', 'languagesKnown', 'screeningAnswers'];
 
 router.post('/', uploadResume.single('resume'), async (req, res) => {
   try {
@@ -41,14 +49,26 @@ router.post('/', uploadResume.single('resume'), async (req, res) => {
       return res.status(400).json({ success: false, message: 'Resume is required.' });
     }
 
+    const body = { ...req.body };
+    for (const field of JSON_FIELDS) {
+      if (typeof body[field] === 'string' && body[field]) {
+        try {
+          body[field] = JSON.parse(body[field]);
+        } catch {
+          return res.status(400).json({ success: false, message: `Invalid ${field} payload.` });
+        }
+      }
+    }
+
     // Upload to Drive first — resume ends up as a real, publicly-viewable
     // Drive link (see uploadResumeToDrive's own comments for exactly how
     // that permission gets set), not a local disk path.
     const resumeLink = await uploadResumeToDrive(req.file.buffer, req.file.originalname, req.file.mimetype);
 
     const doc = await CandidateApplication.create({
-      ...req.body,
+      ...body,
       resume: resumeLink,
+      consentTimestamp: body.consentGiven ? new Date() : null,
     });
 
     // Seed an ApplicantRecord for the HR dashboard (fire-and-forget)
@@ -56,6 +76,12 @@ router.post('/', uploadResume.single('resume'), async (req, res) => {
     for (const field of FIELDS_TO_COPY) {
       recordPayload[field] = doc[field] ?? '';
     }
+    // Compatibility mapping onto the two dashboard fields the candidate is
+    // no longer asked directly — derived here, once, rather than duplicated
+    // as a second candidate-facing question.
+    recordPayload.experience = doc.candidateType === 'Fresher' ? 'No' : 'Yes';
+    recordPayload.expected_monthly_ctc = doc.expected_annual_ctc ?? '';
+
     ApplicantRecord.create(recordPayload).catch((e) =>
       console.error('[ApplicantRecord seed] failed:', e.message),
     );
@@ -65,6 +91,11 @@ router.post('/', uploadResume.single('resume'), async (req, res) => {
 
     res.status(201).json({ success: true, data: doc });
   } catch (err) {
+    // Same email + job_id already exists (unique index on the model) —
+    // a friendlier message than the raw duplicate-key error.
+    if (err.code === 11000) {
+      return res.status(409).json({ success: false, message: 'You have already applied for this position.' });
+    }
     // If multer's fileFilter rejected the upload (wrong file type), the
     // file exceeded the size limit, or the Drive upload itself failed
     // (e.g. missing/invalid credentials), err.message already describes

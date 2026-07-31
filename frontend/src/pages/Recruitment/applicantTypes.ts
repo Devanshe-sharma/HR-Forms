@@ -8,15 +8,20 @@
 export type StatusType = 'New' | 'Reviewed' | 'Shortlisted' | 'Rejected' | 'Hired';
 
 export interface InterviewRound {
-  _id:           string;
-  roundNumber:   number;
-  stage:         string;
-  customStage:   string;
-  scheduledDate: string;
-  interviewer:   string;
-  mode:          string;
-  feedback:      string;
-  result:        string;
+  _id:                   string;
+  roundNumber:           number;
+  stage:                 string;
+  schedulingStatus:      string;
+  cancellationReason:    string;
+  scheduledDate:         string;
+  scheduledTime:         string;
+  interviewer:           string;
+  mode:                  string;
+  meetingLink:           string;
+  candidateConfirmation: string;
+  note:                  string;
+  feedback:              string;
+  result:                string;
 }
 
 export interface FinalDecision {
@@ -48,8 +53,8 @@ export interface ApplicantRecord {
   current_ctc:           string;
   notice_period:         string;
   expected_monthly_ctc:  string;
-  hindi_read:    string; hindi_write:   string; hindi_speak:   string;
-  english_read:  string; english_write: string; english_speak: string;
+  languagesKnown:  string[];
+  otherLanguage:   string;
   facebookLink:    string;
   linkedin:        string;
   short_video_url: string;
@@ -89,23 +94,38 @@ export const SCREENER_STATUS_COLORS: Record<string, string> = {
 };
 
 export const STAGE_OPTIONS = [
-  'HR Round', 'Technical Round 1', 'Technical Round 2',
-  'Assessment', 'CEO Round', 'MD Round', 'Other',
+  'Technical Round 1', 'Technical Round 2',
+  'Assessment (if any)', 'CEO Round', 'MD Round',
 ];
 
-export const RESULT_OPTIONS  = ['Pending', 'Selected', 'Rejected', 'On Hold'];
-export const MODE_OPTIONS    = ['Face-to-face', 'Video Call', 'Phone', 'Not decided'];
+export const RESULT_OPTIONS  = ['Selected', 'Rejected', 'Pending', 'On Hold'];
+export const MODE_OPTIONS    = ['Virtual', 'Face-to-Face (F2F)', 'Phone Call', 'Not Decided Yet'];
 export const DECISION_OPTIONS = ['Pending', 'Offer Made', 'Rejected', 'On Hold', 'Candidate Withdrew'];
 
 export const RESULT_COLORS: Record<string, string> = {
-  Pending:     'bg-gray-100    text-gray-600',
-  Selected:    'bg-green-100   text-green-700',
-  Rejected:    'bg-red-100     text-red-700',
-  'On Hold':   'bg-yellow-100  text-yellow-700',
-  Pass:        'bg-green-100   text-green-700',
-  Fail:        'bg-red-100     text-red-700',
-  'No Show':   'bg-orange-100  text-orange-700',
-  Rescheduled: 'bg-purple-100  text-purple-700',
+  Selected:  'bg-green-100   text-green-700',
+  Rejected:  'bg-red-100     text-red-700',
+  Pending:   'bg-gray-100    text-gray-600',
+  'On Hold': 'bg-yellow-100  text-yellow-700',
+};
+
+export const SCHEDULING_STATUS_OPTIONS = ['Scheduled', 'Rescheduled', 'Cancelled'];
+
+export const SCHEDULING_STATUS_COLORS: Record<string, string> = {
+  Scheduled:   'bg-blue-100   text-blue-700',
+  Rescheduled: 'bg-orange-100 text-orange-700',
+  Cancelled:   'bg-red-100    text-red-700',
+};
+
+// Set manually by HR, or by the candidate clicking Yes/Maybe/Can't-attend
+// in the schedule/reschedule email.
+export const CANDIDATE_CONFIRMATION_OPTIONS = ['Pending', 'Yes', 'Maybe', 'No'];
+
+export const CANDIDATE_CONFIRMATION_COLORS: Record<string, string> = {
+  Pending: 'bg-gray-100   text-gray-600',
+  Yes:     'bg-green-100  text-green-700',
+  Maybe:   'bg-orange-100 text-orange-700',
+  No:      'bg-red-100    text-red-700',
 };
 
 export const DECISION_COLORS: Record<string, string> = {

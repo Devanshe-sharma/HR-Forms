@@ -71,6 +71,19 @@ const LABEL_MAP: Record<TemplateFieldId, string> = {
   remarks:     "Remarks",
 };
 
+
+const KNOWN_LABELS = Object.values(LABEL_MAP).map(l => l.replace(/\./g, "\\."));
+const BLEED_PATTERN = new RegExp(`^(${KNOWN_LABELS.join("|")}):\\s*`, "i");
+
+function stripBleed(value: string): string {
+  const match = value.match(BLEED_PATTERN);
+  return match ? "" : value; // if the whole value IS another field's line, treat this field as empty
+}
+// Unique per-field autocomplete token so the browser can't group/sync fields
+// (autoComplete="new-password" on every field was causing Chrome to treat
+// them as a password-confirmation group and mirror values across fields)
+const noAutofill = (id: string) => `off-${id}-no-fill`;
+
 type TemplateModalProps = {
   open: boolean;
   onClose: () => void;
@@ -127,19 +140,19 @@ export function parseFormattedText(text?: string): TemplateVals | null {
     ['education', ['Education']],
     ['hobbies', ['Hobbies']],
     ['bond', ['Bond']],
-    ['remarks', ['Remarks', 'HR Remarks']],
+    ['remarks', ['Remarks', 'Remarks']],
   ];
 
   for (const [id, labels] of aliasMap) {
-    for (const label of labels) {
-      const escaped = label.replace(/\./g, "\\.");
-      const match = text.match(new RegExp(`^${escaped}:\\s*(.*)$`, "m"));
-      if (match) {
-        result[id] = match[1].trim();
-        break;
-      }
+  for (const label of labels) {
+    const escaped = label.replace(/\./g, "\\.");
+    const match = text.match(new RegExp(`^${escaped}:\\s*(.*)$`, "m"));
+    if (match) {
+      result[id] = stripBleed(match[1].trim());
+      break;
     }
   }
+}
 
   return result;
 }
@@ -154,6 +167,8 @@ export const TemplateModal = ({ open, onClose, onInsert, screenerName, existingT
   const [preview, setPreview] = useState(false);
 
   useEffect(() => {
+    if (!open) return;
+
     const parsed = parseFormattedText(existingText);
     if (parsed) {
       setVals({
@@ -165,7 +180,7 @@ export const TemplateModal = ({ open, onClose, onInsert, screenerName, existingT
     } else {
       setVals({ ...EMPTY_TEMPLATE, __round: defaultRound || "HR Round", __screener: screenerName || "" });
     }
-  }, [existingText, screenerName, defaultRound]);
+  }, [open, existingText, screenerName, defaultRound]);
 
   const set = (id: keyof TemplateVals) => (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -173,15 +188,15 @@ export const TemplateModal = ({ open, onClose, onInsert, screenerName, existingT
 
   const fieldSx = {
     "& .MuiInputBase-input, & .MuiInputBase-inputMultiline": {
-      fontSize: "0.78rem", py: "5px", px: "8px",
+      fontSize: "0.85rem", py: "8px", px: "10px", lineHeight: 1.5,
     },
     "& fieldset": { borderColor: "#d0daea" },
     bgcolor: "#fff",
   };
 
   const labelSx = {
-    fontSize: "0.68rem", fontWeight: 700, color: "#7a8eaa",
-    textTransform: "uppercase", letterSpacing: 0.5, mb: 0.4,
+    fontSize: "0.72rem", fontWeight: 700, color: "#5a6a85",
+    textTransform: "uppercase", letterSpacing: 0.5, mb: 0.5,
   };
 
   const handleInsert = () => {
@@ -190,7 +205,7 @@ export const TemplateModal = ({ open, onClose, onInsert, screenerName, existingT
   };
 
   const handleClear = () =>
-    setVals({ ...EMPTY_TEMPLATE, __round: defaultRound || "Screening Round", __screener: screenerName || "" });
+    setVals({ ...EMPTY_TEMPLATE, __round: defaultRound || "HR Round", __screener: screenerName || "" });
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth
@@ -234,35 +249,110 @@ export const TemplateModal = ({ open, onClose, onInsert, screenerName, existingT
             </Box>
           </Box>
         ) : (
-          <Box sx={{ p: 2.5 }}>
+          <Box component="form" autoComplete="off" noValidate sx={{ p: 2.5 }}>
+            {/* View Resume + LinkedIn — pinned to the very top, always visible */}
+            <Box sx={{
+              display: "flex", flexWrap: "wrap", gap: 1.5, mb: 2,
+              bgcolor: "#eef8f1", border: "1px solid #cdeadb", borderRadius: 1.5, p: 1.5,
+            }}>
+              <Box sx={{ flex: 1, minWidth: 200 }}>
+                <Typography sx={labelSx}>View Resume</Typography>
+                <TextField
+                  name="resume" id="resume"
+                  autoComplete={noAutofill("resume")}
+                  fullWidth size="small"
+                  value={vals.resume || ""}
+                  onChange={set("resume")}
+                  placeholder="Paste resume link or note"
+                  sx={fieldSx}
+                  inputProps={{ autoComplete: noAutofill("resume") }}
+                  InputProps={vals.resume && /^https?:\/\//i.test(vals.resume) ? {
+                    endAdornment: (
+                      <Button
+                        size="small"
+                        href={vals.resume}
+                        target="_blank"
+                        rel="noreferrer"
+                        sx={{ fontSize: "0.68rem", textTransform: "none", whiteSpace: "nowrap" }}
+                      >
+                        Open
+                      </Button>
+                    ),
+                  } : undefined}
+                />
+              </Box>
+              <Box sx={{ flex: 1, minWidth: 200 }}>
+                <Typography sx={labelSx}>LinkedIn Profile</Typography>
+                <TextField
+                  name="linkedin" id="linkedin"
+                  autoComplete={noAutofill("linkedin")}
+                  fullWidth size="small"
+                  value={vals.linkedin || ""}
+                  onChange={set("linkedin")}
+                  placeholder="Paste LinkedIn profile link"
+                  sx={fieldSx}
+                  inputProps={{ autoComplete: noAutofill("linkedin") }}
+                  InputProps={vals.linkedin && /^https?:\/\//i.test(vals.linkedin) ? {
+                    endAdornment: (
+                      <Button
+                        size="small"
+                        href={vals.linkedin}
+                        target="_blank"
+                        rel="noreferrer"
+                        sx={{ fontSize: "0.68rem", textTransform: "none", whiteSpace: "nowrap" }}
+                      >
+                        Open
+                      </Button>
+                    ),
+                  } : undefined}
+                />
+              </Box>
+            </Box>
+
             {/* Round + Screener */}
             <Box sx={{ bgcolor: "#f0f6ff", border: "1px solid #d0dff5", borderRadius: 1.5, p: 1.5, mb: 2 }}>
-              <Typography sx={{ fontSize: "0.65rem", fontWeight: 700, color: "#1976d2", textTransform: "uppercase", letterSpacing: 0.6, mb: 1 }}>
+              <Typography sx={{ fontSize: "0.68rem", fontWeight: 700, color: "#1976d2", textTransform: "uppercase", letterSpacing: 0.6, mb: 1 }}>
                 Header
               </Typography>
               <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" }, gap: 1.5 }}>
                 <Box>
                   <Typography sx={labelSx}>Round</Typography>
-                  <TextField fullWidth size="small" value={vals.__round || ""}
-                      onChange={set("__round")} placeholder="e.g. Screening Round" sx={fieldSx} />
+                  <TextField
+                    autoComplete={noAutofill("round")}
+                    name="__round"
+                    fullWidth size="small"
+                    value={vals.__round || ""}
+                    onChange={set("__round")}
+                    placeholder="e.g. HR Round"
+                    sx={fieldSx}
+                    inputProps={{ autoComplete: noAutofill("round") }}
+                  />
                 </Box>
                 <Box>
                   <Typography sx={labelSx}>Screener</Typography>
-                  <TextField fullWidth size="small" value={vals.__screener || ""}
-                    onChange={set("__screener")} placeholder="" sx={fieldSx} />
+                  <TextField
+                    autoComplete={noAutofill("screener")}
+                    name="__screener"
+                    fullWidth size="small"
+                    value={vals.__screener || ""}
+                    onChange={set("__screener")}
+                    placeholder=""
+                    sx={fieldSx}
+                    inputProps={{ autoComplete: noAutofill("screener") }}
+                  />
                 </Box>
               </Box>
             </Box>
 
             {/* Sections */}
             {SECTIONS.map(section => {
-              const fields = TEMPLATE_FIELDS.filter(f => f.section === section);
+              const fields = TEMPLATE_FIELDS.filter(f => f.section === section && f.id !== "resume" && f.id !== "linkedin");
               return (
-                <Box key={section} sx={{ mb: 2 }}>
+                <Box key={section} sx={{ mb: 2.5 }}>
                   <Typography sx={{
-                    fontSize: "0.65rem", fontWeight: 700, color: "#5a6a85",
+                    fontSize: "0.7rem", fontWeight: 700, color: "#5a6a85",
                     textTransform: "uppercase", letterSpacing: 0.8,
-                    mb: 1, pb: 0.5, borderBottom: "1.5px solid #e4eaf4",
+                    mb: 1.2, pb: 0.6, borderBottom: "1.5px solid #e4eaf4",
                     display: "flex", alignItems: "center", gap: 1,
                     "&::before": {
                       content: '""', display: "inline-block",
@@ -272,7 +362,7 @@ export const TemplateModal = ({ open, onClose, onInsert, screenerName, existingT
                   }}>
                     {section}
                   </Typography>
-                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" }, gap: 1.5 }}>
+                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" }, gap: 1.75 }}>
                     {fields.map((field) => {
                       const { id, label } = field;
                       const full = "full" in field && field.full;
@@ -283,6 +373,9 @@ export const TemplateModal = ({ open, onClose, onInsert, screenerName, existingT
                           <Typography sx={labelSx}>{label}</Typography>
                           {id === "maritalStatus" ? (
                             <select
+                              name={id}
+                              id={id}
+                              autoComplete="off"
                               value={vals[id] || ""}
                               onChange={set(id)}
                               style={{
@@ -302,12 +395,16 @@ export const TemplateModal = ({ open, onClose, onInsert, screenerName, existingT
                             </select>
                           ) : (
                             <TextField
+                              name={id}
+                              id={id}
+                              autoComplete={noAutofill(id)}
                               fullWidth size="small"
                               value={vals[id] || ""}
                               onChange={set(id)}
                               multiline={!!multiline}
                               rows={multiline ? 3 : undefined}
                               sx={fieldSx}
+                              inputProps={{ autoComplete: noAutofill(id) }}
                             />
                           )}
                         </Box>
@@ -331,7 +428,7 @@ export const TemplateModal = ({ open, onClose, onInsert, screenerName, existingT
           sx={{ fontSize: "0.75rem", textTransform: "none" }}>
           Cancel
         </Button>
-        
+
         <Button size="small" variant="contained"
           onClick={handleInsert}
           sx={{

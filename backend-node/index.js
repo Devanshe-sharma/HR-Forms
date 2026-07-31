@@ -38,6 +38,10 @@ app.use(cors({
 
 
 app.use(express.json({ limit: "10mb" }));
+// Needed so the plain HTML <form> on the interview "Can't attend" reason
+// page (submitted straight from the candidate's browser, not fetch/JSON)
+// parses into req.body.
+app.use(express.urlencoded({ extended: true }));
 
 // RBAC: set role from header for API routes (frontend sends x-user-role)
 app.use('/api', (req, res, next) => {

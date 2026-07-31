@@ -58,6 +58,7 @@ export default function App() {
           <Route path="/hr-dashboard" element={<HRDashboard />} />
           <Route path="/employee-letters" element={<EmployeeLetter />} />
           <Route path="/salary-revision" element={<SalaryRevisionNew />} />
+          {/* <Route path="/salary-revisions/:id" element={<SalaryRevisionDetail />} /> */}
           <Route path="/recruitment" element={<Recruitment />} />
      
           <Route path="/ctc-components" element={<CTCComponentsDashboard />} />

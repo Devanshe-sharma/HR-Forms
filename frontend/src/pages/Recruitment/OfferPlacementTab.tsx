@@ -1,6 +1,6 @@
 // pages/Recruitment/OfferPlacementTab.tsx
 import React, { useState, useEffect } from 'react';
-import { Loader2, Save, CheckSquare } from 'lucide-react';
+import { Loader2, Save, CheckSquare, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Field, EditField, EditSelect } from './ApplicantFieldComponents';
 import { ApplicantRecord, FinalDecision, API_BASE, DECISION_OPTIONS, DECISION_COLORS } from './applicantTypes';
@@ -15,6 +15,7 @@ const OfferPlacementTab = ({
   const [draft,  setDraft]  = useState<FinalDecision>(record.finalDecision ?? {} as FinalDecision);
   const [saving, setSaving] = useState(false);
   const [editMode, setEditMode] = useState<'view' | 'edit'>('view');
+  const [showSaved, setShowSaved] = useState(false);
 
   useEffect(() => {
     setDraft(record.finalDecision ?? {} as FinalDecision);
@@ -43,6 +44,7 @@ const OfferPlacementTab = ({
       onUpdate(json.data);
       setEditMode('view');
       toast.success('Offer & Placement saved');
+      setShowSaved(true);
     } catch {
       toast.error('Failed to save');
     } finally {
@@ -162,6 +164,28 @@ const OfferPlacementTab = ({
             {record.finalDecision?.decisionDate && <div><span className="text-gray-400">Decided on:</span> <strong>{new Date(record.finalDecision.decisionDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</strong></div>}
           </div>
           {record.finalDecision?.notes && <p className="mt-2 text-xs text-gray-600 italic">"{record.finalDecision.notes}"</p>}
+        </div>
+      )}
+
+      {showSaved && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30"
+          onClick={() => setShowSaved(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl px-8 py-7 flex flex-col items-center gap-3 max-w-sm mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <CheckCircle2 size={40} className="text-green-500" />
+            <p className="text-base font-bold text-gray-800">Saved Successfully</p>
+            <p className="text-sm text-gray-500 text-center">Offer &amp; Placement details have been updated.</p>
+            <button
+              onClick={() => setShowSaved(false)}
+              className="mt-2 px-5 py-2 text-sm font-semibold text-white bg-lime-600 hover:bg-lime-700 rounded-lg transition"
+            >
+              OK
+            </button>
+          </div>
         </div>
       )}
     </div>

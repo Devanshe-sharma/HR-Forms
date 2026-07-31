@@ -199,10 +199,18 @@ const onboardingSchema = new mongoose.Schema(
     // contractStartDate/contractEndDate above always mirror the LAST
     // entry here (the current/latest period); endDate is null for a
     // period that's ongoing with no end date decided yet.
-    contractHistory: {
-      type: [{ startDate: Date, endDate: { type: Date, default: null } }],
-      default: [],
-    },
+    // Contract history — one entry per update
+      contractHistory: [
+        {
+          contractPeriod:    { type: String, default: '' },
+          contractAmount:    { type: String, default: '' },
+          salApplicableFrom: { type: String, default: '' },
+          equivalentMonthlyCtc: { type: String, default: '' },
+          updatedAt:         { type: Date,   default: Date.now },
+          updatedBy:         { type: String, default: '' },
+          remarks:           { type: String, default: '' },
+        }
+      ],
     equivalentMonthlyCtc: Number,
 
     // ============================================================

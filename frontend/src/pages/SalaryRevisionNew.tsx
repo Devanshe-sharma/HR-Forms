@@ -80,6 +80,9 @@ interface SalaryRevision {
   managementDecision: ManagementDecision;
   hrDecision        : HrDecision;
   reviewDate        : string | null;
+  pipOutcome        : 'improved' | 'not_improved' | null;
+  pipOutcomeReason  : string;
+  pipOutcomeDate    : string | null;
   createdAt         : string;
   designationChanged    : boolean;
   previousDesignation   : string;
@@ -967,10 +970,12 @@ function HistoryPanel({ employeeCode }: { employeeCode: string }) {
     });
   }, [selectedRevision]);
 
+  // Add this as a NEW useEffect, after the existing one
+
+
   const savePastIncrement = async () => {
     if (!selectedRevision) return;
     setEditError(null);
-
     const payload: any = {
       applicableDate: editValues.applicableDate || null,
       previousCtc: editValues.previousCtc !== '' ? Number(editValues.previousCtc) : undefined,
@@ -1468,6 +1473,9 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
       ? new Date(rec.hrDecision.newContractEndDate).toISOString().split('T')[0]
       : '');
 
+  const [pipOutcomeChoice, setPipOutcomeChoice] = useState<'improved'|'not_improved'>('improved');
+  const [pipOutcomeReason, setPipOutcomeReason] = useState('');
+
   const [busy, setBusy] = useState(false);
 
   useEffect(()=>{
@@ -1603,7 +1611,29 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
     finally { setBusy(false); }
   };
 
+  const postPipOutcome = async () => {
+    if (!pipOutcomeReason.trim()) return showToast('Provide a reason', 'error');
+    if (!rec) return;
+    setBusy(true);
+    try {
+      const { data } = await axios.put(`${API}/${rec._id}/pip-outcome`, {
+        outcome: pipOutcomeChoice, reason: pipOutcomeReason,
+      });
+      if (data.success) { showToast('PIP outcome recorded', 'success'); onRecordChange(data.data); }
+      else showToast(data.message || 'Failed', 'error');
+    } catch (e: any) { showToast(e?.response?.data?.message || 'Failed', 'error'); }
+    finally { setBusy(false); }
+  };
+
   const FlowBanner=()=>{
+    if (isCompleted && rec?.pipOutcome) {
+      return (
+        <Alert severity={rec.pipOutcome==='improved'?'success':'error'} sx={{ mb:2, fontSize:12 }}>
+          PIP closed out — {rec.pipOutcome==='improved'?'employee improved':'employee did not improve'}
+          {rec.pipOutcomeDate?` on ${fmtDate(rec.pipOutcomeDate)}`:''}.
+        </Alert>
+      );
+    }
     if (isCompleted) return <Alert severity="success" sx={{ mb:2, fontSize:12 }}>Revision completed. Final CTC: {fmtCurrency(rec?.newCtc)}. Onboarding record updated.</Alert>;
     if (isOnHold)    return <Alert severity="warning" sx={{ mb:2, fontSize:12 }}>On hold (PIP). Review opens on {fmtDate(rec?.reviewDate)}.</Alert>;
     if (isMgr)       return <Alert severity="info"    sx={{ mb:2, fontSize:12 }}>Step 1 of 3 — awaiting Manager decision.</Alert>;
@@ -1635,6 +1665,32 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
       </Box>
 
       <FlowBanner/>
+
+      {isOnHold && (
+        <Paper variant="outlined" sx={{ borderRadius:2, p:2.5, mb:2.5, borderColor:'#fde68a', bgcolor:'#fffbeb' }}>
+          <Typography fontWeight={700} fontSize={13} mb={1.5}>Close Out PIP</Typography>
+          <Stack spacing={1.5}>
+            <Box sx={{ display:'flex', gap:1.5 }}>
+              <Button variant={pipOutcomeChoice==='improved'?'contained':'outlined'} size="small"
+                onClick={()=>setPipOutcomeChoice('improved')}
+                sx={{ textTransform:'none', bgcolor:pipOutcomeChoice==='improved'?'#059669':'transparent',
+                  color:pipOutcomeChoice==='improved'?'white':'#059669', borderColor:'#059669' }}>Improved</Button>
+              <Button variant={pipOutcomeChoice==='not_improved'?'contained':'outlined'} size="small"
+                onClick={()=>setPipOutcomeChoice('not_improved')}
+                sx={{ textTransform:'none', bgcolor:pipOutcomeChoice==='not_improved'?'#dc2626':'transparent',
+                  color:pipOutcomeChoice==='not_improved'?'white':'#dc2626', borderColor:'#dc2626' }}>Not Improved</Button>
+            </Box>
+            <TextField label="Reason / Comments *" multiline rows={2} size="small"
+              value={pipOutcomeReason} onChange={e=>setPipOutcomeReason(e.target.value)} fullWidth/>
+            <Box>
+              <Button variant="contained" onClick={postPipOutcome} disabled={busy||!pipOutcomeReason.trim()}
+                sx={{ bgcolor:ACCENT, '&:hover':{ bgcolor:'#4338ca' }, textTransform:'none', fontWeight:600 }}>
+                {busy?<CircularProgress size={20} sx={{ color:'white' }}/>:'Submit PIP Outcome'}
+              </Button>
+            </Box>
+          </Stack>
+        </Paper>
+      )}
 
       <Box sx={{ display:'flex', mb:2.5, bgcolor:'white', borderRadius:1.5, border:'1px solid #e2e8f0', overflow:'hidden' }}>
         {[
@@ -2119,6 +2175,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
 
 type View = 'dashboard' | 'detail' | 'ctc';
 
+
 export default function SalaryRevisionPage() {
   const [records,   setRecords]   = useState<SalaryRevision[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -2130,6 +2187,12 @@ export default function SalaryRevisionPage() {
   const [toast,     setToast]     = useState<{ msg:string; type:'success'|'error' }|null>(null);
 
   const showToast=(msg:string,type:'success'|'error'='success')=>setToast({ msg, type });
+  const [contact, setContact] = useState<{
+  official_email: string;
+  personal_email: string;
+  mobile:         string;
+  reporting_manager: string;
+} | null>(null);
 
   const loadData=useCallback(async()=>{
     try {

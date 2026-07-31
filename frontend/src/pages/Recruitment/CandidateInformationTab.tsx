@@ -294,29 +294,25 @@ const CandidateInformationTab = ({
         </div>
       </section>
 
-      {/* ── Language Proficiency ── */}
+      {/* ── Languages Known ── */}
       <section>
-        <SectionLabel>Language Proficiency</SectionLabel>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {[
-            { lang: 'Hindi',   r: draft.hindi_read,   w: draft.hindi_write,   s: draft.hindi_speak   },
-            { lang: 'English', r: draft.english_read, w: draft.english_write, s: draft.english_speak },
-          ].map(({ lang, r, w, s }) => (
-            <div key={lang} className="bg-gray-50 border border-gray-100 rounded-xl p-4">
-              <p className="text-xs font-bold text-gray-600 mb-3">{lang}</p>
-              <div className="grid grid-cols-3 gap-2 text-center">
-                {[['Read', r], ['Write', w], ['Speak', s]].map(([label, val]) => (
-                  <div key={label as string}>
-                    <p className="text-[11px] text-gray-400 uppercase tracking-wide mb-1.5">{label}</p>
-                    <span className="inline-block bg-white border border-gray-200 rounded-lg px-2 py-1 text-sm font-medium text-gray-700">
-                      {val || '—'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+        <SectionLabel>Languages Known</SectionLabel>
+        {(draft.languagesKnown?.length || draft.otherLanguage) ? (
+          <div className="flex flex-wrap gap-2">
+            {(draft.languagesKnown || []).map((lang) => (
+              <span key={lang} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700">
+                {lang}
+              </span>
+            ))}
+            {draft.otherLanguage && (
+              <span className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700">
+                {draft.otherLanguage}
+              </span>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400 italic">Not specified</p>
+        )}
       </section>
 
       {/* ── Resume (edit fallback) ── */}

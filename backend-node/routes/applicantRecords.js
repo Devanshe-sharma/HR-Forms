@@ -8,7 +8,56 @@ const router  = express.Router();
 const ApplicantRecord = require('../models/ApplicantRecord');
 const HiringRequisition = require('../models/HiringRequisition');
 const RoleMaster = require('../models/role_master');
+const Onboarding = require('../models/onboardingModel');
 const { fetchJdText } = require('../utils/googleDocs');
+const sendInterviewRoundMail = require('../emails/senders/sendInterviewRoundMail');
+const { signInterviewConfirm, verifyInterviewConfirm } = require('../utils/interviewConfirmSigning');
+
+// Backend is reverse-proxied under the same domain as the frontend at
+// /api (see frontend/.env.production) — same FRONTEND_URL convention
+// already used for other emailed links (onboardingroutes.js's share-link).
+const PUBLIC_API_BASE = `${process.env.FRONTEND_URL || 'https://hr.briskolive.com'}/api`;
+
+// Small self-contained HTML page for the public (unauthenticated) interview
+// response links — this backend has no templating engine wired in, so this
+// is a plain string response matching the style of the confirmation emails.
+function renderResponsePage({ heading, message, color = '#1a3e72', showForm = false, formAction = '' }) {
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interview Response — Brisk Olive HR</title></head>
+<body style="font-family:Arial,Helvetica,sans-serif;background:#f4f6fa;margin:0;padding:40px 16px;">
+  <div style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:12px;border:1px solid #e4eaf4;overflow:hidden;">
+    <div style="background:${color};padding:20px 28px;">
+      <p style="margin:0;color:#ffffff;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;opacity:0.75;">Brisk Olive HR</p>
+      <h2 style="margin:6px 0 0;color:#ffffff;font-size:18px;">${heading}</h2>
+    </div>
+    <div style="padding:28px;">
+      <p style="font-size:14px;color:#333;line-height:1.7;margin:0 0 ${showForm ? '16px' : '0'};">${message}</p>
+      ${showForm ? `
+        <form method="POST" action="${formAction}">
+          <textarea name="reason" rows="3" placeholder="Please share the reason (optional)"
+            style="width:100%;box-sizing:border-box;border:1px solid #d0dff5;border-radius:8px;padding:10px;font-size:14px;font-family:inherit;"></textarea>
+          <button type="submit"
+            style="margin-top:12px;background:#dc3545;color:#ffffff;border:none;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">
+            Submit
+          </button>
+        </form>
+      ` : ''}
+    </div>
+  </div>
+</body></html>`;
+}
+
+// Interviewer is only stored as a plain name string on the round — this
+// looks up their email from the employee master by exact (case-insensitive)
+// name match at send time, same source the Interviewer Name dropdown itself
+// is populated from.
+async function resolveInterviewerEmail(name) {
+  if (!name) return null;
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const employee = await Onboarding.findOne({ name: new RegExp(`^${escaped}$`, 'i') }).lean();
+  return employee?.officialEmail || employee?.persEmail || null;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const ok  = (res, data, status = 200) => res.status(status).json({ success: true,  data });
@@ -356,13 +405,18 @@ router.post('/:id/interview-rounds', async (req, res) => {
 
     const newRound = {
       roundNumber:   nextRoundNumber,
-      stage:         req.body.stage         || 'HR Screening',
-      customStage:   req.body.customStage   || '',
-      scheduledDate: req.body.scheduledDate || null,
-      interviewer:   req.body.interviewer   || '',
-      mode:          req.body.mode          || 'Not decided',
-      feedback:      req.body.feedback      || '',
-      result:        req.body.result        || 'Pending',
+      stage:         req.body.stage         || 'Technical Round 1',
+      schedulingStatus:      req.body.schedulingStatus      || 'Scheduled',
+      cancellationReason:    req.body.cancellationReason    || '',
+      scheduledDate:         req.body.scheduledDate         || null,
+      scheduledTime:         req.body.scheduledTime         || '',
+      interviewer:           req.body.interviewer           || '',
+      mode:                  req.body.mode                  || 'Not Decided Yet',
+      meetingLink:           req.body.meetingLink           || '',
+      candidateConfirmation: req.body.candidateConfirmation || 'Pending',
+      note:                  req.body.note                  || '',
+      feedback:              req.body.feedback              || '',
+      result:                req.body.result                || 'Pending',
     };
 
     record.interviewRounds.push(newRound);
@@ -387,7 +441,11 @@ router.patch('/:id/interview-rounds/:roundId', async (req, res) => {
     const round = record.interviewRounds.id(req.params.roundId);
     if (!round) return err(res, 'Round not found', 404);
 
-    const updatable = ['stage', 'customStage', 'scheduledDate', 'interviewer', 'mode', 'feedback', 'result'];
+    const updatable = [
+      'stage', 'schedulingStatus', 'cancellationReason', 'scheduledDate', 'scheduledTime',
+      'interviewer', 'mode', 'meetingLink', 'candidateConfirmation',
+      'note', 'feedback', 'result',
+    ];
     for (const field of updatable) {
       if (req.body[field] !== undefined) round[field] = req.body[field];
     }
@@ -397,6 +455,147 @@ router.patch('/:id/interview-rounds/:roundId', async (req, res) => {
   } catch (e) {
     console.error(e);
     err(res, 'Failed to update round');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/applicant-records/:id/interview-rounds/:roundId/send-mail
+// Schedule / reschedule / cancellation notifications — to the interviewer
+// or the candidate, one audience per call so the UI can track each send
+// independently. cancellationReason in the body overrides the round's
+// saved one, since this can be sent before the cancellation is finalized.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/interview-rounds/:roundId/send-mail', async (req, res) => {
+  try {
+    const { type, audience, cancellationReason } = req.body;
+    if (!['schedule', 'reschedule', 'cancel'].includes(type)) return err(res, 'Invalid mail type', 400);
+    if (!['interviewer', 'candidate'].includes(audience)) return err(res, 'Invalid audience', 400);
+
+    const record = await ApplicantRecord.findById(req.params.id).lean();
+    if (!record) return err(res, 'Record not found', 404);
+    const round = (record.interviewRounds || []).find((r) => String(r._id) === req.params.roundId);
+    if (!round) return err(res, 'Round not found', 404);
+
+    const to = audience === 'candidate' ? record.email : await resolveInterviewerEmail(round.interviewer);
+    if (!to) return err(res, `No ${audience === 'candidate' ? 'candidate email' : 'interviewer email'} on file`, 400);
+
+    // Only the candidate's schedule/reschedule mail gets the Yes/Maybe/Can't
+    // attend buttons — not the interviewer's copy, and not cancellation mails.
+    let confirmLinks;
+    if (audience === 'candidate' && type !== 'cancel') {
+      const sig = signInterviewConfirm(String(record._id), String(round._id));
+      const base = `${PUBLIC_API_BASE}/applicant-records/${record._id}/interview-rounds/${round._id}/respond`;
+      confirmLinks = {
+        yes:   `${base}?response=yes&sig=${sig}`,
+        maybe: `${base}?response=maybe&sig=${sig}`,
+        no:    `${base}?response=no&sig=${sig}`,
+      };
+    }
+
+    await sendInterviewRoundMail({
+      to,
+      type,
+      audience,
+      candidateName: record.full_name,
+      position: record.designation,
+      round,
+      cancellationReason: cancellationReason ?? round.cancellationReason,
+      confirmLinks,
+    });
+
+    ok(res, { sentTo: to });
+  } catch (e) {
+    console.error('[send-mail] error:', e);
+    err(res, 'Failed to send mail');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/applicant-records/:id/interview-rounds/:roundId/respond
+// Public, unauthenticated — this is what the candidate hits by clicking a
+// Yes / Maybe / Can't-attend button in the schedule/reschedule email.
+// Yes and Maybe record immediately; Can't-attend shows a short reason form
+// first (posted below) rather than recording on the GET itself.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/:id/interview-rounds/:roundId/respond', async (req, res) => {
+  const { id, roundId } = req.params;
+  const { response, sig } = req.query;
+
+  if (!['yes', 'maybe', 'no'].includes(response)) {
+    return res.status(400).send(renderResponsePage({
+      heading: 'Invalid Link', color: '#dc3545',
+      message: 'This confirmation link is invalid.',
+    }));
+  }
+  if (!verifyInterviewConfirm(id, roundId, sig)) {
+    return res.status(403).send(renderResponsePage({
+      heading: 'Link Could Not Be Verified', color: '#dc3545',
+      message: "This confirmation link couldn't be verified. Please contact HR directly if you need to respond.",
+    }));
+  }
+
+  if (response === 'no') {
+    return res.send(renderResponsePage({
+      heading: "Can't Attend", color: '#dc3545',
+      message: "We're sorry to hear that. Could you let us know why, so our team can follow up appropriately?",
+      showForm: true,
+      formAction: `${req.baseUrl}/${id}/interview-rounds/${roundId}/respond?response=no&sig=${sig}`,
+    }));
+  }
+
+  try {
+    const record = await ApplicantRecord.findById(id);
+    if (!record) return res.status(404).send(renderResponsePage({ heading: 'Not Found', color: '#dc3545', message: 'This interview record could not be found.' }));
+    const round = record.interviewRounds.id(roundId);
+    if (!round) return res.status(404).send(renderResponsePage({ heading: 'Not Found', color: '#dc3545', message: 'This interview round could not be found.' }));
+
+    round.candidateConfirmation = response === 'yes' ? 'Yes' : 'Maybe';
+    await record.save();
+
+    return res.send(renderResponsePage(
+      response === 'yes'
+        ? { heading: 'Thank You!', color: '#28a745', message: "Thanks for confirming — we'll see you at the interview!" }
+        : { heading: 'Response Recorded', color: '#fb8c00', message: 'Thanks for letting us know. Our team will follow up if needed.' },
+    ));
+  } catch (e) {
+    console.error('[interview-respond GET] error:', e);
+    return res.status(500).send(renderResponsePage({ heading: 'Something Went Wrong', color: '#dc3545', message: 'Please try again later or contact HR directly.' }));
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/applicant-records/:id/interview-rounds/:roundId/respond
+// Handles the "Can't attend" reason form submitted from the GET route above.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/interview-rounds/:roundId/respond', async (req, res) => {
+  const { id, roundId } = req.params;
+  const { response, sig } = req.query;
+  const { reason } = req.body;
+
+  if (response !== 'no' || !verifyInterviewConfirm(id, roundId, sig)) {
+    return res.status(403).send(renderResponsePage({
+      heading: 'Invalid Request', color: '#dc3545',
+      message: "This request couldn't be verified. Please contact HR directly if you need to respond.",
+    }));
+  }
+
+  try {
+    const record = await ApplicantRecord.findById(id);
+    if (!record) return res.status(404).send(renderResponsePage({ heading: 'Not Found', color: '#dc3545', message: 'This interview record could not be found.' }));
+    const round = record.interviewRounds.id(roundId);
+    if (!round) return res.status(404).send(renderResponsePage({ heading: 'Not Found', color: '#dc3545', message: 'This interview round could not be found.' }));
+
+    round.candidateConfirmation = 'No';
+    if ((reason || '').trim()) round.note = reason.trim();
+    await record.save();
+
+    return res.send(renderResponsePage({
+      heading: 'Response Recorded', color: '#dc3545',
+      message: "Thanks for letting us know — we've recorded that you can't attend. Our HR team will be in touch to reschedule.",
+    }));
+  } catch (e) {
+    console.error('[interview-respond POST] error:', e);
+    return res.status(500).send(renderResponsePage({ heading: 'Something Went Wrong', color: '#dc3545', message: 'Please try again later or contact HR directly.' }));
   }
 });
 

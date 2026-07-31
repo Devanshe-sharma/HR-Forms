@@ -28,6 +28,29 @@ const HistoryEntrySchema = new Schema(
   { _id: false }
 );
 
+// ─── Screening question sub-schema ──────────────────────────────────────────
+// Job-specific questions shown only to candidates applying to THIS
+// requisition. Answers are stored on the CandidateApplication with the
+// question text snapshotted at answer time (see models/Candidateapplication.js)
+// so later edits here never rewrite the meaning of an already-submitted answer.
+const ScreeningQuestionSchema = new Schema(
+  {
+    text: { type: String, required: true, trim: true },
+    type: {
+      type: String,
+      enum: ['mcq', 'yesno', 'numeric', 'text', 'experience', 'skill'],
+      required: true,
+    },
+    options:  { type: [String], default: [] },   // used only when type === 'mcq'
+    required: { type: Boolean, default: true },
+    minValue: { type: Number, default: null },     // used only for numeric / experience
+    maxValue: { type: Number, default: null },
+    weight:      { type: Number, default: null },  // optional — enables a computed screening score
+    idealAnswer: { type: String, default: '' },    // optional — paired with weight for auto-scoring
+  },
+  { timestamps: false }
+);
+
 const HiringRequisitionSchema = new Schema(
   {
     // ── Auto-generated ────────────────────────────────────────────────────────
@@ -58,6 +81,22 @@ const HiringRequisitionSchema = new Schema(
 
     role_link: { type: String, default: '' },
     jd_link:   { type: String, default: '' },
+
+    // ── Candidate application form configuration ─────────────────────────────
+    // Drives conditional fields on the public candidate application form —
+    // see frontend/src/pages/Recruitment/CandidateApplication.tsx. Nothing
+    // here is candidate-entered; it's set once per requisition and read by
+    // every applicant's form load.
+    required_skills: { type: [String], default: [] },   // seeds the Primary/Secondary Skills multi-select
+    role_category: {
+      type: String,
+      enum: ['General', 'Technical', 'Design', 'ClientFacing'],
+      default: 'General',
+    },
+    remote_eligible: { type: Boolean, default: false },   // shows Preferred Work Mode when true
+    base_location:   { type: String, default: '' },       // used to phrase the relocation question for this job
+
+    screeningQuestions: { type: [ScreeningQuestionSchema], default: [] },
 
     // ── Joining timeline ──────────────────────────────────────────────────────
     select_joining_days:        { type: String, required: true },

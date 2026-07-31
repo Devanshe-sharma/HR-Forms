@@ -57,7 +57,12 @@ const ApplicantModal = ({
   const [localRec,   setLocalRec]   = useState<ApplicantRecordWithAI>(record);
   const [statusBusy, setStatusBusy] = useState(false);
 
-  useEffect(() => { setLocalRec(record); setActiveTab(initialTab); }, [record, initialTab]);
+  // Keeps localRec in sync on every update, but only jumps the active tab
+  // when the modal is (re)opened for a given record/tab pair — not on every
+  // save, which would otherwise snap the user back to the opening tab and
+  // hide whatever they just saved (e.g. the Status they just set).
+  useEffect(() => { setLocalRec(record); }, [record]);
+  useEffect(() => { setActiveTab(initialTab); }, [record._id, initialTab]);
 
   const handleRecordUpdate = (updated: ApplicantRecord) => {
     setLocalRec(updated);
@@ -94,7 +99,7 @@ const ApplicantModal = ({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
       onClick={handleBackdrop}
     >
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[92vh] flex flex-col">
 
         {/* ── Modal header ── */}
         <div className="flex items-start justify-between px-6 py-4 border-b gap-4">
@@ -139,26 +144,26 @@ const ApplicantModal = ({
         )}
 
         {/* ── Tabs ── */}
-        <div className="flex border-b px-6 gap-0 overflow-x-auto">
+        <div className="grid grid-cols-4 border-b px-2">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
-              className={`flex items-center gap-1.5 px-4 py-3 text-sm font-semibold border-b-2 transition -mb-px whitespace-nowrap ${
+              className={`flex items-center justify-center gap-1.5 px-2 py-3 text-xs sm:text-sm font-semibold border-b-2 transition -mb-px min-w-0 ${
                 activeTab === id
                   ? 'border-lime-500 text-lime-700'
                   : 'border-transparent text-gray-400 hover:text-gray-600'
               }`}
             >
-              <Icon size={14} />
-              {label}
+              <Icon size={14} className="flex-shrink-0" />
+              <span className="truncate">{label}</span>
               {id === 'interview' && roundCount > 0 && (
-                <span className="ml-1 bg-lime-100 text-lime-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                <span className="flex-shrink-0 bg-lime-100 text-lime-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
                   {roundCount}
                 </span>
               )}
               {id === 'screener' && localRec.screenerStatus && (
-                <span className="ml-1 bg-lime-100 text-lime-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                <span className="flex-shrink-0 bg-lime-100 text-lime-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
                   ✓
                 </span>
               )}

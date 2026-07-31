@@ -3,6 +3,7 @@ const router       = express.Router();
 const SalaryRevision = require('../models/SalaryRevision');
 const asyncHandler = require('express-async-handler');
 const Onboarding   = require('../models/onboardingModel');
+const Confirmations = require('../models/Confirmations');
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
@@ -86,6 +87,75 @@ router.get('/analytics/increments', asyncHandler(async (req, res) => {
     lowIncrementList,
     highPerformerCount: highPerformerList.length,
     highPerformerList,
+  });
+}));
+
+// ─── GET /api/salary-revisions/analytics/pip ──────────────────────────────────
+// "% of employees who performed after PIP" for the HR Dashboard. Combines
+// two sources of PIP-like events, since HR treats both as "on PIP":
+//  - SalaryRevision: a formal PIP after confirmation, resolved via
+//    PUT /:id/pip-outcome (improved / not_improved) once the review date
+//    is reached — before that route existed, an approved PIP had no way
+//    to close out at all.
+//  - Confirmations: extended probation — Onboarding already labels this
+//    "On PIP / Extended". No separate outcome field is needed there: it's
+//    derivable from history containing an 'extended' entry plus whatever
+//    currentStatus the record eventually reached ('confirmed' = improved,
+//    'not_confirmed' = did not improve).
+// "Currently on PIP" only counts SalaryRevision on_hold — that's what HR
+// means day-to-day by "on PIP"; extended-probation cases already have
+// their own "Extended" stat on the Confirmations dashboard.
+//
+// A revision left on_hold doesn't get touched by anything once the
+// employee exits (there's no automatic cleanup), so an exited employee's
+// stale on_hold record would otherwise count as "currently on PIP"
+// forever — cross-check against Onboarding.exitStatus and drop those.
+// Only works when onboardingId is actually linked: official emails aren't
+// reliably unique (role-based addresses like "dme@..." get reassigned to
+// whoever fills that role next), so matching by email would risk
+// excluding a different, currently active employee who inherited an
+// exited one's address. Revisions with no onboardingId are left as-is —
+// those need a human to correct via the Edit dialog or PIP close-out.
+const EXITED_STATUS_VALUES = new Set(['Left', 'Already Left']);
+
+router.get('/analytics/pip', asyncHandler(async (req, res) => {
+  const srPipRecords = await SalaryRevision.find({
+    'managerDecision.decision': 'pip',
+    'managementDecision.pipApproved': true,
+  }).select('employeeName stage pipOutcome reviewDate onboardingId').lean();
+
+  const onHold = srPipRecords.filter((r) => r.stage === 'on_hold');
+  const exitedIds = new Set(
+    (await Onboarding.find(
+      { _id: { $in: onHold.map((r) => r.onboardingId).filter(Boolean) } }, 'exitStatus'
+    ).lean())
+      .filter((o) => EXITED_STATUS_VALUES.has(o.exitStatus || ''))
+      .map((o) => String(o._id))
+  );
+  const currentlyOnPip = onHold.filter((r) => !exitedIds.has(String(r.onboardingId)));
+
+  const srResolved     = srPipRecords.filter((r) => r.pipOutcome === 'improved' || r.pipOutcome === 'not_improved');
+  const srImproved     = srResolved.filter((r) => r.pipOutcome === 'improved');
+
+  const extendedHistory = await Confirmations.find({ 'history.status': 'extended' })
+    .select('employeeName currentStatus').lean();
+  const confResolved = extendedHistory.filter((r) => r.currentStatus === 'confirmed' || r.currentStatus === 'not_confirmed');
+  const confImproved = confResolved.filter((r) => r.currentStatus === 'confirmed');
+
+  const totalResolved = srResolved.length + confResolved.length;
+  const totalImproved = srImproved.length + confImproved.length;
+
+  const performedAfterPipPct = totalResolved > 0
+    ? Math.round((totalImproved / totalResolved) * 1000) / 10
+    : null;
+
+  res.status(200).json({
+    success: true,
+    currentlyOnPip: currentlyOnPip.length,
+    currentlyOnPipList: currentlyOnPip.map((r) => ({ name: r.employeeName, reviewDate: r.reviewDate })),
+    totalResolved,
+    totalImproved,
+    performedAfterPipPct,
   });
 }));
 
@@ -466,6 +536,41 @@ router.put('/:id/management', asyncHandler(async (req, res) => {
   await revision.save();
 
   res.status(200).json({ success: true, data: revision, message: 'Management decision saved' });
+}));
+
+// ─── PUT /api/salary-revisions/:id/pip-outcome ───────────────────────────────
+// Closes out an active PIP. Nothing else in this model ever moves an
+// approved PIP off 'on_hold' — without this route it just sat open forever
+// with no record of whether the employee actually improved.
+
+router.put('/:id/pip-outcome', asyncHandler(async (req, res) => {
+  const { outcome, reason } = req.body;
+
+  if (!['improved', 'not_improved'].includes(outcome)) {
+    return res.status(400).json({ success: false, message: "outcome must be 'improved' or 'not_improved'" });
+  }
+
+  const revision = await SalaryRevision.findById(req.params.id);
+  if (!revision) {
+    return res.status(404).json({ success: false, message: 'Salary revision not found' });
+  }
+
+  if (revision.stage !== 'on_hold') {
+    return res.status(400).json({
+      success: false,
+      message: `Cannot close out PIP — current stage is '${revision.stage}', not 'on_hold'`,
+    });
+  }
+
+  revision.pipOutcome       = outcome;
+  revision.pipOutcomeReason = (reason || '').trim();
+  revision.pipOutcomeDate   = new Date();
+  revision.stage            = 'completed';
+  revision.updatedBy        = caller(req);
+
+  await revision.save();
+
+  res.status(200).json({ success: true, data: revision, message: 'PIP outcome recorded' });
 }));
 
 // ─── PUT /api/salary-revisions/:id/hr ────────────────────────────────────────

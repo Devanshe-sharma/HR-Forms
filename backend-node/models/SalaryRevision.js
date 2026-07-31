@@ -100,6 +100,13 @@ const salaryRevisionSchema = new mongoose.Schema({
   // PIP re-evaluation date
   reviewDate: { type: Date, default: null },
 
+  // PIP outcome — closes out an 'on_hold' PIP once the review date has
+  // passed. Nothing else ever moves an approved PIP off 'on_hold', so
+  // without this an active PIP had no way to resolve.
+  pipOutcome      : { type: String, enum: ['improved', 'not_improved', null], default: null },
+  pipOutcomeReason: { type: String, default: '' },
+  pipOutcomeDate  : { type: Date,   default: null },
+
   // Audit — support BOTH old (created_by) and new (createdBy) names
   created_by: { type: String, default: 'System' },
   createdBy  : { type: String, default: 'System' },

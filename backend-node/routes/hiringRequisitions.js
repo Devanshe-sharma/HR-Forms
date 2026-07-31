@@ -444,7 +444,10 @@ router.get('/next-serial', async (req, res) => {
 router.get('/open', async (req, res) => {
   try {
     const jobs = await HiringRequisition.find({ fmsStatus: 'Open' })
-      .select('serial_no designation hiring_dept candidate_experience_level role_link jd_link createdAt')
+      .select(
+        'serial_no designation hiring_dept candidate_experience_level role_link jd_link createdAt ' +
+        'required_skills role_category remote_eligible base_location screeningQuestions'
+      )
       .sort({ createdAt: -1 })
       .lean();
     res.json({ success: true, data: jobs });
