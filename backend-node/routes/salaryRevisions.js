@@ -137,6 +137,16 @@ router.get('/analytics/pip', asyncHandler(async (req, res) => {
   );
   const currentlyOnPip = onHold.filter((r) => !exitedIds.has(String(r.onboardingId)));
 
+  // Same "current employee" definition as Onboarding's Interns widget —
+  // joined and not yet exited.
+  const totalCurrentEmployees = await Onboarding.countDocuments({
+    joiningStatus: 'Joined',
+    exitStatus: { $nin: [...EXITED_STATUS_VALUES] },
+  });
+  const pipPct = totalCurrentEmployees > 0
+    ? Math.round((currentlyOnPip.length / totalCurrentEmployees) * 1000) / 10
+    : 0;
+
   const srResolved     = srPipRecords.filter((r) => r.pipOutcome === 'improved' || r.pipOutcome === 'not_improved');
   const srImproved     = srResolved.filter((r) => r.pipOutcome === 'improved');
 
@@ -155,6 +165,8 @@ router.get('/analytics/pip', asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     currentlyOnPip: currentlyOnPip.length,
+    totalCurrentEmployees,
+    pipPct,
     totalResolved,
     totalImproved,
     performedAfterPipPct,

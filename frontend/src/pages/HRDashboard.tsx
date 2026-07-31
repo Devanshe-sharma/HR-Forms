@@ -173,6 +173,8 @@ interface InternConversionsResponse {
 interface PipResponse {
   success: boolean;
   currentlyOnPip: number;
+  totalCurrentEmployees: number;
+  pipPct: number;
   totalResolved: number;
   totalImproved: number;
   performedAfterPipPct: number | null;
@@ -1224,6 +1226,13 @@ const PipAnalyticsWidget: React.FC = () => {
             bg="#fffbeb"
           />
           <StatCard
+            label="% on PIP"
+            value={`${data.pipPct}%`}
+            color="#d97706"
+            bg="#fffbeb"
+            hint={`${data.currentlyOnPip} of ${data.totalCurrentEmployees} current employees`}
+          />
+          <StatCard
             label="% Performed After PIP"
             value={data.performedAfterPipPct != null ? `${data.performedAfterPipPct}%` : "—"}
             color="#059669"
@@ -1455,9 +1464,10 @@ async function fetchIncrementSummary(): Promise<CardSummary> {
 async function fetchPipSummary(): Promise<CardSummary> {
   const res = await axios.get(`${API}/salary-revisions/analytics/pip`, { params: { _t: Date.now() } });
   const currentlyOnPip: number = res.data?.currentlyOnPip ?? 0;
-  const pct = res.data?.performedAfterPipPct;
-  if (pct == null) return { value: String(currentlyOnPip), sublabel: "Currently on PIP — no closed-out case yet" };
-  return { value: `${pct}%`, sublabel: `Performed after PIP · ${currentlyOnPip} currently on PIP` };
+  const totalCurrentEmployees: number = res.data?.totalCurrentEmployees ?? 0;
+  const pipPct = res.data?.pipPct ?? 0;
+  if (totalCurrentEmployees === 0) return { value: "—", sublabel: "No current employees" };
+  return { value: `${pipPct}%`, sublabel: `${currentlyOnPip} of ${totalCurrentEmployees} current employees on PIP` };
 }
 
 async function fetchInternConversionsSummary(): Promise<CardSummary> {
