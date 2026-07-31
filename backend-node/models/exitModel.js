@@ -73,6 +73,13 @@ const exitSchema = new mongoose.Schema(
     // time purely for display — not otherwise used by exit logic.
     joiningDate: { type: Date, default: null },
 
+    // ── CONFIDENTIAL — only collected when exitType === "Asked to Leave".
+    // Deliberately NEVER read by any email template/trigger — HR-internal
+    // only. See emails/senders and emails/templates: none of them
+    // reference these fields, and they must stay that way.
+    reasonAskedToLeave: { type: String, default: "" },
+    reasonAskedToLeaveDetail: { type: String, default: "" },
+
     // ── EXIT TIMELINE ────────────────────────────────────────
     resignationDate: Date,
     plannedExitDate: Date,

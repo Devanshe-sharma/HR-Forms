@@ -67,26 +67,47 @@ const mapEmployeeCategoryToEmploymentType = (category?: string): string => {
   }
 };
 
-const schema = z.object({
-  name: z.string().min(1, "Employee name is required"),
-  gender: z.string().min(1, "Gender is required"),
-  mobile: z.string().min(1, "Mobile is required"),
-  persEmail: z.string().email("Invalid email"),
-  officialEmail: z.string().optional(),
-  dept: z.string().min(1, "Department is required"),
-  designation: z.string().min(1, "Designation is required"),
-  employmentType: z.string().optional(),
-  noticePeriod: z.string().min(1, "Notice period is required"),
-  transferKnowledge: z.string().min(1, "Select who knowledge will be transferred to"),
-  exitStatus: z.enum(["Serving Notice Period", "Already Left", "Left", "Not Exiting", "Exit Cancelled"]),
-  exitType: z.string().min(1, "Type of Exit is required"),
-  remarks: z.string().optional(),
+// Confidential — never referenced by any email template/trigger. Shown to
+// HR only when Type of Exit is "Asked to Leave".
+const REASON_ASKED_TO_LEAVE_OPTIONS = [
+  "Attitude (Refused to take ownership)",
+  "Conduct",
+  "Performance",
+  "Role Redundancy",
+];
 
-  autoExitEmail: z.boolean().optional(),
-  autoExitEmailDept: z.boolean().optional(),
-  autoReminderEmail: z.boolean().optional(),
-  autoInstructionsToAllEmail: z.boolean().optional(),
-});
+const schema = z
+  .object({
+    name: z.string().min(1, "Employee name is required"),
+    gender: z.string().min(1, "Gender is required"),
+    mobile: z.string().min(1, "Mobile is required"),
+    persEmail: z.string().email("Invalid email"),
+    officialEmail: z.string().optional(),
+    dept: z.string().min(1, "Department is required"),
+    designation: z.string().min(1, "Designation is required"),
+    employmentType: z.string().optional(),
+    noticePeriod: z.string().min(1, "Notice period is required"),
+    transferKnowledge: z.string().min(1, "Select who knowledge will be transferred to"),
+    exitStatus: z.enum(["Serving Notice Period", "Already Left", "Left", "Not Exiting", "Exit Cancelled"]),
+    exitType: z.string().min(1, "Type of Exit is required"),
+    reasonAskedToLeave: z.string().optional(),
+    reasonAskedToLeaveDetail: z.string().optional(),
+    remarks: z.string().optional(),
+
+    autoExitEmail: z.boolean().optional(),
+    autoExitEmailDept: z.boolean().optional(),
+    autoReminderEmail: z.boolean().optional(),
+    autoInstructionsToAllEmail: z.boolean().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.exitType === "Asked to Leave" && !data.reasonAskedToLeave) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["reasonAskedToLeave"],
+        message: "Reason is required when Type of Exit is Asked to Leave",
+      });
+    }
+  });
 
 type FormValues = z.infer<typeof schema>;
 
@@ -238,6 +259,7 @@ const NewExit: React.FC = () => {
   const [thankYouLoading, setThankYouLoading] = useState(true);
 
   const exitStatus = watch("exitStatus");
+  const exitType = watch("exitType");
   const selectedDept = watch("dept");
   const selectedName = watch("name");
 
@@ -594,6 +616,38 @@ const NewExit: React.FC = () => {
                     </div>
                   )}
                 </div>
+
+                {exitType === "Asked to Leave" && (
+                  <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-4">
+                    <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">
+                      Confidential — never included in any exit email
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className={labelClass}>Reason Would Have Been Asked to Leave (Confidential) *</label>
+                        <select {...register("reasonAskedToLeave")} className={inputClass}>
+                          <option value="">Select reason</option>
+                          {REASON_ASKED_TO_LEAVE_OPTIONS.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                        {errors.reasonAskedToLeave && (
+                          <p className={errorClass}>{errors.reasonAskedToLeave.message}</p>
+                        )}
+                      </div>
+                      <div>
+                        <label className={labelClass}>Reasons (in Detail) (Confidential)</label>
+                        <input
+                          {...register("reasonAskedToLeaveDetail")}
+                          className={inputClass}
+                          placeholder="Add confidential detail..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </section>
 
               {/* Remarks & CC */}

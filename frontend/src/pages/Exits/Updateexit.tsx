@@ -58,6 +58,8 @@ interface ExitDetail {
   noticePeriod?: string;
   transferKnowledge?: string;
   exitType?: string;
+  reasonAskedToLeave?: string;
+  reasonAskedToLeaveDetail?: string;
   employeesInCc?: string[];
   resignationDate?: string;
   plannedExitDate?: string;
@@ -567,6 +569,24 @@ const UpdateExit: React.FC = () => {
                     <input {...register("officialEmail")} className={inputClass} />
                   </div>
                 </div>
+
+                {detail.exitType === "Asked to Leave" && (
+                  <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+                    <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">
+                      Confidential — never included in any exit email
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className={labelClass}>Reason Would Have Been Asked to Leave (Confidential)</label>
+                        <div className={disabledInputClass}>{detail.reasonAskedToLeave || "—"}</div>
+                      </div>
+                      <div>
+                        <label className={labelClass}>Reasons (in Detail) (Confidential)</label>
+                        <div className={disabledInputClass}>{detail.reasonAskedToLeaveDetail || "—"}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </section>
 
               {/* Status change */}
