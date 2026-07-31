@@ -57,7 +57,7 @@ console.log("ENV CHECK:", {
 });
 
 /* ─────────────────── ROUTES ─────────────────── */
-app.get('/', (req, res) => res.send('Backend server is alive!'));
+app.get('/health', (req, res) => res.send('Backend server is alive!'));
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/employees',          require('./routes/employees'));
@@ -99,6 +99,18 @@ app.use('/api/applicant-records', require('./routes/applicantRecords'));
 app.use('/api/dept-orientation',   require('./routes/deptOrientationRoutes'));
 app.use('/api/orientation',        require('./routes/orientationRoutes'));
 app.use('/api/salary-revisions',   require('./routes/salaryRevisions')); 
+
+/* ─────────────────── FRONTEND STATIC FILES ─────────────────────
+   Serves the built React/Vue/etc app from frontend/dist.
+   Must come AFTER all /api routes above, so API calls are never
+   swallowed by the catch-all below.
+   Adjust the path if your folder layout differs. ───────────────── */
+const FRONTEND_DIST = path.join(__dirname, '../frontend/dist');
+app.use(express.static(FRONTEND_DIST));
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(FRONTEND_DIST, 'index.html'));
+});
 
 /* ─────────────────── DATABASE ─────────────────── */
 
