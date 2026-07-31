@@ -119,10 +119,13 @@ router.get('/analytics/increments', asyncHandler(async (req, res) => {
 const EXITED_STATUS_VALUES = new Set(['Left', 'Already Left']);
 
 router.get('/analytics/pip', asyncHandler(async (req, res) => {
+  // No employeeName in the projection — this endpoint is aggregate-only,
+  // same confidentiality rule as Exit's Asked-to-Leave metric. Only
+  // reviewDate/stage/onboardingId are needed to compute the counts below.
   const srPipRecords = await SalaryRevision.find({
     'managerDecision.decision': 'pip',
     'managementDecision.pipApproved': true,
-  }).select('employeeName stage pipOutcome reviewDate onboardingId').lean();
+  }).select('stage pipOutcome reviewDate onboardingId').lean();
 
   const onHold = srPipRecords.filter((r) => r.stage === 'on_hold');
   const exitedIds = new Set(
@@ -152,7 +155,6 @@ router.get('/analytics/pip', asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     currentlyOnPip: currentlyOnPip.length,
-    currentlyOnPipList: currentlyOnPip.map((r) => ({ name: r.employeeName, reviewDate: r.reviewDate })),
     totalResolved,
     totalImproved,
     performedAfterPipPct,

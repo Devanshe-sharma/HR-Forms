@@ -168,14 +168,11 @@ interface InternConversionsResponse {
   departmentBreakdown: InternConversionDeptRow[];
 }
 
-interface PipListRow {
-  name: string;
-  reviewDate: string | null;
-}
+// Aggregate-only — no employee names, same confidentiality rule as
+// Asked-to-Leave.
 interface PipResponse {
   success: boolean;
   currentlyOnPip: number;
-  currentlyOnPipList: PipListRow[];
   totalResolved: number;
   totalImproved: number;
   performedAfterPipPct: number | null;
@@ -190,6 +187,15 @@ interface AskedToLeaveResponse {
   totalExits: number;
   askedToLeaveCount: number;
   askedToLeavePct: number;
+}
+
+// Aggregate-only — no names, no department breakdown, same confidentiality
+// rule as Asked-to-Leave.
+interface ReferredResponse {
+  success: boolean;
+  total: number;
+  referredCount: number;
+  referredPct: number;
 }
 
 // ─── Small building blocks ─────────────────────────────────────────────────
@@ -1210,51 +1216,21 @@ const PipAnalyticsWidget: React.FC = () => {
           <CircularProgress size={26} sx={{ color: ACCENT }} />
         </Box>
       ) : (
-        <>
-          <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexWrap: "wrap" }}>
-            <StatCard
-              label="Currently on PIP"
-              value={data.currentlyOnPip}
-              color="#d97706"
-              bg="#fffbeb"
-            />
-            <StatCard
-              label="% Performed After PIP"
-              value={data.performedAfterPipPct != null ? `${data.performedAfterPipPct}%` : "—"}
-              color="#059669"
-              bg="#f0fdf4"
-              hint={data.totalResolved > 0 ? `${data.totalImproved} of ${data.totalResolved} resolved cases improved` : "No PIP has been closed out yet"}
-            />
-          </Box>
-
-          {data.currentlyOnPipList.length > 0 && (
-            <Box>
-              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
-                Currently on PIP
-              </Typography>
-              <Box sx={{ border: "1px solid #e2e8f0", borderRadius: "10px", overflow: "hidden" }}>
-                {data.currentlyOnPipList.map((row, i) => (
-                  <Box
-                    key={`${row.name}-${i}`}
-                    sx={{
-                      display: "flex", justifyContent: "space-between", alignItems: "center",
-                      px: 2, py: 1, bgcolor: "#fff",
-                      borderTop: i > 0 ? "1px solid #f1f5f9" : "none",
-                    }}
-                  >
-                    <Typography fontSize="0.8rem" color="#1e293b" fontWeight={500}>{row.name}</Typography>
-                    <Typography fontSize="0.72rem" color="#94a3b8">
-                      Review due {row.reviewDate ? new Date(row.reviewDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
-                    </Typography>
-                  </Box>
-                ))}
-              </Box>
-              <Typography fontSize="0.68rem" color="#94a3b8" mt={1}>
-                Resolve each one from its Salary Revision record — "Close Out PIP" once the review date is reached.
-              </Typography>
-            </Box>
-          )}
-        </>
+        <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
+          <StatCard
+            label="Currently on PIP"
+            value={data.currentlyOnPip}
+            color="#d97706"
+            bg="#fffbeb"
+          />
+          <StatCard
+            label="% Performed After PIP"
+            value={data.performedAfterPipPct != null ? `${data.performedAfterPipPct}%` : "—"}
+            color="#059669"
+            bg="#f0fdf4"
+            hint={data.totalResolved > 0 ? `${data.totalImproved} of ${data.totalResolved} resolved cases improved` : "No PIP has been closed out yet"}
+          />
+        </Box>
       )}
     </Box>
   );
@@ -1298,6 +1274,48 @@ const AskedToLeaveWidget: React.FC = () => {
           <StatCard label="Total Exits" value={data.totalExits} color={ACCENT} bg="#eef2ff" />
           <StatCard label="Asked to Leave" value={data.askedToLeaveCount} color="#dc2626" bg="#fef2f2" />
           <StatCard label="% Asked to Leave" value={`${data.askedToLeavePct}%`} color="#dc2626" bg="#fef2f2" />
+        </Box>
+      )}
+    </Box>
+  );
+};
+
+// ─── Referred Employees widget ──────────────────────────────────────────────
+// Aggregate percentage only — no names, no department breakdown, same
+// confidentiality rule as Asked to Leave.
+
+const ReferredWidget: React.FC = () => {
+  const [data, setData] = useState<ReferredResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    axios.get(`${API}/onboarding/analytics/referred`, { params: { _t: Date.now() } })
+      .then((res) => setData(res.data))
+      .catch(() => toast.error("Failed to load referred-employee data"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <Box sx={{ bgcolor: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", p: 3, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+      <Box sx={{ mb: 2.5 }}>
+        <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
+          Referred Employees
+        </Typography>
+        <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
+          Share of everyone who ever joined that came in via referral — a single aggregate number, no employee names or department breakdown shown
+        </Typography>
+      </Box>
+
+      {loading || !data ? (
+        <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
+          <CircularProgress size={26} sx={{ color: ACCENT }} />
+        </Box>
+      ) : (
+        <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
+          <StatCard label="Total Joined" value={data.total} color={ACCENT} bg="#eef2ff" />
+          <StatCard label="Referred" value={data.referredCount} color="#0284c7" bg="#eff6ff" />
+          <StatCard label="% Referred" value={`${data.referredPct}%`} color="#0284c7" bg="#eff6ff" />
         </Box>
       )}
     </Box>
@@ -1349,7 +1367,6 @@ interface UpcomingMetric {
 }
 
 const UPCOMING_METRICS: UpcomingMetric[] = [
-  { title: "Referred Employees (%)", icon: <GroupAddIcon />, color: "#0284c7", bg: "#eff6ff" },
   { title: "Average Days to Hire (Fresher)", icon: <HourglassEmptyIcon />, color: "#059669", bg: "#f0fdf4" },
   { title: "Average Days to Hire (Experienced Employee)", icon: <AccessTimeIcon />, color: "#d97706", bg: "#fffbeb" },
   { title: "Salary Revision Timeliness Rate (%)", icon: <PaidIcon />, color: ACCENT, bg: "#eef2ff" },
@@ -1459,12 +1476,21 @@ async function fetchAskedToLeaveSummary(): Promise<CardSummary> {
   return { value: `${pct}%`, sublabel: `${askedToLeaveCount} of ${totalExits} exits` };
 }
 
+async function fetchReferredSummary(): Promise<CardSummary> {
+  const res = await axios.get(`${API}/onboarding/analytics/referred`, { params: { _t: Date.now() } });
+  const total = res.data?.total ?? 0;
+  const referredCount = res.data?.referredCount ?? 0;
+  const pct = res.data?.referredPct ?? 0;
+  if (total === 0) return { value: "—", sublabel: "No employees recorded yet" };
+  return { value: `${pct}%`, sublabel: `${referredCount} of ${total} who ever joined` };
+}
+
 // ─── Root page ──────────────────────────────────────────────────────────────
 // Default view is a fixed 3x2 grid of equal-size summary cards — no
 // scrolling. Clicking a card opens that area's full existing widget
 // (unchanged from before) inside a modal.
 
-type CardKey = "teeth" | "gender" | "interns" | "internConversions" | "increments" | "pip" | "askedToLeave" | "recruitment" | "onboarding" | "exit";
+type CardKey = "teeth" | "gender" | "interns" | "internConversions" | "increments" | "pip" | "askedToLeave" | "referred" | "recruitment" | "onboarding" | "exit";
 
 const HRAnalyticsDashboard: React.FC = () => {
   const [activeCard, setActiveCard] = useState<CardKey | null>(null);
@@ -1484,6 +1510,7 @@ const HRAnalyticsDashboard: React.FC = () => {
     { key: "increments", title: "Salary Increments (%)", icon: <TrendingUpIcon />, color: "#7c3aed", bg: "#f5f3ff", fetchSummary: fetchIncrementSummary },
     { key: "pip", title: "PIP (%)", icon: <AssessmentIcon />, color: "#d97706", bg: "#fffbeb", fetchSummary: fetchPipSummary },
     { key: "askedToLeave", title: "Asked to Leave (%)", icon: <PersonRemoveIcon />, color: "#dc2626", bg: "#fef2f2", fetchSummary: fetchAskedToLeaveSummary },
+    { key: "referred", title: "Referred Employees (%)", icon: <GroupAddIcon />, color: "#0284c7", bg: "#eff6ff", fetchSummary: fetchReferredSummary },
     { key: "recruitment", title: "Recruitment On-Time (%)", icon: <WorkIcon />, color: "#0284c7", bg: "#eff6ff", fetchSummary: () => fetchKpiSummary("recruitment") },
     { key: "onboarding", title: "Onboarding On-Time (%)", icon: <HowToRegIcon />, color: "#059669", bg: "#f0fdf4", fetchSummary: () => fetchKpiSummary("onboarding") },
     { key: "exit", title: "Exit On-Time (%)", icon: <ExitToAppIcon />, color: "#d97706", bg: "#fffbeb", fetchSummary: () => fetchKpiSummary("exit") },
@@ -1575,6 +1602,7 @@ const HRAnalyticsDashboard: React.FC = () => {
           {activeCard === "increments" && <IncrementAnalyticsWidget />}
           {activeCard === "pip" && <PipAnalyticsWidget />}
           {activeCard === "askedToLeave" && <AskedToLeaveWidget />}
+          {activeCard === "referred" && <ReferredWidget />}
           {(activeCard === "recruitment" || activeCard === "onboarding" || activeCard === "exit") && activeModuleLabel && (
             <ModuleKpiRow moduleKey={activeCard} label={activeModuleLabel} />
           )}

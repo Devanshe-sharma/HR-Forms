@@ -1535,6 +1535,31 @@ router.get("/analytics/interns", async (req, res) => {
   }
 });
 
+// ─── GET /api/onboarding/analytics/referred ────────────────────────────────
+// Aggregate-only: percentage of everyone who ever actually joined that was
+// a referral. Deliberately projects ONLY joiningStatus/referred — never
+// name, department, referredPerformance, or referredReason — same
+// confidentiality rule as Exit's Asked-to-Leave metric: no names, no
+// department breakdown, a single organization-wide number only.
+//
+// Base population is "everyone who ever joined" (joiningStatus === "Joined"),
+// NOT "current employees only" like the Interns widget — referral quality
+// is a fact about how someone was hired, not whether they still work here,
+// and several referred employees have since exited.
+router.get("/analytics/referred", async (req, res) => {
+  try {
+    const docs = await Onboarding.find({ joiningStatus: "Joined" }, "referred").lean();
+    const total = docs.length;
+    const referredCount = docs.filter((d) => d.referred).length;
+    const referredPct = total > 0 ? Math.round((referredCount / total) * 1000) / 10 : 0;
+
+    res.json({ success: true, total, referredCount, referredPct });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 async function recomputeOnboarding(existing) {
   const existingPlain = existing.toObject();
   const checkLists = toPlainCheckLists(existingPlain.checkLists);
