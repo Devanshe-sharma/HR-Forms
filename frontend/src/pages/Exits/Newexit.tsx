@@ -21,9 +21,51 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
-import { Dayjs } from "dayjs";
+import dayjs, { Dayjs } from "dayjs";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
+
+// "Type of Exit" — the reason the employee is exiting, distinct from
+// exitStatus (which tracks the operational stage: notice period/left/etc).
+const EXIT_TYPE_OPTIONS = [
+  "Resignation",
+  "Completion of Tenure",
+  "Retirement",
+  "Demise",
+  "Termination",
+  "Asked to Leave",
+];
+
+// "Type of Employment" — auto-filled from the matched Onboarding record's
+// employeeCategory (see mapEmployeeCategoryToEmploymentType below), shown
+// here in HR-facing wording rather than Onboarding's internal enum values.
+const EMPLOYMENT_TYPE_OPTIONS = [
+  "Full Time Employment",
+  "Contract",
+  "Internship",
+  "Part Time",
+  "Temporary Staffing",
+  "Consultant",
+];
+
+const mapEmployeeCategoryToEmploymentType = (category?: string): string => {
+  switch (category) {
+    case "Employee":
+      return "Full Time Employment";
+    case "Contract Based":
+      return "Contract";
+    case "Intern":
+      return "Internship";
+    case "Part Time":
+      return "Part Time";
+    case "Temporary Staffing":
+      return "Temporary Staffing";
+    case "Consultant":
+      return "Consultant";
+    default:
+      return "";
+  }
+};
 
 const schema = z.object({
   name: z.string().min(1, "Employee name is required"),
@@ -33,9 +75,11 @@ const schema = z.object({
   officialEmail: z.string().optional(),
   dept: z.string().min(1, "Department is required"),
   designation: z.string().min(1, "Designation is required"),
+  employmentType: z.string().optional(),
   noticePeriod: z.string().min(1, "Notice period is required"),
   transferKnowledge: z.string().min(1, "Select who knowledge will be transferred to"),
   exitStatus: z.enum(["Serving Notice Period", "Already Left", "Left", "Not Exiting", "Exit Cancelled"]),
+  exitType: z.string().min(1, "Type of Exit is required"),
   remarks: z.string().optional(),
 
   autoExitEmail: z.boolean().optional(),
@@ -52,10 +96,16 @@ type FormValues = z.infer<typeof schema>;
 type MasterEmployee = {
   employee_id: string;
   full_name: string;
+  gender?: string;
   department: string;
   designation: string;
   official_email: string;
+  personal_email?: string;
   email: string;
+  mobile?: string;
+  joining_date?: string | null;
+  employee_category?: string;
+  management_level?: string;
   reporting_head?: string;
   is_current: boolean;
   is_exited: boolean;
@@ -169,6 +219,7 @@ const NewExit: React.FC = () => {
   const [resignationDate, setResignationDate] = useState<Dayjs | null>(null);
   const [plannedExitDate, setPlannedExitDate] = useState<Dayjs | null>(null);
   const [leftDate, setLeftDate] = useState<Dayjs | null>(null);
+  const [joiningDate, setJoiningDate] = useState<Dayjs | null>(null);
   const [employeesInCc, setEmployeesInCc] = useState<string[]>([]);
   const [master, setMaster] = useState<EmployeeMasterData>({ employees: [] });
   const [deptDesig, setDeptDesig] = useState<DeptDesigMasterData>({
@@ -221,13 +272,27 @@ const NewExit: React.FC = () => {
     setValue("designation", "");
   }, [selectedDept, setValue]);
 
-  // Auto-fill official email + dept/designation when picking an existing employee
+  // Auto-fill employee basic details, official data, and joining data from
+  // the matched Onboarding record when picking an existing employee.
   useEffect(() => {
     const match = currentEmployees.find((e) => e.full_name === selectedName);
     if (match) {
+      // Basic details
+      if (match.gender) setValue("gender", match.gender);
+      if (match.mobile) setValue("mobile", match.mobile);
+      if (match.personal_email) setValue("persEmail", match.personal_email);
       setValue("officialEmail", match.official_email || match.email || "");
+
+      // Official data
       if (match.department) setValue("dept", match.department);
       if (match.designation) setValue("designation", match.designation);
+      const mappedEmploymentType = mapEmployeeCategoryToEmploymentType(match.employee_category);
+      if (mappedEmploymentType) setValue("employmentType", mappedEmploymentType);
+
+      // Joining data
+      setJoiningDate(match.joining_date ? dayjs(match.joining_date) : null);
+    } else {
+      setJoiningDate(null);
     }
   }, [selectedName, currentEmployees, setValue]);
 
@@ -263,6 +328,7 @@ const NewExit: React.FC = () => {
     setResignationDate(null);
     setPlannedExitDate(null);
     setLeftDate(null);
+    setJoiningDate(null);
     setEmployeesInCc([]);
   };
 
@@ -273,6 +339,7 @@ const NewExit: React.FC = () => {
         resignationDate: resignationDate?.toISOString(),
         plannedExitDate: plannedExitDate?.toISOString(),
         leftDate: leftDate?.toISOString(),
+        joiningDate: joiningDate?.toISOString(),
         employeesInCc,
         checkLists: CHECKLIST_DEFS.map((listDef, listIdx) => ({
           name: listDef.name,
@@ -444,6 +511,27 @@ const NewExit: React.FC = () => {
                     </select>
                     {errors.transferKnowledge && <p className={errorClass}>{errors.transferKnowledge.message}</p>}
                   </div>
+                  <div>
+                    <label className={labelClass}>Type of Employment</label>
+                    <select {...register("employmentType")} className={inputClass}>
+                      <option value="">Select employment type</option>
+                      {EMPLOYMENT_TYPE_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-slate-400 mt-1">Auto-filled from Onboarding; override if needed.</p>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Date of Joining</label>
+                    <DatePicker
+                      value={joiningDate}
+                      onChange={setJoiningDate}
+                      disabled
+                      slotProps={{ textField: { size: "small", fullWidth: true } }}
+                    />
+                  </div>
                 </div>
               </section>
 
@@ -472,6 +560,18 @@ const NewExit: React.FC = () => {
                       <option value="Exit Cancelled">Exit Cancelled</option>
                     </select>
                     {errors.exitStatus && <p className={errorClass}>{errors.exitStatus.message}</p>}
+                  </div>
+                  <div>
+                    <label className={labelClass}>Type of Exit *</label>
+                    <select {...register("exitType")} className={inputClass}>
+                      <option value="">Select Type of Exit</option>
+                      {EXIT_TYPE_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.exitType && <p className={errorClass}>{errors.exitType.message}</p>}
                   </div>
                   {exitStatus === "Serving Notice Period" && (
                     <div>

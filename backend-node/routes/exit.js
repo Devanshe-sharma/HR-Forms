@@ -426,6 +426,7 @@ router.post("/", async (req, res) => {
       resignationDate: body.resignationDate ? new Date(body.resignationDate) : undefined,
       plannedExitDate: body.plannedExitDate ? new Date(body.plannedExitDate) : undefined,
       leftDate: body.leftDate ? new Date(body.leftDate) : undefined,
+      joiningDate: body.joiningDate ? new Date(body.joiningDate) : undefined,
       employeesInCc: normalizeCc(body.employeesInCc),
       checkLists,
       totalTasks,
@@ -748,6 +749,7 @@ router.put("/:id", async (req, res) => {
     const resolvedResignationDate = body.resignationDate ? new Date(body.resignationDate) : existing.resignationDate;
     const resolvedLeftDate = body.leftDate ? new Date(body.leftDate) : existing.leftDate;
     const resolvedPlannedExitDate = body.plannedExitDate ? new Date(body.plannedExitDate) : existing.plannedExitDate;
+    const resolvedJoiningDate = body.joiningDate ? new Date(body.joiningDate) : existing.joiningDate;
 
     if (isApproved) {
       assignExitPlanDates(checkLists, existing.hr_approved_at, resolvedLeftDate, resolvedPlannedExitDate);
@@ -780,6 +782,7 @@ router.put("/:id", async (req, res) => {
         resignationDate: resolvedResignationDate,
         plannedExitDate: resolvedPlannedExitDate,
         leftDate: resolvedLeftDate,
+        joiningDate: resolvedJoiningDate,
         employeesInCc: body.employeesInCc !== undefined ? normalizeCc(body.employeesInCc) : existing.employeesInCc,
         checkLists,
         totalTasks: checkLists.reduce((s, l) => s + l.itemsList.length, 0),

@@ -53,8 +53,11 @@ interface ExitDetail {
   officialEmail?: string;
   dept?: string;
   designation?: string;
+  employmentType?: string;
+  joiningDate?: string;
   noticePeriod?: string;
   transferKnowledge?: string;
+  exitType?: string;
   employeesInCc?: string[];
   resignationDate?: string;
   plannedExitDate?: string;
@@ -540,12 +543,24 @@ const UpdateExit: React.FC = () => {
                     <div className={disabledInputClass}>{detail.designation || "—"}</div>
                   </div>
                   <div>
+                    <label className={labelClass}>Type of Employment</label>
+                    <div className={disabledInputClass}>{detail.employmentType || "—"}</div>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Date of Joining</label>
+                    <div className={disabledInputClass}>{fmtDate(detail.joiningDate)}</div>
+                  </div>
+                  <div>
                     <label className={labelClass}>Notice Period</label>
                     <div className={disabledInputClass}>{detail.noticePeriod || "—"}</div>
                   </div>
                   <div>
                     <label className={labelClass}>Transfer Knowledge To</label>
                     <div className={disabledInputClass}>{detail.transferKnowledge || "—"}</div>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Type of Exit</label>
+                    <div className={disabledInputClass}>{detail.exitType || "—"}</div>
                   </div>
                   <div>
                     <label className={labelClass}>Official Email, if Allotted</label>

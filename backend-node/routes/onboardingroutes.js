@@ -1212,7 +1212,7 @@ router.get("/employee-master", async (req, res) => {
   try {
     const docs = await Onboarding.find(
       {},
-      "name empId dept designation officialEmail persEmail mobile joiningStatus exitStatus joinedDate reportingHead employeeCategory managementLevel"
+      "name gender empId dept designation officialEmail persEmail mobile joiningStatus exitStatus joinedDate reportingHead employeeCategory managementLevel"
     ).lean();
 
     const employees = docs.map((d) => {
@@ -1222,6 +1222,7 @@ router.get("/employee-master", async (req, res) => {
         _id: String(d._id),
         employee_id: d.empId || String(d._id),
         full_name: d.name || "",
+        gender: d.gender || "",
         department: d.dept || "",
         designation: d.designation || "",
         official_email: d.officialEmail || "",

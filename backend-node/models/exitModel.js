@@ -58,9 +58,20 @@ const exitSchema = new mongoose.Schema(
     transferKnowledge: String,
     reason: String,
     remarks: String,
-    // Additive field for legacy import — e.g. "Resignation". Optional,
-    // doesn't affect existing documents or the New/Update Exit forms.
+    // "Type of Exit" — Resignation / Completion of Tenure / Retirement /
+    // Demise / Termination / Asked to Leave. Originally added only for
+    // legacy CSV import ("Exit Type" column); now also set from the
+    // New/Update Exit forms, so it stays a plain String (no enum) to keep
+    // accepting whatever free-text value old imported records already have.
     exitType: { type: String, default: "" },
+    // "Type of Employment" — Full Time Employment / Contract / Internship /
+    // etc. Auto-filled from the matched Onboarding record's employeeCategory
+    // at selection time, but kept as free text on both sides so it isn't
+    // blocked by an enum mismatch between the two schemas.
+    employmentType: { type: String, default: "" },
+    // Date of joining, copied over from Onboarding at employee-selection
+    // time purely for display — not otherwise used by exit logic.
+    joiningDate: { type: Date, default: null },
 
     // ── EXIT TIMELINE ────────────────────────────────────────
     resignationDate: Date,
