@@ -92,7 +92,7 @@ const HR_CHECKLISTS = [
 ];
 
 const JOINING_DAYS_OPTIONS = [
-  { value: '20 days', label: '20 days = joining at 0 days notice' },
+  { value: '25 days', label: '25 days = joining at 0 days notice' },
   { value: '35 days', label: '35 days = joining at 15-days notice' },
   { value: '50 days', label: '50 days = joining at 30-days notice' },
   { value: '80 days', label: '80 days = joining at 60-days notice' },
