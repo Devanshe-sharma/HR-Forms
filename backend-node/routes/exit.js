@@ -706,36 +706,24 @@ router.get("/unsynced", async (req, res) => {
 // ─── GET /api/exit/analytics/asked-to-leave ────────────────────────────────
 // Aggregate-only: percentage of exits that were "Asked to Leave", out of
 // all real exits (excludes "Not Exiting"/"Exit Cancelled", which never
-// actually happened). Deliberately projects ONLY exitType/exitStatus/dept
-// — never name, reasonAskedToLeave, or reasonAskedToLeaveDetail — so this
-// confidential detail can't leak through this endpoint even by accident.
+// actually happened). Deliberately projects ONLY exitType/exitStatus — never
+// name, dept, reasonAskedToLeave, or reasonAskedToLeaveDetail. No
+// department breakdown either: in a small department, "3 of 3 asked to
+// leave" is as identifying as a name, so this stays a single organization-
+// wide number.
 // Must be registered before /:id, same reason as /unsynced above.
 const REAL_EXIT_STATUSES = new Set(["Serving Notice Period", "Already Left", "Left"]);
 
 router.get("/analytics/asked-to-leave", async (req, res) => {
   try {
-    const docs = await Exit.find({}, "exitType exitStatus dept").lean();
+    const docs = await Exit.find({}, "exitType exitStatus").lean();
     const realExits = docs.filter((d) => REAL_EXIT_STATUSES.has(d.exitStatus || ""));
 
     const totalExits = realExits.length;
     const askedToLeaveCount = realExits.filter((d) => d.exitType === "Asked to Leave").length;
     const askedToLeavePct = totalExits > 0 ? Math.round((askedToLeaveCount / totalExits) * 1000) / 10 : 0;
 
-    const byDept = {};
-    for (const d of realExits) {
-      const dept = (d.dept || "").trim() || "Unassigned";
-      if (!byDept[dept]) byDept[dept] = { department: dept, askedToLeaveCount: 0, totalExits: 0 };
-      byDept[dept].totalExits++;
-      if (d.exitType === "Asked to Leave") byDept[dept].askedToLeaveCount++;
-    }
-    const departmentBreakdown = Object.values(byDept)
-      .map((row) => ({
-        ...row,
-        pct: row.totalExits > 0 ? Math.round((row.askedToLeaveCount / row.totalExits) * 1000) / 10 : 0,
-      }))
-      .sort((a, b) => b.askedToLeaveCount - a.askedToLeaveCount || a.department.localeCompare(b.department));
-
-    res.json({ success: true, totalExits, askedToLeaveCount, askedToLeavePct, departmentBreakdown });
+    res.json({ success: true, totalExits, askedToLeaveCount, askedToLeavePct });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: err.message });

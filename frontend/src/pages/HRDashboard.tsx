@@ -181,21 +181,15 @@ interface PipResponse {
   performedAfterPipPct: number | null;
 }
 
-// Aggregate-only — the backend deliberately never returns names or the
-// confidential reason fields for this endpoint, so there's nothing here
-// to accidentally render either.
-interface AskedToLeaveDeptRow {
-  department: string;
-  askedToLeaveCount: number;
-  totalExits: number;
-  pct: number;
-}
+// Aggregate-only — the backend deliberately never returns names, the
+// confidential reason fields, or a department breakdown for this
+// endpoint (a small department's count is as identifying as a name), so
+// there's nothing here to accidentally render either.
 interface AskedToLeaveResponse {
   success: boolean;
   totalExits: number;
   askedToLeaveCount: number;
   askedToLeavePct: number;
-  departmentBreakdown: AskedToLeaveDeptRow[];
 }
 
 // ─── Small building blocks ─────────────────────────────────────────────────
@@ -1268,13 +1262,13 @@ const PipAnalyticsWidget: React.FC = () => {
 
 // ─── Asked to Leave widget ──────────────────────────────────────────────────
 // Aggregate percentage only — deliberately no names, no reasons, no
-// per-employee detail anywhere in this widget or the endpoint it reads
-// from. Department breakdown is counts only, same confidentiality rule.
+// department breakdown, no per-employee detail anywhere in this widget or
+// the endpoint it reads from. A small department's count would be as
+// identifying as a name, so this stays a single organization-wide number.
 
 const AskedToLeaveWidget: React.FC = () => {
   const [data, setData] = useState<AskedToLeaveResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showBreakdown, setShowBreakdown] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -1284,8 +1278,6 @@ const AskedToLeaveWidget: React.FC = () => {
       .finally(() => setLoading(false));
   }, []);
 
-  const departmentBreakdown = data?.departmentBreakdown ?? [];
-
   return (
     <Box sx={{ bgcolor: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", p: 3, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
       <Box sx={{ mb: 2.5 }}>
@@ -1293,7 +1285,7 @@ const AskedToLeaveWidget: React.FC = () => {
           Asked to Leave
         </Typography>
         <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
-          Share of all exits classified as "Asked to Leave" — aggregate numbers only, no employee names or reasons shown
+          Share of all exits classified as "Asked to Leave" — a single aggregate number, no employee names, reasons, or department breakdown shown
         </Typography>
       </Box>
 
@@ -1302,54 +1294,11 @@ const AskedToLeaveWidget: React.FC = () => {
           <CircularProgress size={26} sx={{ color: ACCENT }} />
         </Box>
       ) : (
-        <>
-          <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexWrap: "wrap" }}>
-            <StatCard label="Total Exits" value={data.totalExits} color={ACCENT} bg="#eef2ff" />
-            <StatCard label="Asked to Leave" value={data.askedToLeaveCount} color="#dc2626" bg="#fef2f2" />
-            <StatCard
-              label="% Asked to Leave"
-              value={`${data.askedToLeavePct}%`}
-              color="#dc2626"
-              bg="#fef2f2"
-              onClick={() => setShowBreakdown((v) => !v)}
-              active={showBreakdown}
-            />
-          </Box>
-
-          {showBreakdown && (
-            <Box sx={{ mb: 1 }}>
-              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
-                By Department (counts only)
-              </Typography>
-              {departmentBreakdown.length === 0 ? (
-                <Typography fontSize="0.8rem" color="#94a3b8">No data yet.</Typography>
-              ) : (
-                <Box sx={{ border: "1px solid #e2e8f0", borderRadius: "10px", overflow: "hidden" }}>
-                  {departmentBreakdown.map((row, i) => (
-                    <Box
-                      key={row.department}
-                      sx={{
-                        display: "flex", justifyContent: "space-between", alignItems: "center",
-                        px: 2, py: 1, bgcolor: "#fff",
-                        borderTop: i > 0 ? "1px solid #f1f5f9" : "none",
-                      }}
-                    >
-                      <Typography fontSize="0.8rem" color="#1e293b" fontWeight={500}>{row.department}</Typography>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-                        <span style={{
-                          fontSize: "0.65rem", fontWeight: 700, color: "#dc2626",
-                          background: "#dc262615", padding: "2px 8px", borderRadius: 20,
-                        }}>
-                          {row.askedToLeaveCount} of {row.totalExits} ({row.pct}%)
-                        </span>
-                      </Box>
-                    </Box>
-                  ))}
-                </Box>
-              )}
-            </Box>
-          )}
-        </>
+        <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
+          <StatCard label="Total Exits" value={data.totalExits} color={ACCENT} bg="#eef2ff" />
+          <StatCard label="Asked to Leave" value={data.askedToLeaveCount} color="#dc2626" bg="#fef2f2" />
+          <StatCard label="% Asked to Leave" value={`${data.askedToLeavePct}%`} color="#dc2626" bg="#fef2f2" />
+        </Box>
       )}
     </Box>
   );
