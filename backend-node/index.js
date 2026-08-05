@@ -110,6 +110,14 @@ const FRONTEND_DIST = path.join(__dirname, '../frontend/dist');
 app.use(express.static(FRONTEND_DIST));
 
 app.use((req, res) => {
+  // Static assets (bundle.<hash>.js, .css, .map, images, ...) that don't
+  // exist on disk must 404, not fall back to index.html. Otherwise a
+  // stale tab/cache referencing a bundle filename deleted by the last
+  // deploy gets back HTML for a script request, which the browser then
+  // fails to parse as JS ("Unexpected token '<'").
+  if (path.extname(req.path)) {
+    return res.status(404).end();
+  }
   res.sendFile(path.join(FRONTEND_DIST, 'index.html'));
 });
 
