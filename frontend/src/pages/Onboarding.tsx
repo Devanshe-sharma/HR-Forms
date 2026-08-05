@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-const API_BASE = "http://3.110.162.1:5000/api";
+const API_URL = "http://3.110.162.1:5000/api";
 
 type Row = {
   ser: number | string;
@@ -16,7 +16,7 @@ const OnboardingPage: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE}/onboarding/`);
+      const res = await fetch(`${API_URL}/onboarding/`);
       const json = await res.json();
       setData(json.data || []);
     } catch (e) {
@@ -40,7 +40,7 @@ const OnboardingPage: React.FC = () => {
   const handleCellBlur = async (ser: Row["ser"], row: Row) => {
     try {
       setMsg(null);
-      const res = await fetch(`${API_BASE}/${ser}`, {
+      const res = await fetch(`${API_URL}/${ser}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

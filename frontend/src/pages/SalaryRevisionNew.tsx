@@ -140,14 +140,14 @@ interface CTCComponentType {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const API_BASE = process.env.REACT_APP_API_URL || process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://3.110.162.1:5000/api';
-const API      = `${API_BASE}/salary-revisions`;
+const API_URL = process.env.REACT_APP_API_URL || process.env.REACT_APP_REACT_APP_API_BASE_URL || '/api';
+const API      = `${API_URL}/salary-revisions`;
 // Employees now come from Onboarding — the single source of truth — instead
 // of a separate Employee collection.
-const EMP_API  = `${API_BASE}/onboarding/eligible-employees`;
+const EMP_API  = `${API_URL}/onboarding/eligible-employees`;
 // Same endpoint the Employee Letters page reads from — one source of
 // truth for CTC component definitions, edited from either place.
-const CTC_API  = `${API_BASE}/ctc-components/`;
+const CTC_API  = `${API_URL}/ctc-components/`;
 
 const ACCENT = '#4f46e5';
 const TH = { fontWeight: 600, fontSize: 11, color: '#64748b', bgcolor: '#f8fafc', whiteSpace: 'nowrap' as const, py: '8px', borderBottom: '1px solid #e2e8f0' };
@@ -1094,7 +1094,7 @@ function HistoryPanel({ employeeCode }: { employeeCode: string }) {
     // descending so the newest contract period appears first.
     Promise.all([
       axios.get(`${API}/history/${employeeCode}`),
-      axios.get(`${API_BASE}/onboarding/${employeeCode}`),
+      axios.get(`${API_URL}/onboarding/${employeeCode}`),
     ])
       .then(([revRes, onbRes]) => {
         const items = revRes.data?.data ?? [];
