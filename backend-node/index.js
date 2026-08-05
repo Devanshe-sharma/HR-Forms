@@ -82,6 +82,7 @@ app.use('/api/employee-scores',    require('./routes/employeeScores'));
 app.use('/api/onboarding',         require('./routes/onboardingroutes'));
 app.use('/api/exit',               require('./routes/exit'));
 app.use('/api/outing',             require('./routes/outing'));
+app.use('/api/projects',           require('./routes/projects'));
 app.use('/api/dept-kpi',           require('./routes/dept-kpi'));
 app.use('/api/role-kpi',           require('./routes/role-kpi'));
 app.use('/api/dept-targets',       require('./routes/dept-targets'));

@@ -35,6 +35,30 @@ const OutingSchema = new Schema(
     },
 
     // ───────────────────────────────────────────────
+    // Type: what this outing/event is tied to
+    // ───────────────────────────────────────────────
+    eventType: {
+      type: String,
+      enum: ['Project', 'Department', 'Briskolive'],
+      required: false,
+    },
+    projectService: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    projectName: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    department: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
+    // ───────────────────────────────────────────────
     // Status & Priority (similar to training)
     // ───────────────────────────────────────────────
     status: {

@@ -38,6 +38,18 @@ const STATUS_OPTIONS = [
   'Archived'
 ] as const;
 
+type EventType = 'Project' | 'Department' | 'Briskolive';
+
+type Department = {
+  dept_id?: number;
+  department: string;
+};
+
+type ProjectOption = {
+  service: string;
+  name: string;
+};
+
 type Outing = {
   _id?: string;
   topic: string;
@@ -49,6 +61,10 @@ type Outing = {
   priority?: 'P1' | 'P2' | 'P3';
   reason?: string;
   remark?: string;
+  eventType?: EventType | '';
+  projectService?: string;
+  projectName?: string;
+  department?: string;
   proposedByRole?: string;
   proposedByName?: string;
   quarter?: string;
@@ -79,6 +95,12 @@ const Outing: React.FC = () => {
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [outingList, setOutingList] = useState<Outing[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [projectOptions, setProjectOptions] = useState<ProjectOption[]>([]);
+  const projectServices = useMemo(
+    () => [...new Set(projectOptions.map(p => p.service))],
+    [projectOptions]
+  );
 
   // HR: Create Modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -89,6 +111,10 @@ const Outing: React.FC = () => {
     tentativeBudget: '',
     tentativeDate: '',
     priority: 'P3' as 'P1' | 'P2' | 'P3',
+    eventType: '' as EventType | '',
+    projectService: '',
+    projectName: '',
+    department: '',
   });
 
   // HR: Inline Editing
@@ -155,6 +181,10 @@ const Outing: React.FC = () => {
     tentativeDate: '',
     reason: '',
     priority: '' as 'P1' | 'P2' | 'P3',
+    eventType: '' as EventType | '',
+    projectService: '',
+    projectName: '',
+    department: '',
   });
 
   const handleArchive = async (id: string) => {
@@ -178,11 +208,15 @@ const Outing: React.FC = () => {
   // ─── LOAD DATA ────────────────────────────────────────────
   const refreshData = async () => {
     try {
-      const [oRes, eRes] = await Promise.all([
+      const [oRes, eRes, rRes, pRes] = await Promise.all([
         axios.get(`${API_BASE}/outing`),
-        axios.get(`${API_BASE}/employees?lightweight=true`)
+        axios.get(`${API_BASE}/employees?lightweight=true`),
+        axios.get(`${API_BASE}/roles/all`),
+        axios.get(`${API_BASE}/projects/all`),
       ]);
       setOutingList(oRes.data.data || []);
+      setDepartments(rRes.data?.data?.departments || []);
+      setProjectOptions(pRes.data?.data?.projects || []);
       const rawEmployees = eRes.data.data || [];
       console.log('Raw employees data:', rawEmployees); // Debug log
       
@@ -224,6 +258,10 @@ const Outing: React.FC = () => {
         tentativeDate: '',
         reason: '',
         priority: 'P3',
+        eventType: '',
+        projectService: '',
+        projectName: '',
+        department: '',
       });
       setIsCreateModalOpen(false);
       setFormData({
@@ -233,6 +271,10 @@ const Outing: React.FC = () => {
         tentativeBudget: '',
         tentativeDate: '',
         priority: 'P3',
+        eventType: '',
+        projectService: '',
+        projectName: '',
+        department: '',
       });
       setIsRejectModalOpen(false);
       setRejectOutingId(null);
@@ -307,6 +349,10 @@ const Outing: React.FC = () => {
       proposedByName: 'HR Admin',
       status: 'Proposed',
       priority,
+      eventType: formData.eventType || undefined,
+      projectService: formData.eventType === 'Project' ? formData.projectService || undefined : undefined,
+      projectName: formData.eventType === 'Project' ? formData.projectName || undefined : undefined,
+      department: formData.eventType === 'Department' ? formData.department || undefined : undefined,
     };
 
     try {
@@ -321,6 +367,10 @@ const Outing: React.FC = () => {
           tentativeBudget: '',
           tentativeDate: '',
           priority: 'P3',
+          eventType: '',
+          projectService: '',
+          projectName: '',
+          department: '',
         });
         refreshData();
       }
@@ -431,6 +481,10 @@ const Outing: React.FC = () => {
       proposedByRole: 'Management',
       proposedByName: 'Management User',
       status: 'Suggested',
+      eventType: suggestForm.eventType || undefined,
+      projectService: suggestForm.eventType === 'Project' ? suggestForm.projectService || undefined : undefined,
+      projectName: suggestForm.eventType === 'Project' ? suggestForm.projectName || undefined : undefined,
+      department: suggestForm.eventType === 'Department' ? suggestForm.department || undefined : undefined,
     };
 
     try {
@@ -446,6 +500,10 @@ const Outing: React.FC = () => {
           tentativeDate: '',
           reason: '',
           priority: 'P3',
+          eventType: '',
+          projectService: '',
+          projectName: '',
+          department: '',
         });
         refreshData();
       }
@@ -1228,15 +1286,19 @@ const Outing: React.FC = () => {
               className="fixed inset-0 bg-black bg-opacity-60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
               onClick={() => { 
                 setIsSuggestModalOpen(false); 
-                setSuggestForm({ 
-                  topic: '', 
-                  description: '', 
-                  tentativePlace: '', 
-                  tentativeBudget: '', 
-                  tentativeDate: '', 
-                  reason: '', 
-                  priority: 'P3' 
-                }); 
+                setSuggestForm({
+                  topic: '',
+                  description: '',
+                  tentativePlace: '',
+                  tentativeBudget: '',
+                  tentativeDate: '',
+                  reason: '',
+                  priority: 'P3',
+                  eventType: '',
+                  projectService: '',
+                  projectName: '',
+                  department: '',
+                });
               }}
             >
               <div 
@@ -1248,17 +1310,21 @@ const Outing: React.FC = () => {
                 <div className="flex justify-between items-center px-4 py-3 border-b bg-white rounded-t-2xl sm:rounded-t-2xl shrink-0">
                   <h3 className="text-base font-bold text-gray-800">Suggest New Outing / Event</h3>
                   <button
-                    onClick={() => { 
-                      setIsSuggestModalOpen(false); 
-                      setSuggestForm({ 
-                        topic: '', 
-                        description: '', 
-                        tentativePlace: '', 
-                        tentativeBudget: '', 
-                        tentativeDate: '', 
-                        reason: '', 
-                        priority: 'P3' 
-                      }); 
+                    onClick={() => {
+                      setIsSuggestModalOpen(false);
+                      setSuggestForm({
+                        topic: '',
+                        description: '',
+                        tentativePlace: '',
+                        tentativeBudget: '',
+                        tentativeDate: '',
+                        reason: '',
+                        priority: 'P3',
+                        eventType: '',
+                        projectService: '',
+                        projectName: '',
+                        department: '',
+                      });
                     }}
                     className="p-1.5 hover:bg-gray-100 rounded-full transition"
                     type="button"
@@ -1308,6 +1374,71 @@ const Outing: React.FC = () => {
                       />
                     </div>
 
+                    {/* Type */}
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Type</label>
+                      <select
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                        value={suggestForm.eventType}
+                        onChange={(e) => setSuggestForm({ ...suggestForm, eventType: e.target.value as EventType | '', projectService: '', projectName: '', department: '' })}
+                      >
+                        <option value="">Select Type</option>
+                        <option value="Project">Project</option>
+                        <option value="Department">Department</option>
+                        <option value="Briskolive">Briskolive</option>
+                      </select>
+                    </div>
+
+                    {suggestForm.eventType === 'Project' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Project Service</label>
+                          <select
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                            value={suggestForm.projectService}
+                            onChange={(e) => setSuggestForm({ ...suggestForm, projectService: e.target.value, projectName: '' })}
+                          >
+                            <option value="">Select Project Service</option>
+                            {projectServices.map(service => (
+                              <option key={service} value={service}>{service}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Project Name</label>
+                          <select
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                            value={suggestForm.projectName}
+                            disabled={!suggestForm.projectService}
+                            onChange={(e) => setSuggestForm({ ...suggestForm, projectName: e.target.value })}
+                          >
+                            <option value="">Select Project Name</option>
+                            {projectOptions
+                              .filter(p => p.service === suggestForm.projectService)
+                              .map(p => (
+                                <option key={p.name} value={p.name}>{p.name}</option>
+                              ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {suggestForm.eventType === 'Department' && (
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Department</label>
+                        <select
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                          value={suggestForm.department}
+                          onChange={(e) => setSuggestForm({ ...suggestForm, department: e.target.value })}
+                        >
+                          <option value="">Select Department</option>
+                          {departments.map(dept => (
+                            <option key={dept.dept_id ?? dept.department} value={dept.department}>{dept.department}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
                     {/* Row 2: Place + Budget + Date */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
@@ -1355,17 +1486,21 @@ const Outing: React.FC = () => {
                     <div className="flex justify-end gap-3 pt-2 border-t">
                       <button
                         type="button"
-                        onClick={() => { 
-                          setIsSuggestModalOpen(false); 
-                          setSuggestForm({ 
-                            topic: '', 
-                            description: '', 
-                            tentativePlace: '', 
-                            tentativeBudget: '', 
-                            tentativeDate: '', 
-                            reason: '', 
-                            priority: 'P3' 
-                          }); 
+                        onClick={() => {
+                          setIsSuggestModalOpen(false);
+                          setSuggestForm({
+                            topic: '',
+                            description: '',
+                            tentativePlace: '',
+                            tentativeBudget: '',
+                            tentativeDate: '',
+                            reason: '',
+                            priority: 'P3',
+                            eventType: '',
+                            projectService: '',
+                            projectName: '',
+                            department: '',
+                          });
                         }}
                         className="px-5 py-2 text-gray-600 text-sm font-medium hover:bg-gray-100 rounded-lg transition"
                       >
@@ -1403,6 +1538,71 @@ const Outing: React.FC = () => {
                       <label className="block text-xs font-semibold text-gray-600 mb-1">Description *</label>
                       <textarea required className="w-full border rounded-lg px-3 py-2 text-sm h-16 resize-none" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} />
                     </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1">Type</label>
+                      <select
+                        className="w-full border rounded-lg px-3 py-2 text-sm"
+                        value={formData.eventType}
+                        onChange={e => setFormData({ ...formData, eventType: e.target.value as EventType | '', projectService: '', projectName: '', department: '' })}
+                      >
+                        <option value="">Select Type</option>
+                        <option value="Project">Project</option>
+                        <option value="Department">Department</option>
+                        <option value="Briskolive">Briskolive</option>
+                      </select>
+                    </div>
+
+                    {formData.eventType === 'Project' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Project Service</label>
+                          <select
+                            className="w-full border rounded-lg px-3 py-2 text-sm"
+                            value={formData.projectService}
+                            onChange={e => setFormData({ ...formData, projectService: e.target.value, projectName: '' })}
+                          >
+                            <option value="">Select Project Service</option>
+                            {projectServices.map(service => (
+                              <option key={service} value={service}>{service}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Project Name</label>
+                          <select
+                            className="w-full border rounded-lg px-3 py-2 text-sm"
+                            value={formData.projectName}
+                            disabled={!formData.projectService}
+                            onChange={e => setFormData({ ...formData, projectName: e.target.value })}
+                          >
+                            <option value="">Select Project Name</option>
+                            {projectOptions
+                              .filter(p => p.service === formData.projectService)
+                              .map(p => (
+                                <option key={p.name} value={p.name}>{p.name}</option>
+                              ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {formData.eventType === 'Department' && (
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Department</label>
+                        <select
+                          className="w-full border rounded-lg px-3 py-2 text-sm"
+                          value={formData.department}
+                          onChange={e => setFormData({ ...formData, department: e.target.value })}
+                        >
+                          <option value="">Select Department</option>
+                          {departments.map(dept => (
+                            <option key={dept.dept_id ?? dept.department} value={dept.department}>{dept.department}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
                         <label className="block text-xs font-semibold text-gray-600 mb-1">Place</label>
@@ -1481,6 +1681,20 @@ const Outing: React.FC = () => {
                         {selectedOuting.proposedByRole === 'HR' ? 'HR Initiative' : selectedOuting.proposedByRole === 'Management' ? 'Management Suggestion' : 'Employee Proposal'}
                       </div>
                     </div>
+                    {selectedOuting.eventType && (
+                      <div className="bg-gray-50 p-3 rounded-lg border">
+                        <div className="text-xs text-gray-600 font-medium mb-2 flex items-center gap-1"><Tag size={12} /> Type</div>
+                        <div className="text-sm font-medium text-gray-800">
+                          {selectedOuting.eventType}
+                          {selectedOuting.eventType === 'Project' && (selectedOuting.projectService || selectedOuting.projectName) && (
+                            <span className="text-gray-500"> — {[selectedOuting.projectService, selectedOuting.projectName].filter(Boolean).join(' / ')}</span>
+                          )}
+                          {selectedOuting.eventType === 'Department' && selectedOuting.department && (
+                            <span className="text-gray-500"> — {selectedOuting.department}</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Description with enhanced formatting */}
