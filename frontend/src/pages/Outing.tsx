@@ -191,7 +191,7 @@ const Outing: React.FC = () => {
     if (!window.confirm('Are you sure you want to archive this outing?')) return;
 
     try {
-      await axios.patch(`${API_BASE}/outing/${id}`, {
+      await axios.patch(`${API_URL}/outing/${id}`, {
         status: 'Archived',
         archivedAt: new Date().toISOString(),
       });
@@ -203,16 +203,16 @@ const Outing: React.FC = () => {
     }
   };
 
-  const API_BASE = 'http://3.110.162.1:5000/api';
+  const API_URL = `${process.env.REACT_APP_REACT_APP_API_BASE_URL ?? ""}/ctc-components/`;
 
   // ─── LOAD DATA ────────────────────────────────────────────
   const refreshData = async () => {
     try {
       const [oRes, eRes, rRes, pRes] = await Promise.all([
-        axios.get(`${API_BASE}/outing`),
-        axios.get(`${API_BASE}/employees?lightweight=true`),
-        axios.get(`${API_BASE}/roles/all`),
-        axios.get(`${API_BASE}/projects/all`),
+        axios.get(`${API_URL}/outing`),
+        axios.get(`${API_URL}/employees?lightweight=true`),
+        axios.get(`${API_URL}/roles/all`),
+        axios.get(`${API_URL}/projects/all`),
       ]);
       setOutingList(oRes.data.data || []);
       setDepartments(rRes.data?.data?.departments || []);
@@ -310,7 +310,7 @@ const Outing: React.FC = () => {
     if (!rejectReason.trim()) return alert('Rejection reason is required');
 
     try {
-      await axios.patch(`${API_BASE}/outing/${rejectOutingId}`, {
+      await axios.patch(`${API_URL}/outing/${rejectOutingId}`, {
         status: 'Rejected',
         reason: rejectReason.trim()
       });
@@ -356,7 +356,7 @@ const Outing: React.FC = () => {
     };
 
     try {
-      const res = await axios.post(`${API_BASE}/outing`, payload);
+      const res = await axios.post(`${API_URL}/outing`, payload);
       if (res.data.success) {
         alert('Outing proposal submitted!');
         setIsCreateModalOpen(false);
@@ -383,7 +383,7 @@ const Outing: React.FC = () => {
     if (!window.confirm('Approve this outing proposal?')) return;
 
     try {
-      await axios.patch(`${API_BASE}/outing/${id}`, {
+      await axios.patch(`${API_URL}/outing/${id}`, {
         status: 'Scheduled'
       });
       alert('Outing approved and scheduled!');
@@ -406,7 +406,7 @@ const Outing: React.FC = () => {
 
       if (today >= trainingDate) {
         try {
-          await axios.patch(`${API_BASE}/outing/${o._id}`, { status: 'Completed' });
+          await axios.patch(`${API_URL}/outing/${o._id}`, { status: 'Completed' });
           console.log(`Auto-marked Completed: ${o.topic}`);
         } catch (err) {
           console.error('Auto-complete failed:', err);
@@ -418,7 +418,7 @@ const Outing: React.FC = () => {
 
       if (o.status === 'Completed' && today >= threeDaysAfter) {
         try {
-          await axios.patch(`${API_BASE}/outing/${o._id}`, {
+          await axios.patch(`${API_URL}/outing/${o._id}`, {
             status: 'Archived',
             archivedAt: new Date().toISOString()
           });
@@ -450,7 +450,7 @@ const Outing: React.FC = () => {
         updated.status = 'Scheduled';
       }
 
-      await axios.patch(`${API_BASE}/outing/${editingId}`, updated);
+      await axios.patch(`${API_URL}/outing/${editingId}`, updated);
       alert('Outing updated!');
       setEditingId(null);
       setEditData({});
@@ -488,7 +488,7 @@ const Outing: React.FC = () => {
     };
 
     try {
-      const res = await axios.post(`${API_BASE}/outing`, payload);
+      const res = await axios.post(`${API_URL}/outing`, payload);
       if (res.data.success) {
         alert('Your suggestion has been submitted to HR!');
         setIsSuggestModalOpen(false);
@@ -544,7 +544,7 @@ const Outing: React.FC = () => {
     setLoadingFeedback(true);
 
     try {
-      await axios.post(`${API_BASE}/outing/${feedbackForm.outingId}/feedback`, {
+      await axios.post(`${API_URL}/outing/${feedbackForm.outingId}/feedback`, {
         employeeName: feedbackForm.employeeName,
         department: feedbackForm.department,
         designation: feedbackForm.designation,
