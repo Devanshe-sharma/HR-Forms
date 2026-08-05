@@ -42,4 +42,4 @@ lerna-debug.log*
 *.sw?
 
 # Other local files
-*.local
+*.localfrontend/dist/
