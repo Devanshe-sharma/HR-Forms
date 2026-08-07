@@ -203,7 +203,7 @@ const Outing: React.FC = () => {
     }
   };
 
-  const API_URL = `${process.env.REACT_APP_REACT_APP_API_BASE_URL ?? ""}/ctc-components/`;
+  const API_URL = process.env.REACT_APP_REACT_APP_API_BASE_URL ?? "";
 
   // ─── LOAD DATA ────────────────────────────────────────────
   const refreshData = async () => {
