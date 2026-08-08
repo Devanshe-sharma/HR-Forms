@@ -127,6 +127,12 @@ const HiringRequisitionSchema = new Schema(
     hiring_status:         { type: String, required: true, default: 'New' },
 
     fmsStatus: { type: String, enum: ['Open', 'Closed'], default: 'Open', index: true },
+    // Stamped the moment fmsStatus first transitions to 'Closed' (see
+    // rescoreAndSave in routes/hiringRequisitions.js), and cleared back to
+    // null if it ever reopens — always reflects the current closure
+    // episode's close date, not just "was ever closed once". Powers the
+    // Average Days to Hire analytics (createdAt -> closed_at).
+    closed_at: { type: Date, default: null },
     fms_score: { type: Number, default: 0 }, // sheet: "FMS Score"
 
     // ── Task progress counters (sheet-computed columns) ──────────────────────

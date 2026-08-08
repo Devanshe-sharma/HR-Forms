@@ -716,14 +716,42 @@ const REAL_EXIT_STATUSES = new Set(["Serving Notice Period", "Already Left", "Le
 
 router.get("/analytics/asked-to-leave", async (req, res) => {
   try {
-    const docs = await Exit.find({}, "exitType exitStatus").lean();
+    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+
+    const docs = await Exit.find({}, "exitType exitStatus leftDate plannedExitDate resignationDate").lean();
     const realExits = docs.filter((d) => REAL_EXIT_STATUSES.has(d.exitStatus || ""));
 
     const totalExits = realExits.length;
     const askedToLeaveCount = realExits.filter((d) => d.exitType === "Asked to Leave").length;
     const askedToLeavePct = totalExits > 0 ? Math.round((askedToLeaveCount / totalExits) * 1000) / 10 : 0;
 
-    res.json({ success: true, totalExits, askedToLeaveCount, askedToLeavePct });
+    // Quarterly trend — bucketed by the exit's own date of record
+    // (leftDate, falling back to plannedExitDate/resignationDate), same
+    // priority order used elsewhere in this app to resolve an exit date.
+    const exitDateOf = (d) => {
+      const raw = d.leftDate || d.plannedExitDate || d.resignationDate;
+      return raw ? new Date(raw) : null;
+    };
+    const withDates = realExits.map((d) => ({ ...d, exitDate: exitDateOf(d) })).filter((d) => d.exitDate);
+
+    const quarters = [1, 2, 3, 4].map((q) => {
+      const inQuarter = withDates.filter((d) => d.exitDate.getFullYear() === year && Math.floor(d.exitDate.getMonth() / 3) + 1 === q);
+      const asked = inQuarter.filter((d) => d.exitType === "Asked to Leave").length;
+      return {
+        quarter: `Q${q}`,
+        totalExits: inQuarter.length,
+        askedToLeaveCount: asked,
+        askedToLeavePct: inQuarter.length > 0 ? Math.round((asked / inQuarter.length) * 1000) / 10 : 0,
+      };
+    });
+
+    const exitYears = withDates.map((d) => d.exitDate.getFullYear());
+    const minYear = exitYears.length ? Math.min(...exitYears) : year;
+    const maxYear = Math.max(new Date().getFullYear(), ...(exitYears.length ? exitYears : [year]));
+    const availableYears = [];
+    for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
+
+    res.json({ success: true, totalExits, askedToLeaveCount, askedToLeavePct, year, quarters, availableYears });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: err.message });

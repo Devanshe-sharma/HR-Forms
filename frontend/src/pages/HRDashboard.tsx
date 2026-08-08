@@ -23,13 +23,12 @@ import SwapHorizIcon from "@mui/icons-material/SwapHorizOutlined";
 import TrendingUpIcon from "@mui/icons-material/TrendingUpOutlined";
 import AssessmentIcon from "@mui/icons-material/AssessmentOutlined";
 import GroupAddIcon from "@mui/icons-material/GroupAddOutlined";
-import HourglassEmptyIcon from "@mui/icons-material/HourglassEmptyOutlined";
-import AccessTimeIcon from "@mui/icons-material/AccessTimeOutlined";
 import PaidIcon from "@mui/icons-material/PaidOutlined";
 import MenuBookIcon from "@mui/icons-material/MenuBookOutlined";
 import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedInOutlined";
 import PersonRemoveIcon from "@mui/icons-material/PersonRemoveOutlined";
 import CancelIcon from "@mui/icons-material/CancelOutlined";
+import TimelineIcon from "@mui/icons-material/TimelineOutlined";
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
@@ -71,6 +70,7 @@ interface TeethToTailResponse {
   quarters: QuarterData[];
   availableYears: number[];
   departmentBreakdown: DepartmentBreakdownRow[];
+  missingJoinDateCount: number;
 }
 
 interface GenderOverall {
@@ -99,6 +99,7 @@ interface GenderResponse {
   genders: string[];
   overall: GenderOverall[];
   byDepartment: GenderByDeptRow[];
+  missingJoinDateCount: number;
 }
 
 interface InternDeptRow {
@@ -108,6 +109,13 @@ interface InternDeptRow {
   pct: number;
 }
 
+interface InternQuarterRow {
+  quarter: string;
+  asOf: string;
+  total: number;
+  internsCount: number;
+  internPct: number;
+}
 interface InternsResponse {
   success: boolean;
   total: number;
@@ -115,6 +123,28 @@ interface InternsResponse {
   internPct: number;
   nonInternsCount: number;
   departmentBreakdown: InternDeptRow[];
+  year: number;
+  quarters: InternQuarterRow[];
+  availableYears: number[];
+  missingJoinDateCount: number;
+}
+
+interface DaysToHireBucket { avgDays: number | null; count: number; }
+interface DaysToHireQuarterRow {
+  quarter: string;
+  overall: DaysToHireBucket;
+  fresher: DaysToHireBucket;
+  experienced: DaysToHireBucket;
+}
+interface DaysToHireResponse {
+  success: boolean;
+  overall: DaysToHireBucket;
+  fresher: DaysToHireBucket;
+  experienced: DaysToHireBucket;
+  excludedCount: number;
+  year: number;
+  quarters: DaysToHireQuarterRow[];
+  availableYears: number[];
 }
 
 // Minimal shape needed just for the KPI summary cards — the full
@@ -134,10 +164,13 @@ interface IncrementRow {
   employeeName: string;
   department: string;
   designation: string;
-  finalIncrementPct: number;
-  previousCtc: number;
-  newCtc: number;
-  applicableDate: string | null;
+  incrementPct: number;
+  revisionCount: number;
+}
+interface IncrementQuarterRow {
+  quarter: string;
+  total: number;
+  avgIncrementPct: number | null;
 }
 interface IncrementsResponse {
   success: boolean;
@@ -149,6 +182,7 @@ interface IncrementsResponse {
   lowIncrementList: IncrementRow[];
   highPerformerCount: number;
   highPerformerList: IncrementRow[];
+  quarters: IncrementQuarterRow[];
 }
 
 interface InternConversionRow {
@@ -161,15 +195,28 @@ interface InternConversionDeptRow {
   department: string;
   count: number;
 }
+interface InternConversionQuarterRow {
+  quarter: string;
+  count: number;
+}
 interface InternConversionsResponse {
   success: boolean;
   total: number;
   conversions: InternConversionRow[];
   departmentBreakdown: InternConversionDeptRow[];
+  year: number;
+  quarters: InternConversionQuarterRow[];
+  availableYears: number[];
 }
 
 // Aggregate-only — no employee names, same confidentiality rule as
 // Asked-to-Leave.
+interface PipQuarterRow {
+  quarter: string;
+  resolved: number;
+  improved: number;
+  improvedPct: number | null;
+}
 interface PipResponse {
   success: boolean;
   currentlyOnPip: number;
@@ -178,34 +225,64 @@ interface PipResponse {
   totalResolved: number;
   totalImproved: number;
   performedAfterPipPct: number | null;
+  year: number;
+  quarters: PipQuarterRow[];
+  availableYears: number[];
 }
 
 // Aggregate-only — the backend deliberately never returns names, the
 // confidential reason fields, or a department breakdown for this
 // endpoint (a small department's count is as identifying as a name), so
 // there's nothing here to accidentally render either.
+interface AskedToLeaveQuarterRow {
+  quarter: string;
+  totalExits: number;
+  askedToLeaveCount: number;
+  askedToLeavePct: number;
+}
 interface AskedToLeaveResponse {
   success: boolean;
   totalExits: number;
   askedToLeaveCount: number;
   askedToLeavePct: number;
+  year: number;
+  quarters: AskedToLeaveQuarterRow[];
+  availableYears: number[];
 }
 
 // Aggregate-only — no names, no department breakdown, same confidentiality
 // rule as Asked-to-Leave.
+interface ReferredQuarterRow {
+  quarter: string;
+  total: number;
+  referredCount: number;
+  referredPct: number;
+}
 interface ReferredResponse {
   success: boolean;
   total: number;
   referredCount: number;
   referredPct: number;
+  year: number;
+  quarters: ReferredQuarterRow[];
+  availableYears: number[];
 }
 
 // Aggregate-only, same confidentiality rule as the others above.
+interface OfferDropoutQuarterRow {
+  quarter: string;
+  total: number;
+  dropoutCount: number;
+  dropoutPct: number;
+}
 interface OfferDropoutResponse {
   success: boolean;
   total: number;
   dropoutCount: number;
   dropoutPct: number;
+  year: number;
+  quarters: OfferDropoutQuarterRow[];
+  availableYears: number[];
 }
 
 // ─── Small building blocks ─────────────────────────────────────────────────
@@ -285,6 +362,51 @@ const renderPieLabel = (props: any) => {
     <text x={x} y={y} fill="#0f172a" fontSize={11} fontWeight={700} textAnchor={x > cx ? "start" : "end"} dominantBaseline="central">
       {`${name}: ${value}`}
     </text>
+  );
+};
+
+// ─── Reusable pie breakdown chart ──────────────────────────────────────────
+// Plain 2D pie — same style as Teeth-to-Tail/Gender/Interns (donut, in-chart
+// labels, Legend, Tooltip) — for the simple two/three-way splits added to
+// the other widgets.
+
+const PieBreakdownChart: React.FC<{
+  data: { name: string; value: number; color: string }[];
+  height?: number;
+}> = ({ data, height = 260 }) => {
+  const filtered = data.filter((d) => d.value > 0);
+
+  if (filtered.length === 0) {
+    return (
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", height, color: "#94a3b8", fontSize: "0.8rem" }}>
+        No data to show
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ height }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie
+            data={filtered}
+            dataKey="value"
+            nameKey="name"
+            innerRadius={55}
+            outerRadius={90}
+            paddingAngle={2}
+            label={renderPieLabel}
+            labelLine={{ stroke: "#cbd5e1" }}
+          >
+            {filtered.map((d, i) => (
+              <Cell key={i} fill={d.color} />
+            ))}
+          </Pie>
+          <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
+          <Legend wrapperStyle={{ fontSize: 11 }} />
+        </PieChart>
+      </ResponsiveContainer>
+    </Box>
   );
 };
 
@@ -422,6 +544,12 @@ const TeethToTailWidget: React.FC = () => {
               </MuiTooltip>
             )}
           </Box>
+
+          {data.missingJoinDateCount > 0 && (
+            <Typography fontSize="0.68rem" color="#94a3b8" mb={2}>
+              {data.missingJoinDateCount} current employee{data.missingJoinDateCount === 1 ? "" : "s"} excluded from every quarter above — no join date recorded, so they can't be placed on the timeline.
+            </Typography>
+          )}
 
           {/* Department breakdown — hidden by default, revealed by clicking
               the Ratio stat card above, instead of always taking up space */}
@@ -646,6 +774,12 @@ const GenderDistributionWidget: React.FC = () => {
             <StatCard label="% Female" value={`${femalePct}%`} color="#db2777" bg="#fdf2f8" />
           </Box>
 
+          {data.missingJoinDateCount > 0 && (
+            <Typography fontSize="0.68rem" color="#94a3b8" mb={2}>
+              {data.missingJoinDateCount} current employee{data.missingJoinDateCount === 1 ? "" : "s"} excluded from every quarter above — no join date recorded, so they can't be placed on the timeline.
+            </Typography>
+          )}
+
           {/* Charts */}
           <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
             {/* Overall split pie */}
@@ -726,19 +860,57 @@ const InternsWidget: React.FC = () => {
   const [data, setData] = useState<InternsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [showBreakdown, setShowBreakdown] = useState(false);
+  const [year, setYear] = useState<number>(new Date().getFullYear());
+  const [quarterFocus, setQuarterFocus] = useState<string>("All");
 
   useEffect(() => {
     setLoading(true);
-    axios.get(`${API}/onboarding/analytics/interns`, { params: { _t: Date.now() } })
+    axios.get(`${API}/onboarding/analytics/interns`, { params: { year, _t: Date.now() } })
       .then((res) => setData(res.data))
       .catch(() => toast.error("Failed to load intern data"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [year]);
 
-  const pieData = data && data.total > 0
+  const yearOptions = useMemo(() => {
+    const years = data?.availableYears ?? [year];
+    return years.map((y) => ({ key: String(y), label: String(y) }));
+  }, [data, year]);
+
+  const quarterStartDate = (quarter: string, y: number): Date => {
+    const q = parseInt(quarter.replace("Q", ""), 10);
+    return new Date(y, (q - 1) * 3, 1);
+  };
+  const hasQuarterStarted = (quarter: string, y: number): boolean => quarterStartDate(quarter, y) <= new Date();
+  const startedQuarters = useMemo(
+    () => (data?.quarters ?? []).filter((q) => hasQuarterStarted(q.quarter, year)),
+    [data, year]
+  );
+
+  useEffect(() => {
+    if (quarterFocus !== "All" && !hasQuarterStarted(quarterFocus, year)) {
+      setQuarterFocus("All");
+    }
+  }, [year, quarterFocus]);
+
+  const quarterOptions = [
+    { key: "All", label: "All Quarters" },
+    ...["Q1", "Q2", "Q3", "Q4"].filter((q) => hasQuarterStarted(q, year)).map((q) => ({ key: q, label: q })),
+  ];
+
+  // Stat cards and the pie chart both follow the year/quarter filters — the
+  // "focused" quarter is either the one explicitly picked, or (for "All")
+  // the latest quarter that's actually started this year, so switching the
+  // year selector visibly changes these numbers instead of always showing
+  // today's snapshot regardless of filter.
+  const focusedQuarter: InternQuarterRow | undefined =
+    quarterFocus === "All"
+      ? startedQuarters[startedQuarters.length - 1]
+      : data?.quarters?.find((q) => q.quarter === quarterFocus);
+
+  const pieData = focusedQuarter && focusedQuarter.total > 0
     ? [
-        { name: "Interns", value: data.internsCount, color: INTERN_COLOR },
-        { name: "Other Employees", value: data.nonInternsCount, color: NON_INTERN_COLOR },
+        { name: "Interns", value: focusedQuarter.internsCount, color: INTERN_COLOR },
+        { name: "Other Employees", value: focusedQuarter.total - focusedQuarter.internsCount, color: NON_INTERN_COLOR },
       ].filter((d) => d.value > 0)
     : [];
 
@@ -749,13 +921,19 @@ const InternsWidget: React.FC = () => {
 
   return (
     <Box sx={{ bgcolor: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", p: 3, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-      <Box sx={{ mb: 2.5 }}>
-        <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
-          Interns
-        </Typography>
-        <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
-          Share of the current workforce categorized as Intern in Onboarding — today's snapshot
-        </Typography>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 2, mb: 2.5 }}>
+        <Box>
+          <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
+            Interns
+          </Typography>
+          <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
+            Stat cards and pie reflect the quarter selected below; department breakdown is today's snapshot
+          </Typography>
+        </Box>
+        <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+          <FilterPillRow options={yearOptions} active={String(year)} onChange={(k) => setYear(Number(k))} color={ACCENT} />
+          <FilterPillRow options={quarterOptions} active={quarterFocus} onChange={setQuarterFocus} color={INTERN_COLOR} />
+        </Box>
       </Box>
 
       {loading || !data ? (
@@ -766,11 +944,17 @@ const InternsWidget: React.FC = () => {
         <>
           {/* Stat cards */}
           <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexWrap: "wrap" }}>
-            <StatCard label="Total Employees" value={data.total} color={ACCENT} bg="#eef2ff" />
-            <StatCard label="Interns" value={data.internsCount} color={INTERN_COLOR} bg="#f5f3ff" />
+            <StatCard
+              label="Total Employees"
+              value={focusedQuarter?.total ?? 0}
+              color={ACCENT}
+              bg="#eef2ff"
+              hint={`As of ${focusedQuarter?.quarter ?? "—"} ${year}`}
+            />
+            <StatCard label="Interns" value={focusedQuarter?.internsCount ?? 0} color={INTERN_COLOR} bg="#f5f3ff" />
             <StatCard
               label="% Interns"
-              value={`${data.internPct}%`}
+              value={`${focusedQuarter?.internPct ?? 0}%`}
               color={INTERN_COLOR}
               bg="#f5f3ff"
               onClick={() => setShowBreakdown((v) => !v)}
@@ -778,14 +962,22 @@ const InternsWidget: React.FC = () => {
             />
           </Box>
 
+          {data.missingJoinDateCount > 0 && (
+            <Typography fontSize="0.68rem" color="#94a3b8" mb={2}>
+              {data.missingJoinDateCount} current employee{data.missingJoinDateCount === 1 ? "" : "s"} excluded from the figures above — no join date recorded, so they can't be placed in any quarter.
+            </Typography>
+          )}
+
           {/* Department breakdown — reveal on click, same pattern as
               Teeth-to-Tail. Only departments that actually have at least
               one intern are shown, so this doesn't turn into a full
-              department listing. */}
+              department listing. Always today's snapshot, regardless of
+              the quarter filter above — a historical per-quarter
+              department split isn't available from the backend. */}
           {showBreakdown && (
             <Box sx={{ mb: 3 }}>
               <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
-                Departments With Interns
+                Departments With Interns — Today
               </Typography>
               {deptRowsWithInterns.length === 0 ? (
                 <Typography fontSize="0.8rem" color="#94a3b8">
@@ -820,35 +1012,26 @@ const InternsWidget: React.FC = () => {
             </Box>
           )}
 
-          {/* Pie chart */}
+          {/* Pie + quarterly trend */}
           <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-            <Box sx={{ flex: "1 1 260px", minWidth: 240, height: 280 }}>
-              {pieData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={pieData}
-                      dataKey="value"
-                      nameKey="name"
-                      innerRadius={55}
-                      outerRadius={90}
-                      paddingAngle={2}
-                      label={renderPieLabel}
-                      labelLine={{ stroke: "#cbd5e1" }}
-                    >
-                      {pieData.map((entry, i) => (
-                        <Cell key={i} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#94a3b8", fontSize: "0.8rem" }}>
-                  No current employees to show
-                </Box>
-              )}
+            <Box sx={{ flex: "1 1 260px", minWidth: 240 }}>
+              <PieBreakdownChart data={pieData} />
+            </Box>
+            <Box sx={{ flex: "2 1 420px", minWidth: 320, height: 280 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                Intern % Trend — {year}
+              </Typography>
+              <ResponsiveContainer width="100%" height="90%">
+                <BarChart data={startedQuarters} barGap={4} margin={{ top: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="quarter" tick={{ fontSize: 12, fill: "#64748b" }} />
+                  <YAxis tick={{ fontSize: 12, fill: "#64748b" }} unit="%" />
+                  <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
+                  <Bar dataKey="internPct" name="% Interns" fill={INTERN_COLOR} radius={[4, 4, 0, 0]} barSize={28}>
+                    <LabelList dataKey="internPct" position="top" formatter={(v: any) => `${v}%`} style={{ fontSize: 11, fontWeight: 700, fill: "#0f172a" }} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             </Box>
           </Box>
         </>
@@ -860,36 +1043,53 @@ const InternsWidget: React.FC = () => {
 // ─── Intern Conversions widget ──────────────────────────────────────────────
 // Employees who converted from Intern/Contract Based to full-time Employee
 // — detected via Salary Revision history (see the backend route's own
-// comment for exactly how and what it can/can't see). Current snapshot,
-// no year/quarter filter, for the same reason Interns has none: this
-// isn't a dated event series, it's a running list of who's converted so
-// far.
+// comment for exactly how and what it can/can't see). The list/department
+// breakdown below is the running all-time total; the trend chart shows
+// conversions by the quarter they actually happened in.
 
 const InternConversionsWidget: React.FC = () => {
   const [data, setData] = useState<InternConversionsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [showList, setShowList] = useState(false);
+  const [year, setYear] = useState<number>(new Date().getFullYear());
 
   useEffect(() => {
     setLoading(true);
-    axios.get(`${API}/onboarding/analytics/intern-conversions`, { params: { _t: Date.now() } })
+    axios.get(`${API}/onboarding/analytics/intern-conversions`, { params: { year, _t: Date.now() } })
       .then((res) => setData(res.data))
       .catch(() => toast.error("Failed to load intern conversion data"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [year]);
 
   const conversions = data?.conversions ?? [];
   const departmentBreakdown = data?.departmentBreakdown ?? [];
 
+  const yearOptions = useMemo(() => {
+    const years = data?.availableYears ?? [year];
+    return years.map((y) => ({ key: String(y), label: String(y) }));
+  }, [data, year]);
+
+  const quarterStartDate = (quarter: string, y: number): Date => {
+    const q = parseInt(quarter.replace("Q", ""), 10);
+    return new Date(y, (q - 1) * 3, 1);
+  };
+  const startedQuarters = useMemo(
+    () => (data?.quarters ?? []).filter((q) => quarterStartDate(q.quarter, year) <= new Date()),
+    [data, year]
+  );
+
   return (
     <Box sx={{ bgcolor: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", p: 3, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-      <Box sx={{ mb: 2.5 }}>
-        <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
-          Intern → Full-Time Conversions
-        </Typography>
-        <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
-          Detected from Salary Revision history — only captures conversions that went through at least one revision while still Intern/Contract Based
-        </Typography>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 2, mb: 2.5 }}>
+        <Box>
+          <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
+            Intern → Full-Time Conversions
+          </Typography>
+          <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
+            Detected from Salary Revision history — only captures conversions that went through at least one revision while still Intern/Contract Based
+          </Typography>
+        </Box>
+        <FilterPillRow options={yearOptions} active={String(year)} onChange={(k) => setYear(Number(k))} color={ACCENT} />
       </Box>
 
       {loading || !data ? (
@@ -969,6 +1169,36 @@ const InternConversionsWidget: React.FC = () => {
               </Box>
             </Box>
           )}
+
+          <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+            <Box sx={{ flex: "1 1 260px", minWidth: 240 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                By Previous Category
+              </Typography>
+              <PieBreakdownChart
+                data={[
+                  { name: "Intern", value: conversions.filter((c) => c.previousCategory === "Intern").length, color: INTERN_COLOR },
+                  { name: "Contract Based", value: conversions.filter((c) => c.previousCategory === "Contract Based").length, color: "#0284c7" },
+                ]}
+              />
+            </Box>
+            <Box sx={{ flex: "2 1 420px", minWidth: 320, height: 280 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                Conversions by Quarter — {year}
+              </Typography>
+              <ResponsiveContainer width="100%" height="90%">
+                <BarChart data={startedQuarters} barGap={4} margin={{ top: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="quarter" tick={{ fontSize: 12, fill: "#64748b" }} />
+                  <YAxis tick={{ fontSize: 12, fill: "#64748b" }} allowDecimals={false} />
+                  <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
+                  <Bar dataKey="count" name="Conversions" fill={ACCENT} radius={[4, 4, 0, 0]} barSize={28}>
+                    <LabelList dataKey="count" position="top" style={{ fontSize: 11, fontWeight: 700, fill: "#0f172a" }} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </Box>
+          </Box>
         </>
       )}
     </Box>
@@ -999,9 +1229,9 @@ const IncrementRowList: React.FC<{ rows: IncrementRow[]; color: string }> = ({ r
             <Typography fontSize="0.68rem" color="#94a3b8">{r.designation || "—"} · {r.department || "—"}</Typography>
           </Box>
           <Box textAlign="right">
-            <Typography fontSize="0.85rem" fontWeight={700} sx={{ color }}>+{r.finalIncrementPct}%</Typography>
+            <Typography fontSize="0.85rem" fontWeight={700} sx={{ color }}>+{r.incrementPct}%</Typography>
             <Typography fontSize="0.68rem" color="#94a3b8">
-              {r.previousCtc?.toLocaleString("en-IN")} → {r.newCtc?.toLocaleString("en-IN")}
+              {r.revisionCount > 1 ? `${r.revisionCount} revisions this year, combined` : "1 revision this year"}
             </Typography>
           </Box>
         </Box>
@@ -1072,21 +1302,14 @@ const IncrementAnalyticsWidget: React.FC = () => {
               onClick={() => setShowList((v) => (v === "low" ? null : "low"))}
               active={showList === "low"}
             />
-            {(() => {
-              const MAX = 50;
-              const filteredHigh = (data.highPerformerList ?? []).filter((r) => Number(r.finalIncrementPct) <= MAX);
-              const filteredHighCount = filteredHigh.length;
-              return (
-                <StatCard
-                  label="High Performers (≥20%)"
-                  value={filteredHighCount}
-                  color="#059669"
-                  bg="#f0fdf4"
-                  onClick={() => setShowList((v) => (v === "high" ? null : "high"))}
-                  active={showList === "high"}
-                />
-              );
-            })()}
+            <StatCard
+              label="High Performers (≥20%)"
+              value={data.highPerformerCount}
+              color="#059669"
+              bg="#f0fdf4"
+              onClick={() => setShowList((v) => (v === "high" ? null : "high"))}
+              active={showList === "high"}
+            />
           </Box>
 
           {showList === "low" && (
@@ -1102,13 +1325,40 @@ const IncrementAnalyticsWidget: React.FC = () => {
               <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
                 High Performers — {year}
               </Typography>
-              {(() => {
-                const MAX = 50;
-                const filteredHigh = (data.highPerformerList ?? []).filter((r) => Number(r.finalIncrementPct) <= MAX);
-                return <IncrementRowList rows={filteredHigh} color="#059669" />;
-              })()}
+              <IncrementRowList rows={data.highPerformerList} color="#059669" />
             </Box>
           )}
+
+          <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap", mt: 2 }}>
+            <Box sx={{ flex: "1 1 260px", minWidth: 240 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                Split — {year}
+              </Typography>
+              <PieBreakdownChart
+                data={[
+                  { name: "Low (<9%)", value: data.lowIncrementCount, color: "#dc2626" },
+                  { name: "High (≥20%)", value: data.highPerformerCount, color: "#059669" },
+                  { name: "Normal", value: Math.max(0, data.total - data.lowIncrementCount - data.highPerformerCount), color: "#94a3b8" },
+                ]}
+              />
+            </Box>
+            <Box sx={{ flex: "2 1 420px", minWidth: 320, height: 280 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                Avg. Increment % by Quarter — {year}
+              </Typography>
+              <ResponsiveContainer width="100%" height="90%">
+                <BarChart data={data.quarters ?? []} barGap={4} margin={{ top: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="quarter" tick={{ fontSize: 12, fill: "#64748b" }} />
+                  <YAxis tick={{ fontSize: 12, fill: "#64748b" }} unit="%" />
+                  <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
+                  <Bar dataKey="avgIncrementPct" name="Avg Increment %" fill={ACCENT} radius={[4, 4, 0, 0]} barSize={28}>
+                    <LabelList dataKey="avgIncrementPct" position="top" formatter={(v: any) => (v != null ? `${v}%` : "")} style={{ fontSize: 11, fontWeight: 700, fill: "#0f172a" }} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </Box>
+          </Box>
         </>
       )}
     </Box>
@@ -1201,24 +1451,42 @@ const SummaryCard: React.FC<{
 const PipAnalyticsWidget: React.FC = () => {
   const [data, setData] = useState<PipResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [year, setYear] = useState<number>(new Date().getFullYear());
 
   useEffect(() => {
     setLoading(true);
-    axios.get(`${API}/salary-revisions/analytics/pip`, { params: { _t: Date.now() } })
+    axios.get(`${API}/salary-revisions/analytics/pip`, { params: { year, _t: Date.now() } })
       .then((res) => setData(res.data))
       .catch(() => toast.error("Failed to load PIP data"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [year]);
+
+  const yearOptions = useMemo(() => {
+    const years = data?.availableYears?.length ? data.availableYears : [year];
+    return years.map((y) => ({ key: String(y), label: String(y) }));
+  }, [data, year]);
+
+  const quarterStartDate = (quarter: string, y: number): Date => {
+    const q = parseInt(quarter.replace("Q", ""), 10);
+    return new Date(y, (q - 1) * 3, 1);
+  };
+  const startedQuarters = useMemo(
+    () => (data?.quarters ?? []).filter((q) => quarterStartDate(q.quarter, year) <= new Date()),
+    [data, year]
+  );
 
   return (
     <Box sx={{ bgcolor: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", p: 3, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-      <Box sx={{ mb: 2.5 }}>
-        <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
-          Performance Improvement Plans (PIP)
-        </Typography>
-        <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
-          Combines formal PIPs (Salary Revision) and extended probation (Confirmations) — closed out via each record's own workflow
-        </Typography>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 2, mb: 2.5 }}>
+        <Box>
+          <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
+            Performance Improvement Plans (PIP)
+          </Typography>
+          <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
+            Combines formal PIPs (Salary Revision) and extended probation (Confirmations) — closed out via each record's own workflow
+          </Typography>
+        </Box>
+        <FilterPillRow options={yearOptions} active={String(year)} onChange={(k) => setYear(Number(k))} color="#d97706" />
       </Box>
 
       {loading || !data ? (
@@ -1226,28 +1494,64 @@ const PipAnalyticsWidget: React.FC = () => {
           <CircularProgress size={26} sx={{ color: ACCENT }} />
         </Box>
       ) : (
-        <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
-          <StatCard
-            label="Currently on PIP"
-            value={data.currentlyOnPip}
-            color="#d97706"
-            bg="#fffbeb"
-          />
-          <StatCard
-            label="% on PIP"
-            value={`${data.pipPct}%`}
-            color="#d97706"
-            bg="#fffbeb"
-            hint={`${data.currentlyOnPip} of ${data.totalCurrentEmployees} current employees`}
-          />
-          <StatCard
-            label="% Performed After PIP"
-            value={data.performedAfterPipPct != null ? `${data.performedAfterPipPct}%` : "—"}
-            color="#059669"
-            bg="#f0fdf4"
-            hint={data.totalResolved > 0 ? `${data.totalImproved} of ${data.totalResolved} resolved cases improved` : "No PIP has been closed out yet"}
-          />
-        </Box>
+        <>
+          <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexWrap: "wrap" }}>
+            <StatCard
+              label="Currently on PIP"
+              value={data.currentlyOnPip}
+              color="#d97706"
+              bg="#fffbeb"
+            />
+            <StatCard
+              label="% on PIP"
+              value={`${data.pipPct}%`}
+              color="#d97706"
+              bg="#fffbeb"
+              hint={`${data.currentlyOnPip} of ${data.totalCurrentEmployees} current employees`}
+            />
+            <StatCard
+              label="% Performed After PIP"
+              value={data.performedAfterPipPct != null ? `${data.performedAfterPipPct}%` : "—"}
+              color="#059669"
+              bg="#f0fdf4"
+              hint={data.totalResolved > 0 ? `${data.totalImproved} of ${data.totalResolved} resolved cases improved` : "No PIP has been closed out yet"}
+            />
+          </Box>
+
+          <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+            <Box sx={{ flex: "1 1 260px", minWidth: 240 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                Currently on PIP — Split
+              </Typography>
+              <PieBreakdownChart
+                data={[
+                  { name: "On PIP", value: data.currentlyOnPip, color: "#d97706" },
+                  { name: "Not on PIP", value: Math.max(0, data.totalCurrentEmployees - data.currentlyOnPip), color: "#94a3b8" },
+                ]}
+              />
+            </Box>
+            <Box sx={{ flex: "2 1 420px", minWidth: 320, height: 280 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                PIP Resolutions by Quarter — {year}
+              </Typography>
+              <ResponsiveContainer width="100%" height="90%">
+                <BarChart data={startedQuarters} barGap={4} margin={{ top: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="quarter" tick={{ fontSize: 12, fill: "#64748b" }} />
+                  <YAxis tick={{ fontSize: 12, fill: "#64748b" }} allowDecimals={false} />
+                  <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="resolved" name="Resolved" fill="#d97706" radius={[4, 4, 0, 0]} barSize={24}>
+                    <LabelList dataKey="resolved" position="top" style={{ fontSize: 11, fontWeight: 700, fill: "#0f172a" }} />
+                  </Bar>
+                  <Bar dataKey="improved" name="Improved" fill="#059669" radius={[4, 4, 0, 0]} barSize={24}>
+                    <LabelList dataKey="improved" position="top" style={{ fontSize: 11, fontWeight: 700, fill: "#0f172a" }} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </Box>
+          </Box>
+        </>
       )}
     </Box>
   );
@@ -1262,24 +1566,42 @@ const PipAnalyticsWidget: React.FC = () => {
 const AskedToLeaveWidget: React.FC = () => {
   const [data, setData] = useState<AskedToLeaveResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [year, setYear] = useState<number>(new Date().getFullYear());
 
   useEffect(() => {
     setLoading(true);
-    axios.get(`${API}/exit/analytics/asked-to-leave`, { params: { _t: Date.now() } })
+    axios.get(`${API}/exit/analytics/asked-to-leave`, { params: { year, _t: Date.now() } })
       .then((res) => setData(res.data))
       .catch(() => toast.error("Failed to load Asked to Leave data"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [year]);
+
+  const yearOptions = useMemo(() => {
+    const years = data?.availableYears?.length ? data.availableYears : [year];
+    return years.map((y) => ({ key: String(y), label: String(y) }));
+  }, [data, year]);
+
+  const quarterStartDate = (quarter: string, y: number): Date => {
+    const q = parseInt(quarter.replace("Q", ""), 10);
+    return new Date(y, (q - 1) * 3, 1);
+  };
+  const startedQuarters = useMemo(
+    () => (data?.quarters ?? []).filter((q) => quarterStartDate(q.quarter, year) <= new Date()),
+    [data, year]
+  );
 
   return (
     <Box sx={{ bgcolor: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", p: 3, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-      <Box sx={{ mb: 2.5 }}>
-        <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
-          Asked to Leave
-        </Typography>
-        <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
-          Share of all exits classified as "Asked to Leave" — a single aggregate number, no employee names, reasons, or department breakdown shown
-        </Typography>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 2, mb: 2.5 }}>
+        <Box>
+          <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
+            Asked to Leave
+          </Typography>
+          <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
+            Share of all exits classified as "Asked to Leave" — a single aggregate number, no employee names, reasons, or department breakdown shown
+          </Typography>
+        </Box>
+        <FilterPillRow options={yearOptions} active={String(year)} onChange={(k) => setYear(Number(k))} color="#dc2626" />
       </Box>
 
       {loading || !data ? (
@@ -1287,11 +1609,47 @@ const AskedToLeaveWidget: React.FC = () => {
           <CircularProgress size={26} sx={{ color: ACCENT }} />
         </Box>
       ) : (
-        <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
-          <StatCard label="Total Exits" value={data.totalExits} color={ACCENT} bg="#eef2ff" />
-          <StatCard label="Asked to Leave" value={data.askedToLeaveCount} color="#dc2626" bg="#fef2f2" />
-          <StatCard label="% Asked to Leave" value={`${data.askedToLeavePct}%`} color="#dc2626" bg="#fef2f2" />
-        </Box>
+        <>
+          <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexWrap: "wrap" }}>
+            <StatCard label="Total Exits" value={data.totalExits} color={ACCENT} bg="#eef2ff" />
+            <StatCard label="Asked to Leave" value={data.askedToLeaveCount} color="#dc2626" bg="#fef2f2" />
+            <StatCard label="% Asked to Leave" value={`${data.askedToLeavePct}%`} color="#dc2626" bg="#fef2f2" />
+          </Box>
+
+          <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+            <Box sx={{ flex: "1 1 260px", minWidth: 240 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                Split — {year}
+              </Typography>
+              <PieBreakdownChart
+                data={[
+                  { name: "Asked to Leave", value: data.askedToLeaveCount, color: "#dc2626" },
+                  { name: "Other Exits", value: Math.max(0, data.totalExits - data.askedToLeaveCount), color: "#94a3b8" },
+                ]}
+              />
+            </Box>
+            <Box sx={{ flex: "2 1 420px", minWidth: 320, height: 280 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                Exits by Quarter — {year}
+              </Typography>
+              <ResponsiveContainer width="100%" height="90%">
+                <BarChart data={startedQuarters} barGap={4} margin={{ top: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="quarter" tick={{ fontSize: 12, fill: "#64748b" }} />
+                  <YAxis tick={{ fontSize: 12, fill: "#64748b" }} allowDecimals={false} />
+                  <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="totalExits" name="Total Exits" fill={ACCENT} radius={[4, 4, 0, 0]} barSize={24}>
+                    <LabelList dataKey="totalExits" position="top" style={{ fontSize: 11, fontWeight: 700, fill: "#0f172a" }} />
+                  </Bar>
+                  <Bar dataKey="askedToLeaveCount" name="Asked to Leave" fill="#dc2626" radius={[4, 4, 0, 0]} barSize={24}>
+                    <LabelList dataKey="askedToLeaveCount" position="top" style={{ fontSize: 11, fontWeight: 700, fill: "#0f172a" }} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </Box>
+          </Box>
+        </>
       )}
     </Box>
   );
@@ -1304,24 +1662,49 @@ const AskedToLeaveWidget: React.FC = () => {
 const ReferredWidget: React.FC = () => {
   const [data, setData] = useState<ReferredResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [year, setYear] = useState<number>(new Date().getFullYear());
 
   useEffect(() => {
     setLoading(true);
-    axios.get(`${API}/onboarding/analytics/referred`, { params: { _t: Date.now() } })
+    axios.get(`${API}/onboarding/analytics/referred`, { params: { year, _t: Date.now() } })
       .then((res) => setData(res.data))
       .catch(() => toast.error("Failed to load referred-employee data"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [year]);
+
+  const yearOptions = useMemo(() => {
+    const years = data?.availableYears?.length ? data.availableYears : [year];
+    return years.map((y) => ({ key: String(y), label: String(y) }));
+  }, [data, year]);
+
+  const quarterStartDate = (quarter: string, y: number): Date => {
+    const q = parseInt(quarter.replace("Q", ""), 10);
+    return new Date(y, (q - 1) * 3, 1);
+  };
+  const startedQuarters = useMemo(
+    () => (data?.quarters ?? []).filter((q) => quarterStartDate(q.quarter, year) <= new Date()),
+    [data, year]
+  );
+
+  // Stat cards follow the year selector — summed across this year's
+  // started quarters — rather than always showing the all-time total
+  // regardless of which year is picked.
+  const yearTotal = startedQuarters.reduce((s, q) => s + q.total, 0);
+  const yearReferred = startedQuarters.reduce((s, q) => s + q.referredCount, 0);
+  const yearReferredPct = yearTotal > 0 ? Math.round((yearReferred / yearTotal) * 1000) / 10 : 0;
 
   return (
     <Box sx={{ bgcolor: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", p: 3, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-      <Box sx={{ mb: 2.5 }}>
-        <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
-          Referred Employees
-        </Typography>
-        <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
-          Share of everyone who ever joined that came in via referral — a single aggregate number, no employee names or department breakdown shown
-        </Typography>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 2, mb: 2.5 }}>
+        <Box>
+          <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
+            Referred Employees
+          </Typography>
+          <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
+            Everyone who joined in the selected year, and what share were referred
+          </Typography>
+        </Box>
+        <FilterPillRow options={yearOptions} active={String(year)} onChange={(k) => setYear(Number(k))} color="#0284c7" />
       </Box>
 
       {loading || !data ? (
@@ -1329,11 +1712,43 @@ const ReferredWidget: React.FC = () => {
           <CircularProgress size={26} sx={{ color: ACCENT }} />
         </Box>
       ) : (
-        <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
-          <StatCard label="Total Joined" value={data.total} color={ACCENT} bg="#eef2ff" />
-          <StatCard label="Referred" value={data.referredCount} color="#0284c7" bg="#eff6ff" />
-          <StatCard label="% Referred" value={`${data.referredPct}%`} color="#0284c7" bg="#eff6ff" />
-        </Box>
+        <>
+          <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexWrap: "wrap" }}>
+            <StatCard label="Joined This Year" value={yearTotal} color={ACCENT} bg="#eef2ff" hint={`All time: ${data.total} joined, ${data.referredCount} referred (${data.referredPct}%)`} />
+            <StatCard label="Referred" value={yearReferred} color="#0284c7" bg="#eff6ff" />
+            <StatCard label="% Referred" value={`${yearReferredPct}%`} color="#0284c7" bg="#eff6ff" />
+          </Box>
+
+          <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+            <Box sx={{ flex: "1 1 260px", minWidth: 240 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                Split — {year}
+              </Typography>
+              <PieBreakdownChart
+                data={[
+                  { name: "Referred", value: yearReferred, color: "#0284c7" },
+                  { name: "Other", value: Math.max(0, yearTotal - yearReferred), color: "#94a3b8" },
+                ]}
+              />
+            </Box>
+            <Box sx={{ flex: "2 1 420px", minWidth: 320, height: 280 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                % Referred by Joining Cohort — {year}
+              </Typography>
+              <ResponsiveContainer width="100%" height="90%">
+                <BarChart data={startedQuarters} barGap={4} margin={{ top: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="quarter" tick={{ fontSize: 12, fill: "#64748b" }} />
+                  <YAxis tick={{ fontSize: 12, fill: "#64748b" }} unit="%" />
+                  <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
+                  <Bar dataKey="referredPct" name="% Referred" fill="#0284c7" radius={[4, 4, 0, 0]} barSize={28}>
+                    <LabelList dataKey="referredPct" position="top" formatter={(v: any) => `${v}%`} style={{ fontSize: 11, fontWeight: 700, fill: "#0f172a" }} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </Box>
+          </Box>
+        </>
       )}
     </Box>
   );
@@ -1346,24 +1761,49 @@ const ReferredWidget: React.FC = () => {
 const OfferDropoutWidget: React.FC = () => {
   const [data, setData] = useState<OfferDropoutResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [year, setYear] = useState<number>(new Date().getFullYear());
 
   useEffect(() => {
     setLoading(true);
-    axios.get(`${API}/onboarding/analytics/offer-dropout`, { params: { _t: Date.now() } })
+    axios.get(`${API}/onboarding/analytics/offer-dropout`, { params: { year, _t: Date.now() } })
       .then((res) => setData(res.data))
       .catch(() => toast.error("Failed to load offer dropout data"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [year]);
+
+  const yearOptions = useMemo(() => {
+    const years = data?.availableYears?.length ? data.availableYears : [year];
+    return years.map((y) => ({ key: String(y), label: String(y) }));
+  }, [data, year]);
+
+  const quarterStartDate = (quarter: string, y: number): Date => {
+    const q = parseInt(quarter.replace("Q", ""), 10);
+    return new Date(y, (q - 1) * 3, 1);
+  };
+  const startedQuarters = useMemo(
+    () => (data?.quarters ?? []).filter((q) => quarterStartDate(q.quarter, year) <= new Date()),
+    [data, year]
+  );
+
+  // Stat cards follow the year selector — summed across this year's
+  // started quarters — rather than always showing the all-time total
+  // regardless of which year is picked.
+  const yearTotal = startedQuarters.reduce((s, q) => s + q.total, 0);
+  const yearDropout = startedQuarters.reduce((s, q) => s + q.dropoutCount, 0);
+  const yearDropoutPct = yearTotal > 0 ? Math.round((yearDropout / yearTotal) * 1000) / 10 : 0;
 
   return (
     <Box sx={{ bgcolor: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", p: 3, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-      <Box sx={{ mb: 2.5 }}>
-        <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
-          Offer Dropout
-        </Typography>
-        <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
-          Share of all onboardings marked "Not Joining" — a single aggregate number, no employee names or department breakdown shown
-        </Typography>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 2, mb: 2.5 }}>
+        <Box>
+          <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
+            Offer Dropout
+          </Typography>
+          <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
+            Onboarding records for the selected year (by join/offer-accepted date), and the share marked "Not Joining"
+          </Typography>
+        </Box>
+        <FilterPillRow options={yearOptions} active={String(year)} onChange={(k) => setYear(Number(k))} color="#db2777" />
       </Box>
 
       {loading || !data ? (
@@ -1371,11 +1811,187 @@ const OfferDropoutWidget: React.FC = () => {
           <CircularProgress size={26} sx={{ color: ACCENT }} />
         </Box>
       ) : (
-        <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
-          <StatCard label="Total Onboardings" value={data.total} color={ACCENT} bg="#eef2ff" />
-          <StatCard label="Not Joining" value={data.dropoutCount} color="#db2777" bg="#fdf2f8" />
-          <StatCard label="% Dropout" value={`${data.dropoutPct}%`} color="#db2777" bg="#fdf2f8" />
+        <>
+          <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexWrap: "wrap" }}>
+            <StatCard label="Onboardings This Year" value={yearTotal} color={ACCENT} bg="#eef2ff" hint={`All time: ${data.total} onboardings, ${data.dropoutCount} not joining (${data.dropoutPct}%)`} />
+            <StatCard label="Not Joining" value={yearDropout} color="#db2777" bg="#fdf2f8" />
+            <StatCard label="% Dropout" value={`${yearDropoutPct}%`} color="#db2777" bg="#fdf2f8" />
+          </Box>
+
+          <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+            <Box sx={{ flex: "1 1 260px", minWidth: 240 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                Split — {year}
+              </Typography>
+              <PieBreakdownChart
+                data={[
+                  { name: "Not Joining", value: yearDropout, color: "#db2777" },
+                  { name: "Other", value: Math.max(0, yearTotal - yearDropout), color: "#94a3b8" },
+                ]}
+              />
+            </Box>
+            <Box sx={{ flex: "2 1 420px", minWidth: 320, height: 280 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                % Dropout by Quarter — {year}
+              </Typography>
+              <ResponsiveContainer width="100%" height="90%">
+                <BarChart data={startedQuarters} barGap={4} margin={{ top: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="quarter" tick={{ fontSize: 12, fill: "#64748b" }} />
+                  <YAxis tick={{ fontSize: 12, fill: "#64748b" }} unit="%" />
+                  <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
+                  <Bar dataKey="dropoutPct" name="% Dropout" fill="#db2777" radius={[4, 4, 0, 0]} barSize={28}>
+                    <LabelList dataKey="dropoutPct" position="top" formatter={(v: any) => `${v}%`} style={{ fontSize: 11, fontWeight: 700, fill: "#0f172a" }} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </Box>
+          </Box>
+        </>
+      )}
+    </Box>
+  );
+};
+
+// ─── Average Days to Hire widget ────────────────────────────────────────────
+// Calendar days between a requisition being raised and closed, split by
+// candidate_experience_level — backed by HiringRequisition's createdAt and
+// closed_at (see backend-node/routes/hiringRequisitions.js).
+
+const DaysToHireWidget: React.FC = () => {
+  const [data, setData] = useState<DaysToHireResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [year, setYear] = useState<number>(new Date().getFullYear());
+
+  useEffect(() => {
+    setLoading(true);
+    axios.get(`${API}/hiringrequisitions/analytics/days-to-hire`, { params: { year, _t: Date.now() } })
+      .then((res) => setData(res.data))
+      .catch(() => toast.error("Failed to load days-to-hire data"))
+      .finally(() => setLoading(false));
+  }, [year]);
+
+  const yearOptions = useMemo(() => {
+    const years = data?.availableYears?.length ? data.availableYears : [year];
+    return years.map((y) => ({ key: String(y), label: String(y) }));
+  }, [data, year]);
+
+  const quarterStartDate = (quarter: string, y: number): Date => {
+    const q = parseInt(quarter.replace("Q", ""), 10);
+    return new Date(y, (q - 1) * 3, 1);
+  };
+  const startedQuartersRaw = useMemo(
+    () => (data?.quarters ?? []).filter((q) => quarterStartDate(q.quarter, year) <= new Date()),
+    [data, year]
+  );
+  const startedQuarters = useMemo(
+    () => startedQuartersRaw.map((q) => ({
+      quarter: q.quarter,
+      overallDays: q.overall.avgDays,
+      fresherDays: q.fresher.avgDays,
+      experiencedDays: q.experienced.avgDays,
+    })),
+    [startedQuartersRaw]
+  );
+
+  // Stat cards follow the year selector — a count-weighted average across
+  // this year's started quarters — rather than always showing the
+  // all-time figure regardless of which year is picked.
+  const yearBucket = (key: "overall" | "fresher" | "experienced"): DaysToHireBucket => {
+    let totalDays = 0, totalCount = 0;
+    for (const q of startedQuartersRaw) {
+      const b = q[key];
+      if (b.count > 0) { totalDays += b.avgDays! * b.count; totalCount += b.count; }
+    }
+    return { avgDays: totalCount > 0 ? Math.round((totalDays / totalCount) * 10) / 10 : null, count: totalCount };
+  };
+  const yearOverall = data ? yearBucket("overall") : { avgDays: null, count: 0 };
+  const yearFresher = data ? yearBucket("fresher") : { avgDays: null, count: 0 };
+  const yearExperienced = data ? yearBucket("experienced") : { avgDays: null, count: 0 };
+
+  return (
+    <Box sx={{ bgcolor: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", p: 3, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 2, mb: 2.5 }}>
+        <Box>
+          <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
+            Average Days to Hire
+          </Typography>
+          <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
+            Calendar days from requisition raised to requisition closed — overall, and split by Fresher vs Experienced hires
+          </Typography>
         </Box>
+        <FilterPillRow options={yearOptions} active={String(year)} onChange={(k) => setYear(Number(k))} color={ACCENT} />
+      </Box>
+
+      {loading || !data ? (
+        <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
+          <CircularProgress size={26} sx={{ color: ACCENT }} />
+        </Box>
+      ) : (
+        <>
+          <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
+            <StatCard
+              label="Overall — Avg Days to Hire"
+              value={yearOverall.avgDays != null ? `${yearOverall.avgDays}d` : "—"}
+              color={ACCENT}
+              bg="#eef2ff"
+              hint={yearOverall.count > 0 ? `${yearOverall.count} closed in ${year} · all-time: ${data.overall.avgDays ?? "—"}d over ${data.overall.count}` : "No closed requisitions this year"}
+            />
+            <StatCard
+              label="Fresher — Avg Days to Hire"
+              value={yearFresher.avgDays != null ? `${yearFresher.avgDays}d` : "—"}
+              color="#059669"
+              bg="#f0fdf4"
+              hint={yearFresher.count > 0 ? `${yearFresher.count} closed requisition${yearFresher.count === 1 ? "" : "s"} in ${year}` : "No closed Fresher requisitions this year"}
+            />
+            <StatCard
+              label="Experienced — Avg Days to Hire"
+              value={yearExperienced.avgDays != null ? `${yearExperienced.avgDays}d` : "—"}
+              color="#d97706"
+              bg="#fffbeb"
+              hint={yearExperienced.count > 0 ? `${yearExperienced.count} closed requisition${yearExperienced.count === 1 ? "" : "s"} in ${year}` : "No closed Experienced requisitions this year"}
+            />
+          </Box>
+          {data.excludedCount > 0 && (
+            <Typography fontSize="0.68rem" color="#94a3b8" mt={2} mb={1}>
+              {data.excludedCount} closed requisition{data.excludedCount === 1 ? "" : "s"} excluded (all time) — no reliable raised/closed date could be recovered.
+            </Typography>
+          )}
+
+          <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap", mt: 2 }}>
+            <Box sx={{ flex: "1 1 260px", minWidth: 240 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                Closed Requisitions — {year}
+              </Typography>
+              <PieBreakdownChart
+                data={[
+                  { name: "Fresher", value: yearFresher.count, color: "#059669" },
+                  { name: "Experienced", value: yearExperienced.count, color: "#d97706" },
+                ]}
+              />
+            </Box>
+            <Box sx={{ flex: "2 1 420px", minWidth: 320, height: 300 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                Avg Days to Hire by Quarter (Closed Date) — {year}
+              </Typography>
+              <ResponsiveContainer width="100%" height="90%">
+                <BarChart data={startedQuarters} barGap={4} margin={{ top: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="quarter" tick={{ fontSize: 12, fill: "#64748b" }} />
+                  <YAxis tick={{ fontSize: 12, fill: "#64748b" }} unit="d" />
+                  <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="fresherDays" name="Fresher" fill="#059669" radius={[4, 4, 0, 0]} barSize={24}>
+                    <LabelList dataKey="fresherDays" position="top" formatter={(v: any) => (v != null ? `${v}d` : "")} style={{ fontSize: 11, fontWeight: 700, fill: "#0f172a" }} />
+                  </Bar>
+                  <Bar dataKey="experiencedDays" name="Experienced" fill="#d97706" radius={[4, 4, 0, 0]} barSize={24}>
+                    <LabelList dataKey="experiencedDays" position="top" formatter={(v: any) => (v != null ? `${v}d` : "")} style={{ fontSize: 11, fontWeight: 700, fill: "#0f172a" }} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </Box>
+          </Box>
+        </>
       )}
     </Box>
   );
@@ -1426,8 +2042,6 @@ interface UpcomingMetric {
 }
 
 const UPCOMING_METRICS: UpcomingMetric[] = [
-  { title: "Average Days to Hire (Fresher)", icon: <HourglassEmptyIcon />, color: "#059669", bg: "#f0fdf4" },
-  { title: "Average Days to Hire (Experienced Employee)", icon: <AccessTimeIcon />, color: "#d97706", bg: "#fffbeb" },
   { title: "Salary Revision Timeliness Rate (%)", icon: <PaidIcon />, color: ACCENT, bg: "#eef2ff" },
   { title: "Trainings Conducted vs Planned", icon: <MenuBookIcon />, color: "#0d9488", bg: "#f0fdfa" },
   { title: "Employee Confirmation Timeliness Rate (%)", icon: <AssignmentTurnedInIcon />, color: "#2563eb", bg: "#eff6ff" },
@@ -1544,6 +2158,14 @@ async function fetchReferredSummary(): Promise<CardSummary> {
   return { value: `${pct}%`, sublabel: `${referredCount} of ${total} who ever joined` };
 }
 
+async function fetchDaysToHireSummary(level: "overall" | "fresher" | "experienced"): Promise<CardSummary> {
+  const res = await axios.get(`${API}/hiringrequisitions/analytics/days-to-hire`, { params: { _t: Date.now() } });
+  const data: DaysToHireResponse = res.data;
+  const bucket = data?.[level];
+  if (!bucket || bucket.count === 0) return { value: "—", sublabel: "No closed requisitions yet" };
+  return { value: `${bucket.avgDays}d`, sublabel: `Avg over ${bucket.count} closed requisition${bucket.count === 1 ? "" : "s"}` };
+}
+
 async function fetchOfferDropoutSummary(): Promise<CardSummary> {
   const res = await axios.get(`${API}/onboarding/analytics/offer-dropout`, { params: { _t: Date.now() } });
   const total = res.data?.total ?? 0;
@@ -1558,7 +2180,7 @@ async function fetchOfferDropoutSummary(): Promise<CardSummary> {
 // scrolling. Clicking a card opens that area's full existing widget
 // (unchanged from before) inside a modal.
 
-type CardKey = "teeth" | "gender" | "interns" | "internConversions" | "increments" | "pip" | "askedToLeave" | "referred" | "offerDropout" | "recruitment" | "onboarding" | "exit";
+type CardKey = "teeth" | "gender" | "interns" | "internConversions" | "increments" | "pip" | "askedToLeave" | "referred" | "offerDropout" | "daysToHireOverall" | "recruitment" | "onboarding" | "exit";
 
 const HRAnalyticsDashboard: React.FC = () => {
   const [activeCard, setActiveCard] = useState<CardKey | null>(null);
@@ -1580,6 +2202,7 @@ const HRAnalyticsDashboard: React.FC = () => {
     { key: "askedToLeave", title: "Asked to Leave (%)", icon: <PersonRemoveIcon />, color: "#dc2626", bg: "#fef2f2", fetchSummary: fetchAskedToLeaveSummary },
     { key: "referred", title: "Referred Employees (%)", icon: <GroupAddIcon />, color: "#0284c7", bg: "#eff6ff", fetchSummary: fetchReferredSummary },
     { key: "offerDropout", title: "Offer Dropout (%)", icon: <CancelIcon />, color: "#db2777", bg: "#fdf2f8", fetchSummary: fetchOfferDropoutSummary },
+    { key: "daysToHireOverall", title: "Avg Days to Hire", icon: <TimelineIcon />, color: ACCENT, bg: "#eef2ff", fetchSummary: () => fetchDaysToHireSummary("overall") },
     { key: "recruitment", title: "Recruitment On-Time (%)", icon: <WorkIcon />, color: "#0284c7", bg: "#eff6ff", fetchSummary: () => fetchKpiSummary("recruitment") },
     { key: "onboarding", title: "Onboarding On-Time (%)", icon: <HowToRegIcon />, color: "#059669", bg: "#f0fdf4", fetchSummary: () => fetchKpiSummary("onboarding") },
     { key: "exit", title: "Exit On-Time (%)", icon: <ExitToAppIcon />, color: "#d97706", bg: "#fffbeb", fetchSummary: () => fetchKpiSummary("exit") },
@@ -1673,6 +2296,7 @@ const HRAnalyticsDashboard: React.FC = () => {
           {activeCard === "askedToLeave" && <AskedToLeaveWidget />}
           {activeCard === "referred" && <ReferredWidget />}
           {activeCard === "offerDropout" && <OfferDropoutWidget />}
+          {activeCard === "daysToHireOverall" && <DaysToHireWidget />}
           {(activeCard === "recruitment" || activeCard === "onboarding" || activeCard === "exit") && activeModuleLabel && (
             <ModuleKpiRow moduleKey={activeCard} label={activeModuleLabel} />
           )}

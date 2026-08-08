@@ -861,7 +861,7 @@ router.get("/analytics/teeth-to-tail", async (req, res) => {
 
     const docs = await Onboarding.find(
       {},
-      "name dept officialEmail persEmail joinedDate exitStatus"
+      "name dept officialEmail persEmail joinedDate joiningStatus exitStatus"
     ).lean();
 
     const exits = await Exit.find(
@@ -897,11 +897,28 @@ router.get("/analytics/teeth-to-tail", async (req, res) => {
     }
 
     const EXITED = new Set(["Left", "Already Left"]);
-    const employees = docs.map((d) => ({
-      ...d,
-      isMarkedExited: EXITED.has(d.exitStatus),
-      resolvedExitDate: EXITED.has(d.exitStatus) ? resolveExitDate(d) : null,
-    }));
+    // Only people who have actually joined count toward headcount
+    // composition at all — someone still mid-pipeline (or marked "Not
+    // Joining") isn't an employee yet, regardless of whether a joinedDate
+    // happens to be set on their record.
+    const employees = docs
+      .filter((d) => d.joiningStatus === "Joined")
+      .map((d) => ({
+        ...d,
+        isMarkedExited: EXITED.has(d.exitStatus),
+        resolvedExitDate: EXITED.has(d.exitStatus) ? resolveExitDate(d) : null,
+      }));
+
+    // Currently-active joined employees with no joinedDate at all can't be
+    // placed in any quarter's reconstruction below — tracked separately so
+    // the total can be reconciled instead of these people silently
+    // vanishing from every quarter including the current one.
+    // Being marked Left/Already Left is itself sufficient to say someone
+    // isn't current, regardless of whether their exact exit date could be
+    // resolved via email-matched Exit records — a departed employee with
+    // no matching Exit record must never be reported as a "current
+    // employee" just because we can't pin down when they left.
+    const missingJoinDateCount = employees.filter((emp) => !emp.joinedDate && !emp.isMarkedExited).length;
 
     const quarters = [1, 2, 3, 4].map((q) => {
       const asOf = quarterEndDate(year, q);
@@ -939,7 +956,7 @@ router.get("/analytics/teeth-to-tail", async (req, res) => {
       };
     });
 
-    const currentEmployees = docs.filter((d) => !EXITED.has(d.exitStatus || ""));
+    const currentEmployees = docs.filter((d) => d.joiningStatus === "Joined" && !EXITED.has(d.exitStatus || ""));
     const deptCounts = {};
     for (const d of currentEmployees) {
       const dept = (d.dept || "").trim() || "(Blank)";
@@ -958,7 +975,7 @@ router.get("/analytics/teeth-to-tail", async (req, res) => {
     const availableYears = [];
     for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
 
-    res.json({ success: true, year, quarters, availableYears, departmentBreakdown });
+    res.json({ success: true, year, quarters, availableYears, departmentBreakdown, missingJoinDateCount });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: err.message });
@@ -1008,11 +1025,26 @@ router.get("/analytics/gender", async (req, res) => {
       return d ? new Date(d) : null;
     }
 
-    const employees = docs.map((d) => ({
-      ...d,
-      isMarkedExited: EXITED.has(d.exitStatus || ""),
-      resolvedExitDate: EXITED.has(d.exitStatus || "") ? resolveExitDate(d) : null,
-    }));
+    // Only people who have actually joined count toward gender composition
+    // — someone still mid-pipeline isn't an employee yet, regardless of
+    // whether a joinedDate happens to be set on their record.
+    const employees = docs
+      .filter((d) => d.joiningStatus === "Joined")
+      .map((d) => ({
+        ...d,
+        isMarkedExited: EXITED.has(d.exitStatus || ""),
+        resolvedExitDate: EXITED.has(d.exitStatus || "") ? resolveExitDate(d) : null,
+      }));
+
+    // Currently-active joined employees with no joinedDate can't be placed
+    // in any quarter's reconstruction — tracked so the total reconciles
+    // instead of silently dropping them.
+    // Being marked Left/Already Left is itself sufficient to say someone
+    // isn't current, regardless of whether their exact exit date could be
+    // resolved via email-matched Exit records — a departed employee with
+    // no matching Exit record must never be reported as a "current
+    // employee" just because we can't pin down when they left.
+    const missingJoinDateCount = employees.filter((emp) => !emp.joinedDate && !emp.isMarkedExited).length;
 
     const quarters = [1, 2, 3, 4].map((q) => {
       const asOf = quarterEndDate(year, q);
@@ -1045,7 +1077,7 @@ router.get("/analytics/gender", async (req, res) => {
       };
     });
 
-    const current = docs.filter((d) => !EXITED.has(d.exitStatus || ""));
+    const current = docs.filter((d) => d.joiningStatus === "Joined" && !EXITED.has(d.exitStatus || ""));
     const genderCounts = {};
     const byDept = {};
 
@@ -1085,6 +1117,7 @@ router.get("/analytics/gender", async (req, res) => {
       genders,
       overall,
       byDepartment,
+      missingJoinDateCount,
     });
   } catch (err) {
     console.error(err);
@@ -1492,17 +1525,20 @@ router.put('/:id/contract', async (req, res) => {
 
 router.get("/analytics/interns", async (req, res) => {
   try {
+    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+
     const docs = await Onboarding.find(
       {},
-      "employeeCategory dept joiningStatus exitStatus"
+      "employeeCategory dept joinedDate joiningStatus exitStatus persEmail officialEmail"
     ).lean();
-
-    const current = docs.filter(
-      (d) => d.joiningStatus === "Joined" && !EXITED_STATUS_VALUES.has(d.exitStatus || "")
-    );
 
     const isIntern = (d) => (d.employeeCategory || "").trim().toLowerCase() === "intern";
 
+    // Current (as-of-today) snapshot — unchanged from before, still drives
+    // the summary card and department breakdown.
+    const current = docs.filter(
+      (d) => d.joiningStatus === "Joined" && !EXITED_STATUS_VALUES.has(d.exitStatus || "")
+    );
     const total = current.length;
     const internsCount = current.filter(isIntern).length;
     const internPct = total > 0 ? Math.round((internsCount / total) * 1000) / 10 : 0;
@@ -1521,6 +1557,78 @@ router.get("/analytics/interns", async (req, res) => {
       }))
       .sort((a, b) => b.interns - a.interns || a.department.localeCompare(b.department));
 
+    // Quarterly trend — same "reconstruct headcount as of each quarter's
+    // end" convention as Teeth-to-Tail/Gender: an employee counts toward a
+    // quarter if they'd joined by then and hadn't exited yet by then.
+    const exits = await Exit.find(
+      {},
+      "persEmail officialEmail leftDate plannedExitDate resignationDate"
+    ).lean();
+    const EXITED = new Set(["Left", "Already Left"]);
+    const exitDateOfRecord = (e) => {
+      const d = e.leftDate || e.plannedExitDate || e.resignationDate;
+      const t = d ? new Date(d).getTime() : NaN;
+      return isNaN(t) ? -Infinity : t;
+    };
+    function resolveExitDate(emp) {
+      const persEmail = (emp.persEmail || "").trim().toLowerCase();
+      const officialEmail = (emp.officialEmail || "").trim().toLowerCase();
+      let candidates = [];
+      if (persEmail) candidates = exits.filter((e) => (e.persEmail || "").trim().toLowerCase() === persEmail);
+      if (candidates.length === 0 && officialEmail) {
+        candidates = exits.filter((e) => (e.officialEmail || "").trim().toLowerCase() === officialEmail);
+      }
+      if (candidates.length === 0) return null;
+      const latest = candidates.reduce((l, e) => (!l || exitDateOfRecord(e) > exitDateOfRecord(l) ? e : l), null);
+      const d = latest.leftDate || latest.plannedExitDate || latest.resignationDate;
+      return d ? new Date(d) : null;
+    }
+    const employees = docs
+      .filter((d) => d.joiningStatus === "Joined")
+      .map((d) => ({
+        ...d,
+        isMarkedExited: EXITED.has(d.exitStatus || ""),
+        resolvedExitDate: EXITED.has(d.exitStatus || "") ? resolveExitDate(d) : null,
+      }));
+
+    // Being marked Left/Already Left is itself sufficient to say someone
+    // isn't current, regardless of whether their exact exit date could be
+    // resolved via email-matched Exit records — a departed employee with
+    // no matching Exit record must never be reported as a "current
+    // employee" just because we can't pin down when they left.
+    const missingJoinDateCount = employees.filter((emp) => !emp.joinedDate && !emp.isMarkedExited).length;
+
+    const quarters = [1, 2, 3, 4].map((q) => {
+      const asOf = quarterEndDate(year, q);
+      let qTotal = 0, qInterns = 0;
+      for (const emp of employees) {
+        if (!emp.joinedDate) continue;
+        const joined = new Date(emp.joinedDate);
+        if (joined > asOf) continue;
+        if (emp.isMarkedExited) {
+          if (emp.resolvedExitDate) { if (emp.resolvedExitDate <= asOf) continue; }
+          else continue;
+        }
+        qTotal++;
+        if (isIntern(emp)) qInterns++;
+      }
+      return {
+        quarter: `Q${q}`,
+        asOf: asOf.toISOString(),
+        total: qTotal,
+        internsCount: qInterns,
+        internPct: qTotal > 0 ? Math.round((qInterns / qTotal) * 1000) / 10 : 0,
+      };
+    });
+
+    const joinYears = docs
+      .map((d) => (d.joinedDate ? new Date(d.joinedDate).getFullYear() : null))
+      .filter(Boolean);
+    const minYear = joinYears.length ? Math.min(...joinYears) : year;
+    const maxYear = Math.max(new Date().getFullYear(), ...(joinYears.length ? joinYears : [year]));
+    const availableYears = [];
+    for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
+
     res.json({
       success: true,
       total,
@@ -1528,6 +1636,10 @@ router.get("/analytics/interns", async (req, res) => {
       internPct,
       nonInternsCount: total - internsCount,
       departmentBreakdown,
+      year,
+      quarters,
+      availableYears,
+      missingJoinDateCount,
     });
   } catch (err) {
     console.error(err);
@@ -1548,12 +1660,42 @@ router.get("/analytics/interns", async (req, res) => {
 // and several referred employees have since exited.
 router.get("/analytics/referred", async (req, res) => {
   try {
-    const docs = await Onboarding.find({ joiningStatus: "Joined" }, "referred").lean();
+    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+
+    const docs = await Onboarding.find({ joiningStatus: "Joined" }, "referred joinedDate").lean();
     const total = docs.length;
     const referredCount = docs.filter((d) => d.referred).length;
     const referredPct = total > 0 ? Math.round((referredCount / total) * 1000) / 10 : 0;
 
-    res.json({ success: true, total, referredCount, referredPct });
+    // Quarterly trend — by joining cohort: of everyone who joined in a
+    // given quarter, what share were referred. Different from the overall
+    // number above (all-time), on purpose — this is a trend of hiring
+    // quality by cohort, not a running cumulative total.
+    const quarters = [1, 2, 3, 4].map((q) => {
+      const cohort = docs.filter((d) => {
+        if (!d.joinedDate) return false;
+        const joined = new Date(d.joinedDate);
+        return joined.getFullYear() === year && Math.floor(joined.getMonth() / 3) + 1 === q;
+      });
+      const qTotal = cohort.length;
+      const qReferred = cohort.filter((d) => d.referred).length;
+      return {
+        quarter: `Q${q}`,
+        total: qTotal,
+        referredCount: qReferred,
+        referredPct: qTotal > 0 ? Math.round((qReferred / qTotal) * 1000) / 10 : 0,
+      };
+    });
+
+    const joinYears = docs
+      .map((d) => (d.joinedDate ? new Date(d.joinedDate).getFullYear() : null))
+      .filter(Boolean);
+    const minYear = joinYears.length ? Math.min(...joinYears) : year;
+    const maxYear = Math.max(new Date().getFullYear(), ...(joinYears.length ? joinYears : [year]));
+    const availableYears = [];
+    for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
+
+    res.json({ success: true, total, referredCount, referredPct, year, quarters, availableYears });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: err.message });
@@ -1568,11 +1710,46 @@ router.get("/analytics/referred", async (req, res) => {
 // would be as identifying as a name.
 router.get("/analytics/offer-dropout", async (req, res) => {
   try {
+    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+
     const total = await Onboarding.countDocuments({});
     const dropoutCount = await Onboarding.countDocuments({ joiningStatus: "Not Joining" });
     const dropoutPct = total > 0 ? Math.round((dropoutCount / total) * 1000) / 10 : 0;
 
-    res.json({ success: true, total, dropoutCount, dropoutPct });
+    // Quarterly trend — bucketed by joinedDate, falling back to
+    // offerAcceptedDate for "Not Joining" records (which never get a
+    // joinedDate). createdAt was tried first but turned out unusable here:
+    // most onboarding records were bulk-imported without ever going
+    // through the Mongoose model, so they have no createdAt at all —
+    // joinedDate/offerAcceptedDate are the real, populated dates instead.
+    const docs = await Onboarding.find({}, "joiningStatus joinedDate offerAcceptedDate").lean();
+    const bucketDate = (d) => d.joinedDate || d.offerAcceptedDate || null;
+    const quarters = [1, 2, 3, 4].map((q) => {
+      const cohort = docs.filter((d) => {
+        const raw = bucketDate(d);
+        if (!raw) return false;
+        const dt = new Date(raw);
+        return dt.getFullYear() === year && Math.floor(dt.getMonth() / 3) + 1 === q;
+      });
+      const qTotal = cohort.length;
+      const qDropout = cohort.filter((d) => d.joiningStatus === "Not Joining").length;
+      return {
+        quarter: `Q${q}`,
+        total: qTotal,
+        dropoutCount: qDropout,
+        dropoutPct: qTotal > 0 ? Math.round((qDropout / qTotal) * 1000) / 10 : 0,
+      };
+    });
+
+    const bucketYears = docs
+      .map((d) => { const raw = bucketDate(d); return raw ? new Date(raw).getFullYear() : null; })
+      .filter(Boolean);
+    const minYear = bucketYears.length ? Math.min(...bucketYears) : year;
+    const maxYear = Math.max(new Date().getFullYear(), ...(bucketYears.length ? bucketYears : [year]));
+    const availableYears = [];
+    for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
+
+    res.json({ success: true, total, dropoutCount, dropoutPct, year, quarters, availableYears });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: err.message });
@@ -2028,11 +2205,33 @@ router.get("/analytics/intern-conversions", async (req, res) => {
       .map(([department, count]) => ({ department, count }))
       .sort((a, b) => b.count - a.count);
 
+    // Quarterly trend — by conversionDate.
+    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+    const quarters = [1, 2, 3, 4].map((q) => {
+      const count = conversions.filter((c) => {
+        if (!c.conversionDate) return false;
+        const d = new Date(c.conversionDate);
+        return d.getFullYear() === year && Math.floor(d.getMonth() / 3) + 1 === q;
+      }).length;
+      return { quarter: `Q${q}`, count };
+    });
+
+    const conversionYears = conversions
+      .map((c) => (c.conversionDate ? new Date(c.conversionDate).getFullYear() : null))
+      .filter(Boolean);
+    const minYear = conversionYears.length ? Math.min(...conversionYears) : year;
+    const maxYear = Math.max(new Date().getFullYear(), ...(conversionYears.length ? conversionYears : [year]));
+    const availableYears = [];
+    for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
+
     res.json({
       success: true,
       total: conversions.length,
       conversions,
       departmentBreakdown,
+      year,
+      quarters,
+      availableYears,
     });
   } catch (err) {
     console.error(err);

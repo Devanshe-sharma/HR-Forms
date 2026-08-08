@@ -45,11 +45,9 @@ const isConversion = (r) => {
 router.get('/analytics/increments', asyncHandler(async (req, res) => {
   const raw = await SalaryRevision.find({
     stage: 'completed',
-  }, 'employeeName department designation finalIncrementPct previousCtc newCtc applicableDate createdAt categoryChanged previousCategory newCategory').lean();
-  console.log('[analytics/increments] rawCount=', raw.length);
+  }, 'employeeName employeeCode department designation finalIncrementPct applicableDate createdAt categoryChanged previousCategory newCategory').lean();
   const completed = raw
     .filter((r) => r.finalIncrementPct != null && !isConversion(r) && r.finalIncrementPct <= MAX_ANALYTIC_INCREMENT);
-  console.log('[analytics/increments] filteredCount=', completed.length);
 
   const yearOf = (r) => new Date(r.applicableDate || r.createdAt).getFullYear();
 
@@ -58,35 +56,65 @@ router.get('/analytics/increments', asyncHandler(async (req, res) => {
 
   const inYear = completed.filter((r) => yearOf(r) === year);
 
-  const toRow = (r) => ({
-    employeeName: r.employeeName,
-    department: r.department,
-    designation: r.designation,
-    finalIncrementPct: r.finalIncrementPct,
-    previousCtc: r.previousCtc,
-    newCtc: r.newCtc,
-    applicableDate: r.applicableDate || r.createdAt,
-  });
+  // Multiple revisions for the same employee within the year are combined
+  // before judging low/high — someone who got a 5% increment in one
+  // revision and another 6% later the same year genuinely received ~11%
+  // that year, and judging either revision on its own as "low" would be
+  // misleading. No salary figures (CTC) are ever included here — only
+  // names and the combined percentage.
+  const byEmployee = new Map();
+  for (const r of inYear) {
+    const key = r.employeeCode || r.employeeName;
+    const existing = byEmployee.get(key);
+    if (existing) {
+      existing.incrementPct += r.finalIncrementPct;
+      existing.revisionCount += 1;
+    } else {
+      byEmployee.set(key, {
+        employeeName: r.employeeName,
+        department: r.department,
+        designation: r.designation,
+        incrementPct: r.finalIncrementPct,
+        revisionCount: 1,
+      });
+    }
+  }
+  const perEmployee = Array.from(byEmployee.values()).map((e) => ({
+    ...e,
+    incrementPct: Math.round(e.incrementPct * 100) / 100,
+  }));
 
-  const lowIncrementList = inYear.filter((r) => r.finalIncrementPct < 9).map(toRow)
-    .sort((a, b) => a.finalIncrementPct - b.finalIncrementPct);
-  const highPerformerList = inYear.filter((r) => r.finalIncrementPct >= 20).map(toRow)
-    .sort((a, b) => b.finalIncrementPct - a.finalIncrementPct);
+  const lowIncrementList = perEmployee.filter((e) => e.incrementPct < 9)
+    .sort((a, b) => a.incrementPct - b.incrementPct);
+  const highPerformerList = perEmployee.filter((e) => e.incrementPct >= 20)
+    .sort((a, b) => b.incrementPct - a.incrementPct);
 
-  const avgIncrementPct = inYear.length
-    ? Math.round((inYear.reduce((s, r) => s + r.finalIncrementPct, 0) / inYear.length) * 10) / 10
+  const avgIncrementPct = perEmployee.length
+    ? Math.round((perEmployee.reduce((s, e) => s + e.incrementPct, 0) / perEmployee.length) * 10) / 10
     : null;
+
+  // Quarterly trend stays per-revision (not per-employee-per-year) — it's
+  // answering a different question: how large were the raises actually
+  // handed out each quarter, not how each employee fared across the year.
+  const quarters = [1, 2, 3, 4].map((q) => {
+    const inQuarter = inYear.filter((r) => Math.floor(new Date(r.applicableDate || r.createdAt).getMonth() / 3) + 1 === q);
+    const avg = inQuarter.length
+      ? Math.round((inQuarter.reduce((s, r) => s + r.finalIncrementPct, 0) / inQuarter.length) * 10) / 10
+      : null;
+    return { quarter: `Q${q}`, total: inQuarter.length, avgIncrementPct: avg };
+  });
 
   res.status(200).json({
     success: true,
     year,
     availableYears: availableYears.length ? availableYears : [year],
-    total: inYear.length,
+    total: perEmployee.length,
     avgIncrementPct,
     lowIncrementCount: lowIncrementList.length,
     lowIncrementList,
     highPerformerCount: highPerformerList.length,
     highPerformerList,
+    quarters,
   });
 }));
 
@@ -119,13 +147,15 @@ router.get('/analytics/increments', asyncHandler(async (req, res) => {
 const EXITED_STATUS_VALUES = new Set(['Left', 'Already Left']);
 
 router.get('/analytics/pip', asyncHandler(async (req, res) => {
+  const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+
   // No employeeName in the projection — this endpoint is aggregate-only,
   // same confidentiality rule as Exit's Asked-to-Leave metric. Only
   // reviewDate/stage/onboardingId are needed to compute the counts below.
   const srPipRecords = await SalaryRevision.find({
     'managerDecision.decision': 'pip',
     'managementDecision.pipApproved': true,
-  }).select('stage pipOutcome reviewDate onboardingId').lean();
+  }).select('stage pipOutcome pipOutcomeDate reviewDate onboardingId').lean();
 
   const onHold = srPipRecords.filter((r) => r.stage === 'on_hold');
   const exitedIds = new Set(
@@ -151,7 +181,7 @@ router.get('/analytics/pip', asyncHandler(async (req, res) => {
   const srImproved     = srResolved.filter((r) => r.pipOutcome === 'improved');
 
   const extendedHistory = await Confirmations.find({ 'history.status': 'extended' })
-    .select('employeeName currentStatus').lean();
+    .select('employeeName currentStatus history').lean();
   const confResolved = extendedHistory.filter((r) => r.currentStatus === 'confirmed' || r.currentStatus === 'not_confirmed');
   const confImproved = confResolved.filter((r) => r.currentStatus === 'confirmed');
 
@@ -162,6 +192,36 @@ router.get('/analytics/pip', asyncHandler(async (req, res) => {
     ? Math.round((totalImproved / totalResolved) * 1000) / 10
     : null;
 
+  // Quarterly trend — resolution date is pipOutcomeDate for SalaryRevision
+  // PIPs (stamped by PUT /:id/pip-outcome), and the most recent history
+  // entry's date for Confirmations (stamped whenever currentStatus last
+  // changed — see the Confirmations model's history sub-schema).
+  const confResolvedDate = (r) => {
+    const dates = (r.history || []).map((h) => (h.date ? new Date(h.date) : null)).filter(Boolean);
+    return dates.length ? new Date(Math.max(...dates.map((d) => d.getTime()))) : null;
+  };
+  const resolvedWithDates = [
+    ...srResolved.map((r) => ({ date: r.pipOutcomeDate ? new Date(r.pipOutcomeDate) : null, improved: r.pipOutcome === 'improved' })),
+    ...confResolved.map((r) => ({ date: confResolvedDate(r), improved: r.currentStatus === 'confirmed' })),
+  ].filter((r) => r.date);
+
+  const quarters = [1, 2, 3, 4].map((q) => {
+    const inQuarter = resolvedWithDates.filter((r) => r.date.getFullYear() === year && Math.floor(r.date.getMonth() / 3) + 1 === q);
+    const improved = inQuarter.filter((r) => r.improved).length;
+    return {
+      quarter: `Q${q}`,
+      resolved: inQuarter.length,
+      improved,
+      improvedPct: inQuarter.length > 0 ? Math.round((improved / inQuarter.length) * 1000) / 10 : null,
+    };
+  });
+
+  const resolvedYears = resolvedWithDates.map((r) => r.date.getFullYear());
+  const minYear = resolvedYears.length ? Math.min(...resolvedYears) : year;
+  const maxYear = Math.max(new Date().getFullYear(), ...(resolvedYears.length ? resolvedYears : [year]));
+  const availableYears = [];
+  for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
+
   res.status(200).json({
     success: true,
     currentlyOnPip: currentlyOnPip.length,
@@ -170,6 +230,9 @@ router.get('/analytics/pip', asyncHandler(async (req, res) => {
     totalResolved,
     totalImproved,
     performedAfterPipPct,
+    year,
+    quarters,
+    availableYears,
   });
 }));
 

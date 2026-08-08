@@ -211,9 +211,21 @@ async function rescoreAndSave(id) {
   // because hiring_status itself represents an end state — see
   // HIRING_STATUS_FORCES_CLOSED above. The override always wins over the
   // checklist-based computation.
-  doc.fmsStatus = HIRING_STATUS_FORCES_CLOSED.has(doc.hiring_status)
+  const newFmsStatus = HIRING_STATUS_FORCES_CLOSED.has(doc.hiring_status)
     ? 'Closed'
     : scored.fms_status;
+
+  // closed_at stamps the moment this specific closure happened — only set
+  // on the transition into Closed, never touched again while it stays
+  // Closed, and cleared if it later reopens (e.g. hiring_status moves off
+  // an end state) so a future re-close gets its own fresh timestamp
+  // instead of keeping a stale one from a prior episode.
+  if (newFmsStatus === 'Closed') {
+    if (doc.fmsStatus !== 'Closed') doc.closed_at = new Date();
+  } else {
+    doc.closed_at = null;
+  }
+  doc.fmsStatus = newFmsStatus;
 
   await doc.save();
   return doc;
@@ -456,6 +468,115 @@ router.get('/open', async (req, res) => {
   }
 });
 
+// GET /api/hiringrequisitions/analytics/days-to-hire — average calendar
+// days between a requisition being raised and closed: overall, and split
+// by candidate_experience_level (Fresher / Experienced).
+//
+// "Raised" uses request_date (the real as-filed date, parsed with the same
+// parseSheetDate used elsewhere in this file) rather than createdAt —
+// every requisition imported from the legacy sheet has createdAt stamped
+// at migration time, not when it was actually raised, so createdAt alone
+// is wrong for almost the entire dataset. Falls back to createdAt only
+// when request_date is missing/unparseable (true for genuinely new
+// requisitions created directly in this app, where createdAt IS the real
+// raise moment).
+//
+// "Closed" prefers closed_at (real and reliable going forward — see
+// rescoreAndSave above). Every requisition that was already Closed before
+// closed_at existed has no way to get one retroactively (it only stamps on
+// a fresh Open->Closed transition), so for those this falls back to
+// hiring_history: imported notes are written as literal
+// "MMM D YYYY - <event>" text carrying the real historical date (the
+// note's own `date` field is just whenever the bulk import/rescore touched
+// the record, not a real event time) — but notes generated live by this
+// app's own PATCH /:id route ("Status updated to ...") have no such
+// leading date text, and for those the note's `date` field IS the real
+// event time. Either way, the latest resolvable event date across a
+// requisition's history is the best available stand-in for when it
+// actually closed. Requisitions where neither source resolves (or where
+// the resolved close date lands before the raise date — inconsistent
+// legacy data) are excluded rather than guessed at.
+const HISTORY_NOTE_LEADING_DATE = /^([A-Za-z]{3})\s+(\d{1,2})\s+(\d{4})\b/;
+function resolveRaisedDate(doc) {
+  return parseSheetDate(doc.request_date) || (doc.createdAt ? new Date(doc.createdAt) : null);
+}
+function resolveClosedDate(doc) {
+  if (doc.closed_at) return new Date(doc.closed_at);
+  let latest = null;
+  for (const h of doc.hiring_history || []) {
+    const note = h.note || '';
+    let d = null;
+    const m = note.match(HISTORY_NOTE_LEADING_DATE);
+    if (m) {
+      const parsed = new Date(`${m[1]} ${m[2]}, ${m[3]}`);
+      if (!isNaN(parsed.getTime())) d = parsed;
+    } else if (/^Status updated to/.test(note) && h.date) {
+      d = new Date(h.date);
+    }
+    if (d && (!latest || d > latest)) latest = d;
+  }
+  return latest;
+}
+
+router.get('/analytics/days-to-hire', async (req, res) => {
+  try {
+    const closed = await HiringRequisition.find({ fmsStatus: 'Closed' })
+      .select('candidate_experience_level createdAt request_date closed_at hiring_history')
+      .lean();
+
+    const rows = [];
+    let excluded = 0;
+    for (const doc of closed) {
+      const raised = resolveRaisedDate(doc);
+      const closedDate = resolveClosedDate(doc);
+      const days = raised && closedDate
+        ? (closedDate.getTime() - raised.getTime()) / (1000 * 60 * 60 * 24)
+        : null;
+      if (days == null || days < 0) { excluded++; continue; }
+      rows.push({ level: doc.candidate_experience_level, days, closedDate });
+    }
+
+    const summarize = (arr) => ({
+      avgDays: arr.length ? Math.round((arr.reduce((s, r) => s + r.days, 0) / arr.length) * 10) / 10 : null,
+      count: arr.length,
+    });
+
+    // Quarterly trend — bucketed by the resolved close date (the same one
+    // used for the days-to-hire calculation itself), so a quarter's bar
+    // reflects requisitions that actually closed in that quarter.
+    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+    const quarters = [1, 2, 3, 4].map((q) => {
+      const inQuarter = rows.filter((r) => r.closedDate.getFullYear() === year && Math.floor(r.closedDate.getMonth() / 3) + 1 === q);
+      return {
+        quarter: `Q${q}`,
+        overall: summarize(inQuarter),
+        fresher: summarize(inQuarter.filter((r) => r.level === 'Fresher')),
+        experienced: summarize(inQuarter.filter((r) => r.level === 'Experienced')),
+      };
+    });
+
+    const closedYears = rows.map((r) => r.closedDate.getFullYear());
+    const minYear = closedYears.length ? Math.min(...closedYears) : year;
+    const maxYear = Math.max(new Date().getFullYear(), ...(closedYears.length ? closedYears : [year]));
+    const availableYears = [];
+    for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
+
+    res.json({
+      success: true,
+      overall: summarize(rows),
+      fresher: summarize(rows.filter((r) => r.level === 'Fresher')),
+      experienced: summarize(rows.filter((r) => r.level === 'Experienced')),
+      excludedCount: excluded,
+      year,
+      quarters,
+      availableYears,
+    });
+  } catch (err) {
+    console.error('[hiringrequisitions] days-to-hire analytics error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to compute days-to-hire analytics' });
+  }
+});
+
 // GET /api/hiringrequisitions/ — fetch all for dashboard (with optional filters)
 router.get('/', async (req, res) => {
   try {
@@ -530,6 +651,10 @@ router.post('/', async (req, res) => {
     const seedTasks = req.body.checklist_tasks?.length ? req.body.checklist_tasks : seedChecklistTasks();
     const scored = scoreChecklistTasks(seedTasks, req.body.hiring_status, false);
 
+    const fmsStatus = HIRING_STATUS_FORCES_CLOSED.has(req.body.hiring_status)
+      ? 'Closed'
+      : scored.fms_status;
+
     const doc = await HiringRequisition.create({
       ...req.body,
       serial_no,
@@ -547,9 +672,8 @@ router.post('/', async (req, res) => {
       // hiring_status override as rescoreAndSave, applied here too in
       // case someone picks e.g. "On Hold" or "Cancelled" right at
       // creation time.
-      fmsStatus: HIRING_STATUS_FORCES_CLOSED.has(req.body.hiring_status)
-        ? 'Closed'
-        : scored.fms_status,
+      fmsStatus,
+      closed_at: fmsStatus === 'Closed' ? new Date() : null,
     });
 
     // Fire-and-forget, same pattern as onboarding's triggerNewOnboarding —
