@@ -43,7 +43,7 @@ const pageTitles: Record<string, string> = {
 
   '/outing':               'Outing / Event',
 
-  '/attendance':           'Attendance',
+  '/attendance':           'Hygiene Factors',
 
   '/checklist-delegation': 'Check List & Delegation',
 

@@ -256,17 +256,18 @@ export default function Sidebar() {
 
     
 
-    // {
-    //   text: 'Attendance',
-    //   icon: <AccessTimeIcon />,
-    //   onClick: () => setOpenAttendance(p => !p),
-    //   open: openAttendance,
-    //   subItems: [
-    //     { to: '/attendance?tab=attendance', text: 'Attendance', icon: <TodayIcon /> },
-    //     { to: '/attendance?tab=leaves', text: 'Leaves', icon: <BeachAccessIcon /> },
-    //     { to: '/attendance?tab=out-of-office', text: 'Out of Office', icon: <WorkOffIcon /> },
-    //   ],
-    // },
+    {
+      text: 'Hygiene Factors',
+      icon: <AccessTimeIcon />,
+      onClick: () => setOpenAttendance(p => !p),
+      open: openAttendance,
+      pageKey: 'hygieneFactors',
+      subItems: [
+        { to: '/attendance?tab=out-of-office', text: 'Out of Office', icon: <WorkOffIcon /> },
+        { to: '/attendance?tab=attendance', text: 'Attendance', icon: <TodayIcon /> },
+        { to: '/attendance?tab=leaves', text: 'Leaves', icon: <BeachAccessIcon /> },
+      ],
+    },
 
     // { to: '/checklist-delegation', text: 'Check List & Delegation', icon: <AssignmentTurnedInIcon /> },
     

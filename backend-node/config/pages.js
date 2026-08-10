@@ -15,6 +15,7 @@ const PAGE_KEYS = Object.freeze([
   'deptDesignationMaster',
   'trainings',
   'outings',
+  'hygieneFactors',
   'confirmations',
   'salaryRevision',
   'employeeLetters',

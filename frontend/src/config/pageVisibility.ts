@@ -38,6 +38,7 @@ export const PAGES: PageDef[] = [
   { key: 'deptDesignationMaster', label: 'Dept & Designation Master', paths: ['/dept-designation-master'] },
   { key: 'trainings', label: 'Trainings', paths: ['/training-page'] },
   { key: 'outings', label: 'Outings / Events', paths: ['/outing'] },
+  { key: 'hygieneFactors', label: 'Hygiene Factors', paths: ['/attendance'] },
   { key: 'confirmations', label: 'Confirmations', paths: ['/confirmations'] },
   { key: 'salaryRevision', label: 'Salary Revision', paths: ['/salary-revision'] },
   { key: 'employeeLetters', label: 'Employee Letters', paths: ['/employee-letters'] },
