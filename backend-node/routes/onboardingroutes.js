@@ -1125,6 +1125,123 @@ router.get("/analytics/gender", async (req, res) => {
   }
 });
 
+// ─── GET /api/onboarding/analytics/attrition ───────────────────────────────
+// Attrition % = Employees Left During the Quarter ÷ Average Headcount
+// (opening + closing, /2) × 100. Retention % = (Opening − Left) ÷ Opening
+// × 100. "Opening" headcount is reconstructed as of the instant before the
+// quarter starts and "Closing" as of the quarter's own end — same
+// as-of-a-date reconstruction rule as Teeth-to-Tail/Gender/Interns (joined
+// by then, not exited by then), so someone who joins on a quarter's first
+// day counts as a join THAT quarter rather than already being part of its
+// opening headcount.
+router.get("/analytics/attrition", async (req, res) => {
+  try {
+    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+
+    const docs = await Onboarding.find(
+      {},
+      "name joinedDate joiningStatus exitStatus persEmail officialEmail"
+    ).lean();
+
+    const exits = await Exit.find(
+      {},
+      "persEmail officialEmail leftDate plannedExitDate resignationDate"
+    ).lean();
+
+    const EXITED = new Set(["Left", "Already Left"]);
+    const exitDateOfRecord = (e) => {
+      const d = e.leftDate || e.plannedExitDate || e.resignationDate;
+      const t = d ? new Date(d).getTime() : NaN;
+      return isNaN(t) ? -Infinity : t;
+    };
+    function resolveExitDate(emp) {
+      const persEmail = (emp.persEmail || "").trim().toLowerCase();
+      const officialEmail = (emp.officialEmail || "").trim().toLowerCase();
+      let candidates = [];
+      if (persEmail) candidates = exits.filter((e) => (e.persEmail || "").trim().toLowerCase() === persEmail);
+      if (candidates.length === 0 && officialEmail) {
+        candidates = exits.filter((e) => (e.officialEmail || "").trim().toLowerCase() === officialEmail);
+      }
+      if (candidates.length === 0) return null;
+      const latest = candidates.reduce((l, e) => (!l || exitDateOfRecord(e) > exitDateOfRecord(l) ? e : l), null);
+      const d = latest.leftDate || latest.plannedExitDate || latest.resignationDate;
+      return d ? new Date(d) : null;
+    }
+
+    // Only people who actually joined count toward headcount at all — same
+    // rule as the other reconstruction endpoints (fixed here from day one,
+    // unlike Teeth-to-Tail/Gender/Interns which originally missed it).
+    const employees = docs
+      .filter((d) => d.joiningStatus === "Joined")
+      .map((d) => ({
+        ...d,
+        isMarkedExited: EXITED.has(d.exitStatus || ""),
+        resolvedExitDate: EXITED.has(d.exitStatus || "") ? resolveExitDate(d) : null,
+      }));
+
+    function headcountAsOf(asOf) {
+      let count = 0;
+      for (const emp of employees) {
+        if (!emp.joinedDate) continue;
+        if (new Date(emp.joinedDate) > asOf) continue;
+        if (emp.isMarkedExited) {
+          if (emp.resolvedExitDate) { if (emp.resolvedExitDate <= asOf) continue; }
+          else continue;
+        }
+        count++;
+      }
+      return count;
+    }
+
+    const quarterStart = (y, q) => new Date(Date.UTC(y, (q - 1) * 3, 1, 0, 0, 0));
+
+    const quarters = [1, 2, 3, 4].map((q) => {
+      const startAsOf = new Date(quarterStart(year, q).getTime() - 1); // instant before the quarter begins
+      const endAsOf = quarterEndDate(year, q);
+      const opening = headcountAsOf(startAsOf);
+      const closing = headcountAsOf(endAsOf);
+
+      const qStart = quarterStart(year, q);
+      const employeesLeft = employees.filter((emp) => {
+        if (!emp.isMarkedExited || !emp.resolvedExitDate) return false;
+        return emp.resolvedExitDate >= qStart && emp.resolvedExitDate <= endAsOf;
+      }).length;
+
+      const avgHeadcount = (opening + closing) / 2;
+      const attritionPct = avgHeadcount > 0 ? Math.round((employeesLeft / avgHeadcount) * 1000) / 10 : 0;
+      const retentionPct = opening > 0 ? Math.round(((opening - employeesLeft) / opening) * 1000) / 10 : null;
+
+      return {
+        quarter: `Q${q}`,
+        asOf: endAsOf.toISOString(),
+        opening,
+        closing,
+        employeesLeft,
+        avgHeadcount: Math.round(avgHeadcount * 10) / 10,
+        attritionPct,
+        retentionPct,
+      };
+    });
+
+    const joinYears = docs
+      .map((d) => (d.joinedDate ? new Date(d.joinedDate).getFullYear() : null))
+      .filter(Boolean);
+    const exitYears = employees
+      .map((e) => (e.resolvedExitDate ? e.resolvedExitDate.getFullYear() : null))
+      .filter(Boolean);
+    const allYears = [...joinYears, ...exitYears];
+    const minYear = allYears.length ? Math.min(...allYears) : year;
+    const maxYear = Math.max(new Date().getFullYear(), ...(allYears.length ? allYears : [year]));
+    const availableYears = [];
+    for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
+
+    res.json({ success: true, year, quarters, availableYears });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 router.get("/verify-access", async (req, res) => {
   try {
     const email = (req.query.email || "").trim().toLowerCase();

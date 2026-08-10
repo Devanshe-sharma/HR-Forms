@@ -29,6 +29,7 @@ import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedInOutlin
 import PersonRemoveIcon from "@mui/icons-material/PersonRemoveOutlined";
 import CancelIcon from "@mui/icons-material/CancelOutlined";
 import TimelineIcon from "@mui/icons-material/TimelineOutlined";
+import TrendingDownIcon from "@mui/icons-material/TrendingDownOutlined";
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
@@ -100,6 +101,23 @@ interface GenderResponse {
   overall: GenderOverall[];
   byDepartment: GenderByDeptRow[];
   missingJoinDateCount: number;
+}
+
+interface AttritionQuarterRow {
+  quarter: string;
+  asOf: string;
+  opening: number;
+  closing: number;
+  employeesLeft: number;
+  avgHeadcount: number;
+  attritionPct: number;
+  retentionPct: number | null;
+}
+interface AttritionResponse {
+  success: boolean;
+  year: number;
+  quarters: AttritionQuarterRow[];
+  availableYears: number[];
 }
 
 interface InternDeptRow {
@@ -844,6 +862,137 @@ const GenderDistributionWidget: React.FC = () => {
                       />
                     </Bar>
                   ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </Box>
+          </Box>
+        </>
+      )}
+    </Box>
+  );
+};
+
+// ─── Attrition & Retention widget ──────────────────────────────────────────
+// Attrition % = Employees Left ÷ Average Headcount (opening+closing / 2) ×
+// 100. Retention % = (Opening − Left) ÷ Opening × 100. Same
+// as-of-a-quarter reconstruction convention as Teeth-to-Tail/Gender/Interns
+// — "Opening" is headcount the instant before the quarter starts,
+// "Closing" is headcount as of the quarter's own end.
+
+const AttritionWidget: React.FC = () => {
+  const [data, setData] = useState<AttritionResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [year, setYear] = useState<number>(new Date().getFullYear());
+  const [quarterFocus, setQuarterFocus] = useState<string>("All");
+
+  useEffect(() => {
+    setLoading(true);
+    axios.get(`${API}/onboarding/analytics/attrition`, { params: { year, _t: Date.now() } })
+      .then((res) => setData(res.data))
+      .catch(() => toast.error("Failed to load attrition data"))
+      .finally(() => setLoading(false));
+  }, [year]);
+
+  const yearOptions = useMemo(() => {
+    const years = data?.availableYears ?? [year];
+    return years.map((y) => ({ key: String(y), label: String(y) }));
+  }, [data, year]);
+
+  const quarterStartDate = (quarter: string, y: number): Date => {
+    const q = parseInt(quarter.replace("Q", ""), 10);
+    return new Date(y, (q - 1) * 3, 1);
+  };
+  const hasQuarterStarted = (quarter: string, y: number): boolean => quarterStartDate(quarter, y) <= new Date();
+
+  useEffect(() => {
+    if (quarterFocus !== "All" && !hasQuarterStarted(quarterFocus, year)) {
+      setQuarterFocus("All");
+    }
+  }, [year, quarterFocus]);
+
+  const startedQuarters = useMemo(
+    () => (data?.quarters ?? []).filter((q) => hasQuarterStarted(q.quarter, year)),
+    [data, year]
+  );
+
+  const quarterOptions = [
+    { key: "All", label: "All Quarters" },
+    ...["Q1", "Q2", "Q3", "Q4"].filter((q) => hasQuarterStarted(q, year)).map((q) => ({ key: q, label: q })),
+  ];
+
+  const focusedQuarter: AttritionQuarterRow | undefined =
+    quarterFocus === "All"
+      ? startedQuarters[startedQuarters.length - 1]
+      : data?.quarters?.find((q) => q.quarter === quarterFocus);
+
+  const pieData = focusedQuarter && focusedQuarter.opening > 0
+    ? [
+        { name: "Retained", value: focusedQuarter.opening - focusedQuarter.employeesLeft, color: "#059669" },
+        { name: "Left", value: focusedQuarter.employeesLeft, color: "#dc2626" },
+      ].filter((d) => d.value > 0)
+    : [];
+
+  return (
+    <Box sx={{ bgcolor: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", p: 3, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 2, mb: 2.5 }}>
+        <Box>
+          <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
+            Attrition & Retention
+          </Typography>
+          <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
+            Opening/closing headcount reconstructed per quarter — same convention as Teeth-to-Tail
+          </Typography>
+        </Box>
+        <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+          <FilterPillRow options={yearOptions} active={String(year)} onChange={(k) => setYear(Number(k))} color={ACCENT} />
+          <FilterPillRow options={quarterOptions} active={quarterFocus} onChange={setQuarterFocus} color="#dc2626" />
+        </Box>
+      </Box>
+
+      {loading || !data ? (
+        <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
+          <CircularProgress size={26} sx={{ color: ACCENT }} />
+        </Box>
+      ) : (
+        <>
+          <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexWrap: "wrap" }}>
+            <StatCard
+              label="Opening Headcount"
+              value={focusedQuarter?.opening ?? 0}
+              color={ACCENT}
+              bg="#eef2ff"
+              hint={`As of ${focusedQuarter?.quarter ?? "—"} ${year}`}
+            />
+            <StatCard label="Closing Headcount" value={focusedQuarter?.closing ?? 0} color={ACCENT} bg="#eef2ff" />
+            <StatCard label="Employees Left" value={focusedQuarter?.employeesLeft ?? 0} color="#dc2626" bg="#fef2f2" />
+            <StatCard label="Attrition %" value={`${focusedQuarter?.attritionPct ?? 0}%`} color="#dc2626" bg="#fef2f2" />
+            <StatCard label="Retention %" value={focusedQuarter?.retentionPct != null ? `${focusedQuarter.retentionPct}%` : "—"} color="#059669" bg="#f0fdf4" />
+          </Box>
+
+          <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+            <Box sx={{ flex: "1 1 260px", minWidth: 240 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                Split — {focusedQuarter?.quarter ?? "—"} {year}
+              </Typography>
+              <PieBreakdownChart data={pieData} />
+            </Box>
+            <Box sx={{ flex: "2 1 420px", minWidth: 320, height: 300 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                Attrition % vs Retention % by Quarter — {year}
+              </Typography>
+              <ResponsiveContainer width="100%" height="90%">
+                <BarChart data={startedQuarters} barGap={4} margin={{ top: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="quarter" tick={{ fontSize: 12, fill: "#64748b" }} />
+                  <YAxis tick={{ fontSize: 12, fill: "#64748b" }} unit="%" />
+                  <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="attritionPct" name="Attrition %" fill="#dc2626" radius={[4, 4, 0, 0]} barSize={24}>
+                    <LabelList dataKey="attritionPct" position="top" formatter={(v: any) => `${v}%`} style={{ fontSize: 11, fontWeight: 700, fill: "#0f172a" }} />
+                  </Bar>
+                  <Bar dataKey="retentionPct" name="Retention %" fill="#059669" radius={[4, 4, 0, 0]} barSize={24}>
+                    <LabelList dataKey="retentionPct" position="top" formatter={(v: any) => (v != null ? `${v}%` : "")} style={{ fontSize: 11, fontWeight: 700, fill: "#0f172a" }} />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </Box>
@@ -2166,6 +2315,24 @@ async function fetchDaysToHireSummary(level: "overall" | "fresher" | "experience
   return { value: `${bucket.avgDays}d`, sublabel: `Avg over ${bucket.count} closed requisition${bucket.count === 1 ? "" : "s"}` };
 }
 
+async function fetchAttritionSummary(): Promise<CardSummary> {
+  const now = new Date();
+  const res = await axios.get(`${API}/onboarding/analytics/attrition`, {
+    params: { year: now.getFullYear(), _t: Date.now() },
+  });
+  const quarters: AttritionQuarterRow[] = res.data?.quarters ?? [];
+  const started = quarters.filter((q) => {
+    const qNum = parseInt(q.quarter.replace("Q", ""), 10);
+    return new Date(now.getFullYear(), (qNum - 1) * 3, 1) <= now;
+  });
+  const latest = started[started.length - 1];
+  if (!latest) return { value: "—", sublabel: "No data yet" };
+  return {
+    value: `${latest.attritionPct}%`,
+    sublabel: `Retention ${latest.retentionPct != null ? `${latest.retentionPct}%` : "—"} — ${latest.quarter} ${now.getFullYear()}`,
+  };
+}
+
 async function fetchOfferDropoutSummary(): Promise<CardSummary> {
   const res = await axios.get(`${API}/onboarding/analytics/offer-dropout`, { params: { _t: Date.now() } });
   const total = res.data?.total ?? 0;
@@ -2180,7 +2347,7 @@ async function fetchOfferDropoutSummary(): Promise<CardSummary> {
 // scrolling. Clicking a card opens that area's full existing widget
 // (unchanged from before) inside a modal.
 
-type CardKey = "teeth" | "gender" | "interns" | "internConversions" | "increments" | "pip" | "askedToLeave" | "referred" | "offerDropout" | "daysToHireOverall" | "recruitment" | "onboarding" | "exit";
+type CardKey = "teeth" | "gender" | "interns" | "internConversions" | "increments" | "pip" | "askedToLeave" | "referred" | "offerDropout" | "attrition" | "daysToHireOverall" | "recruitment" | "onboarding" | "exit";
 
 const HRAnalyticsDashboard: React.FC = () => {
   const [activeCard, setActiveCard] = useState<CardKey | null>(null);
@@ -2202,6 +2369,7 @@ const HRAnalyticsDashboard: React.FC = () => {
     { key: "askedToLeave", title: "Asked to Leave (%)", icon: <PersonRemoveIcon />, color: "#dc2626", bg: "#fef2f2", fetchSummary: fetchAskedToLeaveSummary },
     { key: "referred", title: "Referred Employees (%)", icon: <GroupAddIcon />, color: "#0284c7", bg: "#eff6ff", fetchSummary: fetchReferredSummary },
     { key: "offerDropout", title: "Offer Dropout (%)", icon: <CancelIcon />, color: "#db2777", bg: "#fdf2f8", fetchSummary: fetchOfferDropoutSummary },
+    { key: "attrition", title: "Attrition Rate (%)", icon: <TrendingDownIcon />, color: "#dc2626", bg: "#fef2f2", fetchSummary: fetchAttritionSummary },
     { key: "daysToHireOverall", title: "Avg Days to Hire", icon: <TimelineIcon />, color: ACCENT, bg: "#eef2ff", fetchSummary: () => fetchDaysToHireSummary("overall") },
     { key: "recruitment", title: "Recruitment On-Time (%)", icon: <WorkIcon />, color: "#0284c7", bg: "#eff6ff", fetchSummary: () => fetchKpiSummary("recruitment") },
     { key: "onboarding", title: "Onboarding On-Time (%)", icon: <HowToRegIcon />, color: "#059669", bg: "#f0fdf4", fetchSummary: () => fetchKpiSummary("onboarding") },
@@ -2296,6 +2464,7 @@ const HRAnalyticsDashboard: React.FC = () => {
           {activeCard === "askedToLeave" && <AskedToLeaveWidget />}
           {activeCard === "referred" && <ReferredWidget />}
           {activeCard === "offerDropout" && <OfferDropoutWidget />}
+          {activeCard === "attrition" && <AttritionWidget />}
           {activeCard === "daysToHireOverall" && <DaysToHireWidget />}
           {(activeCard === "recruitment" || activeCard === "onboarding" || activeCard === "exit") && activeModuleLabel && (
             <ModuleKpiRow moduleKey={activeCard} label={activeModuleLabel} />
