@@ -12,6 +12,11 @@
 const express = require('express');
 const router = express.Router();
 const { requireRole, ROLE_PERMISSIONS } = require('../config/roles');
+const { authenticate } = require('../middleware/authenticate');
+const { PAGE_KEYS, VISIBILITY_ROLES } = require('../config/pages');
+const RbacPageVisibility = require('../models/RbacPageVisibility');
+
+const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 // ── In-memory override store (replace with DB persistence if needed) ──────────
 // On server start this mirrors the static ROLE_PERMISSIONS from roles.js.
@@ -138,6 +143,82 @@ router.put(
       },
     });
   }
+);
+
+// ─── GET /api/rbac/page-visibility ────────────────────────────────────────────
+// Any logged-in role can read this — Employee/Manager need it to render
+// their own sidebar. Missing page keys default to visible (true).
+
+router.get(
+  '/page-visibility',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const doc = (await RbacPageVisibility.findOne()) || {};
+
+    const withDefaults = (roleSettings = {}) => {
+      const merged = {};
+      for (const key of PAGE_KEYS) {
+        merged[key] = roleSettings[key] !== false;
+      }
+      return merged;
+    };
+
+    const data = {};
+    for (const role of VISIBILITY_ROLES) {
+      data[role] = withDefaults(doc[role]);
+    }
+
+    res.json({ success: true, data });
+  })
+);
+
+// ─── PUT /api/rbac/page-visibility ────────────────────────────────────────────
+// Admin/HR submit updated page visibility for Employee/HR/Manager.
+
+router.put(
+  '/page-visibility',
+  authenticate,
+  requireRole(['Admin', 'HR']),
+  asyncHandler(async (req, res) => {
+    const { pageVisibility } = req.body || {};
+
+    if (!pageVisibility || typeof pageVisibility !== 'object') {
+      return res.status(400).json({ success: false, error: 'Missing pageVisibility object' });
+    }
+
+    const update = {};
+    for (const role of VISIBILITY_ROLES) {
+      if (!pageVisibility[role]) continue;
+      if (typeof pageVisibility[role] !== 'object') {
+        return res.status(400).json({ success: false, error: `Invalid settings for ${role}` });
+      }
+
+      const roleSettings = {};
+      for (const [key, value] of Object.entries(pageVisibility[role])) {
+        if (!PAGE_KEYS.includes(key)) {
+          return res.status(400).json({ success: false, error: `Unknown page key: ${key}` });
+        }
+        roleSettings[key] = Boolean(value);
+      }
+      update[role] = roleSettings;
+    }
+
+    const doc = await RbacPageVisibility.findOneAndUpdate({}, update, {
+      upsert: true,
+      new: true,
+      setDefaultsOnInsert: true,
+    });
+
+    res.json({
+      success: true,
+      message: 'Page visibility updated successfully',
+      data: {
+        Employee: doc.Employee,
+        HR: doc.HR,
+        Manager: doc.Manager,
+      },
+    });
+  })
 );
 
 // ─── Export helper so other routes can use runtime permissions ────────────────

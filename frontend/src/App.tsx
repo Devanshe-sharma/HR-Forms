@@ -40,10 +40,12 @@ import DeptDesignationMaster from "./pages/deptdesignationmaster";
 
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { AuthProvider } from "./contexts/AuthContext";
+import { PageVisibilityProvider } from "./contexts/PageVisibilityContext";
 
 export default function App() {
   return (
     <AuthProvider>
+    <PageVisibilityProvider>
     <ThemeProvider>
       <Routes>
 
@@ -107,6 +109,7 @@ export default function App() {
 
       </Routes>
     </ThemeProvider>
+    </PageVisibilityProvider>
     </AuthProvider>
   );
 }

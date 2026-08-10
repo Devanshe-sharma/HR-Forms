@@ -41,6 +41,7 @@ import {
   EditNote as EditNoteIcon,
 } from '@mui/icons-material';
 import { NavLink, useLocation } from 'react-router-dom';
+import { usePageVisibility } from '../contexts/PageVisibilityContext';
 
 const drawerWidth = 260;
 const BRAND_BLUE = '#1976d2';
@@ -58,12 +59,14 @@ interface ParentItem {
   onClick: () => void;
   open: boolean;
   subItems: SubItem[];
+  pageKey?: string;
 }
 
 interface LeafItem {
   to: string;
   text: string;
   icon: React.ReactNode;
+  pageKey?: string;
 }
 
 type MenuItem = ParentItem | LeafItem;
@@ -153,16 +156,19 @@ export default function Sidebar() {
     setOpenOnboarding(onboardingActive);
   }, [location.pathname, location.search]);
 
+  const { canViewKey } = usePageVisibility();
+
   const menuItems: MenuItem[] = [
-    { to: '/company-orientation', text: 'Company Orientation', icon: <CorporateFareIcon /> },
-    { to: '/dept-orientation', text: 'Department Orientation', icon: <ApartmentIcon /> },
-    { to: '/hr-dashboard', text: 'Dashboard', icon: <DashboardIcon /> },
-    { to: '/employees', text: 'Employees List', icon: <PeopleIcon /> },
+    { to: '/company-orientation', text: 'Company Orientation', icon: <CorporateFareIcon />, pageKey: 'companyOrientation' },
+    { to: '/dept-orientation', text: 'Department Orientation', icon: <ApartmentIcon />, pageKey: 'deptOrientation' },
+    { to: '/hr-dashboard', text: 'Dashboard', icon: <DashboardIcon />, pageKey: 'dashboard' },
+    { to: '/employees', text: 'Employees List', icon: <PeopleIcon />, pageKey: 'employees' },
     {
       text: 'Recruitment',
       icon: <RequestPageIcon />,
       onClick: () => setOpenRecruitment(p => !p),
       open: openRecruitment,
+      pageKey: 'recruitment',
       subItems: [
         { to: '/recruitment', text: 'Recruitment Dashboard', icon: <DashboardIcon /> },
         // { to: '/requisition', text: 'Requisitions', icon: <AssignmentIcon /> },
@@ -176,6 +182,7 @@ export default function Sidebar() {
       icon: <BusinessCenterIcon />,
       onClick: () => setOpenOnboarding(p => !p),
       open: openOnboarding,
+      pageKey: 'onboarding',
       subItems: [
         { to: '/onboarding/dashboard', text: 'Onboarding Dashboard', icon: <DashboardIcon /> },
         { to: '/new-onboarding', text: 'New Onboarding', icon: <PersonAddAltIcon /> },
@@ -187,21 +194,23 @@ export default function Sidebar() {
       icon: <ExitToAppIcon />,
       onClick: () => setOpenExit(p => !p),
       open: openExit,
+      pageKey: 'exit',
       subItems: [
         { to: '/exits', text: 'Exit Dashboard', icon: <DashboardIcon /> },
         { to: '/new-exit', text: 'New Exit', icon: <PersonAddAltIcon /> },
         { to: '/exits/update', text: 'Update Exit', icon: <EditNoteIcon /> },
       ],
     },
-    { to: '/dept-designation-master', text: 'Dept & Designation Master', icon: <BusinessCenterIcon /> },
+    { to: '/dept-designation-master', text: 'Dept & Designation Master', icon: <BusinessCenterIcon />, pageKey: 'deptDesignationMaster' },
 
-    
+
 
     {
       text: 'Trainings',
       icon: <SchoolIcon />,
       onClick: () => setOpenTrainings(p => !p),
       open: openTrainings,
+      pageKey: 'trainings',
       subItems: [
         { to: '/training-page?tab=HR', text: 'HR', icon: <PeopleIcon /> },
         { to: '/training-page?tab=manager', text: 'Managers', icon: <AssignmentIcon /> },
@@ -216,6 +225,7 @@ export default function Sidebar() {
       icon: <EventIcon />,
       onClick: () => setOpenOuting(p => !p),
       open: openOuting,
+      pageKey: 'outings',
       subItems: [
         { to: '/outing?tab=HR', text: 'HR Outing', icon: <PeopleIcon /> },
         { to: '/outing?tab=management', text: 'Management Approvals', icon: <BusinessCenterIcon /> },
@@ -225,9 +235,9 @@ export default function Sidebar() {
       ],
     },
 
-    { to: '/confirmations', text: 'Confirmations', icon: <CheckCircleIcon /> },
-    { to: '/salary-revision', text: 'Salary Revision', icon: <MonetizationOnIcon /> },
-    { to: '/employee-letters', text: 'Employee Letters', icon: <MailIcon /> },
+    { to: '/confirmations', text: 'Confirmations', icon: <CheckCircleIcon />, pageKey: 'confirmations' },
+    { to: '/salary-revision', text: 'Salary Revision', icon: <MonetizationOnIcon />, pageKey: 'salaryRevision' },
+    { to: '/employee-letters', text: 'Employee Letters', icon: <MailIcon />, pageKey: 'employeeLetters' },
     // { to: '/salary-sheet', text: 'Salary Sheet', icon: <PaymentsIcon /> },
 
     {
@@ -235,6 +245,7 @@ export default function Sidebar() {
       icon: <TrendingUpIcon />,
       onClick: () => setOpenPMS(p => !p),
       open: openPMS,
+      pageKey: 'pms',
       subItems: [
         { to: '/pms?tab=kpi', text: 'KPI & Targets', icon: <KpiIcon /> },
         { to: '/pms?tab=hygiene', text: 'Hygiene Factors', icon: <HygieneIcon /> },
@@ -343,7 +354,7 @@ export default function Sidebar() {
           },
         }}
       >
-        {menuItems.map(item => {
+        {menuItems.filter(item => !item.pageKey || canViewKey(item.pageKey)).map(item => {
           if ('subItems' in item) {
             const isParentActive = item.subItems.some(sub => isActive(sub.to));
             return (

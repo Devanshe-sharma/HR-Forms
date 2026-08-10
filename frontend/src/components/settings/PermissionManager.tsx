@@ -1,20 +1,21 @@
 /**
  * PermissionManager.tsx
  * HR-only panel inside Settings → System tab.
- * Lets HR grant/revoke permissions for Manager and Employee roles.
+ * Lets HR grant/revoke resource permissions for Manager and Employee roles,
+ * and control which sidebar pages Employee/HR/Manager can each see.
  * HR-locked permissions (architecturally required) are read-only.
  *
  * Usage: drop inside your existing Configuration.tsx System TabPanel.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   Box,
   Typography,
   Paper,
   Chip,
   Switch,
-  FormControlLabel,
+  Checkbox,
   Button,
   Alert,
   Snackbar,
@@ -23,6 +24,11 @@ import {
   Divider,
   Tab,
   Tabs,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
 } from '@mui/material';
 import {
   LockOutlined as LockIcon,
@@ -30,6 +36,9 @@ import {
   InfoOutlined as InfoIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
+import { PAGES, VISIBILITY_ROLES, VisibilityRole } from '../../config/pageVisibility';
+
+const API_URL = process.env.REACT_APP_API_URL || '/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,6 +61,8 @@ interface PermissionState {
   Manager: RolePermissions;
   Employee: RolePermissions;
 }
+
+type PageVisibilityState = Record<VisibilityRole, Record<string, boolean>>;
 
 // ─── Resource catalogue ───────────────────────────────────────────────────────
 
@@ -180,6 +191,17 @@ const DEFAULT_PERMISSIONS: PermissionState = {
     employeeScores: [],
   },
 };
+
+function defaultPageVisibility(): PageVisibilityState {
+  const state = {} as PageVisibilityState;
+  for (const role of VISIBILITY_ROLES) {
+    state[role] = {};
+    for (const page of PAGES) {
+      state[role][page.key] = true;
+    }
+  }
+  return state;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -340,6 +362,8 @@ function ResourceRow({ resource, role, permissions, onToggle }: ResourceRowProps
 export default function PermissionManager() {
   const [activeTab, setActiveTab] = useState<0 | 1>(0);
   const [permissions, setPermissions] = useState<PermissionState>(DEFAULT_PERMISSIONS);
+  const [pageVisibility, setPageVisibility] = useState<PageVisibilityState>(defaultPageVisibility());
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
     open: false,
@@ -348,6 +372,37 @@ export default function PermissionManager() {
   });
 
   const activeRole: ManagedRole = activeTab === 0 ? 'Manager' : 'Employee';
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+
+    Promise.all([
+      axios.get(`${API_URL}/rbac/permissions`),
+      axios.get(`${API_URL}/rbac/page-visibility`),
+    ])
+      .then(([permsRes, visRes]) => {
+        if (cancelled) return;
+        const loadedPerms = permsRes.data?.data;
+        if (loadedPerms?.Manager && loadedPerms?.Employee) {
+          setPermissions(loadedPerms);
+        }
+        const loadedVis = visRes.data?.data;
+        if (loadedVis) {
+          setPageVisibility((prev) => ({ ...prev, ...loadedVis }));
+        }
+      })
+      .catch(() => {
+        // Keep defaults if either fetch fails — panel stays usable.
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleToggle = useCallback(
     (resource: string, action: Action) => {
@@ -365,14 +420,20 @@ export default function PermissionManager() {
     [activeRole]
   );
 
+  const handleToggleVisibility = useCallback((role: VisibilityRole, pageKey: string) => {
+    setPageVisibility((prev) => ({
+      ...prev,
+      [role]: { ...prev[role], [pageKey]: !prev[role][pageKey] },
+    }));
+  }, []);
+
   const handleSave = async () => {
     setSaving(true);
     try {
-      await axios.put(
-        `${process.env.REACT_APP_API_BASE_URL}/rbac/permissions`,
-        { permissions },
-        { headers: { 'x-user-role': 'HR' } }
-      );
+      await Promise.all([
+        axios.put(`${API_URL}/rbac/permissions`, { permissions }),
+        axios.put(`${API_URL}/rbac/page-visibility`, { pageVisibility }),
+      ]);
       setSnackbar({ open: true, message: 'Permissions saved successfully', severity: 'success' });
     } catch (err) {
       setSnackbar({ open: true, message: 'Failed to save — please try again', severity: 'error' });
@@ -383,7 +444,16 @@ export default function PermissionManager() {
 
   const handleReset = () => {
     setPermissions(DEFAULT_PERMISSIONS);
+    setPageVisibility(defaultPageVisibility());
   };
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+        <CircularProgress size={28} />
+      </Box>
+    );
+  }
 
   return (
     <Box>
@@ -394,7 +464,7 @@ export default function PermissionManager() {
             Permission Management
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Grant or restrict resource access for Manager and Employee roles.
+            Grant or restrict resource access, and control which sidebar pages each role can see.
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
@@ -425,7 +495,7 @@ export default function PermissionManager() {
       </Alert>
 
       {/* Role tabs */}
-      <Paper variant="outlined" sx={{ mb: 2 }}>
+      <Paper variant="outlined" sx={{ mb: 3 }}>
         <Tabs
           value={activeTab}
           onChange={(_, v) => setActiveTab(v)}
@@ -494,6 +564,51 @@ export default function PermissionManager() {
             </Box>
           );
         })}
+      </Paper>
+
+      {/* Page Visibility matrix */}
+      <Typography variant="h6" fontWeight={600} gutterBottom>
+        Page Visibility
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+        Controls which sidebar pages Employee, HR, and Manager can each see. Admin always sees
+        everything. Profile and Configuration always stay visible for every role.
+      </Typography>
+      <Paper variant="outlined">
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'text.disabled' }}>
+                Page
+              </TableCell>
+              {VISIBILITY_ROLES.map((role) => (
+                <TableCell
+                  key={role}
+                  align="center"
+                  sx={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'text.disabled' }}
+                >
+                  {role}
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {PAGES.map((page) => (
+              <TableRow key={page.key} hover>
+                <TableCell sx={{ fontSize: '13px' }}>{page.label}</TableCell>
+                {VISIBILITY_ROLES.map((role) => (
+                  <TableCell key={role} align="center">
+                    <Checkbox
+                      size="small"
+                      checked={pageVisibility[role]?.[page.key] ?? true}
+                      onChange={() => handleToggleVisibility(role, page.key)}
+                    />
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </Paper>
 
       <Snackbar
