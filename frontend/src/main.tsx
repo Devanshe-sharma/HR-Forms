@@ -8,9 +8,6 @@ import "./index.css";
 const clientId =
   "640334461086-14msfhrn9sq8b75ena8f5q5ogn38o0pa.apps.googleusercontent.com";
 
-// Temporary: auto-set Admin role for testing until login is built
-if (!localStorage.getItem('role')) localStorage.setItem('role', 'Admin');
-
 const rootElement = document.getElementById("root");
 
 console.log("ROOT =", rootElement);

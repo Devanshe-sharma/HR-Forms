@@ -1,28 +1,13 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import axios from "axios";
-
-// Same auth backend the operations.briskolive.com Login.tsx calls — set
-// this to wherever POST /api/login actually lives. If that backend
-// allows CORS from this domain, this works exactly like the original.
-const AUTH_API_BASE = process.env.REACT_APP_AUTH_API_BASE || "https://operations.briskolive.com";
-
-// A clean axios instance specifically for this cross-origin call. The
-// app's main axios import has a global default that attaches a custom
-// x-user-role header to every request (used by HR-Forms' own backend for
-// RBAC) — that header rides along on ANY axios call using the shared
-// instance, and operations.briskolive.com's CORS policy correctly
-// rejects it since that header was never meant for that backend. This
-// instance has no such defaults, so only exactly what's set below gets
-// sent.
-const authAxios = axios.create();
+import { useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation() as { state?: { from?: { pathname?: string } } };
+  const { login } = useAuth();
 
-  const [isCoordinator, setIsCoordinator] = useState(false);
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
@@ -34,23 +19,9 @@ export default function Login() {
     setError("");
 
     try {
-      if (isCoordinator) {
-        const res = await authAxios.post(`${AUTH_API_BASE}/api/coordinator-login`, { phone, password });
-        const { token, coordinatorId } = res.data;
-        localStorage.setItem("jwtToken", token);
-        localStorage.setItem("coordinatorId", coordinatorId);
-        window.location.href = "https://operations.briskolive.com/landing";
-      } else {
-        const res = await authAxios.post(`${AUTH_API_BASE}/api/login`, { email, password });
-        const { token, userId, attendanceId, designation, dept, name } = res.data;
-        localStorage.setItem("jwtToken", token);
-        if (userId) localStorage.setItem("userId", userId);
-        if (attendanceId) localStorage.setItem("attendanceId", attendanceId);
-        if (designation) localStorage.setItem("designation", designation);
-        if (dept) localStorage.setItem("dept", dept);
-        if (name) localStorage.setItem("name", name);
-        window.location.href = "https://operations.briskolive.com/landing";
-      }
+      await login(email, password);
+      const redirectTo = location.state?.from?.pathname || "/hr-dashboard";
+      navigate(redirectTo, { replace: true });
     } catch (err: any) {
       setError(err?.response?.data?.error || "Authentication failed. Please check your details.");
     } finally {
@@ -59,88 +30,54 @@ export default function Login() {
   };
 
   return (
-    <div style={isCoordinator ? { ...container, background: "linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)" } : container}>
+    <div style={container}>
       {/* LEFT SECTION */}
-      <div style={isCoordinator ? coordinatorLeftSection : leftSection}>
-        <div style={isCoordinator ? coordinatorOverlay : overlay}>
-          <h1 style={brand}>{isCoordinator ? "Coordinator Portal" : "Brisk Olive"}</h1>
-          <p style={tagline}>
-            {isCoordinator
-              ? "Manage Exam Centers, Attendance & Coordination"
-              : "All Department Dashboard for Streamlined Workflow Management"}
-          </p>
+      <div style={leftSection}>
+        <div style={overlay}>
+          <h1 style={brand}>Brisk Olive</h1>
+          <p style={tagline}>All Department Dashboard for Streamlined Workflow Management</p>
 
           <ul style={featureList}>
-            {!isCoordinator ? (
-              <>
-                <li style={featureItem}>
-                  <span style={bullet}></span>
-                  <div>
-                    <span style={featureTitle}>Unified Dashboard</span>
-                    <div style={featureDesc}>Access all departments from a single, centralized platform</div>
-                  </div>
-                </li>
-                <li style={featureItem}>
-                  <span style={bullet}></span>
-                  <div>
-                    <span style={featureTitle}>Streamlined Operations</span>
-                    <div style={featureDesc}>Optimize workflows across all teams and departments</div>
-                  </div>
-                </li>
-                <li style={featureItem}>
-                  <span style={bullet}></span>
-                  <div>
-                    <span style={featureTitle}>Real-Time Collaboration</span>
-                    <div style={featureDesc}>Connect departments and enhance cross-functional teamwork</div>
-                  </div>
-                </li>
-              </>
-            ) : (
-              <>
-                <li style={featureItem}>
-                  <span style={bullet}></span>
-                  <div>
-                    <span style={featureTitle}>Center Management</span>
-                    <div style={featureDesc}>Oversee exam centers and candidate allocations</div>
-                  </div>
-                </li>
-                <li style={featureItem}>
-                  <span style={bullet}></span>
-                  <div>
-                    <span style={featureTitle}>Attendance Tracking</span>
-                    <div style={featureDesc}>Monitor real-time attendance and attendance reports</div>
-                  </div>
-                </li>
-                <li style={featureItem}>
-                  <span style={bullet}></span>
-                  <div>
-                    <span style={featureTitle}>Coordination Suite</span>
-                    <div style={featureDesc}>Manage allocations and coordinate across centers</div>
-                  </div>
-                </li>
-              </>
-            )}
+            <li style={featureItem}>
+              <span style={bullet}></span>
+              <div>
+                <span style={featureTitle}>Unified Dashboard</span>
+                <div style={featureDesc}>Access all departments from a single, centralized platform</div>
+              </div>
+            </li>
+            <li style={featureItem}>
+              <span style={bullet}></span>
+              <div>
+                <span style={featureTitle}>Streamlined Operations</span>
+                <div style={featureDesc}>Optimize workflows across all teams and departments</div>
+              </div>
+            </li>
+            <li style={featureItem}>
+              <span style={bullet}></span>
+              <div>
+                <span style={featureTitle}>Real-Time Collaboration</span>
+                <div style={featureDesc}>Connect departments and enhance cross-functional teamwork</div>
+              </div>
+            </li>
           </ul>
         </div>
       </div>
 
       {/* RIGHT SECTION */}
-      <div style={isCoordinator ? coordinatorRightSection : rightSection}>
-        <div style={isCoordinator ? coordinatorLoginCard : loginCard}>
-          <h2 style={welcome}>{isCoordinator ? "Coordinator Login" : "Welcome back"}</h2>
-          <p style={subtitle}>
-            {isCoordinator ? "Enter your credentials to access the coordinator portal" : "Please enter your credentials to continue"}
-          </p>
+      <div style={rightSection}>
+        <div style={loginCard}>
+          <h2 style={welcome}>Welcome back</h2>
+          <p style={subtitle}>Please enter your credentials to continue</p>
 
           {error && <div style={errorBox}>{error}</div>}
 
           <form onSubmit={handleSubmit}>
-            <label style={label}>{isCoordinator ? "Mobile Number" : "Email Address"}</label>
+            <label style={label}>Email Address</label>
             <input
-              type={isCoordinator ? "tel" : "email"}
-              placeholder={isCoordinator ? "Enter your Mobile number" : "you@example.com"}
-              value={isCoordinator ? phone : email}
-              onChange={(e) => (isCoordinator ? setPhone(e.target.value) : setEmail(e.target.value))}
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               style={input}
               required
             />
@@ -162,25 +99,10 @@ export default function Login() {
               <span>Remember me</span>
             </div>
 
-            <button type="submit" style={isCoordinator ? coordinatorLoginBtn : loginBtn} disabled={loading}>
-              {loading ? "Verifying..." : isCoordinator ? "Login as Coordinator" : "Login"}
+            <button type="submit" style={loginBtn} disabled={loading}>
+              {loading ? "Verifying..." : "Login"}
             </button>
           </form>
-
-          <div style={divider}></div>
-
-          {!isCoordinator ? (
-            <>
-              <p style={coordinatorText}>Are you a TCS Coordinator?</p>
-              <button style={coordinatorLink} onClick={() => setIsCoordinator(true)}>
-                Coordinator Login →
-              </button>
-            </>
-          ) : (
-            <button style={coordinatorLink} onClick={() => setIsCoordinator(false)}>
-              ← Back to Brisk Olive Login
-            </button>
-          )}
         </div>
       </div>
     </div>
@@ -236,13 +158,4 @@ const input: React.CSSProperties = { width: "100%", padding: "14px 16px", border
 const passwordHeader: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center" };
 const remember: React.CSSProperties = { display: "flex", alignItems: "center", gap: 10, fontSize: 14, marginBottom: 28, color: "#475569", fontWeight: 500 };
 const loginBtn: React.CSSProperties = { width: "100%", padding: 14, background: "linear-gradient(135deg, #556b2f 0%, #476b2a 100%)", color: "#fff", border: "none", borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: "pointer", boxShadow: "0 10px 25px rgba(85, 107, 47, 0.2)", letterSpacing: 0.5, textTransform: "uppercase" };
-const divider: React.CSSProperties = { height: 1, background: "linear-gradient(90deg, transparent, #e2e8f0, transparent)", margin: "32px 0 28px 0" };
-const coordinatorText: React.CSSProperties = { textAlign: "center", color: "#94a3b8", margin: "0 0 14px 0", fontSize: 13, fontWeight: 600 };
-const coordinatorLink: React.CSSProperties = { display: "block", width: "100%", textAlign: "center", color: "#556b2f", fontWeight: 700, marginTop: 0, cursor: "pointer", background: "transparent", border: "2px solid #556b2f", fontSize: 14, padding: "10px 16px", borderRadius: 8, letterSpacing: 0.5 };
 const errorBox: React.CSSProperties = { background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", borderRadius: 8, padding: "10px 14px", fontSize: 13, fontWeight: 600, marginBottom: 20 };
-
-const coordinatorLeftSection: React.CSSProperties = { flex: 1, backgroundImage: "url('https://images.unsplash.com/photo-1552664730-d307ca884978')", backgroundSize: "cover", backgroundPosition: "center", position: "relative", display: "flex", alignItems: "center", justifyContent: "center" };
-const coordinatorOverlay: React.CSSProperties = { height: "100%", width: "100%", background: "linear-gradient(135deg, rgba(30, 60, 114, 0.85) 0%, rgba(42, 82, 152, 0.9) 100%)", color: "#fff", padding: "80px 70px", display: "flex", flexDirection: "column", justifyContent: "center" };
-const coordinatorRightSection: React.CSSProperties = { flex: 1, background: "linear-gradient(135deg, #f0f4f8 0%, #e8f0f7 100%)", display: "flex", justifyContent: "center", alignItems: "center", padding: "20px" };
-const coordinatorLoginCard: React.CSSProperties = { width: 480, background: "#fff", borderRadius: 20, padding: "48px 40px", boxShadow: "0 25px 50px rgba(0,0,0,0.1), 0 0 1px rgba(0,0,0,0.05)" };
-const coordinatorLoginBtn: React.CSSProperties = { width: "100%", padding: 14, background: "linear-gradient(135deg, #2a5298 0%, #1e3c72 100%)", color: "#fff", border: "none", borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: "pointer", boxShadow: "0 10px 25px rgba(42, 82, 152, 0.3)", letterSpacing: 0.5, textTransform: "uppercase" };

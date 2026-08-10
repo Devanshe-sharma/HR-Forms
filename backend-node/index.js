@@ -9,6 +9,7 @@ const trainingRoutes = require('./routes/trainingTopic');
 const hiringFormRoutes = require('./routes/hiringFormData');
 const app = express();
 const geoRoutes = require('./routes/geo');
+const { attachUser } = require('./middleware/authenticate');
 
 
 
@@ -43,9 +44,16 @@ app.use(express.json({ limit: "10mb" }));
 // parses into req.body.
 app.use(express.urlencoded({ extended: true }));
 
-// RBAC: set role from header for API routes (frontend sends x-user-role)
+// Auth: verify a Bearer JWT if present and attach req.user (never blocks —
+// routes that require login use the `authenticate` middleware directly).
+app.use('/api', attachUser);
+
+// RBAC: role comes from a verified JWT (req.user) when present, since that
+// can't be spoofed by the client. Falls back to the legacy x-user-role
+// header only when no one is logged in, so existing behavior is unchanged
+// until a route starts requiring authentication.
 app.use('/api', (req, res, next) => {
-  req.role = req.headers['x-user-role'] || req.user?.role || '';
+  req.role = req.user?.role || req.headers['x-user-role'] || '';
   next();
 });
 
@@ -60,6 +68,8 @@ console.log("ENV CHECK:", {
 app.get('/health', (req, res) => res.send('Backend server is alive!'));
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/api/auth',               require('./routes/auth'));
+app.use('/api/users',              require('./routes/users'));
 app.use('/api/employees',          require('./routes/employees'));
 app.use('/api/confirmations',      require('./routes/confirmations'));
 app.use('/api/roles',              require('./routes/roles'));

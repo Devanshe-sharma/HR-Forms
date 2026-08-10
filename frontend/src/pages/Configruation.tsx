@@ -5,6 +5,7 @@
  */
 
 import { useState } from 'react';
+import axios from 'axios';
 import {
   Box,
   Card,
@@ -35,13 +36,14 @@ import {
   Settings as SettingsIcon,
   AdminPanelSettings as AdminIcon,
   Group as UserManagementIcon,
-  Backup as BackupIcon,
-  Assessment as ReportIcon,
   ManageAccounts as PermissionsIcon,  // new icon for Permissions tab
 } from '@mui/icons-material';
 import { getRole, hasAnyRole } from '../config/rbac';
 import { useTheme } from '../contexts/ThemeContext';
 import PermissionManager from '../components/settings/PermissionManager';  // ← new import
+import UserManagement from '../components/settings/UserManagement';
+
+const API_URL = process.env.REACT_APP_API_URL || '/api';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -80,26 +82,31 @@ export default function Configuration() {
   const currentRole = getRole();
   const isAdminOrHR = hasAnyRole(['Admin', 'HR']);
   const isHR = hasAnyRole(['Admin', 'HR']);   // Admin also gets the HR permission panel
+  const isAdmin = currentRole === 'Admin';
 
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
   };
 
-  const handlePasswordChange = () => {
+  const handlePasswordChange = async () => {
     if (newPassword !== confirmPassword) {
       alert('New passwords do not match');
       return;
     }
-    if (newPassword.length < 6) {
-      alert('Password must be at least 6 characters');
+    if (newPassword.length < 8) {
+      alert('Password must be at least 8 characters');
       return;
     }
-    console.log('Password change requested');
-    setPasswordDialogOpen(false);
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
-    alert('Password changed successfully!');
+    try {
+      await axios.post(`${API_URL}/auth/change-password`, { currentPassword, newPassword });
+      setPasswordDialogOpen(false);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      alert('Password changed successfully!');
+    } catch (err: any) {
+      alert(err?.response?.data?.error || 'Failed to change password');
+    }
   };
 
   const handleSaveSettings = () => {
@@ -239,41 +246,28 @@ export default function Configuration() {
               )}
             </Tabs>
 
-            {/* Sub-tab 0: User Management (existing content) */}
+            {/* Sub-tab 0: User Management */}
             {systemSubTab === 0 && (
               <Box sx={{ p: 3 }}>
-                <Box sx={{ display: 'flex', gap: 3 }}>
-                  <Card sx={{ flex: 1 }}>
+                {isAdmin ? (
+                  <UserManagement />
+                ) : (
+                  <Card>
                     <CardContent>
                       <Typography variant="h6" gutterBottom>User Management</Typography>
                       <List>
                         <ListItem>
                           <ListItemIcon><UserManagementIcon color="primary" /></ListItemIcon>
-                          <ListItemText primary="Manage Users" secondary="Add, edit, or remove user accounts" />
+                          <ListItemText primary="Manage Users" secondary="Ask an Admin to add, edit, or disable user accounts" />
                         </ListItem>
                         <ListItem>
                           <ListItemIcon><AdminIcon color="primary" /></ListItemIcon>
-                          <ListItemText primary="Role Management" secondary="Assign roles and permissions" />
+                          <ListItemText primary="Role Management" secondary="Only Admin can assign roles" />
                         </ListItem>
                       </List>
                     </CardContent>
                   </Card>
-                  <Card sx={{ flex: 1 }}>
-                    <CardContent>
-                      <Typography variant="h6" gutterBottom>System Administration</Typography>
-                      <List>
-                        <ListItem>
-                          <ListItemIcon><BackupIcon color="primary" /></ListItemIcon>
-                          <ListItemText primary="Backup & Restore" secondary="System backup and recovery" />
-                        </ListItem>
-                        <ListItem>
-                          <ListItemIcon><ReportIcon color="primary" /></ListItemIcon>
-                          <ListItemText primary="Audit Logs" secondary="View system activity logs" />
-                        </ListItem>
-                      </List>
-                    </CardContent>
-                  </Card>
-                </Box>
+                )}
               </Box>
             )}
 

@@ -3,10 +3,12 @@ import { AppBar, Toolbar, Typography, Tabs, Tab, Box } from '@mui/material';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import ArchiveOutlined from '@mui/icons-material/ArchiveOutlined';
+import LogoutIcon from '@mui/icons-material/Logout';
 
 
 
@@ -223,6 +225,13 @@ export default function Navbar() {
 
   const { darkMode, toggleDarkMode } = useTheme();
 
+  const { user, logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    nav('/login', { replace: true });
+  };
+
 
 
   const sp           = new URLSearchParams(loc.search);
@@ -382,6 +391,22 @@ export default function Navbar() {
             ) : (
               <Brightness4Icon sx={{ color: 'white', fontSize: 20 }} />
             )}
+          </Box>
+
+          <Box
+            onClick={handleLogout}
+            title={user ? `Logout (${user.name})` : 'Logout'}
+            sx={{
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              padding: '4px 8px',
+              borderRadius: '4px',
+              '&:hover': { backgroundColor: 'rgba(255,255,255,0.1)' }
+            }}
+          >
+            <LogoutIcon sx={{ color: 'white', fontSize: 20 }} />
           </Box>
 
         </Toolbar>

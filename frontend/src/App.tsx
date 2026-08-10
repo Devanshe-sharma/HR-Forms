@@ -39,9 +39,11 @@ import DeptDesignationMaster from "./pages/deptdesignationmaster";
 // 👈 ADD THIS
 
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { AuthProvider } from "./contexts/AuthContext";
 
 export default function App() {
   return (
+    <AuthProvider>
     <ThemeProvider>
       <Routes>
 
@@ -105,5 +107,6 @@ export default function App() {
 
       </Routes>
     </ThemeProvider>
+    </AuthProvider>
   );
 }
