@@ -5,7 +5,48 @@ import { Loader2, Edit2, Save, UserCheck, ChevronDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Field, EditSelect } from './ApplicantFieldComponents';
 import { ApplicantRecord, API_BASE, SCREENER_STATUS_OPTIONS, SCREENER_STATUS_COLORS } from './applicantTypes';
-import { TemplateModal } from './FeedbackTemplate';
+import { TemplateModal, parseFormattedText, TEMPLATE_FIELDS, SECTIONS } from './FeedbackTemplate';
+
+// Renders saved feedback with bold section/field headings and real spacing
+// instead of dumping the raw template string as one flat monospace block.
+// Falls back to the raw text when it wasn't built via the template (e.g.
+// manually typed notes) — parseFormattedText only finds a round/screener
+// header when the text actually matches the template's own format.
+const FormattedFeedback = ({ text }: { text: string }) => {
+  const parsed = parseFormattedText(text);
+
+  if (!parsed?.__round) {
+    return (
+      <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed font-mono">
+        {text}
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm font-bold text-gray-800">
+        {parsed.__round}
+        {parsed.__screener && <span className="font-normal text-gray-500"> — {parsed.__screener}</span>}
+      </p>
+      {SECTIONS.map((section) => (
+        <div key={section}>
+          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2 pb-1 border-b border-gray-100">
+            {section}
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+            {TEMPLATE_FIELDS.filter((f) => f.section === section).map((f) => (
+              <p key={f.id} className={`text-sm text-gray-800 ${'full' in f && f.full ? 'sm:col-span-2' : ''}`}>
+                <span className="font-semibold text-gray-700">{f.label}: </span>
+                {parsed[f.id] || <span className="text-gray-400 italic">—</span>}
+              </p>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
 
 const ScreenerRoundTab = ({
   record, mode, setMode, onSave,
@@ -245,9 +286,7 @@ const ScreenerRoundTab = ({
         ) : (
           <div className="bg-gray-50 rounded-xl px-4 py-3 min-h-[80px]">
             {draft.screenerNotes ? (
-              <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed font-mono">
-                {draft.screenerNotes}
-              </p>
+              <FormattedFeedback text={draft.screenerNotes} />
             ) : (
               <p className="text-sm text-gray-400 italic">No feedback recorded yet</p>
             )}

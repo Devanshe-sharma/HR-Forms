@@ -22,12 +22,12 @@ const interviewRoundSchema = new mongoose.Schema(
       ],
       default: 'Technical Round 1',
     },
-    // Logistics state of this round — separate from `result` (the interview
-    // outcome). A round can be rescheduled/cancelled without that implying
-    // anything about how the candidate actually performed.
+    // Logistics state of this round — a round can be rescheduled/cancelled
+    // without that implying anything about how the candidate performed;
+    // the actual outcome now lives one level up as interviewFinalStatus.
     schedulingStatus: {
       type: String,
-      enum: ['Scheduled', 'Rescheduled', 'Cancelled'],
+      enum: ['Scheduled', 'Rescheduled', 'Done', 'Cancelled'],
       default: 'Scheduled',
     },
     cancellationReason: { type: String, default: '' },   // shown/edited only when schedulingStatus === 'Cancelled'
@@ -50,10 +50,13 @@ const interviewRoundSchema = new mongoose.Schema(
     },
     note:      { type: String, default: '' },
     feedback:  { type: String, default: '' },
-    result: {
+    // The interviewer's own recommendation/priority ranking of the
+    // candidate for this round — feeds into what interviewFinalStatus
+    // (on the parent ApplicantRecord) is allowed to be set to.
+    interviewerFeedbackStatus: {
       type: String,
-      enum: ['Selected', 'Rejected', 'Pending', 'On Hold'],
-      default: 'Pending',
+      enum: ['', 'Recommended as P1', 'Recommended as P2', 'Not Recommended', 'Candidate on Hold'],
+      default: '',
     },
   },
   { _id: true, timestamps: true },
@@ -195,6 +198,17 @@ const applicantRecordSchema = new mongoose.Schema(
 
     // ── Stage 2: Interview Round(s) ───────────────────────────────────────────
     interviewRounds: [interviewRoundSchema],
+    // Overall outcome of the interview stage — distinct from any single
+    // round's own scheduling/feedback state. HR sets this directly; it's
+    // constrained (see routes/applicantRecords.js) by what interviewers
+    // have recommended on individual rounds, so a Recommended-P1/P2
+    // candidate can't be silently marked Rejected, and a Not-Recommended
+    // one can't be silently marked Shortlisted.
+    interviewFinalStatus: {
+      type: String,
+      enum: ['In Progress', 'Shortlisted', 'Rejected'],
+      default: 'In Progress',
+    },
 
     // ── Stage 3: Offer & Placement ────────────────────────────────────────────
     finalDecision: { type: finalDecisionSchema, default: () => ({}) },

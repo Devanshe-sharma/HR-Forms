@@ -14,8 +14,9 @@ import InterviewRoundTab from './InterviewRoundTab';
 import OfferPlacementTab from './OfferPlacementTab';
 
 import {
-  ApplicantRecord, StatusType, API_BASE,
-  STATUS_OPTIONS, STATUS_COLORS, SCREENER_STATUS_COLORS,
+  ApplicantRecord, API_BASE,
+  SCREENER_STATUS_COLORS,
+  INTERVIEW_FINAL_STATUS_OPTIONS, INTERVIEW_FINAL_STATUS_COLORS,
 } from './applicantTypes';
 
 // AI fit fields — kept as a local extension of ApplicantRecord rather
@@ -69,24 +70,30 @@ const ApplicantModal = ({
     onUpdate(updated);
   };
 
-  const handleStatusChange = async (newStatus: StatusType) => {
+  const handleFinalStatusChange = async (newStatus: string) => {
     setStatusBusy(true);
     try {
-      const res = await fetch(`${API_BASE}/applicant-records/${localRec._id}/status`, {
+      const res = await fetch(`${API_BASE}/applicant-records/${localRec._id}/interview-final-status`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ status: newStatus }),
+        body:    JSON.stringify({ interviewFinalStatus: newStatus }),
       });
-      if (!res.ok) throw new Error();
       const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to update final status');
       handleRecordUpdate(json.data);
-      toast.success(`Status → ${newStatus}`);
-    } catch {
-      toast.error('Failed to update status');
+      toast.success(`Final Status → ${newStatus}`);
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to update final status');
     } finally {
       setStatusBusy(false);
     }
   };
+
+  // A recommended (P1/P2) round rules out Rejected; a Not Recommended one
+  // rules out Shortlisted — same constraint enforced server-side.
+  const feedbackStatuses = (localRec.interviewRounds || []).map((r) => r.interviewerFeedbackStatus).filter(Boolean);
+  const hasRecommended    = feedbackStatuses.some((s) => s === 'Recommended as P1' || s === 'Recommended as P2');
+  const hasNotRecommended = feedbackStatuses.includes('Not Recommended');
 
   const handleBackdrop = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) onClose();
@@ -114,12 +121,18 @@ const ApplicantModal = ({
             <div className="relative flex items-center gap-1">
               {statusBusy && <Loader2 size={12} className="animate-spin text-gray-400" />}
               <select
-                value={localRec.status}
-                onChange={(e) => handleStatusChange(e.target.value as StatusType)}
+                value={localRec.interviewFinalStatus || 'In Progress'}
+                onChange={(e) => handleFinalStatusChange(e.target.value)}
                 disabled={statusBusy}
-                className={`text-xs font-bold px-2 py-1 rounded-full border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-lime-400 ${STATUS_COLORS[localRec.status]}`}
+                className={`text-xs font-bold px-2 py-1 rounded-full border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-lime-400 ${
+                  INTERVIEW_FINAL_STATUS_COLORS[localRec.interviewFinalStatus] || INTERVIEW_FINAL_STATUS_COLORS['In Progress']
+                }`}
               >
-                {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                {INTERVIEW_FINAL_STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s} disabled={(s === 'Rejected' && hasRecommended) || (s === 'Shortlisted' && hasNotRecommended)}>
+                    {s}
+                  </option>
+                ))}
               </select>
             </div>
             <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition">
@@ -530,7 +543,7 @@ const AllApplicants: React.FC = () => {
                     <th className="p-4">Expected CTC</th>
                     <th className="p-4">Exp</th>
                     <th className="p-4">Location</th>
-                    <th className="p-4">Status</th>
+                    <th className="p-4">Interview Status</th>
                     <th className="p-4">AI Fit</th>
                     <th className="p-4 text-center">Actions</th>
                   </tr>
@@ -561,8 +574,8 @@ const AllApplicants: React.FC = () => {
                         </td>
                         <td className="p-4 text-gray-500 text-xs">{[r.city, r.state].filter(Boolean).join(', ')}</td>
                         <td className="p-4">
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${STATUS_COLORS[r.status] || 'bg-gray-100 text-gray-600'}`}>
-                            {r.status}
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${INTERVIEW_FINAL_STATUS_COLORS[r.interviewFinalStatus] || 'bg-gray-100 text-gray-600'}`}>
+                            {r.interviewFinalStatus || 'In Progress'}
                           </span>
                         </td>
                         <td className="p-4">

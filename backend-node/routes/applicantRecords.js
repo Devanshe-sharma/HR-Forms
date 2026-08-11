@@ -11,12 +11,25 @@ const RoleMaster = require('../models/role_master');
 const Onboarding = require('../models/onboardingModel');
 const { fetchJdText } = require('../utils/googleDocs');
 const sendInterviewRoundMail = require('../emails/senders/sendInterviewRoundMail');
+const buildInterviewRoundMail = require('../emails/templates/interviewRoundMail');
+const sendCandidateRejection = require('../emails/senders/sendCandidateRejection');
+const buildCandidateRejection = require('../emails/templates/candidateRejection');
 const { signInterviewConfirm, verifyInterviewConfirm } = require('../utils/interviewConfirmSigning');
 
 // Backend is reverse-proxied under the same domain as the frontend at
 // /api (see frontend/.env.production) — same FRONTEND_URL convention
 // already used for other emailed links (onboardingroutes.js's share-link).
-const PUBLIC_API_BASE = `${process.env.FRONTEND_URL || 'https://hr.briskolive.com'}/api`;
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://hr.briskolive.com';
+const PUBLIC_API_BASE = `${FRONTEND_URL}/api`;
+
+// The interviewer's feedback form is a real React page (candidate details
+// + JD for context, status dropdown, feedback textarea) rather than a
+// plain server-rendered page — so this links straight to the frontend,
+// not PUBLIC_API_BASE.
+function buildFeedbackLink(recordId, roundId) {
+  const sig = signInterviewConfirm(String(recordId), String(roundId), 'feedback');
+  return `${FRONTEND_URL}/interview-feedback/${recordId}/${roundId}?sig=${sig}`;
+}
 
 // Small self-contained HTML page for the public (unauthenticated) interview
 // response links — this backend has no templating engine wired in, so this
@@ -393,6 +406,102 @@ router.patch('/:id/screener-round', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/applicant-records/:id/interview-final-status
+// Overall outcome of the interview stage. Constrained server-side (not
+// just disabled in the UI) by what interviewers have recommended on
+// individual rounds: a Recommended-P1/P2 candidate can't be marked
+// Rejected, and a Not-Recommended one can't be marked Shortlisted —
+// conflicting signals across rounds block both, leaving only In Progress.
+// ─────────────────────────────────────────────────────────────────────────────
+router.patch('/:id/interview-final-status', async (req, res) => {
+  try {
+    const { interviewFinalStatus } = req.body;
+    if (!['In Progress', 'Shortlisted', 'Rejected'].includes(interviewFinalStatus)) {
+      return err(res, 'Invalid interviewFinalStatus', 400);
+    }
+
+    const record = await ApplicantRecord.findById(req.params.id);
+    if (!record) return err(res, 'Record not found', 404);
+
+    const feedbackStatuses = (record.interviewRounds || []).map((r) => r.interviewerFeedbackStatus).filter(Boolean);
+    const hasRecommended    = feedbackStatuses.some((s) => s === 'Recommended as P1' || s === 'Recommended as P2');
+    const hasNotRecommended = feedbackStatuses.includes('Not Recommended');
+
+    if (interviewFinalStatus === 'Rejected' && hasRecommended) {
+      return err(res, 'This candidate has a Recommended (P1/P2) interview round on file — cannot be marked Rejected.', 400);
+    }
+    if (interviewFinalStatus === 'Shortlisted' && hasNotRecommended) {
+      return err(res, 'This candidate has a Not Recommended interview round on file — cannot be marked Shortlisted.', 400);
+    }
+
+    record.interviewFinalStatus = interviewFinalStatus;
+    // Keep the top-level status in sync, same convention as
+    // screener-round/final-decision — the interview stage is later, so
+    // it takes precedence here.
+    if (interviewFinalStatus === 'Shortlisted')    record.status = 'Shortlisted';
+    else if (interviewFinalStatus === 'Rejected')  record.status = 'Rejected';
+
+    await record.save();
+    ok(res, record.toObject());
+  } catch (e) {
+    console.error('[interview-final-status] error:', e);
+    err(res, 'Failed to update interview final status');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/applicant-records/:id/rejection-mail/preview
+// Builds the default subject/body for the candidate rejection mail,
+// without sending — seeds the same "Edit & Send Mail" style popup used
+// for interview round mails.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/rejection-mail/preview', async (req, res) => {
+  try {
+    const record = await ApplicantRecord.findById(req.params.id).lean();
+    if (!record) return err(res, 'Record not found', 404);
+
+    const { subject, body } = buildCandidateRejection({
+      candidateName: record.full_name,
+      position: record.designation,
+    });
+
+    ok(res, { to: record.email || '', subject, body });
+  } catch (e) {
+    console.error('[rejection-mail preview] error:', e);
+    err(res, 'Failed to build rejection mail preview');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/applicant-records/:id/rejection-mail/send
+// Sends the rejection mail — To/CC/Subject/Body are all HR-editable
+// overrides from the popup, same convention as interview round mails.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/rejection-mail/send', async (req, res) => {
+  try {
+    const { to: toOverride, cc, subject: subjectOverride, customBody } = req.body;
+
+    const record = await ApplicantRecord.findById(req.params.id).lean();
+    if (!record) return err(res, 'Record not found', 404);
+
+    const to = toOverride || record.email;
+    if (!to) return err(res, 'No candidate email on file', 400);
+
+    await sendCandidateRejection({
+      to, cc,
+      candidateName: record.full_name,
+      position: record.designation,
+      subjectOverride, customBody,
+    });
+
+    ok(res, { sentTo: to });
+  } catch (e) {
+    console.error('[rejection-mail send] error:', e);
+    err(res, 'Failed to send rejection mail');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/applicant-records/:id/interview-rounds
 // Add a new interview round
 // ─────────────────────────────────────────────────────────────────────────────
@@ -416,7 +525,7 @@ router.post('/:id/interview-rounds', async (req, res) => {
       candidateConfirmation: req.body.candidateConfirmation || 'Pending',
       note:                  req.body.note                  || '',
       feedback:              req.body.feedback              || '',
-      result:                req.body.result                || 'Pending',
+      interviewerFeedbackStatus: req.body.interviewerFeedbackStatus || '',
     };
 
     record.interviewRounds.push(newRound);
@@ -444,7 +553,7 @@ router.patch('/:id/interview-rounds/:roundId', async (req, res) => {
     const updatable = [
       'stage', 'schedulingStatus', 'cancellationReason', 'scheduledDate', 'scheduledTime',
       'interviewer', 'mode', 'meetingLink', 'candidateConfirmation',
-      'note', 'feedback', 'result',
+      'note', 'feedback', 'interviewerFeedbackStatus',
     ];
     for (const field of updatable) {
       if (req.body[field] !== undefined) round[field] = req.body[field];
@@ -458,14 +567,34 @@ router.patch('/:id/interview-rounds/:roundId', async (req, res) => {
   }
 });
 
+// Only the candidate's schedule/reschedule mail gets the Yes/Maybe/Can't
+// attend buttons — not the interviewer's copy, and not cancellation mails.
+function buildConfirmLinks(recordId, roundId, audience, type) {
+  if (audience !== 'candidate' || type === 'cancel') return undefined;
+  const sig = signInterviewConfirm(String(recordId), String(roundId));
+  const base = `${PUBLIC_API_BASE}/applicant-records/${recordId}/interview-rounds/${roundId}/respond`;
+  return {
+    yes:   `${base}?response=yes&sig=${sig}`,
+    maybe: `${base}?response=maybe&sig=${sig}`,
+    no:    `${base}?response=no&sig=${sig}`,
+  };
+}
+
+// Only the interviewer's schedule/reschedule mail gets a feedback-form
+// link — not the candidate's copy, and not cancellation mails (nothing to
+// give feedback on if the round never happened).
+function buildFeedbackLinkFor(audience, type, recordId, roundId) {
+  if (audience !== 'interviewer' || type === 'cancel') return undefined;
+  return buildFeedbackLink(recordId, roundId);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /api/applicant-records/:id/interview-rounds/:roundId/send-mail
-// Schedule / reschedule / cancellation notifications — to the interviewer
-// or the candidate, one audience per call so the UI can track each send
-// independently. cancellationReason in the body overrides the round's
-// saved one, since this can be sent before the cancellation is finalized.
+// POST /api/applicant-records/:id/interview-rounds/:roundId/preview-mail
+// Builds the exact subject/body the send-mail route would generate by
+// default, without sending anything — seeds the "Edit & Send Mail" popup
+// so HR edits the real default text instead of starting from a blank box.
 // ─────────────────────────────────────────────────────────────────────────────
-router.post('/:id/interview-rounds/:roundId/send-mail', async (req, res) => {
+router.post('/:id/interview-rounds/:roundId/preview-mail', async (req, res) => {
   try {
     const { type, audience, cancellationReason } = req.body;
     if (!['schedule', 'reschedule', 'cancel'].includes(type)) return err(res, 'Invalid mail type', 400);
@@ -477,30 +606,65 @@ router.post('/:id/interview-rounds/:roundId/send-mail', async (req, res) => {
     if (!round) return err(res, 'Round not found', 404);
 
     const to = audience === 'candidate' ? record.email : await resolveInterviewerEmail(round.interviewer);
-    if (!to) return err(res, `No ${audience === 'candidate' ? 'candidate email' : 'interviewer email'} on file`, 400);
 
-    // Only the candidate's schedule/reschedule mail gets the Yes/Maybe/Can't
-    // attend buttons — not the interviewer's copy, and not cancellation mails.
-    let confirmLinks;
-    if (audience === 'candidate' && type !== 'cancel') {
-      const sig = signInterviewConfirm(String(record._id), String(round._id));
-      const base = `${PUBLIC_API_BASE}/applicant-records/${record._id}/interview-rounds/${round._id}/respond`;
-      confirmLinks = {
-        yes:   `${base}?response=yes&sig=${sig}`,
-        maybe: `${base}?response=maybe&sig=${sig}`,
-        no:    `${base}?response=no&sig=${sig}`,
-      };
-    }
-
-    await sendInterviewRoundMail({
-      to,
+    const { subject, body } = buildInterviewRoundMail({
       type,
       audience,
       candidateName: record.full_name,
       position: record.designation,
       round,
       cancellationReason: cancellationReason ?? round.cancellationReason,
-      confirmLinks,
+      confirmLinks: buildConfirmLinks(record._id, round._id, audience, type),
+      feedbackLink: buildFeedbackLinkFor(audience, type, record._id, round._id),
+    });
+
+    ok(res, { to: to || '', subject, body });
+  } catch (e) {
+    console.error('[preview-mail] error:', e);
+    err(res, 'Failed to build mail preview');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/applicant-records/:id/interview-rounds/:roundId/send-mail
+// Schedule / reschedule / cancellation notifications — to the interviewer
+// or the candidate, one audience per call so the UI can track each send
+// independently. To/CC/Subject/Body are all HR-editable via the "Edit &
+// Send Mail" popup for either audience — cancellationReason in the body
+// overrides the round's saved one, since this can be sent before the
+// cancellation is finalized.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/interview-rounds/:roundId/send-mail', async (req, res) => {
+  try {
+    const { type, audience, cancellationReason, to: toOverride, cc, subject: subjectOverride, customBody } = req.body;
+    if (!['schedule', 'reschedule', 'cancel'].includes(type)) return err(res, 'Invalid mail type', 400);
+    if (!['interviewer', 'candidate'].includes(audience)) return err(res, 'Invalid audience', 400);
+
+    const record = await ApplicantRecord.findById(req.params.id).lean();
+    if (!record) return err(res, 'Record not found', 404);
+    const round = (record.interviewRounds || []).find((r) => String(r._id) === req.params.roundId);
+    if (!round) return err(res, 'Round not found', 404);
+
+    // HR can override the resolved To before sending (e.g. the
+    // employee-master lookup missed the interviewer, or the candidate's
+    // mail needs redirecting) — falls back to the real lookup/candidate
+    // email on file when left blank.
+    const to = toOverride || (audience === 'candidate' ? record.email : await resolveInterviewerEmail(round.interviewer));
+    if (!to) return err(res, `No ${audience === 'candidate' ? 'candidate email' : 'interviewer email'} on file`, 400);
+
+    await sendInterviewRoundMail({
+      to,
+      cc,
+      type,
+      audience,
+      candidateName: record.full_name,
+      position: record.designation,
+      round,
+      cancellationReason: cancellationReason ?? round.cancellationReason,
+      confirmLinks: buildConfirmLinks(record._id, round._id, audience, type),
+      feedbackLink: buildFeedbackLinkFor(audience, type, record._id, round._id),
+      subjectOverride,
+      customBody,
     });
 
     ok(res, { sentTo: to });
@@ -534,20 +698,30 @@ router.get('/:id/interview-rounds/:roundId/respond', async (req, res) => {
     }));
   }
 
-  if (response === 'no') {
-    return res.send(renderResponsePage({
-      heading: "Can't Attend", color: '#dc3545',
-      message: "We're sorry to hear that. Could you let us know why, so our team can follow up appropriately?",
-      showForm: true,
-      formAction: `${req.baseUrl}/${id}/interview-rounds/${roundId}/respond?response=no&sig=${sig}`,
-    }));
-  }
-
   try {
     const record = await ApplicantRecord.findById(id);
     if (!record) return res.status(404).send(renderResponsePage({ heading: 'Not Found', color: '#dc3545', message: 'This interview record could not be found.' }));
     const round = record.interviewRounds.id(roundId);
     if (!round) return res.status(404).send(renderResponsePage({ heading: 'Not Found', color: '#dc3545', message: 'This interview round could not be found.' }));
+
+    // Once recorded, the response is locked — clicking any link again (even
+    // a different one from the same email) shows the existing response
+    // instead of silently overwriting it.
+    if (round.candidateConfirmation && round.candidateConfirmation !== 'Pending') {
+      return res.send(renderResponsePage({
+        heading: 'Already Responded', color: '#6b7a99',
+        message: `You've already responded to this interview invitation: <b>${round.candidateConfirmation}</b>. If you need to change your response, please contact HR directly.`,
+      }));
+    }
+
+    if (response === 'no') {
+      return res.send(renderResponsePage({
+        heading: "Can't Attend", color: '#dc3545',
+        message: "We're sorry to hear that. Could you let us know why, so our team can follow up appropriately?",
+        showForm: true,
+        formAction: `${req.baseUrl}/${id}/interview-rounds/${roundId}/respond?response=no&sig=${sig}`,
+      }));
+    }
 
     round.candidateConfirmation = response === 'yes' ? 'Yes' : 'Maybe';
     await record.save();
@@ -585,6 +759,13 @@ router.post('/:id/interview-rounds/:roundId/respond', async (req, res) => {
     const round = record.interviewRounds.id(roundId);
     if (!round) return res.status(404).send(renderResponsePage({ heading: 'Not Found', color: '#dc3545', message: 'This interview round could not be found.' }));
 
+    if (round.candidateConfirmation && round.candidateConfirmation !== 'Pending') {
+      return res.send(renderResponsePage({
+        heading: 'Already Responded', color: '#6b7a99',
+        message: `You've already responded to this interview invitation: <b>${round.candidateConfirmation}</b>. If you need to change your response, please contact HR directly.`,
+      }));
+    }
+
     round.candidateConfirmation = 'No';
     if ((reason || '').trim()) round.note = reason.trim();
     await record.save();
@@ -596,6 +777,73 @@ router.post('/:id/interview-rounds/:roundId/respond', async (req, res) => {
   } catch (e) {
     console.error('[interview-respond POST] error:', e);
     return res.status(500).send(renderResponsePage({ heading: 'Something Went Wrong', color: '#dc3545', message: 'Please try again later or contact HR directly.' }));
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/applicant-records/:id/interview-rounds/:roundId/feedback-context?sig=...
+// Public, unauthenticated — feeds the interviewer's feedback form page with
+// exactly what it needs: candidate details + JD for context, plus whatever
+// feedback is already on file (so re-visiting the link to update it works).
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/:id/interview-rounds/:roundId/feedback-context', async (req, res) => {
+  try {
+    const { sig } = req.query;
+    if (!verifyInterviewConfirm(req.params.id, req.params.roundId, sig, 'feedback')) {
+      return err(res, "This link couldn't be verified.", 403);
+    }
+
+    const record = await ApplicantRecord.findById(req.params.id).lean();
+    if (!record) return err(res, 'Record not found', 404);
+    const round = (record.interviewRounds || []).find((r) => String(r._id) === req.params.roundId);
+    if (!round) return err(res, 'Round not found', 404);
+
+    const { jdLink } = await resolveJdLink(record.job_id);
+
+    ok(res, {
+      candidate: {
+        name:        record.full_name,
+        designation: record.designation,
+        resume:      record.resume || '',
+      },
+      jdLink: jdLink || '',
+      round: { stage: round.stage, scheduledDate: round.scheduledDate, scheduledTime: round.scheduledTime },
+      interviewerFeedbackStatus: round.interviewerFeedbackStatus || '',
+      feedback: round.feedback || '',
+    });
+  } catch (e) {
+    console.error('[feedback-context] error:', e);
+    err(res, 'Failed to load the feedback form');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/applicant-records/:id/interview-rounds/:roundId/feedback?sig=...
+// Public, unauthenticated — the interviewer's feedback form submits here.
+// Freely re-submittable (unlike the candidate's confirmation), since an
+// interviewer may reasonably want to add or amend feedback after the fact.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/interview-rounds/:roundId/feedback', async (req, res) => {
+  try {
+    const { sig } = req.query;
+    if (!verifyInterviewConfirm(req.params.id, req.params.roundId, sig, 'feedback')) {
+      return err(res, "This link couldn't be verified.", 403);
+    }
+
+    const { interviewerFeedbackStatus, feedback } = req.body;
+    const record = await ApplicantRecord.findById(req.params.id);
+    if (!record) return err(res, 'Record not found', 404);
+    const round = record.interviewRounds.id(req.params.roundId);
+    if (!round) return err(res, 'Round not found', 404);
+
+    if (interviewerFeedbackStatus !== undefined) round.interviewerFeedbackStatus = interviewerFeedbackStatus;
+    if (feedback !== undefined) round.feedback = feedback;
+    await record.save();
+
+    ok(res, { saved: true });
+  } catch (e) {
+    console.error('[interview feedback submit] error:', e);
+    err(res, 'Failed to submit feedback');
   }
 });
 

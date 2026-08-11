@@ -7,6 +7,7 @@ import CareersPage from "./pages/outsider/Careerspage";
 import CandidateApplicationPage from "./pages/Recruitment/CandidateApplication";
 import ReferCandidatePage from "./pages/outsider/ReferCandidate";
 import ReferralsList from "./pages/Recruitment/ReferralsList";
+import InterviewFeedbackPage from "./pages/outsider/InterviewFeedback";
 import EmployeeLetter from "./pages/EmployeeLetter";
 import Profile from "./pages/Profile";
 import Configuration from "./pages/Configruation";
@@ -59,6 +60,7 @@ export default function App() {
         <Route path="/careers" element={<CareersPage />} />
         <Route path="/candidate-application" element={<CandidateApplicationPage />} />
         <Route path="/refer/:requisitionId" element={<ReferCandidatePage />} />
+        <Route path="/interview-feedback/:recordId/:roundId" element={<InterviewFeedbackPage />} />
 
         {/* Protected Routes */}
         <Route element={<ProtectedRoute />}>

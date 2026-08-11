@@ -1,17 +1,18 @@
 // pages/Recruitment/InterviewRoundTab.tsx
 import React, { useState, useEffect } from 'react';
 import {
-  Loader2, Edit2, Save, Plus, Trash2, ClipboardList,
+  Loader2, Edit2, Save, Plus, ClipboardList,
   ChevronDown, ChevronUp, ExternalLink, CalendarClock, RefreshCw,
-  X, Send, Check, Ban,
+  X, Send, Check, Ban, CheckCircle2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { EditField, EditSelect } from './ApplicantFieldComponents';
 import {
   ApplicantRecord, InterviewRound, API_BASE,
-  STAGE_OPTIONS, MODE_OPTIONS, RESULT_OPTIONS, RESULT_COLORS,
+  STAGE_OPTIONS, MODE_OPTIONS,
   SCHEDULING_STATUS_OPTIONS, SCHEDULING_STATUS_COLORS,
-  CANDIDATE_CONFIRMATION_OPTIONS, CANDIDATE_CONFIRMATION_COLORS,
+  CANDIDATE_CONFIRMATION_COLORS,
+  INTERVIEWER_FEEDBACK_STATUS_OPTIONS, INTERVIEWER_FEEDBACK_STATUS_COLORS,
 } from './applicantTypes';
 
 function resolveResumeUrl(resume?: string): string {
@@ -36,7 +37,7 @@ const emptyRound = (): Omit<InterviewRound, '_id'> => ({
   candidateConfirmation: 'Pending',
   note:                  '',
   feedback:              '',
-  result:                'Pending',
+  interviewerFeedbackStatus: '',
 });
 
 // Label/value row for the read-only detail table
@@ -49,6 +50,7 @@ const DetailRow = ({ label, children }: { label: string; children: React.ReactNo
 
 const RoundForm = ({
   data, onChange, onSave, onCancel, saving, interviewers, loadingInterviewers,
+  existingRound, onSchedule, onReschedule, onCancelRound, onMarkDone,
 }: {
   data: Partial<InterviewRound>;
   onChange: (f: string, v: string) => void;
@@ -57,6 +59,14 @@ const RoundForm = ({
   saving: boolean;
   interviewers: EmployeeOption[];
   loadingInterviewers: boolean;
+  // Only present when editing an already-saved round — a brand new round
+  // has no _id yet, so there's nothing for Schedule/Reschedule/Done/Cancel
+  // to act on until it's been saved once.
+  existingRound?: InterviewRound;
+  onSchedule?: () => void;
+  onReschedule?: () => void;
+  onCancelRound?: () => void;
+  onMarkDone?: () => void;
 }) => {
   // Keep the currently-saved interviewer selectable even if they've since
   // left the employee master list, so editing an old round doesn't blank it.
@@ -66,9 +76,26 @@ const RoundForm = ({
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-3 bg-gray-50 border-t border-dashed border-gray-200">
+      {existingRound && existingRound.schedulingStatus !== 'Cancelled' && (
+        <div className="col-span-2 md:col-span-3 flex items-center gap-2 flex-wrap pb-3 mb-1 border-b border-dashed border-gray-300">
+          <button onClick={onSchedule} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition">
+            <CalendarClock size={13} /> Schedule
+          </button>
+          <button onClick={onReschedule} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg transition">
+            <RefreshCw size={13} /> Reschedule
+          </button>
+          <button onClick={onMarkDone} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-green-700 bg-green-50 hover:bg-green-100 rounded-lg transition">
+            <CheckCircle2 size={13} /> Mark Done
+          </button>
+          <button onClick={onCancelRound} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition ml-auto">
+            <Ban size={13} /> Cancel Round
+          </button>
+        </div>
+      )}
+
       <EditSelect label="Stage"                    name="stage"                 value={data.stage || ''}                 options={STAGE_OPTIONS}               onChange={(_, v) => onChange('stage', v)} />
       <EditSelect label="Scheduling Status"        name="schedulingStatus"      value={data.schedulingStatus || ''}      options={SCHEDULING_STATUS_OPTIONS}   onChange={(_, v) => onChange('schedulingStatus', v)} />
-      <EditSelect label="Result"                   name="result"                value={data.result || ''}                options={RESULT_OPTIONS}              onChange={(_, v) => onChange('result', v)} />
+      <EditSelect label="Interviewer Feedback Status" name="interviewerFeedbackStatus" value={data.interviewerFeedbackStatus || ''} options={INTERVIEWER_FEEDBACK_STATUS_OPTIONS} onChange={(_, v) => onChange('interviewerFeedbackStatus', v)} />
       <EditField  label="Date"                     name="scheduledDate"         value={data.scheduledDate || ''}         onChange={(_, v) => onChange('scheduledDate', v)} type="date" inputClassName="text-base py-2.5" />
       <EditField  label="Time"                     name="scheduledTime"         value={data.scheduledTime || ''}         onChange={(_, v) => onChange('scheduledTime', v)} type="time" inputClassName="text-base py-2.5" />
       <div>
@@ -90,7 +117,6 @@ const RoundForm = ({
       </div>
       <EditSelect label="Mode"                     name="mode"                  value={data.mode || ''}                  options={MODE_OPTIONS}                onChange={(_, v) => onChange('mode', v)} />
       <EditField  label="Meeting Link / Location"  name="meetingLink"           value={data.meetingLink || ''}           onChange={(_, v) => onChange('meetingLink', v)} />
-      <EditSelect label="Candidate Confirmation"   name="candidateConfirmation" value={data.candidateConfirmation || ''} options={CANDIDATE_CONFIRMATION_OPTIONS} onChange={(_, v) => onChange('candidateConfirmation', v)} />
 
       {data.schedulingStatus === 'Cancelled' && (
         <div className="col-span-2 md:col-span-3">
@@ -157,12 +183,64 @@ const InterviewRoundTab = ({
   const [jdLink,    setJdLink]    = useState<string | null>(null);
   const [interviewers,        setInterviewers]        = useState<EmployeeOption[]>([]);
   const [loadingInterviewers, setLoadingInterviewers]  = useState(true);
+  type MailContent = { to: string; cc: string; subject: string; body: string };
   const [mailModal, setMailModal] = useState<{
     open: boolean; type: 'schedule' | 'reschedule' | 'cancel'; round: InterviewRound | null;
     tab: 'interviewer' | 'candidate'; sentTabs: string[]; sending: boolean; reason: string;
-  }>({ open: false, type: 'schedule', round: null, tab: 'interviewer', sentTabs: [], sending: false, reason: '' });
+    content: Partial<Record<'interviewer' | 'candidate', MailContent>>;
+    loadingPreview: boolean; previewError: string | null;
+  }>({
+    open: false, type: 'schedule', round: null, tab: 'interviewer', sentTabs: [], sending: false, reason: '',
+    content: {}, loadingPreview: false, previewError: null,
+  });
+
+  const [rejectionModal, setRejectionModal] = useState<{
+    open: boolean; to: string; cc: string; subject: string; body: string;
+    loading: boolean; sending: boolean; error: string;
+  }>({ open: false, to: '', cc: '', subject: '', body: '', loading: false, sending: false, error: '' });
 
   useEffect(() => { setRounds(record.interviewRounds ?? []); }, [record]);
+
+  // Whether any round an interviewer already gave feedback on was Not
+  // Recommended — the overall Final Status dropdown (in the candidate
+  // modal header) is constrained by this too; here it just gates the
+  // rejection-mail action.
+  const hasNotRecommended = rounds.some((r) => r.interviewerFeedbackStatus === 'Not Recommended');
+
+  const openRejectionModal = async () => {
+    setRejectionModal((m) => ({ ...m, open: true, loading: true, error: '' }));
+    try {
+      const res = await fetch(`${API_BASE}/applicant-records/${record._id}/rejection-mail/preview`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to load rejection mail');
+      setRejectionModal((m) => ({ ...m, loading: false, to: json.data.to, cc: '', subject: json.data.subject, body: json.data.body }));
+    } catch (e: any) {
+      setRejectionModal((m) => ({ ...m, loading: false, error: e.message || 'Failed to load rejection mail' }));
+    }
+  };
+
+  const sendRejectionMail = async () => {
+    setRejectionModal((m) => ({ ...m, sending: true }));
+    try {
+      const res = await fetch(`${API_BASE}/applicant-records/${record._id}/rejection-mail/send`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          to: rejectionModal.to.trim() || undefined,
+          cc: rejectionModal.cc.trim() || undefined,
+          subject: rejectionModal.subject,
+          customBody: rejectionModal.body,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to send rejection mail');
+      toast.success(`Rejection mail sent to ${json.data.sentTo}`);
+      setRejectionModal((m) => ({ ...m, open: false, sending: false }));
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to send rejection mail');
+      setRejectionModal((m) => ({ ...m, sending: false }));
+    }
+  };
 
   // JD Link and Resume are per-candidate/per-job, not per-round — pulled
   // once here instead of asking HR to paste them into every round.
@@ -222,22 +300,6 @@ const InterviewRoundTab = ({
     }
   };
 
-  const deleteRound = async (id: string) => {
-    if (!window.confirm('Delete this round?')) return;
-    try {
-      const res = await fetch(`${API_BASE}/applicant-records/${record._id}/interview-rounds/${id}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) throw new Error();
-      const json = await res.json();
-      setRounds(json.data.interviewRounds);
-      onUpdate(json.data);
-      toast.success('Round deleted');
-    } catch {
-      toast.error('Failed to delete round');
-    }
-  };
-
   const addRound = async () => {
     setSaving(true);
     try {
@@ -265,9 +327,58 @@ const InterviewRoundTab = ({
     setMailModal({
       open: true, type, round, tab: 'interviewer', sentTabs: [],
       sending: false, reason: type === 'cancel' ? (round.cancellationReason || '') : '',
+      content: {}, loadingPreview: false, previewError: null,
     });
 
   const closeMailModal = () => setMailModal((m) => ({ ...m, open: false }));
+
+  // Pulls the exact subject/html the send-mail route would generate, so HR
+  // sees (and, for the interviewer's copy, can edit) the real content before
+  // it goes out — rather than sending blind based on the metadata summary alone.
+  const fetchPreview = async (
+    tab: 'interviewer' | 'candidate', round: InterviewRound,
+    type: 'schedule' | 'reschedule' | 'cancel', reason: string,
+  ) => {
+    setMailModal((m) => ({ ...m, loadingPreview: true, previewError: null }));
+    try {
+      const res = await fetch(`${API_BASE}/applicant-records/${record._id}/interview-rounds/${round._id}/preview-mail`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ type, audience: tab, cancellationReason: type === 'cancel' ? reason : undefined }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || `Server returned ${res.status}`);
+      }
+      setMailModal((m) => ({
+        ...m,
+        loadingPreview: false,
+        content: {
+          ...m.content,
+          // Regenerating keeps whatever CC HR already typed — only To/Subject/Body reset to the fresh default.
+          [tab]: { to: json.data.to || '', cc: m.content[tab]?.cc || '', subject: json.data.subject, body: json.data.body },
+        },
+      }));
+    } catch (e: any) {
+      console.error('[preview-mail] failed:', e);
+      setMailModal((m) => ({ ...m, loadingPreview: false, previewError: e.message || 'Failed to load mail content' }));
+    }
+  };
+
+  // Fetches the preview for whichever tab is active, once per tab per
+  // modal-open — a manual "Regenerate" button (near the editor) re-fetches
+  // on demand, e.g. after the cancellation reason text changes.
+  useEffect(() => {
+    if (!mailModal.open || !mailModal.round || mailModal.content[mailModal.tab]) return;
+    fetchPreview(mailModal.tab, mailModal.round, mailModal.type, mailModal.reason);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mailModal.open, mailModal.tab, mailModal.round?._id]);
+
+  const updateMailContent = (tab: 'interviewer' | 'candidate', field: keyof MailContent, value: string) =>
+    setMailModal((m) => ({
+      ...m,
+      content: { ...m.content, [tab]: { to: '', cc: '', subject: '', body: '', ...m.content[tab], [field]: value } },
+    }));
 
   const patchRound = async (id: string, body: Partial<InterviewRound>) => {
     const res = await fetch(`${API_BASE}/applicant-records/${record._id}/interview-rounds/${id}`, {
@@ -298,6 +409,10 @@ const InterviewRoundTab = ({
           type: mailModal.type,
           audience: tab,
           cancellationReason: mailModal.type === 'cancel' ? mailModal.reason : undefined,
+          to: mailModal.content[tab]?.to.trim() || undefined,
+          cc: mailModal.content[tab]?.cc.trim() || undefined,
+          subject: mailModal.content[tab]?.subject,
+          customBody: mailModal.content[tab]?.body,
         }),
       });
       const json = await res.json();
@@ -321,6 +436,17 @@ const InterviewRoundTab = ({
     }
   };
 
+  // Marking a round Done is a plain status update — no mail involved,
+  // since it just records that the interview already happened.
+  const markRoundDone = async (round: InterviewRound) => {
+    try {
+      await patchRound(round._id, { schedulingStatus: 'Done' });
+      toast.success('Round marked as done');
+    } catch {
+      toast.error('Failed to mark round as done');
+    }
+  };
+
   const finalizeCancellation = async () => {
     const round = mailModal.round;
     if (!round) return;
@@ -341,6 +467,21 @@ const InterviewRoundTab = ({
 
   return (
     <div className="space-y-4">
+      {/* The overall Interview Final Status dropdown now lives in the
+          candidate modal header (AllApplicants.tsx) — this tab only
+          surfaces the rejection-mail action once it's relevant. */}
+      {hasNotRecommended && (
+        <div className="flex items-center justify-between gap-4 p-3 rounded-xl border border-red-100 bg-red-50">
+          <p className="text-xs text-red-700">A round was marked Not Recommended.</p>
+          <button
+            onClick={openRejectionModal}
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition"
+          >
+            <Send size={13} /> Send Rejection Mail
+          </button>
+        </div>
+      )}
+
       {/* Round cards */}
       {rounds.length === 0 && !adding && (
         <div className="text-center py-12 text-gray-400">
@@ -364,17 +505,11 @@ const InterviewRoundTab = ({
               <span className="text-xs text-gray-600"><span className="font-semibold text-gray-500">Date:</span> {r.scheduledDate ? new Date(r.scheduledDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'TBD'}</span>
               <span className="text-xs text-gray-600"><span className="font-semibold text-gray-500">Mode:</span> {r.mode || '—'}</span>
 
-              <span className={`flex-shrink-0 text-[11px] font-bold px-2 py-1 rounded-full ${RESULT_COLORS[r.result] || 'bg-gray-100 text-gray-600'}`}>
-                {r.result}
+              <span className={`flex-shrink-0 text-[11px] font-bold px-2 py-1 rounded-full ${SCHEDULING_STATUS_COLORS[r.schedulingStatus] || 'bg-gray-100 text-gray-600'}`}>
+                {r.schedulingStatus || 'Scheduled'}
               </span>
 
               <div className="flex items-center gap-1 flex-shrink-0 ml-auto">
-                {!isEditing && (
-                  <>
-                    <button onClick={() => startEdit(r)}      className="p-1 text-gray-400 hover:text-lime-600 hover:bg-lime-100 rounded transition"><Edit2 size={13} /></button>
-                    <button onClick={() => deleteRound(r._id)} className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-100 rounded transition"><Trash2 size={13} /></button>
-                  </>
-                )}
                 <button onClick={() => toggleCollapse(r._id)} className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded transition">
                   {isCollapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
                 </button>
@@ -423,37 +558,30 @@ const InterviewRoundTab = ({
                     {r.candidateConfirmation || 'Pending'}
                   </span>
                 </DetailRow>
+                <DetailRow label="Interviewer Feedback Status">
+                  {r.interviewerFeedbackStatus
+                    ? <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${INTERVIEWER_FEEDBACK_STATUS_COLORS[r.interviewerFeedbackStatus] || 'bg-gray-100 text-gray-600'}`}>
+                        {r.interviewerFeedbackStatus}
+                      </span>
+                    : <span className="text-gray-400 italic">—</span>}
+                </DetailRow>
                 <DetailRow label="Note (if any)">{r.note || <span className="text-gray-400 italic">—</span>}</DetailRow>
                 <DetailRow label="Remarks">
                   <p className="whitespace-pre-wrap">{r.feedback || <span className="text-gray-400 italic">No remarks recorded</span>}</p>
                 </DetailRow>
 
-                {r.schedulingStatus !== 'Cancelled' && (
-                  <div className="flex items-center gap-2 px-3 py-2.5 bg-gray-50 flex-wrap">
-                    <button
-                      onClick={() => openMailModal('schedule', r)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition"
-                    >
-                      <CalendarClock size={13} /> Schedule
-                    </button>
-                    <button
-                      onClick={() => openMailModal('reschedule', r)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg transition"
-                    >
-                      <RefreshCw size={13} /> Reschedule
-                    </button>
-                    <button
-                      onClick={() => openMailModal('cancel', r)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition ml-auto"
-                    >
-                      <Ban size={13} /> Cancel Round
-                    </button>
-                  </div>
-                )}
+                <div className="flex justify-end px-3 py-2.5 bg-gray-50">
+                  <button
+                    onClick={() => startEdit(r)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-lime-600 hover:bg-lime-700 rounded-lg transition"
+                  >
+                    <Edit2 size={13} /> Edit
+                  </button>
+                </div>
               </div>
             )}
 
-            {/* ── Edit mode ── */}
+            {/* ── Edit mode — Schedule/Reschedule/Done/Cancel now live here too ── */}
             {isEditing && (
               <RoundForm
                 data={drafts[r._id] || r}
@@ -463,6 +591,11 @@ const InterviewRoundTab = ({
                 saving={saving}
                 interviewers={interviewers}
                 loadingInterviewers={loadingInterviewers}
+                existingRound={r}
+                onSchedule={() => openMailModal('schedule', r)}
+                onReschedule={() => openMailModal('reschedule', r)}
+                onCancelRound={() => openMailModal('cancel', r)}
+                onMarkDone={() => markRoundDone(r)}
               />
             )}
           </div>
@@ -485,14 +618,26 @@ const InterviewRoundTab = ({
         </div>
       )}
 
-      {!adding && (
-        <button
-          onClick={() => setAdding(true)}
-          className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-gray-200 hover:border-lime-400 hover:text-lime-600 rounded-xl text-sm text-gray-400 transition"
-        >
-          <Plus size={15} /> Add Interview Round
-        </button>
-      )}
+      {!adding && (() => {
+        const lastRound = rounds[rounds.length - 1];
+        // A round left Scheduled/Rescheduled is still "open" — the next
+        // round can't start until this one is actually resolved, one way
+        // or the other.
+        const canAddRound = !lastRound || lastRound.schedulingStatus === 'Done' || lastRound.schedulingStatus === 'Cancelled';
+
+        return canAddRound ? (
+          <button
+            onClick={() => setAdding(true)}
+            className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-gray-200 hover:border-lime-400 hover:text-lime-600 rounded-xl text-sm text-gray-400 transition"
+          >
+            <Plus size={15} /> Add Interview Round
+          </button>
+        ) : (
+          <p className="w-full text-center py-3 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-400 italic">
+            Mark Round {lastRound.roundNumber} as Done or Cancelled before adding a new round.
+          </p>
+        );
+      })()}
 
       {/* ── Schedule / Reschedule / Cancel mail dialog ── */}
       {mailModal.open && mailModal.round && (
@@ -536,27 +681,92 @@ const InterviewRoundTab = ({
                 ))}
               </div>
 
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-                {[
-                  ['To', mailModal.tab === 'interviewer' ? (mailModal.round.interviewer || '—') : (record.email || '—')],
-                  ['Stage', mailModal.round.stage || '—'],
-                  ['Date', mailModal.round.scheduledDate ? new Date(mailModal.round.scheduledDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'],
-                  ['Time', mailModal.round.scheduledTime || '—'],
-                  ['Mode', mailModal.round.mode || '—'],
-                  ['Link', mailModal.round.meetingLink || '—'],
-                ].map(([label, value]) => (
-                  <div key={label} className="flex gap-2 text-sm">
-                    <span className="font-semibold text-gray-500 w-20 flex-shrink-0">{label}</span>
-                    <span className="text-gray-800 break-words">{value}</span>
-                  </div>
-                ))}
-              </div>
+              {/* ── Edit & Send Mail — To/CC/Subject/Body, all plain text and
+                  editable for either audience, until the round is done. ── */}
+              {(() => {
+                const isDone = ['Done', 'Cancelled'].includes(mailModal.round.schedulingStatus);
+                const current = mailModal.content[mailModal.tab];
+                const fieldClass = (editable: boolean) =>
+                  `w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm ${
+                    editable ? 'focus:outline-none focus:ring-2 focus:ring-lime-400' : 'bg-gray-50 text-gray-600'
+                  }`;
 
-              {mailModal.type === 'cancel' && (
-                <p className="text-[11px] text-gray-400 italic">
-                  The cancellation reason is included in the interviewer's mail only — the candidate mail simply notes the interview was cancelled.
-                </p>
-              )}
+                return (
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="flex items-center justify-between px-3 py-2 bg-gray-100 border-b border-gray-200">
+                      <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">
+                        {isDone ? 'Mail Content — locked (round is Done/Cancelled)' : 'Edit & Send Mail'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => mailModal.round && fetchPreview(mailModal.tab, mailModal.round, mailModal.type, mailModal.reason)}
+                        disabled={mailModal.loadingPreview}
+                        className="flex items-center gap-1 text-[11px] font-semibold text-gray-500 hover:text-lime-600 disabled:opacity-50 transition"
+                        title="Regenerate from the current round details (e.g. after changing the cancellation reason)"
+                      >
+                        <RefreshCw size={11} className={mailModal.loadingPreview ? 'animate-spin' : ''} /> Regenerate
+                      </button>
+                    </div>
+
+                    {!current && mailModal.loadingPreview && (
+                      <p className="text-sm text-gray-400 italic p-4">Loading mail content…</p>
+                    )}
+                    {!current && !mailModal.loadingPreview && mailModal.previewError && (
+                      <p className="text-sm text-red-500 p-4">
+                        Couldn't load mail content: {mailModal.previewError}. Click Regenerate to retry.
+                      </p>
+                    )}
+                    {current && (
+                      <div className="p-3 space-y-2.5 bg-white">
+                        <div>
+                          <label className="text-[11px] text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">To</label>
+                          <input
+                            value={current.to}
+                            onChange={(e) => updateMailContent(mailModal.tab, 'to', e.target.value)}
+                            readOnly={isDone}
+                            placeholder={mailModal.tab === 'interviewer' ? "Interviewer's email" : "Candidate's email"}
+                            className={fieldClass(!isDone)}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">CC (optional)</label>
+                          <input
+                            value={current.cc}
+                            onChange={(e) => updateMailContent(mailModal.tab, 'cc', e.target.value)}
+                            readOnly={isDone}
+                            placeholder="cc1@company.com, cc2@company.com"
+                            className={fieldClass(!isDone)}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">Subject</label>
+                          <input
+                            value={current.subject}
+                            onChange={(e) => updateMailContent(mailModal.tab, 'subject', e.target.value)}
+                            readOnly={isDone}
+                            className={fieldClass(!isDone)}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">Body</label>
+                          <textarea
+                            value={current.body}
+                            onChange={(e) => updateMailContent(mailModal.tab, 'body', e.target.value)}
+                            readOnly={isDone}
+                            rows={10}
+                            className={`${fieldClass(!isDone)} resize-y`}
+                          />
+                          {mailModal.tab === 'candidate' && mailModal.type !== 'cancel' && (
+                            <p className="text-[11px] text-gray-400 mt-1">
+                              A Yes / Maybe / Can't-attend confirmation block is added automatically below this message.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="flex justify-end gap-2 px-5 py-3.5 border-t bg-gray-50 rounded-b-2xl flex-wrap">
@@ -579,6 +789,74 @@ const InterviewRoundTab = ({
                   : mailModal.sentTabs.includes(mailModal.tab)
                     ? <><Check size={14} /> Sent</>
                     : <><Send size={14} /> Send</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Rejection mail — shown when any round is Not Recommended ── */}
+      {rejectionModal.open && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setRejectionModal((m) => ({ ...m, open: false }))}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3.5 border-b rounded-t-2xl bg-red-700">
+              <p className="text-sm font-bold text-white">Send Rejection Mail</p>
+              <button onClick={() => setRejectionModal((m) => ({ ...m, open: false }))} className="text-white/70 hover:text-white transition"><X size={16} /></button>
+            </div>
+
+            <div className="p-5 space-y-2.5">
+              {rejectionModal.loading ? (
+                <p className="text-sm text-gray-400 italic">Loading…</p>
+              ) : rejectionModal.error && !rejectionModal.subject ? (
+                <p className="text-sm text-red-500">{rejectionModal.error}</p>
+              ) : (
+                <>
+                  <div>
+                    <label className="text-[11px] text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">To</label>
+                    <input
+                      value={rejectionModal.to}
+                      onChange={(e) => setRejectionModal((m) => ({ ...m, to: e.target.value }))}
+                      className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">CC (optional)</label>
+                    <input
+                      value={rejectionModal.cc}
+                      onChange={(e) => setRejectionModal((m) => ({ ...m, cc: e.target.value }))}
+                      placeholder="cc1@company.com, cc2@company.com"
+                      className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">Subject</label>
+                    <input
+                      value={rejectionModal.subject}
+                      onChange={(e) => setRejectionModal((m) => ({ ...m, subject: e.target.value }))}
+                      className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">Body</label>
+                    <textarea
+                      value={rejectionModal.body}
+                      onChange={(e) => setRejectionModal((m) => ({ ...m, body: e.target.value }))}
+                      rows={10}
+                      className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-red-400"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 px-5 py-3.5 border-t bg-gray-50 rounded-b-2xl">
+              <button onClick={() => setRejectionModal((m) => ({ ...m, open: false }))} className="px-3 py-1.5 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition">Cancel</button>
+              <button
+                onClick={sendRejectionMail}
+                disabled={rejectionModal.sending || rejectionModal.loading || !rejectionModal.subject}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 rounded-lg transition"
+              >
+                {rejectionModal.sending ? <><Loader2 size={14} className="animate-spin" /> Sending...</> : <><Send size={14} /> Send</>}
               </button>
             </div>
           </div>

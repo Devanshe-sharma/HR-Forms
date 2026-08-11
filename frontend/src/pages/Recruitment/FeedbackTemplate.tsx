@@ -195,7 +195,7 @@ export const TemplateModal = ({ open, onClose, onInsert, screenerName, existingT
   };
 
   const labelSx = {
-    fontSize: "0.72rem", fontWeight: 700, color: "#5a6a85",
+    fontSize: "0.72rem", fontWeight: 700, color: "#1a1a2e",
     textTransform: "uppercase", letterSpacing: 0.5, mb: 0.5,
   };
 

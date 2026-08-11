@@ -21,7 +21,7 @@ export interface InterviewRound {
   candidateConfirmation: string;
   note:                  string;
   feedback:              string;
-  result:                string;
+  interviewerFeedbackStatus: string;
 }
 
 export interface FinalDecision {
@@ -67,6 +67,7 @@ export interface ApplicantRecord {
   screenerNotes:   string;
   // Stage 2 — Interview Round
   interviewRounds: InterviewRound[];
+  interviewFinalStatus: string;
   // Stage 3 — Offer & Placement
   finalDecision:   FinalDecision;
   createdAt:       string;
@@ -98,23 +99,39 @@ export const STAGE_OPTIONS = [
   'Assessment (if any)', 'CEO Round', 'MD Round',
 ];
 
-export const RESULT_OPTIONS  = ['Selected', 'Rejected', 'Pending', 'On Hold'];
 export const MODE_OPTIONS    = ['Virtual', 'Face-to-Face (F2F)', 'Phone Call', 'Not Decided Yet'];
 export const DECISION_OPTIONS = ['Pending', 'Offer Made', 'Rejected', 'On Hold', 'Candidate Withdrew'];
 
-export const RESULT_COLORS: Record<string, string> = {
-  Selected:  'bg-green-100   text-green-700',
-  Rejected:  'bg-red-100     text-red-700',
-  Pending:   'bg-gray-100    text-gray-600',
-  'On Hold': 'bg-yellow-100  text-yellow-700',
-};
-
-export const SCHEDULING_STATUS_OPTIONS = ['Scheduled', 'Rescheduled', 'Cancelled'];
+export const SCHEDULING_STATUS_OPTIONS = ['Scheduled', 'Rescheduled', 'Done', 'Cancelled'];
 
 export const SCHEDULING_STATUS_COLORS: Record<string, string> = {
   Scheduled:   'bg-blue-100   text-blue-700',
   Rescheduled: 'bg-orange-100 text-orange-700',
+  Done:        'bg-green-100  text-green-700',
   Cancelled:   'bg-red-100    text-red-700',
+};
+
+// Overall outcome of the interview stage — distinct from any single
+// round's scheduling state or the interviewer's own feedback on a round.
+export const INTERVIEW_FINAL_STATUS_OPTIONS = ['In Progress', 'Shortlisted', 'Rejected'];
+
+export const INTERVIEW_FINAL_STATUS_COLORS: Record<string, string> = {
+  'In Progress': 'bg-blue-100   text-blue-700',
+  Shortlisted:   'bg-green-100  text-green-700',
+  Rejected:      'bg-red-100    text-red-700',
+};
+
+// The interviewer's own recommendation/priority ranking for a round —
+// feeds into what interviewFinalStatus is allowed to be set to.
+export const INTERVIEWER_FEEDBACK_STATUS_OPTIONS = [
+  'Recommended as P1', 'Recommended as P2', 'Not Recommended', 'Candidate on Hold',
+];
+
+export const INTERVIEWER_FEEDBACK_STATUS_COLORS: Record<string, string> = {
+  'Recommended as P1':  'bg-green-100  text-green-700',
+  'Recommended as P2':  'bg-lime-100   text-lime-700',
+  'Not Recommended':    'bg-red-100    text-red-700',
+  'Candidate on Hold':  'bg-yellow-100 text-yellow-700',
 };
 
 // Set manually by HR, or by the candidate clicking Yes/Maybe/Can't-attend
