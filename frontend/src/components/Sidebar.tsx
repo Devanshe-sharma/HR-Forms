@@ -174,6 +174,7 @@ export default function Sidebar() {
         // { to: '/requisition', text: 'Requisitions', icon: <AssignmentIcon /> },
         { to: '/new-hiring-requisition', text: 'New Requisition', icon: <RequestPageIcon /> },
         { to: '/applicants', text: 'Candidate Management', icon: <PeopleIcon /> },
+        { to: '/referrals', text: 'Referrals', icon: <PeopleIcon /> },
       ],
     },
 

@@ -5,6 +5,8 @@ import HRDashboard from "./pages/HRDashboard";
 import OutsiderDashboard from "./pages/outsider/OutsiderDashboard";
 import CareersPage from "./pages/outsider/Careerspage";
 import CandidateApplicationPage from "./pages/Recruitment/CandidateApplication";
+import ReferCandidatePage from "./pages/outsider/ReferCandidate";
+import ReferralsList from "./pages/Recruitment/ReferralsList";
 import EmployeeLetter from "./pages/EmployeeLetter";
 import Profile from "./pages/Profile";
 import Configuration from "./pages/Configruation";
@@ -56,6 +58,7 @@ export default function App() {
         <Route path="/outsider-dashboard" element={<OutsiderDashboard />} />
         <Route path="/careers" element={<CareersPage />} />
         <Route path="/candidate-application" element={<CandidateApplicationPage />} />
+        <Route path="/refer/:requisitionId" element={<ReferCandidatePage />} />
 
         {/* Protected Routes */}
         <Route element={<ProtectedRoute />}>
@@ -72,6 +75,7 @@ export default function App() {
           <Route path="/candidates" element={<ComingSoon />} />
           <Route path="/applicants" element={<AllApplicants />} />
           <Route path="/recruitment/applicants" element={<AllApplicants />} />
+          <Route path="/referrals" element={<ReferralsList />} />
           <Route path="/new-hiring-requisition" element={<NewRequisitionForm />} />
           <Route path="/recruitment/new" element={<NewRequisitionForm />} />
           <Route path="/recruitment/update/:id" element={<UpdateRequisition />} />

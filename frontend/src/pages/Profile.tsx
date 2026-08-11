@@ -28,24 +28,11 @@ import {
   Article as LetterIcon,
   FolderOpen as OnboardingIcon,
 } from '@mui/icons-material';
-import { getRole } from '../config/rbac';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
-const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL;
-
-// Same key ProtectedRoute writes to after a real, signature-verified
-// check against Onboarding — this is the one trustworthy source of "who
-// is this" in the app. Nothing else should be guessing at identity from
-// scattered localStorage keys.
-const SESSION_KEY = 'verifiedEmployee';
-
-interface VerifiedEmployee {
-  name: string;
-  officialEmail: string;
-  dept: string;
-  designation: string;
-}
+const API_URL = process.env.REACT_APP_API_URL || '/api';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 interface UserProfile {
@@ -201,58 +188,47 @@ export default function Profile() {
   const [tabValue, setTabValue] = useState(0);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const navigate = useNavigate();
-  const currentRole = getRole();
+  const { user, logout } = useAuth();
+  const currentRole = user?.role ?? null;
 
-  useEffect(() => { fetchUserProfile(); }, []);
+  useEffect(() => { fetchUserProfile(); }, [user]);
 
   const fetchUserProfile = async () => {
+    if (!user) return; // ProtectedRoute guarantees a logged-in user reaches this page
+
     try {
       setLoading(true);
       setErrorMsg(null);
 
-      // The ONLY trustworthy identity in this app is whatever
-      // ProtectedRoute actually verified via a signed link against
-      // Onboarding — never re-derive identity from scattered
-      // localStorage/JWT guessing here, since that's exactly what let
-      // people view arbitrary profiles by editing the URL.
-      const cached = sessionStorage.getItem(SESSION_KEY);
-      if (!cached) {
-        setErrorMsg('No verified session found. Please use your onboarding link to access your profile.');
-        setUserProfile(null);
-        setVerifiedEmail(null);
-        return;
-      }
-
-      const verified: VerifiedEmployee = JSON.parse(cached);
-      setVerifiedEmail(verified.officialEmail);
-
-      // Start from the already-verified fields immediately, then enrich
-      // with fuller details from the employee record if available.
+      // Start from the already-authenticated session fields immediately,
+      // then enrich with fuller HR details from the employee record if one
+      // exists (Admin/HR-only accounts may have no matching Employee row).
       setUserProfile({
-        full_name: verified.name,
-        official_email: verified.officialEmail,
-        department: verified.dept,
-        designation: verified.designation,
+        full_name: user.name,
+        official_email: user.email,
       });
 
-      const res = await axios.get(`${API_BASE}/employees`, {
-        params: { email: verified.officialEmail },
+      const res = await axios.get(`${API_URL}/employees`, {
+        params: { email: user.email },
       });
 
       if (res.data?.success && res.data.data?.length > 0) {
-        // Merge rather than replace, so verified fields never get
-        // silently overwritten by a stale/incomplete record on the
-        // other side.
+        // Merge rather than replace, so session fields never get silently
+        // overwritten by a stale/incomplete record on the other side.
         setUserProfile((prev) => ({ ...prev, ...res.data.data[0] }));
       }
     } catch (err: any) {
-      setErrorMsg('Could not load full profile details from the server — showing what was verified.');
+      setErrorMsg('Could not load full profile details from the server — showing what was available.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login', { replace: true });
   };
 
   const getRoleColor = (role: string | null) => {
@@ -274,15 +250,13 @@ export default function Profile() {
     </Box>
   );
 
-  // No verified session at all — don't show anyone's data, demo or
-  // otherwise. Direct them back to a real link instead.
-  if (!verifiedEmail || !userProfile) {
+  // ProtectedRoute already guarantees a logged-in user by the time this
+  // page renders; this is just a defensive fallback for the brief instant
+  // before that context settles.
+  if (!user || !userProfile) {
     return (
-      <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#F8F9FB', gap: 2, px: 3, textAlign: 'center' }}>
-        <Typography fontWeight={700} fontSize="1.1rem" color="#1A1F36">No verified session found</Typography>
-        <Typography color="#6B7280" fontSize="0.85rem" maxWidth={420}>
-          {errorMsg || 'Please open your profile using the personal link sent to you, rather than navigating here directly.'}
-        </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#F8F9FB' }}>
+        <CircularProgress size={40} thickness={5} sx={{ color: '#3F6FE8' }} />
       </Box>
     );
   }
@@ -299,15 +273,15 @@ export default function Profile() {
           <Typography fontWeight="800" fontSize="0.95rem" letterSpacing={0.5} color="#1A1F36">HR PORTAL</Typography>
         </Stack>
         <Stack direction="row" spacing={1} alignItems="center">
-          {/* Green pill confirms whose VERIFIED profile is loaded */}
+          {/* Confirms whose logged-in session this is */}
           <Chip
             icon={<CheckCircleIcon sx={{ fontSize: 14, color: '#059669 !important' }} />}
-            label={verifiedEmail}
+            label={user.email}
             size="small"
             sx={{ bgcolor: '#ECFDF5', color: '#059669', fontWeight: 600, fontSize: '0.72rem', border: '1px solid #A7F3D0' }}
           />
           <Button startIcon={<SettingsIcon />} size="small" onClick={() => navigate('/configuration')} sx={{ color: '#6B7280', textTransform: 'none', fontWeight: 600, fontSize: '0.82rem' }}>Configuration</Button>
-          <Button startIcon={<ExitIcon />} size="small" color="error" onClick={() => navigate('/logout')} sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.82rem' }}>Logout</Button>
+          <Button startIcon={<ExitIcon />} size="small" color="error" onClick={handleLogout} sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.82rem' }}>Logout</Button>
         </Stack>
       </Box>
 

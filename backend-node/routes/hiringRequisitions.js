@@ -2,7 +2,7 @@ const express           = require('express');
 const { parse: parseCsv } = require('csv-parse/sync');
 const router            = express.Router();
 const HiringRequisition = require('../models/HiringRequisition');
-const { triggerNewRequisition, triggerUpdateRequisition } = require('../emails');
+const { triggerNewRequisition, triggerUpdateRequisition, triggerReferralInvite } = require('../emails');
 
 // hiring_status values that mean this requisition is over — regardless
 // of whether every checklist task got ticked. "On Hold" doesn't mean
@@ -783,6 +783,11 @@ router.patch('/:id/approve', async (req, res) => {
     // every task from "Awaiting Approval" into its real Pending/Overdue/
     // Not Yet Due state in one atomic step.
     const rescored = await rescoreAndSave(doc._id);
+
+    // Fire-and-forget — ask the whole company for referrals now that this
+    // role is actually approved and open, not at raw creation time (which
+    // would blast the company for requisitions that get killed pre-approval).
+    triggerReferralInvite(rescored);
 
     res.json({ success: true, data: rescored, shiftDays });
   } catch (err) {

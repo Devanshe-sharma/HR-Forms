@@ -9,4 +9,6 @@ module.exports = {
   triggerNewRequisition:        require("./triggers/triggerNewRequisition"),
   triggerUpdateRequisition:     require("./triggers/triggerUpdateRequisition"),
   triggerDailyApplicantSummary: require("./triggers/triggerDailyApplicantSummary"),
+  triggerReferralInvite:        require("./triggers/triggerReferralInvite"),
+  triggerReferralSubmitted:     require("./triggers/triggerReferralSubmitted"),
 };

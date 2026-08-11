@@ -102,6 +102,7 @@ app.use('/api/growth',             require('./routes/growth'));
 app.use('/api',                    require('./routes/sheetWebhook'));
 app.use('/api/sync',               require('./routes/syncFms'));
 app.use('/api/candidate-applications', require('./routes/candidateApplications'));
+app.use('/api/referrals', require('./routes/referrals'));
 app.use('/api/rbac', require('./routes/rbac'));
 app.use('/api/geo', geoRoutes);
 app.use("/api/kpi", require("./routes/kpiRoutes"));

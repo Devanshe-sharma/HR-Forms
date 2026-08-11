@@ -9,6 +9,18 @@ const Employee = require('../models/Employee');
 
 router.get('/', async (req, res) => {
   try {
+    if (req.query.email) {
+      const email = String(req.query.email).trim();
+      const employees = await Employee.find({
+        isArchived: { $ne: true },
+        $or: [
+          { official_email: new RegExp(`^${email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+          { personal_email: new RegExp(`^${email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        ],
+      });
+      return res.json({ success: true, data: employees });
+    }
+
     if (req.query.lightweight === 'true') {
       const employees = await Employee.find({ isArchived: { $ne: true } })
         .select('_id full_name department designation official_email score')
