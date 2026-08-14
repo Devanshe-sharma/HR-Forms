@@ -8,6 +8,7 @@ import CandidateApplicationPage from "./pages/Recruitment/CandidateApplication";
 import ReferCandidatePage from "./pages/outsider/ReferCandidate";
 import ReferralsList from "./pages/Recruitment/ReferralsList";
 import InterviewFeedbackPage from "./pages/outsider/InterviewFeedback";
+import ForceChangePasswordPage from "./pages/ForceChangePassword";
 import EmployeeLetter from "./pages/EmployeeLetter";
 import Profile from "./pages/Profile";
 import Configuration from "./pages/Configruation";
@@ -64,6 +65,7 @@ export default function App() {
 
         {/* Protected Routes */}
         <Route element={<ProtectedRoute />}>
+          <Route path="/force-change-password" element={<ForceChangePasswordPage />} />
           <Route path="/hr-dashboard" element={<HRDashboard />} />
           <Route path="/employee-letters" element={<EmployeeLetter />} />
           <Route path="/salary-revision" element={<SalaryRevisionNew />} />

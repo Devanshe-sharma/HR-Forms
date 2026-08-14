@@ -16,6 +16,10 @@ const UserSchema = new mongoose.Schema(
     employeeId: { type: String, default: null },
     isActive: { type: Boolean, default: true },
     lastLoginAt: { type: Date, default: null },
+    // Set true for accounts created with a shared/temporary password (e.g.
+    // the onboarding bulk-import script) — forces a real password before
+    // the account can be used anywhere else in the app.
+    mustChangePassword: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

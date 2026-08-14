@@ -51,6 +51,7 @@ interface SubItem {
   to: string;
   text: string;
   icon: React.ReactNode;
+  pageKey?: string;
 }
 
 interface ParentItem {
@@ -170,11 +171,11 @@ export default function Sidebar() {
       open: openRecruitment,
       pageKey: 'recruitment',
       subItems: [
-        { to: '/recruitment', text: 'Recruitment Dashboard', icon: <DashboardIcon /> },
+        { to: '/recruitment', text: 'Recruitment Dashboard', icon: <DashboardIcon />, pageKey: 'recruitment.dashboard' },
         // { to: '/requisition', text: 'Requisitions', icon: <AssignmentIcon /> },
-        { to: '/new-hiring-requisition', text: 'New Requisition', icon: <RequestPageIcon /> },
-        { to: '/applicants', text: 'Candidate Management', icon: <PeopleIcon /> },
-        { to: '/referrals', text: 'Referrals', icon: <PeopleIcon /> },
+        { to: '/new-hiring-requisition', text: 'New Requisition', icon: <RequestPageIcon />, pageKey: 'recruitment.newRequisition' },
+        { to: '/applicants', text: 'Candidate Management', icon: <PeopleIcon />, pageKey: 'recruitment.candidates' },
+        { to: '/referrals', text: 'Referrals', icon: <PeopleIcon />, pageKey: 'recruitment.referrals' },
       ],
     },
 
@@ -185,9 +186,9 @@ export default function Sidebar() {
       open: openOnboarding,
       pageKey: 'onboarding',
       subItems: [
-        { to: '/onboarding/dashboard', text: 'Onboarding Dashboard', icon: <DashboardIcon /> },
-        { to: '/new-onboarding', text: 'New Onboarding', icon: <PersonAddAltIcon /> },
-        { to: '/onboarding/update', text: 'Update Onboarding', icon: <EditNoteIcon /> },
+        { to: '/onboarding/dashboard', text: 'Onboarding Dashboard', icon: <DashboardIcon />, pageKey: 'onboarding.dashboard' },
+        { to: '/new-onboarding', text: 'New Onboarding', icon: <PersonAddAltIcon />, pageKey: 'onboarding.new' },
+        { to: '/onboarding/update', text: 'Update Onboarding', icon: <EditNoteIcon />, pageKey: 'onboarding.update' },
       ],
     },
     {
@@ -197,9 +198,9 @@ export default function Sidebar() {
       open: openExit,
       pageKey: 'exit',
       subItems: [
-        { to: '/exits', text: 'Exit Dashboard', icon: <DashboardIcon /> },
-        { to: '/new-exit', text: 'New Exit', icon: <PersonAddAltIcon /> },
-        { to: '/exits/update', text: 'Update Exit', icon: <EditNoteIcon /> },
+        { to: '/exits', text: 'Exit Dashboard', icon: <DashboardIcon />, pageKey: 'exit.dashboard' },
+        { to: '/new-exit', text: 'New Exit', icon: <PersonAddAltIcon />, pageKey: 'exit.new' },
+        { to: '/exits/update', text: 'Update Exit', icon: <EditNoteIcon />, pageKey: 'exit.update' },
       ],
     },
     { to: '/dept-designation-master', text: 'Dept & Designation Master', icon: <BusinessCenterIcon />, pageKey: 'deptDesignationMaster' },
@@ -213,11 +214,11 @@ export default function Sidebar() {
       open: openTrainings,
       pageKey: 'trainings',
       subItems: [
-        { to: '/training-page?tab=HR', text: 'HR', icon: <PeopleIcon /> },
-        { to: '/training-page?tab=manager', text: 'Managers', icon: <AssignmentIcon /> },
-        { to: '/training-page?tab=management', text: 'Management', icon: <ApprovalIcon /> },
-        { to: '/training-page?tab=employee', text: 'Employee', icon: <AssignmentIcon /> },
-        { to: '/training-page?tab=scorecard', text: 'Scorecard', icon: <EmojiEventsIcon /> },
+        { to: '/training-page?tab=HR', text: 'HR', icon: <PeopleIcon />, pageKey: 'trainings.hr' },
+        { to: '/training-page?tab=manager', text: 'Managers', icon: <AssignmentIcon />, pageKey: 'trainings.manager' },
+        { to: '/training-page?tab=management', text: 'Management', icon: <ApprovalIcon />, pageKey: 'trainings.management' },
+        { to: '/training-page?tab=employee', text: 'Employee', icon: <AssignmentIcon />, pageKey: 'trainings.employee' },
+        { to: '/training-page?tab=scorecard', text: 'Scorecard', icon: <EmojiEventsIcon />, pageKey: 'trainings.scorecard' },
       ],
     },
 
@@ -228,11 +229,11 @@ export default function Sidebar() {
       open: openOuting,
       pageKey: 'outings',
       subItems: [
-        { to: '/outing?tab=HR', text: 'HR Outing', icon: <PeopleIcon /> },
-        { to: '/outing?tab=management', text: 'Management Approvals', icon: <BusinessCenterIcon /> },
-        { to: '/outing?tab=outings-view', text: 'Scheduled & Completed', icon: <EventIcon /> },
-        { to: '/outing?tab=employee-feedback', text: 'Employee Feedback', icon: <AssignmentIcon /> },
-        { to: '/outing?tab=scorecard', text: 'Outing Scorecard', icon: <ScoreIcon /> },
+        { to: '/outing?tab=HR', text: 'HR Outing', icon: <PeopleIcon />, pageKey: 'outings.hr' },
+        { to: '/outing?tab=management', text: 'Management Approvals', icon: <BusinessCenterIcon />, pageKey: 'outings.management' },
+        { to: '/outing?tab=outings-view', text: 'Scheduled & Completed', icon: <EventIcon />, pageKey: 'outings.view' },
+        { to: '/outing?tab=employee-feedback', text: 'Employee Feedback', icon: <AssignmentIcon />, pageKey: 'outings.feedback' },
+        { to: '/outing?tab=scorecard', text: 'Outing Scorecard', icon: <ScoreIcon />, pageKey: 'outings.scorecard' },
       ],
     },
 
@@ -248,10 +249,10 @@ export default function Sidebar() {
       open: openPMS,
       pageKey: 'pms',
       subItems: [
-        { to: '/pms?tab=kpi', text: 'KPI & Targets', icon: <KpiIcon /> },
-        { to: '/pms?tab=hygiene', text: 'Hygiene Factors', icon: <HygieneIcon /> },
-        { to: '/pms?tab=growth', text: 'Growth', icon: <GrowthIcon /> },
-        { to: '/pms?tab=summary', text: 'Final Performance', icon: <SummaryIcon /> },
+        { to: '/pms?tab=kpi', text: 'KPI & Targets', icon: <KpiIcon />, pageKey: 'pms.kpi' },
+        { to: '/pms?tab=hygiene', text: 'Hygiene Factors', icon: <HygieneIcon />, pageKey: 'pms.hygiene' },
+        { to: '/pms?tab=growth', text: 'Growth', icon: <GrowthIcon />, pageKey: 'pms.growth' },
+        { to: '/pms?tab=summary', text: 'Final Performance', icon: <SummaryIcon />, pageKey: 'pms.summary' },
       ],
     },
 
@@ -264,9 +265,9 @@ export default function Sidebar() {
       open: openAttendance,
       pageKey: 'hygieneFactors',
       subItems: [
-        { to: '/attendance?tab=out-of-office', text: 'Out of Office', icon: <WorkOffIcon /> },
-        { to: '/attendance?tab=attendance', text: 'Attendance', icon: <TodayIcon /> },
-        { to: '/attendance?tab=leaves', text: 'Leaves', icon: <BeachAccessIcon /> },
+        { to: '/attendance?tab=out-of-office', text: 'Out of Office', icon: <WorkOffIcon />, pageKey: 'hygieneFactors.outOfOffice' },
+        { to: '/attendance?tab=attendance', text: 'Attendance', icon: <TodayIcon />, pageKey: 'hygieneFactors.attendance' },
+        { to: '/attendance?tab=leaves', text: 'Leaves', icon: <BeachAccessIcon />, pageKey: 'hygieneFactors.leaves' },
       ],
     },
 
@@ -358,7 +359,8 @@ export default function Sidebar() {
       >
         {menuItems.filter(item => !item.pageKey || canViewKey(item.pageKey)).map(item => {
           if ('subItems' in item) {
-            const isParentActive = item.subItems.some(sub => isActive(sub.to));
+            const visibleSubItems = item.subItems.filter(sub => !sub.pageKey || canViewKey(sub.pageKey));
+            const isParentActive = visibleSubItems.some(sub => isActive(sub.to));
             return (
               <Box key={item.text} sx={{ mb: 0.5 }}>
                 <ListItemButton
@@ -422,7 +424,7 @@ export default function Sidebar() {
                   easing="cubic-bezier(0.4, 0, 0.2, 1)"
                 >
                   <List disablePadding>
-                    {item.subItems.map((sub, index) => {
+                    {visibleSubItems.map((sub, index) => {
                       const active = isActive(sub.to);
                       return (
                         <ListItemButton

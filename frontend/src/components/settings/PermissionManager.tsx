@@ -8,7 +8,7 @@
  * Usage: drop inside your existing Configuration.tsx System TabPanel.
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { Fragment, useState, useCallback, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -198,6 +198,9 @@ function defaultPageVisibility(): PageVisibilityState {
     state[role] = {};
     for (const page of PAGES) {
       state[role][page.key] = true;
+      for (const sub of page.subPages ?? []) {
+        state[role][sub.key] = true;
+      }
     }
   }
   return state;
@@ -594,18 +597,38 @@ export default function PermissionManager() {
           </TableHead>
           <TableBody>
             {PAGES.map((page) => (
-              <TableRow key={page.key} hover>
-                <TableCell sx={{ fontSize: '13px' }}>{page.label}</TableCell>
-                {VISIBILITY_ROLES.map((role) => (
-                  <TableCell key={role} align="center">
-                    <Checkbox
-                      size="small"
-                      checked={pageVisibility[role]?.[page.key] ?? true}
-                      onChange={() => handleToggleVisibility(role, page.key)}
-                    />
-                  </TableCell>
+              <Fragment key={page.key}>
+                <TableRow hover>
+                  <TableCell sx={{ fontSize: '13px' }}>{page.label}</TableCell>
+                  {VISIBILITY_ROLES.map((role) => (
+                    <TableCell key={role} align="center">
+                      <Checkbox
+                        size="small"
+                        checked={pageVisibility[role]?.[page.key] ?? true}
+                        onChange={() => handleToggleVisibility(role, page.key)}
+                      />
+                    </TableCell>
+                  ))}
+                </TableRow>
+                {page.subPages?.map((sub) => (
+                  <TableRow key={sub.key} hover sx={{ bgcolor: 'action.hover' }}>
+                    <TableCell sx={{ fontSize: '12px', color: 'text.secondary', pl: 4 }}>{sub.label}</TableCell>
+                    {VISIBILITY_ROLES.map((role) => {
+                      const parentVisible = pageVisibility[role]?.[page.key] ?? true;
+                      return (
+                        <TableCell key={role} align="center">
+                          <Checkbox
+                            size="small"
+                            checked={parentVisible && (pageVisibility[role]?.[sub.key] ?? true)}
+                            disabled={!parentVisible}
+                            onChange={() => handleToggleVisibility(role, sub.key)}
+                          />
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
                 ))}
-              </TableRow>
+              </Fragment>
             ))}
           </TableBody>
         </Table>

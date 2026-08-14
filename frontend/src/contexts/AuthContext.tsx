@@ -9,6 +9,7 @@ export interface AuthUser {
   email: string;
   role: string;
   employeeId?: string | null;
+  mustChangePassword?: boolean;
 }
 
 interface AuthContextType {
@@ -18,6 +19,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<AuthUser>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -116,9 +118,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setUser(null);
   };
 
+  // Re-pulls /auth/me — used right after changing a forced temporary
+  // password, so the mustChangePassword flag clears without needing a
+  // full re-login.
+  const refreshUser = async () => {
+    const res = await axios.get(`${API_URL}/auth/me`);
+    const freshUser = res.data?.user;
+    if (freshUser) {
+      setUser(freshUser);
+      localStorage.setItem('authUser', JSON.stringify(freshUser));
+      localStorage.setItem('role', freshUser.role);
+    }
+  };
+
   return (
     <AuthContext.Provider
-      value={{ user, token, isAuthenticated: !!user && !!token, isLoading, login, logout }}
+      value={{ user, token, isAuthenticated: !!user && !!token, isLoading, login, logout, refreshUser }}
     >
       {children}
     </AuthContext.Provider>

@@ -160,10 +160,16 @@ function buildDefaultCheckLists() {
 }
 
 // ─── Assign plan dates — hybrid base per group ──────────────────────────────
-// PRE-EXIT TASKS (send exit email, check references, etc.) CAN happen
-// during someone's notice period, so they're based on approvalDate + 5
-// days — counting from when HR actually reviewed the exit, not from
-// something that hasn't happened yet.
+// PRE-EXIT TASKS (send exit email, check references, etc.) happen during
+// someone's notice period, so they're based on resignationDate + 5 days —
+// a fixed, factual date that never moves. Falls back to approvalDate only
+// when resignationDate isn't on file yet.
+//
+// Deliberately NOT based on approvalDate as the primary anchor: HR may
+// approve an exit well after the person has already left (backdated/
+// retroactive paperwork), which would otherwise push PRE-EXIT's plan date
+// past EXIT-DAY/POST-EXIT's — exactly backwards, since pre-exit tasks are
+// supposed to happen before the person is actually gone.
 //
 // EXIT-DAY TASKS (sign exit form, tea party, return assets) are due ON
 // the actual last day itself — leftDate (once known) or plannedExitDate
@@ -172,25 +178,37 @@ function buildDefaultCheckLists() {
 // POST-EXIT TASKS (FnF salary, deactivate accounts, experience letter)
 // get 5 days of grace after that same anchor date to actually complete
 // the wrap-up work once the person is gone.
-function assignExitPlanDates(checkLists, approvalDate, leftDate, plannedExitDate) {
+function assignExitPlanDates(checkLists, approvalDate, leftDate, plannedExitDate, resignationDate) {
+  // "Pre" can never land after the exit day itself — a short/zero notice
+  // period (resignationDate == leftDate) would otherwise push
+  // resignationDate+5 past the exit day, which is a contradiction (you
+  // can't do pre-exit work after the person has already left). Clamped
+  // to whichever is earlier.
+  const exitDayBase = (leftDate || plannedExitDate) ? new Date(leftDate || plannedExitDate) : null;
+
   for (const list of checkLists) {
     let base, offsetDays;
 
     if (list.name === "PRE-EXIT TASKS") {
-      base = approvalDate ? new Date(approvalDate) : null;
+      base = resignationDate ? new Date(resignationDate) : (approvalDate ? new Date(approvalDate) : null);
       offsetDays = 5;
     } else if (list.name === "EXIT-DAY TASKS") {
-      base = (leftDate || plannedExitDate) ? new Date(leftDate || plannedExitDate) : null;
+      base = exitDayBase;
       offsetDays = 0;
     } else {
       // POST-EXIT TASKS
-      base = (leftDate || plannedExitDate) ? new Date(leftDate || plannedExitDate) : null;
+      base = exitDayBase;
       offsetDays = 5;
     }
 
     if (base && !isNaN(base.getTime())) {
-      const planDate = new Date(base);
+      let planDate = new Date(base);
       planDate.setDate(planDate.getDate() + offsetDays);
+
+      if (list.name === "PRE-EXIT TASKS" && exitDayBase && planDate.getTime() > exitDayBase.getTime()) {
+        planDate = new Date(exitDayBase);
+      }
+
       list.planDate = planDate;
       for (const item of list.itemsList) item.planDate = planDate;
     }
@@ -471,7 +489,7 @@ router.patch("/:id/approve", async (req, res) => {
     doc.hr_approved_at = now;
 
     const checkLists = toPlainCheckLists(doc.toObject().checkLists);
-    assignExitPlanDates(checkLists, now, doc.leftDate, doc.plannedExitDate);
+    assignExitPlanDates(checkLists, now, doc.leftDate, doc.plannedExitDate, doc.resignationDate);
 
     const today = new Date();
     let doneInTime = 0, doneButDelayed = 0, tasksOverdue = 0,
@@ -807,7 +825,7 @@ router.put("/:id", async (req, res) => {
     const resolvedJoiningDate = body.joiningDate ? new Date(body.joiningDate) : existing.joiningDate;
 
     if (isApproved) {
-      assignExitPlanDates(checkLists, existing.hr_approved_at, resolvedLeftDate, resolvedPlannedExitDate);
+      assignExitPlanDates(checkLists, existing.hr_approved_at, resolvedLeftDate, resolvedPlannedExitDate, resolvedResignationDate);
     }
 
     const today = new Date();

@@ -4,8 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { usePageVisibility } from '../contexts/PageVisibilityContext';
 
 function ProtectedRoute() {
-  const { isAuthenticated, isLoading } = useAuth();
-  const { canViewPath } = usePageVisibility();
+  const { user, isAuthenticated, isLoading } = useAuth();
+  const { canViewLocation } = usePageVisibility();
   const location = useLocation();
 
   if (isLoading) {
@@ -20,7 +20,13 @@ function ProtectedRoute() {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (location.pathname !== '/profile' && !canViewPath(location.pathname)) {
+  // Accounts created with a shared temporary password (e.g. the onboarding
+  // bulk-import) must set a real one before touching anything else.
+  if (user?.mustChangePassword && location.pathname !== '/force-change-password') {
+    return <Navigate to="/force-change-password" replace />;
+  }
+
+  if (location.pathname !== '/profile' && !canViewLocation(location.pathname, location.search)) {
     return <Navigate to="/profile" replace />;
   }
 

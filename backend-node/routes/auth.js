@@ -14,6 +14,7 @@ function toPublicUser(user) {
     email: user.email,
     role: user.role,
     employeeId: user.employeeId,
+    mustChangePassword: user.mustChangePassword,
   };
 }
 
@@ -77,6 +78,7 @@ router.post('/change-password', authenticate, asyncHandler(async (req, res) => {
   }
 
   user.passwordHash = await bcrypt.hash(newPassword, 10);
+  user.mustChangePassword = false;
   await user.save();
 
   res.json({ success: true, message: 'Password updated successfully' });

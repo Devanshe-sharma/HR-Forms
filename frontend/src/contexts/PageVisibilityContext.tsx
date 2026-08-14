@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import axios from 'axios';
 import { useAuth } from './AuthContext';
-import { VISIBILITY_ROLES, VisibilityRole, matchPageKeyForPath } from '../config/pageVisibility';
+import { VISIBILITY_ROLES, VisibilityRole, matchPageKeyForPath, matchLocation } from '../config/pageVisibility';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -11,6 +11,7 @@ type Settings = Record<VisibilityRole, VisibilityMap>;
 interface PageVisibilityContextType {
   canViewKey: (key: string) => boolean;
   canViewPath: (pathname: string) => boolean;
+  canViewLocation: (pathname: string, search: string) => boolean;
   loading: boolean;
 }
 
@@ -59,14 +60,18 @@ export const PageVisibilityProvider: React.FC<PageVisibilityProviderProps> = ({ 
     return roleSettings[key] !== false;
   };
 
-  const canViewPath = (pathname: string): boolean => {
-    const key = matchPageKeyForPath(pathname);
-    if (!key) return true; // pages not in the configurable list are always allowed
-    return canViewKey(key);
+  const canViewPath = (pathname: string): boolean => canViewLocation(pathname, '');
+
+  const canViewLocation = (pathname: string, search: string): boolean => {
+    const match = matchLocation(pathname, search);
+    if (!match) return true; // pages not in the configurable list are always allowed
+    if (!canViewKey(match.pageKey)) return false;
+    if (match.subPageKey && !canViewKey(match.subPageKey)) return false;
+    return true;
   };
 
   return (
-    <PageVisibilityContext.Provider value={{ canViewKey, canViewPath, loading }}>
+    <PageVisibilityContext.Provider value={{ canViewKey, canViewPath, canViewLocation, loading }}>
       {children}
     </PageVisibilityContext.Provider>
   );
