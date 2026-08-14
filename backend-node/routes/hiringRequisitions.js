@@ -3,6 +3,7 @@ const { parse: parseCsv } = require('csv-parse/sync');
 const router            = express.Router();
 const HiringRequisition = require('../models/HiringRequisition');
 const { triggerNewRequisition, triggerUpdateRequisition, triggerReferralInvite } = require('../emails');
+const resolveJdAndRoleLinks = require('../utils/resolveJdAndRoleLinks');
 
 // hiring_status values that mean this requisition is over — regardless
 // of whether every checklist task got ticked. "On Hold" doesn't mean
@@ -624,6 +625,35 @@ router.get('/:id', async (req, res) => {
     res.json({ success: true, data: doc });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Failed to fetch record' });
+  }
+});
+
+// GET /api/hiringrequisitions/:id/referral-info — public, unauthenticated.
+// Feeds the /refer/:requisitionId public form with just what it needs,
+// with jd_link/role_link resolved via the same Dept/Designation Master
+// fallback as the referral-invite email (resolveJdAndRoleLinks) — so a
+// requisition raised without its own JD/role doc attached still shows
+// whatever's on file for that designation, same as the email does.
+router.get('/:id/referral-info', async (req, res) => {
+  try {
+    const doc = await HiringRequisition.findById(req.params.id).lean();
+    if (!doc) return res.status(404).json({ success: false, error: 'Not found' });
+
+    const { jd_link, role_link } = await resolveJdAndRoleLinks(doc);
+
+    res.json({
+      success: true,
+      data: {
+        _id: doc._id,
+        designation: doc.designation,
+        hiring_dept: doc.hiring_dept,
+        fmsStatus: doc.fmsStatus,
+        jd_link,
+        role_link,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Failed to fetch referral info' });
   }
 });
 

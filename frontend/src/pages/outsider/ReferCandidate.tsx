@@ -10,6 +10,8 @@ type Requisition = {
   designation: string;
   hiring_dept: string;
   fmsStatus: 'Open' | 'Closed';
+  jd_link?: string;
+  role_link?: string;
 };
 
 type FormState = {
@@ -42,7 +44,7 @@ export default function ReferCandidate() {
 
   useEffect(() => {
     if (!requisitionId) { setNotFound(true); setLoading(false); return; }
-    fetch(`${API_BASE}/hiringrequisitions/${requisitionId}`)
+    fetch(`${API_BASE}/hiringrequisitions/${requisitionId}/referral-info`)
       .then((r) => r.json())
       .then((res) => {
         if (res?.success && res.data) setRequisition(res.data);
@@ -147,6 +149,20 @@ export default function ReferCandidate() {
           <p className="text-sm text-gray-500">Hiring for</p>
           <p className="text-xl font-bold text-lime-800">{requisition?.designation}</p>
           <p className="text-sm text-gray-600">{requisition?.hiring_dept}</p>
+          {(requisition?.jd_link || requisition?.role_link) && (
+            <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-gray-100">
+              {requisition?.jd_link && (
+                <a href={requisition.jd_link} target="_blank" rel="noreferrer" className="text-sm text-lime-700 underline font-medium">
+                  View Job Description
+                </a>
+              )}
+              {requisition?.role_link && (
+                <a href={requisition.role_link} target="_blank" rel="noreferrer" className="text-sm text-lime-700 underline font-medium">
+                  View Role Details
+                </a>
+              )}
+            </div>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow p-6 space-y-5">
