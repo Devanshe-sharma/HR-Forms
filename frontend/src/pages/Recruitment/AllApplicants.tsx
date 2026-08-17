@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Mail, Phone, Loader2, Eye, X, ClipboardList, CheckSquare, User, UserCheck,
-  ExternalLink, Video, Search, SlidersHorizontal, RotateCcw, ArrowUpDown, Sparkles,
+  ExternalLink, Video, Search, SlidersHorizontal, RotateCcw, ArrowUpDown, Sparkles, Lock,
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import Sidebar from '../../components/Sidebar';
@@ -101,6 +101,17 @@ const ApplicantModal = ({
 
   const roundCount = localRec.interviewRounds?.length ?? 0;
 
+  // Interview Round and Offer & Placement only open once the screening
+  // decision is Shortlisted — enforced again server-side on the routes
+  // those tabs write to, this just keeps HR from navigating there at all
+  // when it isn't relevant yet.
+  const pipelineLocked = localRec.screenerStatus !== 'Shortlisted';
+
+  useEffect(() => {
+    if (pipelineLocked && (activeTab === 'interview' || activeTab === 'offer')) setActiveTab('details');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pipelineLocked]);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
@@ -158,30 +169,37 @@ const ApplicantModal = ({
 
         {/* ── Tabs ── */}
         <div className="grid grid-cols-4 border-b px-2">
-          {TABS.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id)}
-              className={`flex items-center justify-center gap-1.5 px-2 py-3 text-xs sm:text-sm font-semibold border-b-2 transition -mb-px min-w-0 ${
-                activeTab === id
-                  ? 'border-lime-500 text-lime-700'
-                  : 'border-transparent text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              <Icon size={14} className="flex-shrink-0" />
-              <span className="truncate">{label}</span>
-              {id === 'interview' && roundCount > 0 && (
-                <span className="flex-shrink-0 bg-lime-100 text-lime-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                  {roundCount}
-                </span>
-              )}
-              {id === 'screener' && localRec.screenerStatus && (
-                <span className="flex-shrink-0 bg-lime-100 text-lime-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                  ✓
-                </span>
-              )}
-            </button>
-          ))}
+          {TABS.map(({ id, label, icon: Icon }) => {
+            const locked = pipelineLocked && (id === 'interview' || id === 'offer');
+            return (
+              <button
+                key={id}
+                onClick={() => !locked && setActiveTab(id)}
+                disabled={locked}
+                title={locked ? 'Mark the HR Round as Shortlisted to unlock this tab' : undefined}
+                className={`flex items-center justify-center gap-1.5 px-2 py-3 text-xs sm:text-sm font-semibold border-b-2 transition -mb-px min-w-0 ${
+                  locked
+                    ? 'border-transparent text-gray-300 cursor-not-allowed'
+                    : activeTab === id
+                      ? 'border-lime-500 text-lime-700'
+                      : 'border-transparent text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                {locked ? <Lock size={14} className="flex-shrink-0" /> : <Icon size={14} className="flex-shrink-0" />}
+                <span className="truncate">{label}</span>
+                {id === 'interview' && roundCount > 0 && (
+                  <span className="flex-shrink-0 bg-lime-100 text-lime-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                    {roundCount}
+                  </span>
+                )}
+                {id === 'screener' && localRec.screenerStatus && (
+                  <span className="flex-shrink-0 bg-lime-100 text-lime-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                    ✓
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* ── Tab content — scrollable ── */}

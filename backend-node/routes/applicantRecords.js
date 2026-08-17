@@ -381,6 +381,16 @@ Based on the job description above, evaluate how well this candidate fits the ro
 // ─────────────────────────────────────────────────────────────────────────────
 router.patch('/:id/screener-round', async (req, res) => {
   try {
+    const existing = await ApplicantRecord.findById(req.params.id).lean();
+    if (!existing) return err(res, 'Record not found', 404);
+
+    // Shortlisted/Rejected is a final decision — once set, this stage is
+    // locked and cannot be changed (enforced here, not just hidden in the
+    // UI, since a stale client could otherwise still PATCH around it).
+    if (existing.screenerStatus === 'Shortlisted' || existing.screenerStatus === 'Rejected') {
+      return err(res, `This screening decision is final (${existing.screenerStatus}) and cannot be changed.`, 400);
+    }
+
     const { screenerName, screenerStatus, screenerNotes } = req.body;
 
     const update = {};
@@ -481,8 +491,11 @@ router.post('/:id/rejection-mail/send', async (req, res) => {
   try {
     const { to: toOverride, cc, subject: subjectOverride, customBody } = req.body;
 
-    const record = await ApplicantRecord.findById(req.params.id).lean();
+    const record = await ApplicantRecord.findById(req.params.id);
     if (!record) return err(res, 'Record not found', 404);
+    if (record.rejectionMailSentAt) {
+      return err(res, 'Rejection mail has already been sent for this candidate.', 400);
+    }
 
     const to = toOverride || record.email;
     if (!to) return err(res, 'No candidate email on file', 400);
@@ -494,7 +507,10 @@ router.post('/:id/rejection-mail/send', async (req, res) => {
       subjectOverride, customBody,
     });
 
-    ok(res, { sentTo: to });
+    record.rejectionMailSentAt = new Date();
+    await record.save();
+
+    ok(res, { sentTo: to, record: record.toObject() });
   } catch (e) {
     console.error('[rejection-mail send] error:', e);
     err(res, 'Failed to send rejection mail');
@@ -509,6 +525,12 @@ router.post('/:id/interview-rounds', async (req, res) => {
   try {
     const record = await ApplicantRecord.findById(req.params.id);
     if (!record) return err(res, 'Record not found', 404);
+
+    // Interview rounds can only start once the screening decision is
+    // Shortlisted — same gate the Interview Round tab enforces in the UI.
+    if (record.screenerStatus !== 'Shortlisted') {
+      return err(res, 'The screening round must be marked Shortlisted before adding interview rounds.', 400);
+    }
 
     const nextRoundNumber = (record.interviewRounds.length ?? 0) + 1;
 
@@ -875,6 +897,12 @@ router.delete('/:id/interview-rounds/:roundId', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.patch('/:id/final-decision', async (req, res) => {
   try {
+    const existing = await ApplicantRecord.findById(req.params.id).lean();
+    if (!existing) return err(res, 'Record not found', 404);
+    if (existing.screenerStatus !== 'Shortlisted') {
+      return err(res, 'The screening round must be marked Shortlisted before Offer & Placement can be used.', 400);
+    }
+
     const { decision, offeredCTC, joiningDate, decisionDate, notes } = req.body;
 
     const update = {};

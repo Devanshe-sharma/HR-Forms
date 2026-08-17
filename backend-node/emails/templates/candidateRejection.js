@@ -5,19 +5,21 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;');
 }
 
-function buildDefaultBody({ candidateName, position }) {
+function buildDefaultBody({ candidateName }) {
   return [
-    `Dear ${candidateName},`,
+    `Hello ${candidateName},`,
     '',
-    `Thank you for taking the time to interview for the ${position} role with us.`,
+    'Thank you for your interest in Brisk Olive Business Solutions Pvt. Ltd. and for taking the time to interview with us.',
     '',
-    'After careful consideration, we have decided not to move forward with your application at this time.',
+    'While we were impressed with your background, we have decided to move forward with other candidates whose profiles are more closely aligned with our current requirements at this time.',
     '',
-    'We appreciate your interest in joining our team and wish you all the best in your career search.',
+    'We truly appreciate your time and effort, and we encourage you to apply for future opportunities that match your skills and experience.',
+    '',
+    'We wish you all the very best in your future endeavors...!!',
     '',
     'Regards,',
     'HR Team',
-    'Brisk Olive',
+    'Brisk Olive Business Solutions Pvt. Ltd.',
   ].join('\n');
 }
 

@@ -11,6 +11,8 @@ const { sendQuarterlyOutingApprovalRequest } = require('./emailQuarterlyOutingAp
 const { sendUpcomingOutingReminder } = require('./emailUpcomingOutingReminder');
 const sendWeeklyExitSummary = require('./senders/sendWeeklyExitSummary');
 const sendDailyApplicantSummary = require('./senders/sendDailyApplicantSummary');
+const sendWeeklyRecruitmentSummary = require('./senders/sendWeeklyRecruitmentSummary');
+const sendWeeklyOnboardingSummary = require('./senders/sendWeeklyOnboardingSummary');
 
 // Import models for auto-archive/complete
 const Outing = require('../models/Outing');
@@ -104,7 +106,30 @@ function startEmailScheduler() {
     }
   }, { timezone: tz });
 
-  // 9. Daily candidate applicant summary — 9am, covering the full
+  // 9a. Weekly Recruitment (open hiring requisitions) FMS summary —
+  // every Monday at 9am, alongside the weekly exit/onboarding summaries.
+  cron.schedule('0 9 * * 1', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending weekly recruitment summary`);
+    try {
+      const result = await sendWeeklyRecruitmentSummary();
+      console.log(`Weekly recruitment summary sent — ${result.openCount} open requisition(s)`);
+    } catch (err) {
+      console.error('Weekly recruitment summary failed:', err);
+    }
+  }, { timezone: tz });
+
+  // 9b. Weekly Onboarding FMS summary — every Monday at 9am.
+  cron.schedule('0 9 * * 1', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending weekly onboarding summary`);
+    try {
+      const result = await sendWeeklyOnboardingSummary();
+      console.log(`Weekly onboarding summary sent — ${result.openCount} open FMS(s)`);
+    } catch (err) {
+      console.error('Weekly onboarding summary failed:', err);
+    }
+  }, { timezone: tz });
+
+  // 9c. Daily candidate applicant summary — 9am, covering the full
   // previous calendar day's applications. Replaces the old immediate
   // per-application HR email (disabled in triggerCandidateApplication.js)
   // so HR gets one batched digest instead of being pinged for every

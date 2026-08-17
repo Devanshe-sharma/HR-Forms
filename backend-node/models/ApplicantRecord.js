@@ -174,6 +174,11 @@ const applicantRecordSchema = new mongoose.Schema(
 
     internalNotes: { type: String, default: '' },
 
+    // Set once the candidate rejection mail (screening or interview stage)
+    // is actually sent — a single send-once gate shared by both stages,
+    // rather than a separate flag per stage, since it's the same email.
+    rejectionMailSentAt: { type: Date, default: null },
+
     // ── AI fit analysis against the matching requisition's JD — populated
     // on demand via POST /api/applicant-records/:id/analyze, never
     // automatically. Stored here (not just on the original

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { EditField, EditSelect } from './ApplicantFieldComponents';
+import { TemplateModal } from './FeedbackTemplate';
 import {
   ApplicantRecord, InterviewRound, API_BASE,
   STAGE_OPTIONS, MODE_OPTIONS,
@@ -73,6 +74,8 @@ const RoundForm = ({
   const interviewerOptions = data.interviewer && !interviewers.some((e) => e.name === data.interviewer)
     ? [{ name: data.interviewer, designation: '' }, ...interviewers]
     : interviewers;
+
+  const [templateOpen, setTemplateOpen] = useState(false);
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-3 bg-gray-50 border-t border-dashed border-gray-200">
@@ -141,14 +144,32 @@ const RoundForm = ({
         />
       </div>
 
-      <div className="col-span-2 md:col-span-3">
-        <label className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-1 block">Remarks</label>
+      <div className="col-span-2 md:col-span-3 mt-4 pt-4 border-t border-dashed border-gray-200">
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-xs text-gray-400 font-medium uppercase tracking-wide block">Remarks</label>
+          <button
+            type="button"
+            onClick={() => setTemplateOpen(true)}
+            className="text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition"
+          >
+            {data.feedback ? 'Edit via template' : 'Use template'}
+          </button>
+        </div>
         <textarea
           value={data.feedback || ''}
           onChange={(e) => onChange('feedback', e.target.value)}
           rows={4}
           placeholder="Enter interview remarks…"
           className="w-full text-sm text-gray-800 bg-white border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-lime-400 resize-none"
+        />
+        <TemplateModal
+          open={templateOpen}
+          onClose={() => setTemplateOpen(false)}
+          onInsert={(text: string) => onChange('feedback', text)}
+          screenerName={data.interviewer || ''}
+          existingText={data.feedback || ''}
+          defaultRound={data.stage || 'Interview Round'}
+          title="Interview Feedback Template"
         />
       </div>
 
@@ -567,7 +588,7 @@ const InterviewRoundTab = ({
                 </DetailRow>
                 <DetailRow label="Note (if any)">{r.note || <span className="text-gray-400 italic">—</span>}</DetailRow>
                 <DetailRow label="Remarks">
-                  <p className="whitespace-pre-wrap">{r.feedback || <span className="text-gray-400 italic">No remarks recorded</span>}</p>
+                  <p className="whitespace-pre-wrap font-bold text-black">{r.feedback || <span className="font-normal text-gray-400 italic">No remarks recorded</span>}</p>
                 </DetailRow>
 
                 <div className="flex justify-end px-3 py-2.5 bg-gray-50">

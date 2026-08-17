@@ -661,7 +661,7 @@ router.put('/:id/pip-outcome', asyncHandler(async (req, res) => {
 // now has categoryChanged too, but Onboarding still gets the current
 // value unconditionally, same as CTC/applicable date).
 router.put('/:id/hr', asyncHandler(async (req, res) => {
-  const { notes, applicableDate, newCtc, newContractStartDate, newContractEndDate } = req.body;
+  const { notes, applicableDate, newCtc, newContractStartDate, newContractEndDate, fullTimeSince } = req.body;
 
   const revision = await SalaryRevision.findById(req.params.id);
   if (!revision) {
@@ -679,12 +679,14 @@ router.put('/:id/hr', asyncHandler(async (req, res) => {
   const appDate  = applicableDate ? new Date(applicableDate) : revision.applicableDate;
   const newCStart = newContractStartDate ? new Date(newContractStartDate) : null;
   const newCEnd   = newContractEndDate ? new Date(newContractEndDate) : null;
+  const fullTime  = fullTimeSince ? new Date(fullTimeSince) : null;
 
   revision.hrDecision = {
     newCtc        : finalCtc,
     applicableDate: appDate,
     newContractStartDate: newCStart,
     newContractEndDate  : newCEnd,
+    fullTimeSince : fullTime,
     notes         : (notes || '').trim(),
     submittedAt   : new Date(),
   };
@@ -693,6 +695,7 @@ router.put('/:id/hr', asyncHandler(async (req, res) => {
   revision.applicableDate   = appDate;
   revision.newContractStartDate = newCStart;
   revision.newContractEndDate   = newCEnd;
+  revision.fullTimeSince    = fullTime;
   revision.finalIncrementPct = revision.managementDecision?.finalPct ?? revision.finalIncrementPct ?? 0;
   revision.stage            = 'completed';
   revision.updatedBy        = caller(req);

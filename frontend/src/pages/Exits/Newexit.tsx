@@ -34,6 +34,7 @@ const EXIT_TYPE_OPTIONS = [
   "Demise",
   "Termination",
   "Asked to Leave",
+  "Absconded",
 ];
 
 // "Type of Employment" — auto-filled from the matched Onboarding record's

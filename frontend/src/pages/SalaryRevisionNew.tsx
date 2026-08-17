@@ -52,6 +52,9 @@ interface HrDecision {
   applicableDate: string | null;
   newContractStartDate: string | null;
   newContractEndDate  : string | null;
+  // Only set for PPO / intern-to-full-time conversions — see fullTimeSince
+  // on SalaryRevision below.
+  fullTimeSince: string | null;
   notes       : string;
   submittedAt : string | null;
 }
@@ -74,6 +77,11 @@ interface SalaryRevision {
   previousCtc       : number;
   newCtc            : number | null;
   finalIncrementPct : number | null;
+  // Set when this revision was a PPO/intern-to-full-time conversion — the
+  // date the employee actually became full-time. Used to anchor next
+  // year's annual review instead of the original (internship) joining
+  // date. Not set for normal annual/mid-term revisions.
+  fullTimeSince     : string | null;
   pmsScores         : PmsScore[];
   stage             : RevisionStage;
   managerDecision   : ManagerDecision;
@@ -90,6 +98,9 @@ interface SalaryRevision {
   reportingHeadChanged  : boolean;
   previousReportingHead : string;
   newReportingHead      : string | null;
+  categoryChanged       : boolean;
+  previousCategory      : string;
+  newCategory           : string | null;
   _periodStart      : Date | null;
   _periodEnd        : Date | null;
 }
@@ -190,6 +201,41 @@ const isEligible = (j: string) => {
   const now=new Date(), joined=new Date(j);
   const months=(now.getFullYear()-joined.getFullYear())*12+(now.getMonth()-joined.getMonth());
   return months>=11;
+};
+
+// The annual review "clock" doesn't always run from the original joining
+// date. Two things reset it:
+//   1. A completed revision landing in the currently-expected due month
+//      (an on-time annual review) — the next cycle then runs from THAT
+//      revision's date, not the original joining date.
+//   2. A PPO/intern-to-full-time conversion (fullTimeSince) — this always
+//      resets the anchor regardless of timing, since that's genuinely
+//      when the employee's real annual cycle starts.
+// A revision landing outside the expected month (a mid-term/off-cycle
+// adjustment) is skipped — it must NOT push next year's due date.
+const computeAnchorDate = (joiningDate: string, revisions: SalaryRevision[]): Date => {
+  const completed = revisions
+    .filter(r => r.stage === 'completed')
+    .slice()
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+  let anchor = new Date(joiningDate);
+
+  for (const rev of completed) {
+    if (rev.fullTimeSince) {
+      anchor = new Date(rev.fullTimeSince);
+      continue;
+    }
+
+    const revDate = rev.applicableDate ? new Date(rev.applicableDate) : new Date(rev.createdAt);
+    const expectedMonth = get11MonthDate(anchor.toISOString()).getMonth();
+
+    if (revDate.getMonth() === expectedMonth) {
+      anchor = revDate;
+    }
+  }
+
+  return anchor;
 };
 
 const avgPms = (scores?: PmsScore[]): number|null => {
@@ -301,9 +347,9 @@ function MonthStrip({ selMonth, selYear, onChange }: {
 
 // ─── Add Revision Modal ───────────────────────────────────────────────────────
 
-function AddRevisionModal({ open, onClose, onAdded, showToast, employees }: {
+function AddRevisionModal({ open, onClose, onAdded, showToast, employees, records }: {
   open:boolean; onClose:()=>void; onAdded:(r:SalaryRevision)=>void;
-  showToast:(m:string,t:'success'|'error')=>void; employees:Employee[];
+  showToast:(m:string,t:'success'|'error')=>void; employees:Employee[]; records:SalaryRevision[];
 }) {
   const [sel,     setSel]     = useState<Employee|null>(null);
   const [pms,     setPms]     = useState<PmsScore[]>([{ period:'', score:0 }]);
@@ -340,7 +386,9 @@ function AddRevisionModal({ open, onClose, onAdded, showToast, employees }: {
     finally { setSaving(false); }
   };
 
-  const due=sel?.joining_date?get11MonthDate(sel.joining_date):null;
+  const due = sel?.joining_date
+    ? get11MonthDate(computeAnchorDate(sel.joining_date, records.filter(r=>r.employeeCode===sel.employee_id)).toISOString())
+    : null;
 
   return (
     <Modal open={open} onClose={onClose}>
@@ -690,7 +738,39 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
     return list.find(r => new Date(r.createdAt).getFullYear() === year);
   }, [revisionMap]);
 
-  const eligibleEmps = useMemo(()=>employees.filter(e=>e.joining_date&&isEligible(e.joining_date)),[employees]);
+  // Per-employee "cycle anchor" — normally the joining date, but reset by
+  // an on-time annual revision or a PPO conversion (see computeAnchorDate).
+  // Every "due"/"eligible"/"pending" check below reads this instead of the
+  // raw joining date, so mid-term adjustments and intern→full-time
+  // conversions no longer get misjudged against the original DOJ.
+  const anchorDateMap = useMemo(() => {
+    const map = new Map<string, Date>();
+    employees.forEach(e => {
+      if (!e.joining_date) return;
+      const revs = revisionMap.get(e.employee_id) || [];
+      map.set(e.employee_id, computeAnchorDate(e.joining_date, revs));
+    });
+    return map;
+  }, [employees, revisionMap]);
+
+  const eligibleEmps = useMemo(()=>employees.filter(e=>{
+    // Interns aren't gated by the 11-month annual-review cadence — a PPO
+    // decision can come up at any point during an internship, well
+    // before 11 months, so hiding them until then would block HR from
+    // ever starting that conversion.
+    if (e.employee_category === 'Intern') return true;
+    if (!e.joining_date) return false;
+    // "Eligible as of TODAY" only matters for the Show All view. When
+    // browsing a specific month/year, isDueIn (applied below in
+    // `filtered`) already correctly checks whether that employee's due
+    // month has been reached BY THE SELECTED month/year — including
+    // months later this year that haven't happened yet. Gating on
+    // "today" here would wrongly hide someone due in an upcoming month
+    // just because today hasn't reached their 11-month mark yet.
+    if (!showAll) return true;
+    const anchor = anchorDateMap.get(e.employee_id);
+    return anchor && isEligible(anchor.toISOString());
+  }),[employees, anchorDateMap, showAll]);
 
   const allEmps = eligibleEmps;
   const depts=['All',...Array.from(new Set(allEmps.map(e=>e.department).filter(Boolean)))];
@@ -700,12 +780,16 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
   const filtered=useMemo(()=>allEmps.filter(e=>{
     if (!e.joining_date) return false;
     const rec=revisionForYear(e.employee_id, cycleYear);
-    const monthOk=showAll||isDueIn(e.joining_date,selMonth,selYear);
+    const anchor=anchorDateMap.get(e.employee_id);
+    // Interns bypass the due-month filter too — same reasoning as the
+    // eligibility gate above, they need to be findable for a PPO decision
+    // regardless of which month is currently selected.
+    const monthOk=showAll||e.employee_category==='Intern'||(!!anchor&&isDueIn(anchor.toISOString(),selMonth,selYear));
     const searchOk=!search||e.full_name.toLowerCase().includes(search.toLowerCase());
     const deptOk=dept==='All'||e.department===dept;
     const stageOk=stage==='All'?true:stage==='no_record'?!rec:rec?.stage===stage;
     return monthOk&&searchOk&&deptOk&&stageOk;
-  }),[allEmps,showAll,selMonth,selYear,search,dept,stage,cycleYear,revisionForYear]);
+  }),[allEmps,showAll,selMonth,selYear,search,dept,stage,cycleYear,revisionForYear,anchorDateMap]);
 
   const stats={
     due:filtered.length,
@@ -806,10 +890,12 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
                 )}
                 {filtered.map(emp=>{
                   const rec=revisionForYear(emp.employee_id, cycleYear);
+                  const anchor=anchorDateMap.get(emp.employee_id);
+                  const anchorIso=anchor?anchor.toISOString():emp.joining_date!;
                   const dueDate=showAll
-                    ? anniversaryDateForYear(emp.joining_date!, now.getFullYear())
-                    : anniversaryDateForYear(emp.joining_date!, selYear);
-                  const isThisMonth=isDueIn(emp.joining_date!,now.getMonth(),now.getFullYear());
+                    ? anniversaryDateForYear(anchorIso, now.getFullYear())
+                    : anniversaryDateForYear(anchorIso, selYear);
+                  const isThisMonth=isDueIn(anchorIso,now.getMonth(),now.getFullYear());
                   return (
                     <TableRow key={emp._id} onClick={()=>onSelect(emp,rec)}
                       sx={{ cursor:'pointer', '&:hover':{ bgcolor:'#f8fafc' }, borderBottom: '1px solid #f1f5f9' }}>
@@ -825,9 +911,13 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
                         {rec?.designationChanged && <Chip label="changed" size="small" sx={{ ml: 0.7, fontSize: 9, height: 16, bgcolor: '#eef2ff', color: ACCENT }}/>}
                       </TableCell>
                       <TableCell>
-                        <Typography component="span" fontSize={12} fontWeight={isThisMonth?700:400} color={isThisMonth?'#d97706':'inherit'}>
-                          {fmtDate(dueDate.toISOString())}
-                        </Typography>
+                        {emp.employee_category==='Intern' ? (
+                          <Chip label="PPO Review" size="small" sx={{ bgcolor:'#eef2ff', color:ACCENT, fontSize:10 }}/>
+                        ) : (
+                          <Typography component="span" fontSize={12} fontWeight={isThisMonth?700:400} color={isThisMonth?'#d97706':'inherit'}>
+                            {fmtDate(dueDate.toISOString())}
+                          </Typography>
+                        )}
                       </TableCell>
                       <TableCell sx={{ fontSize:12 }}>{fmtCurrency(rec?.previousCtc ?? emp.annual_ctc)}</TableCell>
                       <TableCell>
@@ -1472,6 +1562,16 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
     rec?.hrDecision?.newContractEndDate
       ? new Date(rec.hrDecision.newContractEndDate).toISOString().split('T')[0]
       : '');
+  const [hrFullTimeSince,    setHrFullTimeSince]     = useState(
+    rec?.hrDecision?.fullTimeSince
+      ? new Date(rec.hrDecision.fullTimeSince).toISOString().split('T')[0]
+      : '');
+
+  // Only relevant when this revision is a PPO / intern-to-full-time
+  // conversion — i.e. the category actually changed and the new category
+  // is a full-time Employee, converting from Intern/Contract Based.
+  const isPpoConversion = !!rec?.categoryChanged && rec?.newCategory === 'Employee'
+    && ['Intern', 'Contract Based'].includes(rec?.previousCategory || '');
 
   const [pipOutcomeChoice, setPipOutcomeChoice] = useState<'improved'|'not_improved'>('improved');
   const [pipOutcomeReason, setPipOutcomeReason] = useState('');
@@ -1569,6 +1669,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
       const payload={
         notes:hrNotes, applicableDate:hrAppDate||null, newCtc,
         newContractStartDate:hrNewContractStart||null, newContractEndDate:hrNewContractEnd||null,
+        fullTimeSince: isPpoConversion ? (hrFullTimeSince||null) : null,
       };
       const { data }=await axios.put(`${API}/${rec._id}/hr`,payload);
       if (data.success){ showToast('HR decision saved — revision completed, Onboarding updated','success'); onRecordChange(data.data); }
@@ -2076,6 +2177,13 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                   value={hrNewContractEnd} onChange={e=>setHrNewContractEnd(e.target.value)}
                   InputLabelProps={{ shrink:true }} disabled={!isHr} fullWidth/>
 
+                {isPpoConversion&&(
+                  <TextField label="Full-Time Since (PPO conversion)" type="date" size="small"
+                    value={hrFullTimeSince} onChange={e=>setHrFullTimeSince(e.target.value)}
+                    helperText="Date this intern/contract employee actually became full-time — next year's review is anchored from here, not their original joining date."
+                    InputLabelProps={{ shrink:true }} disabled={!isHr} fullWidth/>
+                )}
+
                 <TextField label="HR Notes" multiline rows={3} size="small"
                   value={hrNotes} onChange={e=>setHrNotes(e.target.value)}
                   disabled={!isHr} fullWidth/>
@@ -2096,6 +2204,11 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                     {rec?.hrDecision?.newContractStartDate&&(
                       <Typography fontSize={11} color="text.secondary" mt={0.5}>
                         New contract: {fmtDate(rec?.hrDecision?.newContractStartDate)} – {fmtDate(rec?.hrDecision?.newContractEndDate)}
+                      </Typography>
+                    )}
+                    {rec?.hrDecision?.fullTimeSince&&(
+                      <Typography fontSize={11} color="text.secondary" mt={0.5}>
+                        Full-time since: {fmtDate(rec?.hrDecision?.fullTimeSince)} — next annual review anchored from here.
                       </Typography>
                     )}
                   </Box>
@@ -2266,7 +2379,7 @@ export default function SalaryRevisionPage() {
       </div>
 
       <AddRevisionModal open={showAdd} onClose={()=>setShowAdd(false)}
-        onAdded={handleAdded} showToast={showToast} employees={employees}/>
+        onAdded={handleAdded} showToast={showToast} employees={employees} records={records}/>
     </div>
   );
 }

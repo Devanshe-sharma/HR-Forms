@@ -60,6 +60,7 @@ export interface ApplicantRecord {
   short_video_url: string;
   resume:          string;
   internalNotes:   string;
+  rejectionMailSentAt: string | null;
   status:          StatusType;
   // Stage 1 — Screener Round
   screenerName:    string;

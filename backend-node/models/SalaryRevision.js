@@ -26,6 +26,11 @@ const hrDecisionSchema = new mongoose.Schema({
   applicableDate: { type: Date,   default: null },
   newContractStartDate: { type: Date, default: null },
   newContractEndDate  : { type: Date, default: null },
+  // Only set for PPO / intern-to-full-time conversions — the date the
+  // employee actually became full-time, which is what next year's annual
+  // review anchor should be computed from, NOT applicableDate (which is
+  // just when the new CTC takes effect and can differ).
+  fullTimeSince : { type: Date,   default: null },
   notes         : { type: String, default: '' },
   submittedAt   : { type: Date,   default: null },
 }, { _id: false });
@@ -81,6 +86,11 @@ const salaryRevisionSchema = new mongoose.Schema({
   newCtc           : { type: Number, default: null },
   finalIncrementPct: { type: Number, default: null },
   applicableDate   : { type: Date,   default: null },
+
+  // Mirrors hrDecision.fullTimeSince once HR finalises — the anchor date
+  // the frontend's annual-review-due calculation uses for this employee
+  // going forward, when this revision was a PPO/intern conversion.
+  fullTimeSince    : { type: Date,   default: null },
 
   // PMS Scores
   pmsScores: { type: [pmsScoreSchema], default: [] },
