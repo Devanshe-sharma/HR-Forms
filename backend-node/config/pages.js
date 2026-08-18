@@ -20,6 +20,7 @@ const PAGE_KEYS = Object.freeze([
   'salaryRevision',
   'employeeLetters',
   'pms',
+  'escalations',
 
   // Sub-page/tab keys — flat strings, no parent/child structure here.
   // The "parentKey.subKey" naming is just for readability.

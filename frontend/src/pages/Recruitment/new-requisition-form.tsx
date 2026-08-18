@@ -10,6 +10,7 @@ import Navbar from '../../components/Navbar';
 import { Box, Typography, Button } from '@mui/material';
 import DeptModal,        { type DeptResult }            from '../Recruitment/Deptmodal';
 import DesignationModal, { type NewDesignationResult }  from '../Recruitment/Designationmodal';
+import UpdateDesignationLinksModal, { type DesignationLinksResult } from '../Recruitment/UpdateDesignationLinksModal';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Zod Schema
@@ -43,8 +44,15 @@ const schema = z.object({
   is_sim_needed:                 z.enum(['Yes', 'No'], { required_error: 'Required' }),
   sim_needed_reason:             z.string().optional(),
   is_sim_available_for_transfer: z.enum(['Yes', 'No'], { required_error: 'Required' }),
-  role_link:                  z.string().optional(),
-  jd_link:                    z.string().optional(),
+  // Deliberately required (not .optional()) rather than enforced via a
+  // cross-field .superRefine(): a refinement chained onto z.object(...)
+  // only runs once the base object parses without an "aborted" field
+  // elsewhere (e.g. an unset checklist Yes/No enum) — so a superRefine
+  // here would stay silent on this field until every other required
+  // field was already valid too. A plain per-field constraint is
+  // evaluated independently and reports immediately.
+  role_link:                  z.string().min(1, 'No Role Document is on file for this designation. Add it in Role Master before raising this requisition.'),
+  jd_link:                    z.string().min(1, 'No JD is on file for this designation. Add it in Role Master before raising this requisition.'),
 }).refine(
   (data) => data.is_sim_needed !== 'Yes' || !!data.sim_needed_reason?.trim(),
   { message: 'Please provide a reason since a SIM is needed', path: ['sim_needed_reason'] }
@@ -128,9 +136,10 @@ export default function NewRequisitionForm({ asModal = false, onSuccess, onClose
   const [desigModalOpen,  setDesigModalOpen]  = useState(false);
   const [selectedDept,    setSelectedDept]    = useState<DeptResult | null>(null);
   const [newDesigResult,  setNewDesigResult]  = useState<NewDesignationResult | null>(null);
+  const [linksModalOpen,  setLinksModalOpen]  = useState(false);
 
   const {
-    control, watch, setValue, handleSubmit, register, reset,
+    control, watch, setValue, handleSubmit, register, reset, trigger,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -226,12 +235,18 @@ export default function NewRequisitionForm({ asModal = false, onSuccess, onClose
       if (!des?.jd_link && !des?.JD_Link && !des?.['JD Link']) {
         console.log('DEBUG auto-fill — JD/Reporting Manager not found. Raw matched record:', des);
       }
+      // Surface the missing-link error immediately on selection, rather
+      // than waiting for a submit attempt — these fields are read-only
+      // auto-fills, so the user needs to know right away that Role
+      // Master itself is missing the link, before they fill out the
+      // rest of the form.
+      trigger(['role_link', 'jd_link']);
     } else if (designationType === 'new') {
       setValue('role_link', '');
       setValue('jd_link',   '');
       setValue('reporting_manager', '');
     }
-  }, [designationType, designationExisting, roleData, setValue]);
+  }, [designationType, designationExisting, roleData, setValue, trigger]);
 
   useEffect(() => {
     if (!selectJoiningDays) return;
@@ -332,6 +347,31 @@ const handleBackToDept = () => {
   setDesigModalOpen(false);
   setDeptModalOpen(true);
 };
+
+  // The currently-selected existing designation's full Role Master record —
+  // used both to show its dept_id/desig_id in the update-links modal and to
+  // patch it back into `roleData` once the links are saved.
+  const matchedExistingDesig = (designationType === 'existing' && designationExisting && roleData)
+    ? roleData.designations.find(d => d.designation === designationExisting) ?? null
+    : null;
+
+  const handleLinksSaved = (result: DesignationLinksResult) => {
+    setLinksModalOpen(false);
+    setValue('role_link', result.role_document_link);
+    setValue('jd_link',   result.jd_link);
+    trigger(['role_link', 'jd_link']);
+
+    if (matchedExistingDesig && roleData) {
+      setRoleData({
+        ...roleData,
+        designations: roleData.designations.map(d =>
+          d.dept_id === matchedExistingDesig.dept_id && d.desig_id === matchedExistingDesig.desig_id
+            ? { ...d, role_document_link: result.role_document_link, jd_link: result.jd_link }
+            : d
+        ),
+      });
+    }
+  };
 
   const handleReturnToDashboard = () => {
     if (asModal && onSuccess) {
@@ -524,6 +564,8 @@ const handleBackToDept = () => {
                           </Typography>
                         )}
                       </Box>
+                      {errors.role_link && <Typography variant="caption" color="error" display="block" mt={0.5}>{errors.role_link.message}</Typography>}
+                      {errors.jd_link && <Typography variant="caption" color="error" display="block" mt={0.5}>{errors.jd_link.message}</Typography>}
                     </Box>
                     <Button
                       size="small" variant="outlined"
@@ -559,15 +601,48 @@ const handleBackToDept = () => {
             )}
 
             {designationType === 'existing' && designationExisting && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-                <div>
-                  <label className={labelCls}>Link to Role (auto-filled)</label>
-                  <input className={inputCls} value={watch('role_link') ?? ''} disabled readOnly />
+              <div className="mb-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className={labelCls}>Link to Role (auto-filled)</label>
+                    {watch('role_link') ? (
+                      <a
+                        href={watch('role_link')}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`${inputCls} flex items-center truncate text-blue-600 hover:underline`}
+                      >
+                        {watch('role_link')}
+                      </a>
+                    ) : (
+                      <input className={inputCls} value="" disabled readOnly />
+                    )}
+                    {errors.role_link && <p className={errCls}>{errors.role_link.message}</p>}
+                  </div>
+                  <div>
+                    <label className={labelCls}>Link to JD (auto-filled)</label>
+                    {watch('jd_link') ? (
+                      <a
+                        href={watch('jd_link')}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`${inputCls} flex items-center truncate text-blue-600 hover:underline`}
+                      >
+                        {watch('jd_link')}
+                      </a>
+                    ) : (
+                      <input className={inputCls} value="" disabled readOnly />
+                    )}
+                    {errors.jd_link && <p className={errCls}>{errors.jd_link.message}</p>}
+                  </div>
                 </div>
-                <div>
-                  <label className={labelCls}>Link to JD (auto-filled)</label>
-                  <input className={inputCls} value={watch('jd_link') ?? ''} disabled readOnly />
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setLinksModalOpen(true)}
+                  className="text-xs text-blue-600 hover:text-blue-800 hover:underline mt-1.5"
+                >
+                  {(errors.role_link || errors.jd_link) ? 'Add missing link(s) →' : 'Update these links →'}
+                </button>
               </div>
             )}
 
@@ -886,6 +961,12 @@ const handleBackToDept = () => {
         onClose={() => setDesigModalOpen(false)}
         onBack={handleBackToDept}
         onSaved={handleDesignationSaved}
+      />
+      <UpdateDesignationLinksModal
+        open={linksModalOpen}
+        target={matchedExistingDesig}
+        onClose={() => setLinksModalOpen(false)}
+        onSaved={handleLinksSaved}
       />
     </div>
   );

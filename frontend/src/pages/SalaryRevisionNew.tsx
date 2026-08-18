@@ -28,6 +28,11 @@ import Navbar  from '../components/Navbar';
 
 type RevisionDecision = 'increment' | 'pip' | null;
 type RevisionStage    = 'pending_manager' | 'pending_management' | 'pending_hr' | 'completed' | 'on_hold';
+// Date-driven dashboard status — independent of RevisionStage. Due Date is
+// always 1 month before Done Date (the real anniversary/contract-end);
+// Done Date = joining + 12 months for employees, or the intern's contract
+// end date. See rowStatus in DashboardView for the exact rules.
+type Status = 'not_yet_due' | 'pending' | 'due' | 'overdue' | 'done' | 'done_delayed';
 
 interface PmsScore { period: string; score: number; }
 
@@ -353,6 +358,23 @@ function DecisionChip({ decision }: { decision: RevisionDecision }) {
       label={decision==='increment'?'Increment':'PIP'}
       sx={{ bgcolor:'#f8fafc', color, fontWeight:600, fontSize:11, border:`1px solid ${color}30`,
         '& .MuiChip-icon':{ color:'inherit', ml:'4px' } }}/>
+  );
+}
+
+const STATUS_LABEL: Record<Status,string> = {
+  not_yet_due: 'Not Yet Due', pending: 'Pending', due: 'Due',
+  overdue: 'Overdue', done: 'Done', done_delayed: 'Done Delayed',
+};
+const STATUS_COLOR: Record<Status,string> = {
+  not_yet_due: '#64748b', pending: '#eab308', due: '#d97706',
+  overdue: '#dc2626', done: '#059669', done_delayed: '#b45309',
+};
+
+function StatusChip({ status }: { status: Status }) {
+  const color = STATUS_COLOR[status];
+  return (
+    <Chip size="small" label={STATUS_LABEL[status]}
+      sx={{ bgcolor: '#f8fafc', color, fontWeight: 600, fontSize: 11, border: `1px solid ${color}30` }}/>
   );
 }
 
@@ -743,7 +765,12 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
   const [ppoOnly, setPpoOnly] = useState(false);
   const [search,   setSearch]   = useState('');
   const [dept,     setDept]     = useState('All');
-  const [stage,    setStage]    = useState('All');
+  // Kept deliberately distinct: "Status" is purely date-driven (Not Yet
+  // Due, Pending, Due, Overdue, Done, Done Delayed — see rowStatus below).
+  // "Stage" is just the binary Completed / Not Completed — useful when
+  // you don't care how urgent something is, only whether it's finished.
+  const [status,   setStatus]   = useState('All');
+  const [stageFilter, setStageFilter] = useState<'All'|'completed'|'not_completed'>('All');
   const [historyAnchor, setHistoryAnchor] = useState<{ el:HTMLElement; emp:Employee }|null>(null);
 
   // Every revision an employee has ever had, newest first (records already
@@ -769,15 +796,6 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
   const revisionForYear = useCallback((employeeId:string, year:number): SalaryRevision|undefined => {
     const list = revisionMap.get(employeeId) || [];
     return list.find(r => new Date(r.createdAt).getFullYear() === year);
-  }, [revisionMap]);
-
-  // Distinct from revisionForYear: has this employee EVER had a revision,
-  // in any year? "No Record" should mean genuinely never — someone whose
-  // only revision is from a past cycle (a real past review, or a
-  // backfilled onboarding baseline) has history, they're just due again
-  // now, which is "Pending," not "No Record."
-  const hasAnyHistory = useCallback((employeeId:string): boolean => {
-    return (revisionMap.get(employeeId) || []).length > 0;
   }, [revisionMap]);
 
   // Per-employee "cycle anchor" — normally the joining date, but reset by
@@ -924,26 +942,56 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
     });
   }, [mainTab, period, ppoOnly, completedRows, ppoRows, allEmps, selFY, selQ, customFrom, customTo, anchorDateMap, revisionForYear]);
 
-  const filtered=useMemo(()=>baseRows.filter(({ emp, rec })=>{
+  // Status is purely date-driven now — whether someone has any PRIOR
+  // history (a real past review, or a backfilled onboarding baseline)
+  // doesn't matter; only where today sits relative to this cycle's due
+  // date decides the bucket. That's what "Due Again" got wrong: someone
+  // on their very first-ever review looked identical to someone on their
+  // fifth, when only the due-date math should matter here.
+  //
+  // Done Date is the real anniversary (dueDate + 1 month — the "-1 month
+  // early" convention applies uniformly to both employees and interns,
+  // so shifting dueDate forward always recovers it, no separate
+  // computation needed).
+  const rowStatus = useCallback((rec: SalaryRevision|undefined, dueDate: Date|null): Status => {
+    if (rec?.stage === 'completed') {
+      const doneDate = dueDate ? new Date(dueDate.getFullYear(), dueDate.getMonth()+1, dueDate.getDate()) : null;
+      const completedOn = rec.applicableDate ? new Date(rec.applicableDate) : new Date(rec.createdAt);
+      if (doneDate && completedOn > doneDate) return 'done_delayed';
+      return 'done';
+    }
+    if (!dueDate) return 'not_yet_due';
+    if (now > dueDate) return 'overdue';
+    const sameQuarter = fiscalYearOf(dueDate)===fiscalYearOf(now) && fiscalQuarterOf(dueDate)===fiscalQuarterOf(now);
+    if (!sameQuarter) return 'not_yet_due';
+    const sameMonth = dueDate.getFullYear()===now.getFullYear() && dueDate.getMonth()===now.getMonth();
+    return sameMonth ? 'due' : 'pending';
+  }, [now]);
+
+  const filtered=useMemo(()=>baseRows.filter(({ emp, rec, dueDate })=>{
     const searchOk=!search||emp.full_name.toLowerCase().includes(search.toLowerCase());
     const deptOk=dept==='All'||emp.department===dept;
-    // "No Record" means genuinely NEVER had a revision — someone whose
-    // only revision is from a past cycle (a real past review, or a
-    // backfilled onboarding baseline) has history; they're due again
-    // now, which counts as "Pending," not "No Record."
+    const statusOk=mainTab==='history'
+      ? true
+      : (status==='All'?true:rowStatus(rec,dueDate)===status);
+    // Stage is deliberately coarser than status — just whether the
+    // current cycle's revision is actually completed, regardless of
+    // how urgent (or overdue) it is otherwise.
     const stageOk=mainTab==='history'
       ? true
-      : (stage==='All'?true
-          :stage==='no_record'?(!rec&&!hasAnyHistory(emp.employee_id))
-          :rec?.stage===stage);
-    return searchOk&&deptOk&&stageOk;
-  }),[baseRows,mainTab,search,dept,stage,hasAnyHistory]);
+      : (stageFilter==='All'?true:stageFilter==='completed'?rec?.stage==='completed':rec?.stage!=='completed');
+    return searchOk&&deptOk&&statusOk&&stageOk;
+  }),[baseRows,mainTab,search,dept,status,stageFilter,rowStatus]);
 
   const stats={
-    due:filtered.length,
-    noRec:filtered.filter(({emp,rec})=>!rec&&!hasAnyHistory(emp.employee_id)).length,
-    pending:filtered.filter(({emp,rec})=>(rec&&rec.stage!=='completed')||(!rec&&hasAnyHistory(emp.employee_id))).length,
-    completed:filtered.filter(({rec})=>rec?.stage==='completed').length,
+    total:filtered.length,
+    overdue:filtered.filter(({rec,dueDate})=>rowStatus(rec,dueDate)==='overdue').length,
+    due:filtered.filter(({rec,dueDate})=>rowStatus(rec,dueDate)==='due').length,
+    pending:filtered.filter(({rec,dueDate})=>rowStatus(rec,dueDate)==='pending').length,
+    done:filtered.filter(({rec,dueDate})=>{
+      const s=rowStatus(rec,dueDate);
+      return s==='done'||s==='done_delayed';
+    }).length,
   };
 
   return (
@@ -984,10 +1032,11 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
       {mainTab==='action'&&(
         <Box sx={{ display:'flex', gap:3, mb:2.5, flexWrap:'wrap', pb: 2, borderBottom: '1px solid #e2e8f0' }}>
           {[
-            { label: 'Due', value: stats.due, color: '#0f172a' },
-            { label: 'No Record', value: stats.noRec, color: '#dc2626' },
-            { label: 'Pending', value: stats.pending, color: '#d97706' },
-            { label: 'Completed', value: stats.completed, color: '#059669' },
+            { label: 'Total', value: stats.total, color: '#0f172a' },
+            { label: 'Overdue', value: stats.overdue, color: '#dc2626' },
+            { label: 'Due', value: stats.due, color: '#d97706' },
+            { label: 'Pending', value: stats.pending, color: '#eab308' },
+            { label: 'Done', value: stats.done, color: '#059669' },
           ].map(s=>(
             <Box key={s.label}>
               <Typography fontSize={20} fontWeight={700} color={s.color} lineHeight={1}>{s.value}</Typography>
@@ -1056,12 +1105,19 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
             </Select>
           </FormControl>
           <FormControl size="small" sx={{ minWidth:155 }}>
-            <InputLabel sx={{ fontSize:12 }}>Stage</InputLabel>
-            <Select value={stage} label="Stage" onChange={e=>setStage(e.target.value)} sx={{ fontSize:12 }}>
-              {[['All','All'],['no_record','No Record'],['pending_manager','Pending Manager'],
-                ['pending_management','Pending Mgmt'],['pending_hr','Pending HR'],
-                ['completed','Completed'],['on_hold','On Hold']
+            <InputLabel sx={{ fontSize:12 }}>Status</InputLabel>
+            <Select value={status} label="Status" onChange={e=>setStatus(e.target.value)} sx={{ fontSize:12 }}>
+              {[['All','All'],['not_yet_due','Not Yet Due'],['pending','Pending'],
+                ['due','Due'],['overdue','Overdue'],['done','Done'],['done_delayed','Done Delayed'],
               ].map(([v,l])=><MenuItem key={v} value={v} sx={{ fontSize:12 }}>{l}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth:150 }}>
+            <InputLabel sx={{ fontSize:12 }}>Stage</InputLabel>
+            <Select value={stageFilter} label="Stage" onChange={e=>setStageFilter(e.target.value as typeof stageFilter)} sx={{ fontSize:12 }}>
+              <MenuItem value="All" sx={{ fontSize:12 }}>All</MenuItem>
+              <MenuItem value="completed" sx={{ fontSize:12 }}>Completed</MenuItem>
+              <MenuItem value="not_completed" sx={{ fontSize:12 }}>Not Completed</MenuItem>
             </Select>
           </FormControl>
         </Box>
@@ -1098,13 +1154,14 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
                   <TableCell>Prev. CTC</TableCell>
                   <TableCell>Decision</TableCell>
                   <TableCell>New CTC</TableCell>
+                  <TableCell>Status</TableCell>
                   <TableCell>Stage</TableCell>
                   <TableCell>Contract</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {filtered.length===0&&(
-                  <TableRow><TableCell colSpan={9} align="center" sx={{ py:6, color:'text.secondary', fontSize:13 }}>
+                  <TableRow><TableCell colSpan={10} align="center" sx={{ py:6, color:'text.secondary', fontSize:13 }}>
                     {mainTab==='history'?(ppoOnly?'No full-time conversions yet':'No completed revisions yet'):
                      period==='all'?'No employees found':
                      period==='custom'?(customFrom&&customTo?'No employees due in this range':'Pick a From and To date above'):
@@ -1160,15 +1217,20 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
                       </TableCell>
                       <TableCell sx={{ fontSize:12 }}>{fmtCurrency(rec?.previousCtc ?? emp.annual_ctc)}</TableCell>
                       <TableCell>
-                        {rec?<DecisionChip decision={rec.managerDecision?.decision}/>
-                          :hasAnyHistory(emp.employee_id)
-                            ?<Chip label="Due Again" size="small" sx={{ bgcolor:'#fffbeb', color:'#d97706', fontSize:10 }}/>
-                            :<Chip label="No Record" size="small" sx={{ bgcolor:'#fef2f2', color:'#dc2626', fontSize:10 }}/>}
+                        {rec
+                          ?<DecisionChip decision={rec.managerDecision?.decision}/>
+                          :<Typography fontSize={12} color="text.secondary">—</Typography>}
                       </TableCell>
                       <TableCell sx={{ fontSize:12, fontWeight:600, color:'#059669' }}>{rec?fmtCurrency(rec.newCtc):'—'}</TableCell>
                       <TableCell>
-                        {rec?<StageChip stage={rec.stage}/>
-                          :<Chip label="Pending" size="small" sx={{ bgcolor:'#fffbeb', color:'#d97706', fontSize:10 }}/>}
+                        {mainTab==='history'
+                          ?<StatusChip status="done"/>
+                          :<StatusChip status={rowStatus(rec,dueDate)}/>}
+                      </TableCell>
+                      <TableCell>
+                        {rec?.stage==='completed'
+                          ?<Chip label="Completed" size="small" sx={{ bgcolor:'#f0fdf4', color:'#059669', fontSize:10 }}/>
+                          :<Chip label="Not Completed" size="small" sx={{ bgcolor:'#f8fafc', color:'#64748b', fontSize:10 }}/>}
                       </TableCell>
                       <TableCell sx={{ fontSize:12 }}>
                         {emp.contract_start_date ? (

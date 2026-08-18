@@ -90,6 +90,8 @@ export default function DesignationModal({ open, dept, onClose, onBack, onSaved 
   const validate = () => {
     const errs: Record<string, string> = {};
     if (!desigName.trim()) errs.designation = 'Designation name is required';
+    if (!roleDocLink.trim()) errs.roleDocLink = 'Role Document link is required';
+    if (!jdLink.trim()) errs.jdLink = 'JD link is required';
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -228,25 +230,27 @@ export default function DesignationModal({ open, dept, onClose, onBack, onSaved 
             <hr className="border-gray-100" />
 
             <div>
-              <label className={labelCls}>Role Document Link</label>
+              <label className={labelCls}>Role Document Link *</label>
               <input
-                className={inputCls}
+                className={`${inputCls} ${fieldErrors.roleDocLink ? 'border-red-400' : ''}`}
                 type="url"
                 placeholder="https://docs.google.com/..."
                 value={roleDocLink}
                 onChange={e => setRoleDocLink(e.target.value)}
               />
+              {fieldErrors.roleDocLink && <p className={errCls}>{fieldErrors.roleDocLink}</p>}
             </div>
 
             <div>
-              <label className={labelCls}>JD Link</label>
+              <label className={labelCls}>JD Link *</label>
               <input
-                className={inputCls}
+                className={`${inputCls} ${fieldErrors.jdLink ? 'border-red-400' : ''}`}
                 type="url"
                 placeholder="https://..."
                 value={jdLink}
                 onChange={e => setJdLink(e.target.value)}
               />
+              {fieldErrors.jdLink && <p className={errCls}>{fieldErrors.jdLink}</p>}
             </div>
 
             {/* Read-only dept emails inherited from step 1 */}

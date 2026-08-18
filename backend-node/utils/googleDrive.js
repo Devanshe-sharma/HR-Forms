@@ -31,12 +31,12 @@ function getDriveClient() {
 // returns an empty result instead of erroring, which is exactly what
 // made this look like it was "working" (0 files found) when it was
 // actually never seeing into the Shared Drive at all.
-async function uploadResumeToDrive(fileBuffer, originalName, mimeType) {
+async function uploadFileToDrive(fileBuffer, originalName, mimeType, folderId) {
   if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
     throw new Error('Google Drive credentials are not configured — check GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY in .env');
   }
-  if (!FOLDER_ID) {
-    throw new Error('GOOGLE_DRIVE_RESUME_FOLDER_ID is not set in .env');
+  if (!folderId) {
+    throw new Error('No Google Drive folder ID configured for this upload');
   }
 
   const drive = getDriveClient();
@@ -46,11 +46,10 @@ async function uploadResumeToDrive(fileBuffer, originalName, mimeType) {
 
   const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}-${originalName}`;
 
-console.log('DEBUG about to call files.create with supportsAllDrives:', true, 'folder:', FOLDER_ID);
   const { data: file } = await drive.files.create({
     requestBody: {
       name: uniqueName,
-      parents: [FOLDER_ID],
+      parents: [folderId],
     },
     media: {
       mimeType,
@@ -69,4 +68,10 @@ console.log('DEBUG about to call files.create with supportsAllDrives:', true, 'f
   return file.webViewLink;
 }
 
-module.exports = { uploadResumeToDrive };
+// Thin wrapper kept for existing callers (referrals, candidate applications)
+// that upload specifically into the shared "Candidate Resumes" folder.
+async function uploadResumeToDrive(fileBuffer, originalName, mimeType) {
+  return uploadFileToDrive(fileBuffer, originalName, mimeType, FOLDER_ID);
+}
+
+module.exports = { uploadResumeToDrive, uploadFileToDrive };

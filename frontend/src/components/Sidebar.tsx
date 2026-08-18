@@ -39,6 +39,7 @@ import {
   MonetizationOn as MonetizationOnIcon,
   PersonAddAlt as PersonAddAltIcon,
   EditNote as EditNoteIcon,
+  ReportProblem as ReportProblemIcon,
 } from '@mui/icons-material';
 import { NavLink, useLocation } from 'react-router-dom';
 import { usePageVisibility } from '../contexts/PageVisibilityContext';
@@ -240,6 +241,7 @@ export default function Sidebar() {
     { to: '/confirmations', text: 'Confirmations', icon: <CheckCircleIcon />, pageKey: 'confirmations' },
     { to: '/salary-revision', text: 'Salary Revision', icon: <MonetizationOnIcon />, pageKey: 'salaryRevision' },
     { to: '/employee-letters', text: 'Employee Letters', icon: <MailIcon />, pageKey: 'employeeLetters' },
+    { to: '/escalations', text: 'Escalations', icon: <ReportProblemIcon />, pageKey: 'escalations' },
     // { to: '/salary-sheet', text: 'Salary Sheet', icon: <PaymentsIcon /> },
 
     {

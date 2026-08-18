@@ -110,7 +110,8 @@ app.use("/api/kpi", require("./routes/kpiRoutes"));
 app.use('/api/applicant-records', require('./routes/applicantRecords'));
 app.use('/api/dept-orientation',   require('./routes/deptOrientationRoutes'));
 app.use('/api/orientation',        require('./routes/orientationRoutes'));
-app.use('/api/salary-revisions',   require('./routes/salaryRevisions')); 
+app.use('/api/salary-revisions',   require('./routes/salaryRevisions'));
+app.use('/api/escalations',        require('./routes/escalations')); 
 
 /* ─────────────────── FRONTEND STATIC FILES ─────────────────────
    Serves the built React/Vue/etc app from frontend/dist.

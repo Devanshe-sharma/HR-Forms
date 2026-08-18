@@ -101,6 +101,7 @@ export const PAGES: PageDef[] = [
   { key: 'confirmations', label: 'Confirmations', paths: ['/confirmations'] },
   { key: 'salaryRevision', label: 'Salary Revision', paths: ['/salary-revision'] },
   { key: 'employeeLetters', label: 'Employee Letters', paths: ['/employee-letters'] },
+  { key: 'escalations', label: 'Escalations', paths: ['/escalations'] },
   {
     key: 'pms',
     label: 'PMS',

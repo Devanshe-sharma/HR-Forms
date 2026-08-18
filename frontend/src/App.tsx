@@ -40,6 +40,7 @@ import EmployeesPage from "./pages/EmployeesPage";
 import ArchivedEmployeesPage from "./pages/ArchivedEmployeesPage";
 import SalaryRevisionNew from "./pages/SalaryRevisionNew";
 import DeptDesignationMaster from "./pages/deptdesignationmaster";
+import Escalationspage from "./pages/Escalationspage";
 // 👈 ADD THIS
 
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -100,6 +101,7 @@ export default function App() {
           <Route path="/attendance" element={<ComingSoon />} />
           <Route path="/checklist-delegation" element={<ComingSoon />} />
           <Route path="/confirmations" element={<Confirmationspage />} />
+          <Route path="/escalations" element={<Escalationspage />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/configuration" element={<Configuration />} />
           <Route path="/salary-sheet" element={<ComingSoon />} />
