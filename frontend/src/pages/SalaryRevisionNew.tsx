@@ -133,6 +133,7 @@ interface Employee {
   reporting_head?  : string;
   contract_start_date?: string | null;
   contract_end_date?  : string | null;
+  contract_period_months?: number | null;
   contract_history?   : { start_date: string | null; end_date: string | null }[];
 }
 
@@ -162,7 +163,6 @@ const CTC_API  = `${API_URL}/ctc-components/`;
 
 const ACCENT = '#4f46e5';
 const TH = { fontWeight: 600, fontSize: 11, color: '#64748b', bgcolor: '#f8fafc', whiteSpace: 'nowrap' as const, py: '8px', borderBottom: '1px solid #e2e8f0' };
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -189,18 +189,61 @@ const anniversaryDateForYear = (j: string, year: number): Date => {
   return new Date(year, first.getMonth(), first.getDate());
 };
 
-const isDueIn = (j: string, m: number, y: number) => {
-  const first = get11MonthDate(j);
-  if (m !== first.getMonth()) return false;
-  const selDate   = new Date(y, m, 1);
-  const firstDate = new Date(first.getFullYear(), first.getMonth(), 1);
-  return selDate >= firstDate;
+// An intern's review/PPO date — joining date + (contract months - 1),
+// same "one month early" convention as get11MonthDate's annual +11 (a
+// buffer before the actual contract-end anniversary). E.g. joined 1 Jan
+// 2026 with a 6-month contract → review date 1 Jun 2026, one month
+// ahead of the 1 Jul contract end.
+const internReviewDate = (joiningDate: string, contractMonths: number): Date => {
+  const d = new Date(joiningDate);
+  return new Date(d.getFullYear(), d.getMonth() + (contractMonths - 1), d.getDate());
 };
 
-const isEligible = (j: string) => {
-  const now=new Date(), joined=new Date(j);
-  const months=(now.getFullYear()-joined.getFullYear())*12+(now.getMonth()-joined.getMonth());
-  return months>=11;
+// Indian financial year: Apr 1 – Mar 31. Mirrors backend-node/utils/
+// fiscalQuarter.js exactly, so the dashboard's quarter browsing lines up
+// with the same fiscal-year definition the HR analytics endpoints use.
+// "year" always means the fiscal year's START calendar year — year=2026
+// is FY2026-27 (Apr 2026 – Mar 2027); Q4 (Jan–Mar) of that fiscal year
+// therefore falls in calendar year 2027, not 2026.
+const FISCAL_START_MONTH = 3; // April, 0-indexed
+
+const fiscalYearOf = (d: Date | string): number => {
+  const date = new Date(d);
+  const m = date.getMonth(), y = date.getFullYear();
+  return m >= FISCAL_START_MONTH ? y : y - 1;
+};
+
+const fiscalQuarterOf = (d: Date | string): number => {
+  const date = new Date(d);
+  const shifted = (date.getMonth() - FISCAL_START_MONTH + 12) % 12;
+  return Math.floor(shifted / 3) + 1;
+};
+
+const fiscalQuarterStart = (year: number, quarter: number): Date =>
+  new Date(year, FISCAL_START_MONTH + (quarter - 1) * 3, 1);
+
+const fiscalQuarterEnd = (year: number, quarter: number): Date =>
+  new Date(year, FISCAL_START_MONTH + quarter * 3, 0, 23, 59, 59);
+
+const fiscalYearLabel = (year: number): string =>
+  `FY ${year}-${String((year + 1) % 100).padStart(2, '0')}`;
+
+// Does this employee's recurring annual due-date land inside [rangeStart,
+// rangeEnd]? Works for both a fiscal-quarter window and an arbitrary
+// custom date range — checks every calendar year the range could touch
+// (a range never spans more than 2), builds that year's due-date
+// occurrence, and confirms it's both on/after the employee's very first
+// due date AND inside the window. Returns the matching due date itself
+// (so the UI can display exactly which occurrence matched), or null.
+const isDueInRange = (anchor: Date, rangeStart: Date, rangeEnd: Date): Date | null => {
+  const first = get11MonthDate(anchor.toISOString());
+  for (let y = rangeStart.getFullYear(); y <= rangeEnd.getFullYear(); y++) {
+    const candidate = new Date(y, first.getMonth(), first.getDate());
+    if (candidate >= first && candidate >= rangeStart && candidate <= rangeEnd) {
+      return candidate;
+    }
+  }
+  return null;
 };
 
 // The annual review "clock" doesn't always run from the original joining
@@ -237,6 +280,14 @@ const computeAnchorDate = (joiningDate: string, revisions: SalaryRevision[]): Da
 
   return anchor;
 };
+
+// A revision counts as a PPO / full-time conversion when it recorded a
+// category change landing on 'Employee' from a non-permanent starting
+// category. Same definition used server-side (isConversion in
+// routes/salaryRevisions.js) and for the HR "Full-Time Since" field.
+const PPO_SOURCE_CATEGORIES = ['Intern', 'Contract Based'];
+const isPpoRevision = (r: SalaryRevision) =>
+  !!r.categoryChanged && r.newCategory === 'Employee' && PPO_SOURCE_CATEGORIES.includes(r.previousCategory);
 
 const avgPms = (scores?: PmsScore[]): number|null => {
   if (!scores?.length) return null;
@@ -310,37 +361,6 @@ function Toast({ msg, type, onClose }: { msg:string; type:'success'|'error'; onC
   return (
     <Box sx={{ position:'fixed', bottom:24, right:24, zIndex:9999, minWidth:280 }}>
       <Alert severity={type} onClose={onClose} sx={{ borderRadius:2 }}>{msg}</Alert>
-    </Box>
-  );
-}
-
-// ─── Month Strip ──────────────────────────────────────────────────────────────
-
-function MonthStrip({ selMonth, selYear, onChange }: {
-  selMonth:number; selYear:number; onChange:(m:number,y:number)=>void;
-}) {
-  const now=new Date();
-  const months=[];
-  for (let i=-6;i<=5;i++) {
-    const d=new Date(now.getFullYear(),now.getMonth()+i,1);
-    months.push({ m:d.getMonth(), y:d.getFullYear() });
-  }
-  return (
-    <Box sx={{ display:'flex', gap:0.75, flexWrap:'wrap' }}>
-      {months.map(({ m, y })=>{
-        const active=m===selMonth&&y===selYear;
-        return (
-          <button key={`${y}-${m}`} onClick={()=>onChange(m,y)}
-            style={{
-              minWidth: 50, fontSize: 11, padding: '5px 8px', lineHeight: 1.3,
-              border: `1px solid ${active ? ACCENT : '#e2e8f0'}`, borderRadius: 6,
-              background: active ? ACCENT : 'transparent',
-              color: active ? '#fff' : '#64748b', cursor: 'pointer',
-            }}>
-            {MONTHS[m]}<br/><span style={{ fontSize:9 }}>{y}</span>
-          </button>
-        );
-      })}
     </Box>
   );
 }
@@ -705,9 +725,22 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
   onSelect:(emp:Employee,rec?:SalaryRevision)=>void; onAdd:()=>void; onManageCtc:()=>void;
 }) {
   const now=new Date();
-  const [selMonth, setSelMonth] = useState(now.getMonth());
-  const [selYear,  setSelYear]  = useState(now.getFullYear());
-  const [showAll,  setShowAll]  = useState(false);
+  // Two tabs: 'action' (who's due/pending right now, by some date window)
+  // and 'history' (who's already completed, optionally narrowed to PPO
+  // conversions). Everything below the tabs only applies within 'action'.
+  const [mainTab, setMainTab] = useState<'action'|'history'>('action');
+  // Within 'action': 'quarter' browses by fiscal quarter, 'custom' by an
+  // explicit date range, 'all' shows every current employee regardless
+  // of date. One dropdown picks between these, instead of separate
+  // buttons for each.
+  const [period, setPeriod] = useState<'quarter'|'custom'|'all'>('quarter');
+  const [selFY, setSelFY] = useState(fiscalYearOf(now));
+  const [selQ,  setSelQ]  = useState(fiscalQuarterOf(now));
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo,   setCustomTo]   = useState('');
+  // Within 'history': narrows the completed roster down to PPO/full-time
+  // conversions only.
+  const [ppoOnly, setPpoOnly] = useState(false);
   const [search,   setSearch]   = useState('');
   const [dept,     setDept]     = useState('All');
   const [stage,    setStage]    = useState('All');
@@ -738,6 +771,15 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
     return list.find(r => new Date(r.createdAt).getFullYear() === year);
   }, [revisionMap]);
 
+  // Distinct from revisionForYear: has this employee EVER had a revision,
+  // in any year? "No Record" should mean genuinely never — someone whose
+  // only revision is from a past cycle (a real past review, or a
+  // backfilled onboarding baseline) has history, they're just due again
+  // now, which is "Pending," not "No Record."
+  const hasAnyHistory = useCallback((employeeId:string): boolean => {
+    return (revisionMap.get(employeeId) || []).length > 0;
+  }, [revisionMap]);
+
   // Per-employee "cycle anchor" — normally the joining date, but reset by
   // an on-time annual revision or a PPO conversion (see computeAnchorDate).
   // Every "due"/"eligible"/"pending" check below reads this instead of the
@@ -753,49 +795,155 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
     return map;
   }, [employees, revisionMap]);
 
-  const eligibleEmps = useMemo(()=>employees.filter(e=>{
-    // Interns aren't gated by the 11-month annual-review cadence — a PPO
-    // decision can come up at any point during an internship, well
-    // before 11 months, so hiding them until then would block HR from
-    // ever starting that conversion.
-    if (e.employee_category === 'Intern') return true;
-    if (!e.joining_date) return false;
-    // "Eligible as of TODAY" only matters for the Show All view. When
-    // browsing a specific month/year, isDueIn (applied below in
-    // `filtered`) already correctly checks whether that employee's due
-    // month has been reached BY THE SELECTED month/year — including
-    // months later this year that haven't happened yet. Gating on
-    // "today" here would wrongly hide someone due in an upcoming month
-    // just because today hasn't reached their 11-month mark yet.
-    if (!showAll) return true;
-    const anchor = anchorDateMap.get(e.employee_id);
-    return anchor && isEligible(anchor.toISOString());
-  }),[employees, anchorDateMap, showAll]);
+  // Every active employee with a joining date. No 11-month tenure gate —
+  // "All Employees" should mean exactly that, and quarter/custom-range
+  // browsing already correctly excludes anyone not yet due via
+  // isDueInRange, so this gate was only ever doing anything for the
+  // 'all' view, and there it was hiding people who just haven't hit
+  // their first anniversary yet rather than showing every current
+  // employee like the label promised.
+  const allEmps = useMemo(
+    ()=>employees.filter(e=>e.employee_category==='Intern'||!!e.joining_date),
+    [employees]
+  );
+  // Department list covers every department that could ever show up in
+  // ANY view mode — not just the currently-eligible-by-month set —
+  // otherwise switching to Completed/PPO could show rows whose
+  // department isn't even selectable in the filter.
+  const depts=['All',...Array.from(new Set([
+    ...allEmps.map(e=>e.department),
+    ...records.map(r=>r.department),
+  ].filter(Boolean)))];
 
-  const allEmps = eligibleEmps;
-  const depts=['All',...Array.from(new Set(allEmps.map(e=>e.department).filter(Boolean)))];
+  const employeeById = useMemo(() => {
+    const m = new Map<string, Employee>();
+    employees.forEach(e => m.set(e.employee_id, e));
+    return m;
+  }, [employees]);
 
-  const cycleYear = showAll ? now.getFullYear() : selYear;
+  // One row per CURRENT employee: their single most recent COMPLETED
+  // revision, full stop — no month or cycle-year gating. This is what
+  // actually answers "who's done." A revision whose employeeCode isn't
+  // found in `employeeById` belongs to someone who's since exited (the
+  // /eligible-employees endpoint already excludes exited people) — those
+  // are deliberately dropped, not shown via a reconstructed fallback row,
+  // since Salary Revision should only ever surface current employees.
+  const completedRows = useMemo(() => {
+    const latest = new Map<string, SalaryRevision>();
+    records.forEach(r => {
+      if (r.stage !== 'completed') return;
+      if (!employeeById.get(r.employeeCode)) return;
+      const existing = latest.get(r.employeeCode);
+      if (!existing || new Date(r.createdAt).getTime() > new Date(existing.createdAt).getTime()) {
+        latest.set(r.employeeCode, r);
+      }
+    });
+    return Array.from(latest.values()).map(rec => ({
+      emp: employeeById.get(rec.employeeCode)!,
+      rec,
+    }));
+  }, [records, employeeById]);
 
-  const filtered=useMemo(()=>allEmps.filter(e=>{
-    if (!e.joining_date) return false;
-    const rec=revisionForYear(e.employee_id, cycleYear);
-    const anchor=anchorDateMap.get(e.employee_id);
-    // Interns bypass the due-month filter too — same reasoning as the
-    // eligibility gate above, they need to be findable for a PPO decision
-    // regardless of which month is currently selected.
-    const monthOk=showAll||e.employee_category==='Intern'||(!!anchor&&isDueIn(anchor.toISOString(),selMonth,selYear));
-    const searchOk=!search||e.full_name.toLowerCase().includes(search.toLowerCase());
-    const deptOk=dept==='All'||e.department===dept;
-    const stageOk=stage==='All'?true:stage==='no_record'?!rec:rec?.stage===stage;
-    return monthOk&&searchOk&&deptOk&&stageOk;
-  }),[allEmps,showAll,selMonth,selYear,search,dept,stage,cycleYear,revisionForYear,anchorDateMap]);
+  // "Who got a full-time offer" — found independently across EVERY
+  // completed revision, not filtered from completedRows above. An
+  // employee's PPO conversion is often an EARLIER completed revision that
+  // a later, ordinary annual revision has since superseded as their
+  // "most recent" one — filtering completedRows would silently lose
+  // exactly those people (this is what was hiding PPO conversions that
+  // already had a follow-up annual review).
+  const ppoRows = useMemo(() => {
+    const latest = new Map<string, SalaryRevision>();
+    records.forEach(r => {
+      if (r.stage !== 'completed' || !isPpoRevision(r)) return;
+      if (!employeeById.get(r.employeeCode)) return;
+      const existing = latest.get(r.employeeCode);
+      if (!existing || new Date(r.createdAt).getTime() > new Date(existing.createdAt).getTime()) {
+        latest.set(r.employeeCode, r);
+      }
+    });
+    return Array.from(latest.values()).map(rec => ({
+      emp: employeeById.get(rec.employeeCode)!,
+      rec,
+    }));
+  }, [records, employeeById]);
+
+  // Every row (in the Action tab) carries its own resolved `dueDate` —
+  // computed once here, rather than re-derived per-row at render time —
+  // so quarter and custom-range browsing can each plug in their own due
+  // date without the table needing to know which mode produced it.
+  const baseRows = useMemo(() => {
+    if (mainTab === 'history') {
+      return (ppoOnly ? ppoRows : completedRows).map(r => ({ ...r, dueDate: null as Date | null }));
+    }
+
+    if (period === 'all') {
+      return allEmps.map(e => {
+        const dueDate = e.employee_category === 'Intern'
+          ? (e.joining_date && e.contract_period_months ? internReviewDate(e.joining_date, e.contract_period_months) : null)
+          : (anchorDateMap.get(e.employee_id)
+              ? anniversaryDateForYear(anchorDateMap.get(e.employee_id)!.toISOString(), now.getFullYear())
+              : null);
+        return { emp: e, rec: revisionForYear(e.employee_id, now.getFullYear()), dueDate };
+      });
+    }
+
+    // Quarter / custom range — each employee's actual due-date occurrence
+    // inside the selected window decides both whether they belong in
+    // this view AND which calendar year's revision to look up. A single
+    // shared "cycle year" doesn't work here: a Q4 fiscal quarter (Jan–
+    // Mar) falls in a LATER calendar year than the fiscal year label
+    // itself, so the right lookup year differs employee to employee
+    // depending on which side of the window their due month lands in.
+    const rangeStart = period === 'quarter'
+      ? fiscalQuarterStart(selFY, selQ)
+      : (customFrom ? new Date(customFrom) : null);
+    const rangeEnd = period === 'quarter'
+      ? fiscalQuarterEnd(selFY, selQ)
+      : (customTo ? new Date(`${customTo}T23:59:59`) : null);
+
+    if (!rangeStart || !rangeEnd) return [];
+
+    return allEmps.flatMap(e => {
+      // Interns aren't gated by due-date windows either — same reasoning
+      // as the eligibility gate above, they need to be findable for a
+      // PPO decision regardless of which quarter/range is selected. Their
+      // dueDate is still computed for real (joining date + contract
+      // months, one month early) whenever a contract period is on file,
+      // so the date shown isn't just a placeholder.
+      if (e.employee_category === 'Intern') {
+        const dueDate = e.joining_date && e.contract_period_months
+          ? internReviewDate(e.joining_date, e.contract_period_months)
+          : null;
+        return [{ emp: e, rec: revisionForYear(e.employee_id, now.getFullYear()), dueDate }];
+      }
+      const anchor = anchorDateMap.get(e.employee_id);
+      if (!anchor) return [];
+      const due = isDueInRange(anchor, rangeStart, rangeEnd);
+      if (!due) return [];
+      return [{ emp: e, rec: revisionForYear(e.employee_id, due.getFullYear()), dueDate: due }];
+    });
+  }, [mainTab, period, ppoOnly, completedRows, ppoRows, allEmps, selFY, selQ, customFrom, customTo, anchorDateMap, revisionForYear]);
+
+  const filtered=useMemo(()=>baseRows.filter(({ emp, rec })=>{
+    const searchOk=!search||emp.full_name.toLowerCase().includes(search.toLowerCase());
+    const deptOk=dept==='All'||emp.department===dept;
+    // "No Record" means genuinely NEVER had a revision — someone whose
+    // only revision is from a past cycle (a real past review, or a
+    // backfilled onboarding baseline) has history; they're due again
+    // now, which counts as "Pending," not "No Record."
+    const stageOk=mainTab==='history'
+      ? true
+      : (stage==='All'?true
+          :stage==='no_record'?(!rec&&!hasAnyHistory(emp.employee_id))
+          :rec?.stage===stage);
+    return searchOk&&deptOk&&stageOk;
+  }),[baseRows,mainTab,search,dept,stage,hasAnyHistory]);
 
   const stats={
     due:filtered.length,
-    noRec:filtered.filter(e=>!revisionForYear(e.employee_id, cycleYear)).length,
-    pending:filtered.filter(e=>{ const r=revisionForYear(e.employee_id, cycleYear); return r&&r.stage!=='completed'; }).length,
-    completed:filtered.filter(e=>revisionForYear(e.employee_id, cycleYear)?.stage==='completed').length,
+    noRec:filtered.filter(({emp,rec})=>!rec&&!hasAnyHistory(emp.employee_id)).length,
+    pending:filtered.filter(({emp,rec})=>(rec&&rec.stage!=='completed')||(!rec&&hasAnyHistory(emp.employee_id))).length,
+    completed:filtered.filter(({rec})=>rec?.stage==='completed').length,
   };
 
   return (
@@ -804,7 +952,10 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
         <Box>
           <Typography fontSize={18} fontWeight={700} color="#0f172a">Salary Revision</Typography>
           <Typography fontSize={12} color="text.secondary">
-            {showAll?'All eligible employees':`Due in ${MONTHS[selMonth]} ${selYear}`}
+            {mainTab==='history'?(ppoOnly?'Every intern/contract employee who got a full-time offer':'Every employee whose revision is completed'):
+             period==='all'?'All active employees':
+             period==='custom'?(customFrom&&customTo?`Due between ${fmtDate(customFrom)} and ${fmtDate(customTo)}`:'Pick a date range below'):
+             `Due in Q${selQ} ${fiscalYearLabel(selFY)} (${fmtDate(fiscalQuarterStart(selFY,selQ))} – ${fmtDate(fiscalQuarterEnd(selFY,selQ))})`}
           </Typography>
         </Box>
         <Stack direction="row" spacing={1}>
@@ -819,51 +970,120 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
         </Stack>
       </Box>
 
-      <Box sx={{ display:'flex', gap:3, mb:2.5, flexWrap:'wrap', pb: 2, borderBottom: '1px solid #e2e8f0' }}>
-        {[
-          { label: showAll?'All Eligible':'Due', value: stats.due, color: '#0f172a' },
-          { label: 'No Record', value: stats.noRec, color: '#dc2626' },
-          { label: 'Pending', value: stats.pending, color: '#d97706' },
-          { label: 'Completed', value: stats.completed, color: '#059669' },
-        ].map(s=>(
-          <Box key={s.label}>
-            <Typography fontSize={20} fontWeight={700} color={s.color} lineHeight={1}>{s.value}</Typography>
-            <Typography fontSize={11} color="text.secondary" mt={0.3}>{s.label}</Typography>
-          </Box>
-        ))}
+      <Box sx={{ borderBottom:'1px solid #e2e8f0', mb:2.5 }}>
+        <Tabs value={mainTab} onChange={(_,v)=>setMainTab(v)} sx={{
+          '& .MuiTab-root':{ fontSize:13, textTransform:'none', fontWeight:600, minHeight:40 },
+          '& .MuiTabs-indicator':{ bgcolor:ACCENT },
+          '& .Mui-selected':{ color:`${ACCENT} !important` },
+        }}>
+          <Tab label="Action Needed" value="action"/>
+          <Tab label="History" value="history"/>
+        </Tabs>
       </Box>
 
-      {!showAll&&(
-        <Box sx={{ mb:2 }}>
-          <Typography fontSize={10} fontWeight={600} color="text.secondary" mb={1}>SELECT MONTH</Typography>
-          <MonthStrip selMonth={selMonth} selYear={selYear} onChange={(m,y)=>{ setSelMonth(m); setSelYear(y); }}/>
+      {mainTab==='action'&&(
+        <Box sx={{ display:'flex', gap:3, mb:2.5, flexWrap:'wrap', pb: 2, borderBottom: '1px solid #e2e8f0' }}>
+          {[
+            { label: 'Due', value: stats.due, color: '#0f172a' },
+            { label: 'No Record', value: stats.noRec, color: '#dc2626' },
+            { label: 'Pending', value: stats.pending, color: '#d97706' },
+            { label: 'Completed', value: stats.completed, color: '#059669' },
+          ].map(s=>(
+            <Box key={s.label}>
+              <Typography fontSize={20} fontWeight={700} color={s.color} lineHeight={1}>{s.value}</Typography>
+              <Typography fontSize={11} color="text.secondary" mt={0.3}>{s.label}</Typography>
+            </Box>
+          ))}
         </Box>
       )}
 
-      <Box sx={{ display:'flex', gap:1, mb:2, flexWrap:'wrap', alignItems:'center' }}>
-        <TextField size="small" placeholder="Search name…" value={search}
-          onChange={e=>setSearch(e.target.value)} sx={{ minWidth:180 }}
-          InputProps={{ sx:{ fontSize:13 } }}/>
-        <FormControl size="small" sx={{ minWidth:130 }}>
-          <InputLabel sx={{ fontSize:12 }}>Department</InputLabel>
-          <Select value={dept} label="Department" onChange={e=>setDept(e.target.value)} sx={{ fontSize:12 }}>
-            {depts.map(d=><MenuItem key={d} value={d} sx={{ fontSize:12 }}>{d}</MenuItem>)}
-          </Select>
-        </FormControl>
-        <FormControl size="small" sx={{ minWidth:155 }}>
-          <InputLabel sx={{ fontSize:12 }}>Stage</InputLabel>
-          <Select value={stage} label="Stage" onChange={e=>setStage(e.target.value)} sx={{ fontSize:12 }}>
-            {[['All','All'],['no_record','No Record'],['pending_manager','Pending Manager'],
-              ['pending_management','Pending Mgmt'],['pending_hr','Pending HR'],
-              ['completed','Completed'],['on_hold','On Hold']
-            ].map(([v,l])=><MenuItem key={v} value={v} sx={{ fontSize:12 }}>{l}</MenuItem>)}
-          </Select>
-        </FormControl>
-        <Button size="small" onClick={()=>setShowAll(!showAll)}
-          sx={{ fontSize:12, textTransform:'none', color: ACCENT }}>
-          {showAll?'By Month':'Show All'}
-        </Button>
-      </Box>
+      {mainTab==='history'&&(
+        <Box sx={{ display:'flex', gap:3, mb:2.5, flexWrap:'wrap', pb: 2, borderBottom: '1px solid #e2e8f0' }}>
+          <Box>
+            <Typography fontSize={20} fontWeight={700} color="#0f172a" lineHeight={1}>{completedRows.length}</Typography>
+            <Typography fontSize={11} color="text.secondary" mt={0.3}>Total Completed</Typography>
+          </Box>
+          <Box>
+            <Typography fontSize={20} fontWeight={700} color="#059669" lineHeight={1}>{ppoRows.length}</Typography>
+            <Typography fontSize={11} color="text.secondary" mt={0.3}>PPO Conversions</Typography>
+          </Box>
+        </Box>
+      )}
+
+      {mainTab==='action'&&(
+        <Box sx={{ display:'flex', gap:1, mb:2, flexWrap:'wrap', alignItems:'center' }}>
+          <FormControl size="small" sx={{ minWidth:150 }}>
+            <InputLabel sx={{ fontSize:12 }}>Period</InputLabel>
+            <Select value={period} label="Period" onChange={e=>setPeriod(e.target.value as typeof period)} sx={{ fontSize:12 }}>
+              <MenuItem value="quarter" sx={{ fontSize:12 }}>This Quarter</MenuItem>
+              <MenuItem value="all" sx={{ fontSize:12 }}>All Time</MenuItem>
+              <MenuItem value="custom" sx={{ fontSize:12 }}>Custom Range</MenuItem>
+            </Select>
+          </FormControl>
+          {period==='quarter'&&(
+            <>
+              <FormControl size="small" sx={{ minWidth:130 }}>
+                <InputLabel sx={{ fontSize:12 }}>Year</InputLabel>
+                <Select value={selFY} label="Year" onChange={e=>setSelFY(Number(e.target.value))} sx={{ fontSize:12 }}>
+                  {Array.from({ length:6 }, (_,i)=>fiscalYearOf(now)-4+i).map(fy=>(
+                    <MenuItem key={fy} value={fy} sx={{ fontSize:12 }}>{fiscalYearLabel(fy)}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth:100 }}>
+                <InputLabel sx={{ fontSize:12 }}>Quarter</InputLabel>
+                <Select value={selQ} label="Quarter" onChange={e=>setSelQ(Number(e.target.value))} sx={{ fontSize:12 }}>
+                  {[1,2,3,4].map(q=><MenuItem key={q} value={q} sx={{ fontSize:12 }}>{`Q${q}`}</MenuItem>)}
+                </Select>
+              </FormControl>
+            </>
+          )}
+          {period==='custom'&&(
+            <>
+              <TextField label="From" type="date" size="small" value={customFrom}
+                onChange={e=>setCustomFrom(e.target.value)} InputLabelProps={{ shrink:true }} sx={{ minWidth:160 }}/>
+              <TextField label="To" type="date" size="small" value={customTo}
+                onChange={e=>setCustomTo(e.target.value)} InputLabelProps={{ shrink:true }} sx={{ minWidth:160 }}/>
+            </>
+          )}
+          <TextField size="small" placeholder="Search name…" value={search}
+            onChange={e=>setSearch(e.target.value)} sx={{ minWidth:180 }}
+            InputProps={{ sx:{ fontSize:13 } }}/>
+          <FormControl size="small" sx={{ minWidth:130 }}>
+            <InputLabel sx={{ fontSize:12 }}>Department</InputLabel>
+            <Select value={dept} label="Department" onChange={e=>setDept(e.target.value)} sx={{ fontSize:12 }}>
+              {depts.map(d=><MenuItem key={d} value={d} sx={{ fontSize:12 }}>{d}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth:155 }}>
+            <InputLabel sx={{ fontSize:12 }}>Stage</InputLabel>
+            <Select value={stage} label="Stage" onChange={e=>setStage(e.target.value)} sx={{ fontSize:12 }}>
+              {[['All','All'],['no_record','No Record'],['pending_manager','Pending Manager'],
+                ['pending_management','Pending Mgmt'],['pending_hr','Pending HR'],
+                ['completed','Completed'],['on_hold','On Hold']
+              ].map(([v,l])=><MenuItem key={v} value={v} sx={{ fontSize:12 }}>{l}</MenuItem>)}
+            </Select>
+          </FormControl>
+        </Box>
+      )}
+
+      {mainTab==='history'&&(
+        <Box sx={{ display:'flex', gap:1.5, mb:2, flexWrap:'wrap', alignItems:'center' }}>
+          <TextField size="small" placeholder="Search name…" value={search}
+            onChange={e=>setSearch(e.target.value)} sx={{ minWidth:180 }}
+            InputProps={{ sx:{ fontSize:13 } }}/>
+          <FormControl size="small" sx={{ minWidth:130 }}>
+            <InputLabel sx={{ fontSize:12 }}>Department</InputLabel>
+            <Select value={dept} label="Department" onChange={e=>setDept(e.target.value)} sx={{ fontSize:12 }}>
+              {depts.map(d=><MenuItem key={d} value={d} sx={{ fontSize:12 }}>{d}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControlLabel
+            control={<Checkbox size="small" checked={ppoOnly} onChange={e=>setPpoOnly(e.target.checked)}
+              sx={{ color:ACCENT, '&.Mui-checked':{ color:ACCENT } }}/>}
+            label={<Typography fontSize={12}>PPO conversions only</Typography>}/>
+        </Box>
+      )}
 
       <Box sx={{ bgcolor:'white', borderRadius:2, border:'1px solid #e2e8f0', overflow:'hidden' }}>
         {loading?<Box display="flex" justifyContent="center" py={6}><CircularProgress size={28}/></Box>:(
@@ -874,7 +1094,7 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
                   <TableCell>Employee</TableCell>
                   <TableCell>Department</TableCell>
                   <TableCell>Designation</TableCell>
-                  <TableCell>Due Date</TableCell>
+                  <TableCell>{mainTab==='history'?'Completed On':'Due Date'}</TableCell>
                   <TableCell>Prev. CTC</TableCell>
                   <TableCell>Decision</TableCell>
                   <TableCell>New CTC</TableCell>
@@ -885,17 +1105,21 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
               <TableBody>
                 {filtered.length===0&&(
                   <TableRow><TableCell colSpan={9} align="center" sx={{ py:6, color:'text.secondary', fontSize:13 }}>
-                    {showAll?'No eligible employees found':`No employees due in ${MONTHS[selMonth]} ${selYear}`}
+                    {mainTab==='history'?(ppoOnly?'No full-time conversions yet':'No completed revisions yet'):
+                     period==='all'?'No employees found':
+                     period==='custom'?(customFrom&&customTo?'No employees due in this range':'Pick a From and To date above'):
+                     `No employees due in Q${selQ} ${fiscalYearLabel(selFY)}`}
                   </TableCell></TableRow>
                 )}
-                {filtered.map(emp=>{
-                  const rec=revisionForYear(emp.employee_id, cycleYear);
-                  const anchor=anchorDateMap.get(emp.employee_id);
-                  const anchorIso=anchor?anchor.toISOString():emp.joining_date!;
-                  const dueDate=showAll
-                    ? anniversaryDateForYear(anchorIso, now.getFullYear())
-                    : anniversaryDateForYear(anchorIso, selYear);
-                  const isThisMonth=isDueIn(anchorIso,now.getMonth(),now.getFullYear());
+                {filtered.map(({ emp, rec, dueDate })=>{
+                  // Highlight if the resolved due date falls in the
+                  // CURRENT fiscal quarter — same "needs attention now"
+                  // signal the old bold-if-this-month highlight gave,
+                  // just aligned to fiscal quarters instead of months.
+                  const isThisQuarter = !!dueDate
+                    && fiscalQuarterOf(dueDate) === fiscalQuarterOf(now)
+                    && fiscalYearOf(dueDate) === fiscalYearOf(now);
+                  const completedOn = rec?.applicableDate || rec?.createdAt;
                   return (
                     <TableRow key={emp._id} onClick={()=>onSelect(emp,rec)}
                       sx={{ cursor:'pointer', '&:hover':{ bgcolor:'#f8fafc' }, borderBottom: '1px solid #f1f5f9' }}>
@@ -911,18 +1135,35 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
                         {rec?.designationChanged && <Chip label="changed" size="small" sx={{ ml: 0.7, fontSize: 9, height: 16, bgcolor: '#eef2ff', color: ACCENT }}/>}
                       </TableCell>
                       <TableCell>
-                        {emp.employee_category==='Intern' ? (
-                          <Chip label="PPO Review" size="small" sx={{ bgcolor:'#eef2ff', color:ACCENT, fontSize:10 }}/>
+                        {mainTab==='history' ? (
+                          <Box>
+                            <Typography component="span" fontSize={12} fontWeight={600}>{fmtDate(completedOn)}</Typography>
+                            {rec && isPpoRevision(rec) && (
+                              <Chip label="Full-Time Offer" size="small" sx={{ display:'block', width:'fit-content', mt:0.4, fontSize:9, height:16, bgcolor:'#f0fdf4', color:'#059669' }}/>
+                            )}
+                          </Box>
+                        ) : emp.employee_category==='Intern' ? (
+                          <Box>
+                            <Typography component="span" fontSize={12} fontWeight={isThisQuarter?700:400} color={isThisQuarter?'#d97706':'inherit'}>
+                              {dueDate?fmtDate(dueDate.toISOString()):'—'}
+                            </Typography>
+                            <Chip label="PPO Review" size="small" sx={{ display:'block', width:'fit-content', mt:0.4, bgcolor:'#eef2ff', color:ACCENT, fontSize:9, height:16 }}/>
+                            {!dueDate && (
+                              <Typography fontSize={10} color="#dc2626" mt={0.3}>No contract period on file</Typography>
+                            )}
+                          </Box>
                         ) : (
-                          <Typography component="span" fontSize={12} fontWeight={isThisMonth?700:400} color={isThisMonth?'#d97706':'inherit'}>
-                            {fmtDate(dueDate.toISOString())}
+                          <Typography component="span" fontSize={12} fontWeight={isThisQuarter?700:400} color={isThisQuarter?'#d97706':'inherit'}>
+                            {dueDate?fmtDate(dueDate.toISOString()):'—'}
                           </Typography>
                         )}
                       </TableCell>
                       <TableCell sx={{ fontSize:12 }}>{fmtCurrency(rec?.previousCtc ?? emp.annual_ctc)}</TableCell>
                       <TableCell>
                         {rec?<DecisionChip decision={rec.managerDecision?.decision}/>
-                          :<Chip label="No Record" size="small" sx={{ bgcolor:'#fef2f2', color:'#dc2626', fontSize:10 }}/>}
+                          :hasAnyHistory(emp.employee_id)
+                            ?<Chip label="Due Again" size="small" sx={{ bgcolor:'#fffbeb', color:'#d97706', fontSize:10 }}/>
+                            :<Chip label="No Record" size="small" sx={{ bgcolor:'#fef2f2', color:'#dc2626', fontSize:10 }}/>}
                       </TableCell>
                       <TableCell sx={{ fontSize:12, fontWeight:600, color:'#059669' }}>{rec?fmtCurrency(rec.newCtc):'—'}</TableCell>
                       <TableCell>

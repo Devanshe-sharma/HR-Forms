@@ -168,6 +168,11 @@ const MANAGEMENT_LEVEL_OPTIONS = [
   "Apex Management (C Level)",
 ];
 
+// Only Intern and Contract Based get the Contract Details section — keep in
+// sync with the same list in NewOnboarding.tsx. Every other category
+// (Employee, Consultant, Part Time, Temporary Staffing) gets Salary Details.
+const CONTRACT_BASED_CATEGORIES = ["Intern", "Contract Based"];
+
 // ─── Checklist definitions (same order as backend) ──────────────────────────
 const CHECKLIST_DEFS = [
   {
@@ -270,7 +275,7 @@ const UpdateOnboarding: React.FC = () => {
   const [thankYouLoading, setThankYouLoading] = useState(true);
 
   const {
-    register, control, handleSubmit, reset, watch,
+    register, control, handleSubmit, reset, watch, setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -281,6 +286,19 @@ const UpdateOnboarding: React.FC = () => {
   });
 
   const statusChange = watch("statusChange");
+  const newEmployeeCategory = watch("newEmployeeCategory");
+  const effectiveEmployeeCategory = newEmployeeCategory || detail?.employeeCategory || "";
+  const isContractBasedCategory = CONTRACT_BASED_CATEGORIES.includes(effectiveEmployeeCategory);
+  const contractAmount = watch("contractAmount");
+
+  // Keep annualCtc in sync with Contract Amount for contract-based categories,
+  // same as NewOnboarding.tsx — Salary Revision and everywhere else read
+  // annualCtc as THE CTC field regardless of category.
+  useEffect(() => {
+    if (isContractBasedCategory && contractAmount !== undefined) {
+      setValue("annualCtc", contractAmount, { shouldValidate: false, shouldDirty: true });
+    }
+  }, [contractAmount, isContractBasedCategory, setValue]);
 
   // ── Load joinee list on mount ───────────────────────────────────────────
   useEffect(() => {
@@ -810,7 +828,7 @@ const UpdateOnboarding: React.FC = () => {
               </section>
 
               {/* ── Salary Details ─────────────────────────────────────── */}
-              {(detail.employeeCategory === "Employee" || watch("newEmployeeCategory") === "Employee") && (
+              {!!effectiveEmployeeCategory && !isContractBasedCategory && (
                 <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
                   {sectionTitle("Salary Details")}
 
@@ -859,9 +877,12 @@ const UpdateOnboarding: React.FC = () => {
               )}
 
               {/* ── Contract Details ───────────────────────────────────── */}
-              {(detail.employeeCategory === "Consultant" || watch("newEmployeeCategory") === "Consultant") && (
+              {isContractBasedCategory && (
                 <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                  {sectionTitle("Contract Details")}
+                  {sectionTitle(
+                    "Contract Details",
+                    `For ${effectiveEmployeeCategory} — Contract Amount is used as this person's Annual CTC everywhere else in the app, including Salary Revision`
+                  )}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {numField("contractPeriod", "Contract Period (months)")}
                     {numField("contractAmount", "Contract Amount (₹)")}

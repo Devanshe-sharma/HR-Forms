@@ -582,7 +582,7 @@ router.get("/eligible-employees", async (req, res) => {
         "name dept designation officialEmail persEmail joinedDate employeeCategory exitStatus managementLevel " +
         "annualCtc basicSal hraSal grossMonthly empEpf gratuity annualBonus " +
         "annualPerformanceIncentive medicalPremium travelAllowance telephoneReimbursement reportingHead " +
-        "contractStartDate contractEndDate contractHistory"
+        "contractStartDate contractEndDate contractHistory contractPeriod"
       )
       .lean();
 
@@ -613,6 +613,7 @@ router.get("/eligible-employees", async (req, res) => {
       reporting_head: d.reportingHead || "",
       contract_start_date: d.contractStartDate || null,
       contract_end_date: d.contractEndDate || null,
+      contract_period_months: d.contractPeriod ?? null,
       contract_history: (d.contractHistory || []).map((p) => ({
         start_date: p.startDate || null,
         end_date: p.endDate || null,
