@@ -4,6 +4,7 @@ const router            = express.Router();
 const HiringRequisition = require('../models/HiringRequisition');
 const { triggerNewRequisition, triggerUpdateRequisition, triggerReferralInvite } = require('../emails');
 const resolveJdAndRoleLinks = require('../utils/resolveJdAndRoleLinks');
+const { fiscalYearOf, fiscalQuarterOf } = require('../utils/fiscalQuarter');
 
 // hiring_status values that mean this requisition is over — regardless
 // of whether every checklist task got ticked. "On Hold" doesn't mean
@@ -545,9 +546,9 @@ router.get('/analytics/days-to-hire', async (req, res) => {
     // Quarterly trend — bucketed by the resolved close date (the same one
     // used for the days-to-hire calculation itself), so a quarter's bar
     // reflects requisitions that actually closed in that quarter.
-    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+    const year = parseInt(req.query.year, 10) || fiscalYearOf(new Date());
     const quarters = [1, 2, 3, 4].map((q) => {
-      const inQuarter = rows.filter((r) => r.closedDate.getFullYear() === year && Math.floor(r.closedDate.getMonth() / 3) + 1 === q);
+      const inQuarter = rows.filter((r) => fiscalYearOf(r.closedDate) === year && fiscalQuarterOf(r.closedDate) === q);
       return {
         quarter: `Q${q}`,
         overall: summarize(inQuarter),
@@ -556,9 +557,9 @@ router.get('/analytics/days-to-hire', async (req, res) => {
       };
     });
 
-    const closedYears = rows.map((r) => r.closedDate.getFullYear());
+    const closedYears = rows.map((r) => fiscalYearOf(r.closedDate));
     const minYear = closedYears.length ? Math.min(...closedYears) : year;
-    const maxYear = Math.max(new Date().getFullYear(), ...(closedYears.length ? closedYears : [year]));
+    const maxYear = Math.max(fiscalYearOf(new Date()), ...(closedYears.length ? closedYears : [year]));
     const availableYears = [];
     for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
 

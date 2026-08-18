@@ -5,6 +5,7 @@ const Exit = require("../models/exitModel");
 // (with current exit status baked in) instead of needing a live join
 // between the two collections every time someone views the dashboard.
 const Onboarding = require("../models/onboardingModel");
+const { fiscalYearOf, fiscalQuarterOf } = require("../utils/fiscalQuarter");
 
 const router = express.Router();
 
@@ -734,7 +735,7 @@ const REAL_EXIT_STATUSES = new Set(["Serving Notice Period", "Already Left", "Le
 
 router.get("/analytics/asked-to-leave", async (req, res) => {
   try {
-    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+    const year = parseInt(req.query.year, 10) || fiscalYearOf(new Date());
 
     const docs = await Exit.find({}, "exitType exitStatus leftDate plannedExitDate resignationDate").lean();
     const realExits = docs.filter((d) => REAL_EXIT_STATUSES.has(d.exitStatus || ""));
@@ -753,7 +754,7 @@ router.get("/analytics/asked-to-leave", async (req, res) => {
     const withDates = realExits.map((d) => ({ ...d, exitDate: exitDateOf(d) })).filter((d) => d.exitDate);
 
     const quarters = [1, 2, 3, 4].map((q) => {
-      const inQuarter = withDates.filter((d) => d.exitDate.getFullYear() === year && Math.floor(d.exitDate.getMonth() / 3) + 1 === q);
+      const inQuarter = withDates.filter((d) => fiscalYearOf(d.exitDate) === year && fiscalQuarterOf(d.exitDate) === q);
       const asked = inQuarter.filter((d) => d.exitType === "Asked to Leave").length;
       return {
         quarter: `Q${q}`,
@@ -763,9 +764,9 @@ router.get("/analytics/asked-to-leave", async (req, res) => {
       };
     });
 
-    const exitYears = withDates.map((d) => d.exitDate.getFullYear());
+    const exitYears = withDates.map((d) => fiscalYearOf(d.exitDate));
     const minYear = exitYears.length ? Math.min(...exitYears) : year;
-    const maxYear = Math.max(new Date().getFullYear(), ...(exitYears.length ? exitYears : [year]));
+    const maxYear = Math.max(fiscalYearOf(new Date()), ...(exitYears.length ? exitYears : [year]));
     const availableYears = [];
     for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
 

@@ -368,6 +368,40 @@ const StatCard: React.FC<{
   </Box>
 );
 
+// Indian financial year (Apr–Mar) — mirrors backend-node/utils/fiscalQuarter.js
+// exactly. Every "year" selector on this dashboard means the fiscal year's
+// start calendar year (year=2026 is FY2026-27, Apr 2026–Mar 2027), and
+// quarters shift the same way: Q1=Apr-Jun, Q2=Jul-Sep, Q3=Oct-Dec, Q4=Jan-Mar.
+const FISCAL_START_MONTH = 3; // April, 0-indexed
+
+// The instant a fiscal quarter starts, in local time — used everywhere a
+// widget needs to know whether a quarter has "started yet" relative to now.
+const fiscalQuarterStartDate = (quarter: string, fiscalYear: number): Date => {
+  const q = parseInt(quarter.replace("Q", ""), 10);
+  return new Date(fiscalYear, FISCAL_START_MONTH + (q - 1) * 3, 1);
+};
+
+// The dashboard's standing default: every analytics widget opens on the
+// current quarter of the current fiscal year, not "All Quarters" or a
+// running year-to-date total — this just names which quarter "now" falls in.
+const currentQuarterLabel = (): string => {
+  const now = new Date();
+  const shifted = (now.getMonth() - FISCAL_START_MONTH + 12) % 12;
+  return `Q${Math.floor(shifted / 3) + 1}`;
+};
+
+// "FY26-27" for the year selector pills — a bare "2026" would read as a
+// calendar year, hiding that the range actually runs into Mar 2027.
+const fyLabel = (year: number): string => `FY${String(year).slice(2)}-${String((year + 1) % 100).padStart(2, "0")}`;
+
+// The fiscal year a given date falls in — mirrors backend-node/utils/fiscalQuarter.js's
+// fiscalYearOf exactly. Jan-Mar belongs to the PREVIOUS calendar year's
+// fiscal year (Feb 2027 is FY2026-27, fiscalYearOf returns 2026).
+const fiscalYearOf = (date: Date): number => {
+  const y = date.getFullYear();
+  return date.getMonth() >= FISCAL_START_MONTH ? y : y - 1;
+};
+
 // Renders "Name: value" directly beside/inside each pie slice — always
 // visible, not just on hover.
 const renderPieLabel = (props: any) => {
@@ -434,7 +468,7 @@ const TeethToTailWidget: React.FC = () => {
   const [data, setData] = useState<TeethToTailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [year, setYear] = useState<number>(new Date().getFullYear());
-  const [quarterFocus, setQuarterFocus] = useState<string>("All");
+  const [quarterFocus, setQuarterFocus] = useState<string>(currentQuarterLabel());
   const [showBreakdown, setShowBreakdown] = useState(false);
 
   useEffect(() => {
@@ -447,17 +481,14 @@ const TeethToTailWidget: React.FC = () => {
 
   const yearOptions = useMemo(() => {
     const years = data?.availableYears ?? [year];
-    return years.map((y) => ({ key: String(y), label: String(y) }));
+    return years.map((y) => ({ key: String(y), label: fyLabel(y) }));
   }, [data, year]);
 
   // Calendar quarters (matches the backend's own quarterEndDate: Q1=Jan-Mar,
   // Q2=Apr-Jun, Q3=Jul-Sep, Q4=Oct-Dec) — used to hide quarters that
   // haven't started yet, rather than showing them as if they have real
   // (zero) data.
-  const quarterStartDate = (quarter: string, y: number): Date => {
-    const q = parseInt(quarter.replace("Q", ""), 10);
-    return new Date(y, (q - 1) * 3, 1);
-  };
+  const quarterStartDate = (quarter: string, y: number): Date => fiscalQuarterStartDate(quarter, y);
   const hasQuarterStarted = (quarter: string, y: number): boolean =>
     quarterStartDate(quarter, y) <= new Date();
 
@@ -682,7 +713,7 @@ const GenderDistributionWidget: React.FC = () => {
   const [data, setData] = useState<GenderResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [year, setYear] = useState<number>(new Date().getFullYear());
-  const [quarterFocus, setQuarterFocus] = useState<string>("All");
+  const [quarterFocus, setQuarterFocus] = useState<string>(currentQuarterLabel());
 
   useEffect(() => {
     setLoading(true);
@@ -697,10 +728,7 @@ const GenderDistributionWidget: React.FC = () => {
 
   // Same calendar-quarter convention as Teeth-to-Tail — hides quarters
   // that haven't started yet instead of showing them as empty/zero.
-  const quarterStartDate = (quarter: string, y: number): Date => {
-    const q = parseInt(quarter.replace("Q", ""), 10);
-    return new Date(y, (q - 1) * 3, 1);
-  };
+  const quarterStartDate = (quarter: string, y: number): Date => fiscalQuarterStartDate(quarter, y);
   const hasQuarterStarted = (quarter: string, y: number): boolean =>
     quarterStartDate(quarter, y) <= new Date();
 
@@ -712,7 +740,7 @@ const GenderDistributionWidget: React.FC = () => {
 
   const yearOptions = useMemo(() => {
     const years = data?.availableYears ?? [year];
-    return years.map((y) => ({ key: String(y), label: String(y) }));
+    return years.map((y) => ({ key: String(y), label: fyLabel(y) }));
   }, [data, year]);
 
   const quarterOptions = [
@@ -883,7 +911,7 @@ const AttritionWidget: React.FC = () => {
   const [data, setData] = useState<AttritionResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [year, setYear] = useState<number>(new Date().getFullYear());
-  const [quarterFocus, setQuarterFocus] = useState<string>("All");
+  const [quarterFocus, setQuarterFocus] = useState<string>(currentQuarterLabel());
 
   useEffect(() => {
     setLoading(true);
@@ -895,13 +923,10 @@ const AttritionWidget: React.FC = () => {
 
   const yearOptions = useMemo(() => {
     const years = data?.availableYears ?? [year];
-    return years.map((y) => ({ key: String(y), label: String(y) }));
+    return years.map((y) => ({ key: String(y), label: fyLabel(y) }));
   }, [data, year]);
 
-  const quarterStartDate = (quarter: string, y: number): Date => {
-    const q = parseInt(quarter.replace("Q", ""), 10);
-    return new Date(y, (q - 1) * 3, 1);
-  };
+  const quarterStartDate = (quarter: string, y: number): Date => fiscalQuarterStartDate(quarter, y);
   const hasQuarterStarted = (quarter: string, y: number): boolean => quarterStartDate(quarter, y) <= new Date();
 
   useEffect(() => {
@@ -1010,7 +1035,7 @@ const InternsWidget: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [year, setYear] = useState<number>(new Date().getFullYear());
-  const [quarterFocus, setQuarterFocus] = useState<string>("All");
+  const [quarterFocus, setQuarterFocus] = useState<string>(currentQuarterLabel());
 
   useEffect(() => {
     setLoading(true);
@@ -1022,13 +1047,10 @@ const InternsWidget: React.FC = () => {
 
   const yearOptions = useMemo(() => {
     const years = data?.availableYears ?? [year];
-    return years.map((y) => ({ key: String(y), label: String(y) }));
+    return years.map((y) => ({ key: String(y), label: fyLabel(y) }));
   }, [data, year]);
 
-  const quarterStartDate = (quarter: string, y: number): Date => {
-    const q = parseInt(quarter.replace("Q", ""), 10);
-    return new Date(y, (q - 1) * 3, 1);
-  };
+  const quarterStartDate = (quarter: string, y: number): Date => fiscalQuarterStartDate(quarter, y);
   const hasQuarterStarted = (quarter: string, y: number): boolean => quarterStartDate(quarter, y) <= new Date();
   const startedQuarters = useMemo(
     () => (data?.quarters ?? []).filter((q) => hasQuarterStarted(q.quarter, year)),
@@ -1215,13 +1237,10 @@ const InternConversionsWidget: React.FC = () => {
 
   const yearOptions = useMemo(() => {
     const years = data?.availableYears ?? [year];
-    return years.map((y) => ({ key: String(y), label: String(y) }));
+    return years.map((y) => ({ key: String(y), label: fyLabel(y) }));
   }, [data, year]);
 
-  const quarterStartDate = (quarter: string, y: number): Date => {
-    const q = parseInt(quarter.replace("Q", ""), 10);
-    return new Date(y, (q - 1) * 3, 1);
-  };
+  const quarterStartDate = (quarter: string, y: number): Date => fiscalQuarterStartDate(quarter, y);
   const startedQuarters = useMemo(
     () => (data?.quarters ?? []).filter((q) => quarterStartDate(q.quarter, year) <= new Date()),
     [data, year]
@@ -1412,7 +1431,7 @@ const IncrementAnalyticsWidget: React.FC = () => {
 
   const yearOptions = useMemo(() => {
     const years = data?.availableYears?.length ? data.availableYears : [year];
-    return years.map((y) => ({ key: String(y), label: String(y) }));
+    return years.map((y) => ({ key: String(y), label: fyLabel(y) }));
   }, [data, year]);
 
   return (
@@ -1612,13 +1631,10 @@ const PipAnalyticsWidget: React.FC = () => {
 
   const yearOptions = useMemo(() => {
     const years = data?.availableYears?.length ? data.availableYears : [year];
-    return years.map((y) => ({ key: String(y), label: String(y) }));
+    return years.map((y) => ({ key: String(y), label: fyLabel(y) }));
   }, [data, year]);
 
-  const quarterStartDate = (quarter: string, y: number): Date => {
-    const q = parseInt(quarter.replace("Q", ""), 10);
-    return new Date(y, (q - 1) * 3, 1);
-  };
+  const quarterStartDate = (quarter: string, y: number): Date => fiscalQuarterStartDate(quarter, y);
   const startedQuarters = useMemo(
     () => (data?.quarters ?? []).filter((q) => quarterStartDate(q.quarter, year) <= new Date()),
     [data, year]
@@ -1716,6 +1732,7 @@ const AskedToLeaveWidget: React.FC = () => {
   const [data, setData] = useState<AskedToLeaveResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [year, setYear] = useState<number>(new Date().getFullYear());
+  const [quarterFocus, setQuarterFocus] = useState<string>(currentQuarterLabel());
 
   useEffect(() => {
     setLoading(true);
@@ -1727,17 +1744,36 @@ const AskedToLeaveWidget: React.FC = () => {
 
   const yearOptions = useMemo(() => {
     const years = data?.availableYears?.length ? data.availableYears : [year];
-    return years.map((y) => ({ key: String(y), label: String(y) }));
+    return years.map((y) => ({ key: String(y), label: fyLabel(y) }));
   }, [data, year]);
 
-  const quarterStartDate = (quarter: string, y: number): Date => {
-    const q = parseInt(quarter.replace("Q", ""), 10);
-    return new Date(y, (q - 1) * 3, 1);
-  };
+  const quarterStartDate = (quarter: string, y: number): Date => fiscalQuarterStartDate(quarter, y);
+  const hasQuarterStarted = (quarter: string, y: number): boolean => quarterStartDate(quarter, y) <= new Date();
   const startedQuarters = useMemo(
-    () => (data?.quarters ?? []).filter((q) => quarterStartDate(q.quarter, year) <= new Date()),
+    () => (data?.quarters ?? []).filter((q) => hasQuarterStarted(q.quarter, year)),
     [data, year]
   );
+
+  useEffect(() => {
+    if (quarterFocus !== "All" && !hasQuarterStarted(quarterFocus, year)) {
+      setQuarterFocus("All");
+    }
+  }, [year, quarterFocus]);
+
+  const quarterOptions = [
+    { key: "All", label: "All Quarters" },
+    ...["Q1", "Q2", "Q3", "Q4"].filter((q) => hasQuarterStarted(q, year)).map((q) => ({ key: q, label: q })),
+  ];
+
+  // Stat cards follow the quarter/year filters — defaulting to the current
+  // quarter of the current year, not the all-time aggregate.
+  const focusedQuarter: AskedToLeaveQuarterRow | undefined =
+    quarterFocus === "All"
+      ? startedQuarters[startedQuarters.length - 1]
+      : data?.quarters?.find((q) => q.quarter === quarterFocus);
+  const qTotalExits = focusedQuarter?.totalExits ?? 0;
+  const qAskedToLeave = focusedQuarter?.askedToLeaveCount ?? 0;
+  const qAskedToLeavePct = focusedQuarter?.askedToLeavePct ?? 0;
 
   return (
     <Box sx={{ bgcolor: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", p: 3, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
@@ -1747,10 +1783,13 @@ const AskedToLeaveWidget: React.FC = () => {
             Asked to Leave
           </Typography>
           <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
-            Share of all exits classified as "Asked to Leave" — a single aggregate number, no employee names, reasons, or department breakdown shown
+            Share of exits in the selected quarter classified as "Asked to Leave" — a single aggregate number, no employee names, reasons, or department breakdown shown
           </Typography>
         </Box>
-        <FilterPillRow options={yearOptions} active={String(year)} onChange={(k) => setYear(Number(k))} color="#dc2626" />
+        <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+          <FilterPillRow options={yearOptions} active={String(year)} onChange={(k) => setYear(Number(k))} color="#dc2626" />
+          <FilterPillRow options={quarterOptions} active={quarterFocus} onChange={setQuarterFocus} color="#dc2626" />
+        </Box>
       </Box>
 
       {loading || !data ? (
@@ -1760,20 +1799,20 @@ const AskedToLeaveWidget: React.FC = () => {
       ) : (
         <>
           <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexWrap: "wrap" }}>
-            <StatCard label="Total Exits" value={data.totalExits} color={ACCENT} bg="#eef2ff" />
-            <StatCard label="Asked to Leave" value={data.askedToLeaveCount} color="#dc2626" bg="#fef2f2" />
-            <StatCard label="% Asked to Leave" value={`${data.askedToLeavePct}%`} color="#dc2626" bg="#fef2f2" />
+            <StatCard label="Total Exits" value={qTotalExits} color={ACCENT} bg="#eef2ff" hint={`${focusedQuarter?.quarter ?? "—"} ${year} · all time: ${data.totalExits} exits, ${data.askedToLeaveCount} asked to leave (${data.askedToLeavePct}%)`} />
+            <StatCard label="Asked to Leave" value={qAskedToLeave} color="#dc2626" bg="#fef2f2" />
+            <StatCard label="% Asked to Leave" value={`${qAskedToLeavePct}%`} color="#dc2626" bg="#fef2f2" />
           </Box>
 
           <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
             <Box sx={{ flex: "1 1 260px", minWidth: 240 }}>
               <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
-                Split — {year}
+                Split — {focusedQuarter?.quarter ?? "—"} {year}
               </Typography>
               <PieBreakdownChart
                 data={[
-                  { name: "Asked to Leave", value: data.askedToLeaveCount, color: "#dc2626" },
-                  { name: "Other Exits", value: Math.max(0, data.totalExits - data.askedToLeaveCount), color: "#94a3b8" },
+                  { name: "Asked to Leave", value: qAskedToLeave, color: "#dc2626" },
+                  { name: "Other Exits", value: Math.max(0, qTotalExits - qAskedToLeave), color: "#94a3b8" },
                 ]}
               />
             </Box>
@@ -1812,6 +1851,7 @@ const ReferredWidget: React.FC = () => {
   const [data, setData] = useState<ReferredResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [year, setYear] = useState<number>(new Date().getFullYear());
+  const [quarterFocus, setQuarterFocus] = useState<string>(currentQuarterLabel());
 
   useEffect(() => {
     setLoading(true);
@@ -1823,24 +1863,36 @@ const ReferredWidget: React.FC = () => {
 
   const yearOptions = useMemo(() => {
     const years = data?.availableYears?.length ? data.availableYears : [year];
-    return years.map((y) => ({ key: String(y), label: String(y) }));
+    return years.map((y) => ({ key: String(y), label: fyLabel(y) }));
   }, [data, year]);
 
-  const quarterStartDate = (quarter: string, y: number): Date => {
-    const q = parseInt(quarter.replace("Q", ""), 10);
-    return new Date(y, (q - 1) * 3, 1);
-  };
+  const quarterStartDate = (quarter: string, y: number): Date => fiscalQuarterStartDate(quarter, y);
+  const hasQuarterStarted = (quarter: string, y: number): boolean => quarterStartDate(quarter, y) <= new Date();
   const startedQuarters = useMemo(
-    () => (data?.quarters ?? []).filter((q) => quarterStartDate(q.quarter, year) <= new Date()),
+    () => (data?.quarters ?? []).filter((q) => hasQuarterStarted(q.quarter, year)),
     [data, year]
   );
 
-  // Stat cards follow the year selector — summed across this year's
-  // started quarters — rather than always showing the all-time total
-  // regardless of which year is picked.
-  const yearTotal = startedQuarters.reduce((s, q) => s + q.total, 0);
-  const yearReferred = startedQuarters.reduce((s, q) => s + q.referredCount, 0);
-  const yearReferredPct = yearTotal > 0 ? Math.round((yearReferred / yearTotal) * 1000) / 10 : 0;
+  useEffect(() => {
+    if (quarterFocus !== "All" && !hasQuarterStarted(quarterFocus, year)) {
+      setQuarterFocus("All");
+    }
+  }, [year, quarterFocus]);
+
+  const quarterOptions = [
+    { key: "All", label: "All Quarters" },
+    ...["Q1", "Q2", "Q3", "Q4"].filter((q) => hasQuarterStarted(q, year)).map((q) => ({ key: q, label: q })),
+  ];
+
+  // Stat cards follow the quarter/year filters — defaulting to the current
+  // quarter of the current year, not a running year-to-date total.
+  const focusedQuarter: ReferredQuarterRow | undefined =
+    quarterFocus === "All"
+      ? startedQuarters[startedQuarters.length - 1]
+      : data?.quarters?.find((q) => q.quarter === quarterFocus);
+  const qTotal = focusedQuarter?.total ?? 0;
+  const qReferred = focusedQuarter?.referredCount ?? 0;
+  const qReferredPct = focusedQuarter?.referredPct ?? 0;
 
   return (
     <Box sx={{ bgcolor: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", p: 3, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
@@ -1850,10 +1902,13 @@ const ReferredWidget: React.FC = () => {
             Referred Employees
           </Typography>
           <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
-            Everyone who joined in the selected year, and what share were referred
+            Of everyone who joined in the selected quarter, what share were referred
           </Typography>
         </Box>
-        <FilterPillRow options={yearOptions} active={String(year)} onChange={(k) => setYear(Number(k))} color="#0284c7" />
+        <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+          <FilterPillRow options={yearOptions} active={String(year)} onChange={(k) => setYear(Number(k))} color="#0284c7" />
+          <FilterPillRow options={quarterOptions} active={quarterFocus} onChange={setQuarterFocus} color="#0284c7" />
+        </Box>
       </Box>
 
       {loading || !data ? (
@@ -1863,20 +1918,20 @@ const ReferredWidget: React.FC = () => {
       ) : (
         <>
           <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexWrap: "wrap" }}>
-            <StatCard label="Joined This Year" value={yearTotal} color={ACCENT} bg="#eef2ff" hint={`All time: ${data.total} joined, ${data.referredCount} referred (${data.referredPct}%)`} />
-            <StatCard label="Referred" value={yearReferred} color="#0284c7" bg="#eff6ff" />
-            <StatCard label="% Referred" value={`${yearReferredPct}%`} color="#0284c7" bg="#eff6ff" />
+            <StatCard label="Joined" value={qTotal} color={ACCENT} bg="#eef2ff" hint={`${focusedQuarter?.quarter ?? "—"} ${year} · all time: ${data.total} joined, ${data.referredCount} referred (${data.referredPct}%)`} />
+            <StatCard label="Referred" value={qReferred} color="#0284c7" bg="#eff6ff" />
+            <StatCard label="% Referred" value={`${qReferredPct}%`} color="#0284c7" bg="#eff6ff" />
           </Box>
 
           <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
             <Box sx={{ flex: "1 1 260px", minWidth: 240 }}>
               <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
-                Split — {year}
+                Split — {focusedQuarter?.quarter ?? "—"} {year}
               </Typography>
               <PieBreakdownChart
                 data={[
-                  { name: "Referred", value: yearReferred, color: "#0284c7" },
-                  { name: "Other", value: Math.max(0, yearTotal - yearReferred), color: "#94a3b8" },
+                  { name: "Referred", value: qReferred, color: "#0284c7" },
+                  { name: "Other", value: Math.max(0, qTotal - qReferred), color: "#94a3b8" },
                 ]}
               />
             </Box>
@@ -1911,6 +1966,7 @@ const OfferDropoutWidget: React.FC = () => {
   const [data, setData] = useState<OfferDropoutResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [year, setYear] = useState<number>(new Date().getFullYear());
+  const [quarterFocus, setQuarterFocus] = useState<string>(currentQuarterLabel());
 
   useEffect(() => {
     setLoading(true);
@@ -1922,24 +1978,36 @@ const OfferDropoutWidget: React.FC = () => {
 
   const yearOptions = useMemo(() => {
     const years = data?.availableYears?.length ? data.availableYears : [year];
-    return years.map((y) => ({ key: String(y), label: String(y) }));
+    return years.map((y) => ({ key: String(y), label: fyLabel(y) }));
   }, [data, year]);
 
-  const quarterStartDate = (quarter: string, y: number): Date => {
-    const q = parseInt(quarter.replace("Q", ""), 10);
-    return new Date(y, (q - 1) * 3, 1);
-  };
+  const quarterStartDate = (quarter: string, y: number): Date => fiscalQuarterStartDate(quarter, y);
+  const hasQuarterStarted = (quarter: string, y: number): boolean => quarterStartDate(quarter, y) <= new Date();
   const startedQuarters = useMemo(
-    () => (data?.quarters ?? []).filter((q) => quarterStartDate(q.quarter, year) <= new Date()),
+    () => (data?.quarters ?? []).filter((q) => hasQuarterStarted(q.quarter, year)),
     [data, year]
   );
 
-  // Stat cards follow the year selector — summed across this year's
-  // started quarters — rather than always showing the all-time total
-  // regardless of which year is picked.
-  const yearTotal = startedQuarters.reduce((s, q) => s + q.total, 0);
-  const yearDropout = startedQuarters.reduce((s, q) => s + q.dropoutCount, 0);
-  const yearDropoutPct = yearTotal > 0 ? Math.round((yearDropout / yearTotal) * 1000) / 10 : 0;
+  useEffect(() => {
+    if (quarterFocus !== "All" && !hasQuarterStarted(quarterFocus, year)) {
+      setQuarterFocus("All");
+    }
+  }, [year, quarterFocus]);
+
+  const quarterOptions = [
+    { key: "All", label: "All Quarters" },
+    ...["Q1", "Q2", "Q3", "Q4"].filter((q) => hasQuarterStarted(q, year)).map((q) => ({ key: q, label: q })),
+  ];
+
+  // Stat cards follow the quarter/year filters — defaulting to the current
+  // quarter of the current year, not a running year-to-date total.
+  const focusedQuarter: OfferDropoutQuarterRow | undefined =
+    quarterFocus === "All"
+      ? startedQuarters[startedQuarters.length - 1]
+      : data?.quarters?.find((q) => q.quarter === quarterFocus);
+  const qTotal = focusedQuarter?.total ?? 0;
+  const qDropout = focusedQuarter?.dropoutCount ?? 0;
+  const qDropoutPct = focusedQuarter?.dropoutPct ?? 0;
 
   return (
     <Box sx={{ bgcolor: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", p: 3, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
@@ -1949,10 +2017,13 @@ const OfferDropoutWidget: React.FC = () => {
             Offer Dropout
           </Typography>
           <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
-            Onboarding records for the selected year (by join/offer-accepted date), and the share marked "Not Joining"
+            Onboarding records for the selected quarter (by join/offer-accepted date), and the share marked "Not Joining"
           </Typography>
         </Box>
-        <FilterPillRow options={yearOptions} active={String(year)} onChange={(k) => setYear(Number(k))} color="#db2777" />
+        <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+          <FilterPillRow options={yearOptions} active={String(year)} onChange={(k) => setYear(Number(k))} color="#db2777" />
+          <FilterPillRow options={quarterOptions} active={quarterFocus} onChange={setQuarterFocus} color="#db2777" />
+        </Box>
       </Box>
 
       {loading || !data ? (
@@ -1962,20 +2033,20 @@ const OfferDropoutWidget: React.FC = () => {
       ) : (
         <>
           <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexWrap: "wrap" }}>
-            <StatCard label="Onboardings This Year" value={yearTotal} color={ACCENT} bg="#eef2ff" hint={`All time: ${data.total} onboardings, ${data.dropoutCount} not joining (${data.dropoutPct}%)`} />
-            <StatCard label="Not Joining" value={yearDropout} color="#db2777" bg="#fdf2f8" />
-            <StatCard label="% Dropout" value={`${yearDropoutPct}%`} color="#db2777" bg="#fdf2f8" />
+            <StatCard label="Onboardings" value={qTotal} color={ACCENT} bg="#eef2ff" hint={`${focusedQuarter?.quarter ?? "—"} ${year} · all time: ${data.total} onboardings, ${data.dropoutCount} not joining (${data.dropoutPct}%)`} />
+            <StatCard label="Not Joining" value={qDropout} color="#db2777" bg="#fdf2f8" />
+            <StatCard label="% Dropout" value={`${qDropoutPct}%`} color="#db2777" bg="#fdf2f8" />
           </Box>
 
           <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
             <Box sx={{ flex: "1 1 260px", minWidth: 240 }}>
               <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
-                Split — {year}
+                Split — {focusedQuarter?.quarter ?? "—"} {year}
               </Typography>
               <PieBreakdownChart
                 data={[
-                  { name: "Not Joining", value: yearDropout, color: "#db2777" },
-                  { name: "Other", value: Math.max(0, yearTotal - yearDropout), color: "#94a3b8" },
+                  { name: "Not Joining", value: qDropout, color: "#db2777" },
+                  { name: "Other", value: Math.max(0, qTotal - qDropout), color: "#94a3b8" },
                 ]}
               />
             </Box>
@@ -2011,6 +2082,7 @@ const DaysToHireWidget: React.FC = () => {
   const [data, setData] = useState<DaysToHireResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [year, setYear] = useState<number>(new Date().getFullYear());
+  const [quarterFocus, setQuarterFocus] = useState<string>(currentQuarterLabel());
 
   useEffect(() => {
     setLoading(true);
@@ -2022,15 +2094,13 @@ const DaysToHireWidget: React.FC = () => {
 
   const yearOptions = useMemo(() => {
     const years = data?.availableYears?.length ? data.availableYears : [year];
-    return years.map((y) => ({ key: String(y), label: String(y) }));
+    return years.map((y) => ({ key: String(y), label: fyLabel(y) }));
   }, [data, year]);
 
-  const quarterStartDate = (quarter: string, y: number): Date => {
-    const q = parseInt(quarter.replace("Q", ""), 10);
-    return new Date(y, (q - 1) * 3, 1);
-  };
+  const quarterStartDate = (quarter: string, y: number): Date => fiscalQuarterStartDate(quarter, y);
+  const hasQuarterStarted = (quarter: string, y: number): boolean => quarterStartDate(quarter, y) <= new Date();
   const startedQuartersRaw = useMemo(
-    () => (data?.quarters ?? []).filter((q) => quarterStartDate(q.quarter, year) <= new Date()),
+    () => (data?.quarters ?? []).filter((q) => hasQuarterStarted(q.quarter, year)),
     [data, year]
   );
   const startedQuarters = useMemo(
@@ -2043,20 +2113,26 @@ const DaysToHireWidget: React.FC = () => {
     [startedQuartersRaw]
   );
 
-  // Stat cards follow the year selector — a count-weighted average across
-  // this year's started quarters — rather than always showing the
-  // all-time figure regardless of which year is picked.
-  const yearBucket = (key: "overall" | "fresher" | "experienced"): DaysToHireBucket => {
-    let totalDays = 0, totalCount = 0;
-    for (const q of startedQuartersRaw) {
-      const b = q[key];
-      if (b.count > 0) { totalDays += b.avgDays! * b.count; totalCount += b.count; }
+  useEffect(() => {
+    if (quarterFocus !== "All" && !hasQuarterStarted(quarterFocus, year)) {
+      setQuarterFocus("All");
     }
-    return { avgDays: totalCount > 0 ? Math.round((totalDays / totalCount) * 10) / 10 : null, count: totalCount };
-  };
-  const yearOverall = data ? yearBucket("overall") : { avgDays: null, count: 0 };
-  const yearFresher = data ? yearBucket("fresher") : { avgDays: null, count: 0 };
-  const yearExperienced = data ? yearBucket("experienced") : { avgDays: null, count: 0 };
+  }, [year, quarterFocus]);
+
+  const quarterOptions = [
+    { key: "All", label: "All Quarters" },
+    ...["Q1", "Q2", "Q3", "Q4"].filter((q) => hasQuarterStarted(q, year)).map((q) => ({ key: q, label: q })),
+  ];
+
+  // Stat cards follow the quarter/year filters — defaulting to the current
+  // quarter of the current year, not a year-to-date average.
+  const focusedQuarterRaw: DaysToHireQuarterRow | undefined =
+    quarterFocus === "All"
+      ? startedQuartersRaw[startedQuartersRaw.length - 1]
+      : data?.quarters?.find((q) => q.quarter === quarterFocus);
+  const focusedOverall = focusedQuarterRaw?.overall ?? { avgDays: null, count: 0 };
+  const focusedFresher = focusedQuarterRaw?.fresher ?? { avgDays: null, count: 0 };
+  const focusedExperienced = focusedQuarterRaw?.experienced ?? { avgDays: null, count: 0 };
 
   return (
     <Box sx={{ bgcolor: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", p: 3, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
@@ -2069,7 +2145,10 @@ const DaysToHireWidget: React.FC = () => {
             Calendar days from requisition raised to requisition closed — overall, and split by Fresher vs Experienced hires
           </Typography>
         </Box>
-        <FilterPillRow options={yearOptions} active={String(year)} onChange={(k) => setYear(Number(k))} color={ACCENT} />
+        <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+          <FilterPillRow options={yearOptions} active={String(year)} onChange={(k) => setYear(Number(k))} color={ACCENT} />
+          <FilterPillRow options={quarterOptions} active={quarterFocus} onChange={setQuarterFocus} color="#d97706" />
+        </Box>
       </Box>
 
       {loading || !data ? (
@@ -2081,24 +2160,24 @@ const DaysToHireWidget: React.FC = () => {
           <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
             <StatCard
               label="Overall — Avg Days to Hire"
-              value={yearOverall.avgDays != null ? `${yearOverall.avgDays}d` : "—"}
+              value={focusedOverall.avgDays != null ? `${focusedOverall.avgDays}d` : "—"}
               color={ACCENT}
               bg="#eef2ff"
-              hint={yearOverall.count > 0 ? `${yearOverall.count} closed in ${year} · all-time: ${data.overall.avgDays ?? "—"}d over ${data.overall.count}` : "No closed requisitions this year"}
+              hint={focusedOverall.count > 0 ? `${focusedOverall.count} closed in ${focusedQuarterRaw?.quarter ?? "—"} ${year} · all-time: ${data.overall.avgDays ?? "—"}d over ${data.overall.count}` : "No closed requisitions this quarter"}
             />
             <StatCard
               label="Fresher — Avg Days to Hire"
-              value={yearFresher.avgDays != null ? `${yearFresher.avgDays}d` : "—"}
+              value={focusedFresher.avgDays != null ? `${focusedFresher.avgDays}d` : "—"}
               color="#059669"
               bg="#f0fdf4"
-              hint={yearFresher.count > 0 ? `${yearFresher.count} closed requisition${yearFresher.count === 1 ? "" : "s"} in ${year}` : "No closed Fresher requisitions this year"}
+              hint={focusedFresher.count > 0 ? `${focusedFresher.count} closed requisition${focusedFresher.count === 1 ? "" : "s"}` : "No closed Fresher requisitions this quarter"}
             />
             <StatCard
               label="Experienced — Avg Days to Hire"
-              value={yearExperienced.avgDays != null ? `${yearExperienced.avgDays}d` : "—"}
+              value={focusedExperienced.avgDays != null ? `${focusedExperienced.avgDays}d` : "—"}
               color="#d97706"
               bg="#fffbeb"
-              hint={yearExperienced.count > 0 ? `${yearExperienced.count} closed requisition${yearExperienced.count === 1 ? "" : "s"} in ${year}` : "No closed Experienced requisitions this year"}
+              hint={focusedExperienced.count > 0 ? `${focusedExperienced.count} closed requisition${focusedExperienced.count === 1 ? "" : "s"}` : "No closed Experienced requisitions this quarter"}
             />
           </Box>
           {data.excludedCount > 0 && (
@@ -2110,12 +2189,12 @@ const DaysToHireWidget: React.FC = () => {
           <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap", mt: 2 }}>
             <Box sx={{ flex: "1 1 260px", minWidth: 240 }}>
               <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
-                Closed Requisitions — {year}
+                Closed Requisitions — {focusedQuarterRaw?.quarter ?? "—"} {year}
               </Typography>
               <PieBreakdownChart
                 data={[
-                  { name: "Fresher", value: yearFresher.count, color: "#059669" },
-                  { name: "Experienced", value: yearExperienced.count, color: "#d97706" },
+                  { name: "Fresher", value: focusedFresher.count, color: "#059669" },
+                  { name: "Experienced", value: focusedExperienced.count, color: "#d97706" },
                 ]}
               />
             </Box>
@@ -2202,14 +2281,12 @@ const UPCOMING_METRICS: UpcomingMetric[] = [
 
 async function fetchTeethToTailSummary(): Promise<CardSummary> {
   const now = new Date();
+  const fy = fiscalYearOf(now);
   const res = await axios.get(`${API}/onboarding/analytics/teeth-to-tail`, {
-    params: { year: now.getFullYear(), _t: Date.now() },
+    params: { year: fy, _t: Date.now() },
   });
   const quarters: QuarterData[] = res.data?.quarters ?? [];
-  const started = quarters.filter((q) => {
-    const qNum = parseInt(q.quarter.replace("Q", ""), 10);
-    return new Date(now.getFullYear(), (qNum - 1) * 3, 1) <= now;
-  });
+  const started = quarters.filter((q) => fiscalQuarterStartDate(q.quarter, fy) <= now);
   const latest = started[started.length - 1];
   if (!latest || latest.teeth + latest.tail === 0) {
     return { value: "—", sublabel: "No categorized data yet" };
@@ -2219,14 +2296,14 @@ async function fetchTeethToTailSummary(): Promise<CardSummary> {
   const tailPct = Math.round((latest.tail / total) * 1000) / 10;
   return {
     value: `${teethPct.toFixed(1)} : ${tailPct.toFixed(1)}`,
-    sublabel: `Teeth : Tail — ${latest.quarter} ${now.getFullYear()}`,
+    sublabel: `Teeth : Tail — ${latest.quarter} ${fyLabel(fy)}`,
   };
 }
 
 async function fetchGenderSummary(): Promise<CardSummary> {
   const now = new Date();
   const res = await axios.get(`${API}/onboarding/analytics/gender`, {
-    params: { year: now.getFullYear(), _t: Date.now() },
+    params: { year: fiscalYearOf(now), _t: Date.now() },
   });
   const total: number = res.data?.total ?? 0;
   const overall: GenderOverall[] = res.data?.overall ?? [];
@@ -2263,7 +2340,7 @@ async function fetchKpiSummary(moduleKey: string): Promise<CardSummary> {
 async function fetchIncrementSummary(): Promise<CardSummary> {
   const now = new Date();
   const res = await axios.get(`${API}/salary-revisions/analytics/increments`, {
-    params: { year: now.getFullYear(), _t: Date.now() },
+    params: { year: fiscalYearOf(now), _t: Date.now() },
   });
   const total = res.data?.total ?? 0;
   const avg = res.data?.avgIncrementPct;
@@ -2289,57 +2366,69 @@ async function fetchInternConversionsSummary(): Promise<CardSummary> {
   return { value: String(total), sublabel: `Intern/Contract Based → Employee, via Salary Revision` };
 }
 
+// Picks out the latest fiscal quarter that's actually started this fiscal
+// year from a {quarter: "Q_"}[] array — the shared "current quarter" lookup
+// used by every summary card below, matching the same default the full
+// widgets use.
+function latestStartedQuarter<T extends { quarter: string }>(quarters: T[], now: Date, fy: number): T | undefined {
+  const started = quarters.filter((q) => fiscalQuarterStartDate(q.quarter, fy) <= now);
+  return started[started.length - 1];
+}
+
 async function fetchAskedToLeaveSummary(): Promise<CardSummary> {
-  const res = await axios.get(`${API}/exit/analytics/asked-to-leave`, { params: { _t: Date.now() } });
-  const totalExits = res.data?.totalExits ?? 0;
-  const askedToLeaveCount = res.data?.askedToLeaveCount ?? 0;
-  const pct = res.data?.askedToLeavePct ?? 0;
-  if (totalExits === 0) return { value: "—", sublabel: "No exits recorded yet" };
-  return { value: `${pct}%`, sublabel: `${askedToLeaveCount} of ${totalExits} exits` };
+  const now = new Date();
+  const fy = fiscalYearOf(now);
+  const res = await axios.get(`${API}/exit/analytics/asked-to-leave`, { params: { year: fy, _t: Date.now() } });
+  const quarters: AskedToLeaveQuarterRow[] = res.data?.quarters ?? [];
+  const latest = latestStartedQuarter(quarters, now, fy);
+  if (!latest || latest.totalExits === 0) return { value: "—", sublabel: "No exits recorded this quarter" };
+  return { value: `${latest.askedToLeavePct}%`, sublabel: `${latest.askedToLeaveCount} of ${latest.totalExits} exits — ${latest.quarter} ${fyLabel(fy)}` };
 }
 
 async function fetchReferredSummary(): Promise<CardSummary> {
-  const res = await axios.get(`${API}/onboarding/analytics/referred`, { params: { _t: Date.now() } });
-  const total = res.data?.total ?? 0;
-  const referredCount = res.data?.referredCount ?? 0;
-  const pct = res.data?.referredPct ?? 0;
-  if (total === 0) return { value: "—", sublabel: "No employees recorded yet" };
-  return { value: `${pct}%`, sublabel: `${referredCount} of ${total} who ever joined` };
+  const now = new Date();
+  const fy = fiscalYearOf(now);
+  const res = await axios.get(`${API}/onboarding/analytics/referred`, { params: { year: fy, _t: Date.now() } });
+  const quarters: ReferredQuarterRow[] = res.data?.quarters ?? [];
+  const latest = latestStartedQuarter(quarters, now, fy);
+  if (!latest || latest.total === 0) return { value: "—", sublabel: "No one joined this quarter" };
+  return { value: `${latest.referredPct}%`, sublabel: `${latest.referredCount} of ${latest.total} joined — ${latest.quarter} ${fyLabel(fy)}` };
 }
 
 async function fetchDaysToHireSummary(level: "overall" | "fresher" | "experienced"): Promise<CardSummary> {
-  const res = await axios.get(`${API}/hiringrequisitions/analytics/days-to-hire`, { params: { _t: Date.now() } });
-  const data: DaysToHireResponse = res.data;
-  const bucket = data?.[level];
-  if (!bucket || bucket.count === 0) return { value: "—", sublabel: "No closed requisitions yet" };
-  return { value: `${bucket.avgDays}d`, sublabel: `Avg over ${bucket.count} closed requisition${bucket.count === 1 ? "" : "s"}` };
+  const now = new Date();
+  const fy = fiscalYearOf(now);
+  const res = await axios.get(`${API}/hiringrequisitions/analytics/days-to-hire`, { params: { year: fy, _t: Date.now() } });
+  const quarters: DaysToHireQuarterRow[] = res.data?.quarters ?? [];
+  const latest = latestStartedQuarter(quarters, now, fy);
+  const bucket = latest?.[level];
+  if (!bucket || bucket.count === 0) return { value: "—", sublabel: "No closed requisitions this quarter" };
+  return { value: `${bucket.avgDays}d`, sublabel: `Avg over ${bucket.count} closed requisition${bucket.count === 1 ? "" : "s"} — ${latest!.quarter} ${fyLabel(fy)}` };
 }
 
 async function fetchAttritionSummary(): Promise<CardSummary> {
   const now = new Date();
+  const fy = fiscalYearOf(now);
   const res = await axios.get(`${API}/onboarding/analytics/attrition`, {
-    params: { year: now.getFullYear(), _t: Date.now() },
+    params: { year: fy, _t: Date.now() },
   });
   const quarters: AttritionQuarterRow[] = res.data?.quarters ?? [];
-  const started = quarters.filter((q) => {
-    const qNum = parseInt(q.quarter.replace("Q", ""), 10);
-    return new Date(now.getFullYear(), (qNum - 1) * 3, 1) <= now;
-  });
-  const latest = started[started.length - 1];
+  const latest = latestStartedQuarter(quarters, now, fy);
   if (!latest) return { value: "—", sublabel: "No data yet" };
   return {
     value: `${latest.attritionPct}%`,
-    sublabel: `Retention ${latest.retentionPct != null ? `${latest.retentionPct}%` : "—"} — ${latest.quarter} ${now.getFullYear()}`,
+    sublabel: `Retention ${latest.retentionPct != null ? `${latest.retentionPct}%` : "—"} — ${latest.quarter} ${fyLabel(fy)}`,
   };
 }
 
 async function fetchOfferDropoutSummary(): Promise<CardSummary> {
-  const res = await axios.get(`${API}/onboarding/analytics/offer-dropout`, { params: { _t: Date.now() } });
-  const total = res.data?.total ?? 0;
-  const dropoutCount = res.data?.dropoutCount ?? 0;
-  const pct = res.data?.dropoutPct ?? 0;
-  if (total === 0) return { value: "—", sublabel: "No onboardings recorded yet" };
-  return { value: `${pct}%`, sublabel: `${dropoutCount} of ${total} onboardings` };
+  const now = new Date();
+  const fy = fiscalYearOf(now);
+  const res = await axios.get(`${API}/onboarding/analytics/offer-dropout`, { params: { year: fy, _t: Date.now() } });
+  const quarters: OfferDropoutQuarterRow[] = res.data?.quarters ?? [];
+  const latest = latestStartedQuarter(quarters, now, fy);
+  if (!latest || latest.total === 0) return { value: "—", sublabel: "No onboardings recorded this quarter" };
+  return { value: `${latest.dropoutPct}%`, sublabel: `${latest.dropoutCount} of ${latest.total} onboardings — ${latest.quarter} ${fyLabel(fy)}` };
 }
 
 // ─── Root page ──────────────────────────────────────────────────────────────

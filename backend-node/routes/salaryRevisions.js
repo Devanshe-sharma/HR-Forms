@@ -4,6 +4,7 @@ const SalaryRevision = require('../models/SalaryRevision');
 const asyncHandler = require('express-async-handler');
 const Onboarding   = require('../models/onboardingModel');
 const Confirmations = require('../models/Confirmations');
+const { fiscalYearOf, fiscalQuarterOf } = require('../utils/fiscalQuarter');
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
@@ -49,10 +50,10 @@ router.get('/analytics/increments', asyncHandler(async (req, res) => {
   const completed = raw
     .filter((r) => r.finalIncrementPct != null && !isConversion(r) && r.finalIncrementPct <= MAX_ANALYTIC_INCREMENT);
 
-  const yearOf = (r) => new Date(r.applicableDate || r.createdAt).getFullYear();
+  const yearOf = (r) => fiscalYearOf(r.applicableDate || r.createdAt);
 
   const availableYears = Array.from(new Set(completed.map(yearOf))).sort((a, b) => b - a);
-  const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+  const year = parseInt(req.query.year, 10) || fiscalYearOf(new Date());
 
   const inYear = completed.filter((r) => yearOf(r) === year);
 
@@ -97,7 +98,7 @@ router.get('/analytics/increments', asyncHandler(async (req, res) => {
   // answering a different question: how large were the raises actually
   // handed out each quarter, not how each employee fared across the year.
   const quarters = [1, 2, 3, 4].map((q) => {
-    const inQuarter = inYear.filter((r) => Math.floor(new Date(r.applicableDate || r.createdAt).getMonth() / 3) + 1 === q);
+    const inQuarter = inYear.filter((r) => fiscalQuarterOf(r.applicableDate || r.createdAt) === q);
     const avg = inQuarter.length
       ? Math.round((inQuarter.reduce((s, r) => s + r.finalIncrementPct, 0) / inQuarter.length) * 10) / 10
       : null;
@@ -147,7 +148,7 @@ router.get('/analytics/increments', asyncHandler(async (req, res) => {
 const EXITED_STATUS_VALUES = new Set(['Left', 'Already Left']);
 
 router.get('/analytics/pip', asyncHandler(async (req, res) => {
-  const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+  const year = parseInt(req.query.year, 10) || fiscalYearOf(new Date());
 
   // No employeeName in the projection — this endpoint is aggregate-only,
   // same confidentiality rule as Exit's Asked-to-Leave metric. Only
@@ -206,7 +207,7 @@ router.get('/analytics/pip', asyncHandler(async (req, res) => {
   ].filter((r) => r.date);
 
   const quarters = [1, 2, 3, 4].map((q) => {
-    const inQuarter = resolvedWithDates.filter((r) => r.date.getFullYear() === year && Math.floor(r.date.getMonth() / 3) + 1 === q);
+    const inQuarter = resolvedWithDates.filter((r) => fiscalYearOf(r.date) === year && fiscalQuarterOf(r.date) === q);
     const improved = inQuarter.filter((r) => r.improved).length;
     return {
       quarter: `Q${q}`,
@@ -216,9 +217,9 @@ router.get('/analytics/pip', asyncHandler(async (req, res) => {
     };
   });
 
-  const resolvedYears = resolvedWithDates.map((r) => r.date.getFullYear());
+  const resolvedYears = resolvedWithDates.map((r) => fiscalYearOf(r.date));
   const minYear = resolvedYears.length ? Math.min(...resolvedYears) : year;
-  const maxYear = Math.max(new Date().getFullYear(), ...(resolvedYears.length ? resolvedYears : [year]));
+  const maxYear = Math.max(fiscalYearOf(new Date()), ...(resolvedYears.length ? resolvedYears : [year]));
   const availableYears = [];
   for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
 

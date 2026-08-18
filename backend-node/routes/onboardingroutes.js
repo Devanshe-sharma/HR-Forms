@@ -2,6 +2,7 @@ const express = require("express");
 const Onboarding = require('../models/onboardingModel');
 const SalaryRevision = require('../models/SalaryRevision');
 const { signEmail, verifySignature } = require('../utils/accessLinkSigning');
+const { fiscalYearOf, fiscalQuarterOf, fiscalQuarterStartUTC, fiscalQuarterEndUTC } = require('../utils/fiscalQuarter');
 // Used only by the HR analytics routes, to resolve real historical exit
 // dates for headcount-by-quarter reconstruction (Onboarding only stores
 // the current status, not the date it happened).
@@ -849,14 +850,16 @@ function categorizeDept(dept, deptTypeMap) {
   return "Uncategorized";
 }
 
+// Indian financial year (Apr–Mar) — see utils/fiscalQuarter.js. Kept as a
+// thin wrapper under its original name so every existing call site below
+// (Teeth-to-Tail, Gender, Interns) picks up fiscal quarters automatically.
 function quarterEndDate(year, quarter) {
-  const endMonth = quarter * 3;
-  return new Date(Date.UTC(year, endMonth, 0, 23, 59, 59));
+  return fiscalQuarterEndUTC(year, quarter);
 }
 
 router.get("/analytics/teeth-to-tail", async (req, res) => {
   try {
-    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+    const year = parseInt(req.query.year, 10) || fiscalYearOf(new Date());
     const deptTypeMap = await getDepartmentTypeMap();
 
     const docs = await Onboarding.find(
@@ -968,10 +971,10 @@ router.get("/analytics/teeth-to-tail", async (req, res) => {
     const departmentBreakdown = Object.values(deptCounts).sort((a, b) => b.count - a.count);
 
     const joinYears = docs
-      .map((d) => (d.joinedDate ? new Date(d.joinedDate).getFullYear() : null))
+      .map((d) => (d.joinedDate ? fiscalYearOf(d.joinedDate) : null))
       .filter(Boolean);
     const minYear = joinYears.length ? Math.min(...joinYears) : year;
-    const maxYear = Math.max(new Date().getFullYear(), ...(joinYears.length ? joinYears : [year]));
+    const maxYear = Math.max(fiscalYearOf(new Date()), ...(joinYears.length ? joinYears : [year]));
     const availableYears = [];
     for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
 
@@ -984,7 +987,7 @@ router.get("/analytics/teeth-to-tail", async (req, res) => {
 
 router.get("/analytics/gender", async (req, res) => {
   try {
-    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+    const year = parseInt(req.query.year, 10) || fiscalYearOf(new Date());
 
     const docs = await Onboarding.find(
       {},
@@ -1101,10 +1104,10 @@ router.get("/analytics/gender", async (req, res) => {
     });
 
     const joinYears = docs
-      .map((d) => (d.joinedDate ? new Date(d.joinedDate).getFullYear() : null))
+      .map((d) => (d.joinedDate ? fiscalYearOf(d.joinedDate) : null))
       .filter(Boolean);
     const minYear = joinYears.length ? Math.min(...joinYears) : year;
-    const maxYear = Math.max(new Date().getFullYear(), ...(joinYears.length ? joinYears : [year]));
+    const maxYear = Math.max(fiscalYearOf(new Date()), ...(joinYears.length ? joinYears : [year]));
     const availableYears = [];
     for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
 
@@ -1136,7 +1139,7 @@ router.get("/analytics/gender", async (req, res) => {
 // opening headcount.
 router.get("/analytics/attrition", async (req, res) => {
   try {
-    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+    const year = parseInt(req.query.year, 10) || fiscalYearOf(new Date());
 
     const docs = await Onboarding.find(
       {},
@@ -1193,7 +1196,7 @@ router.get("/analytics/attrition", async (req, res) => {
       return count;
     }
 
-    const quarterStart = (y, q) => new Date(Date.UTC(y, (q - 1) * 3, 1, 0, 0, 0));
+    const quarterStart = (y, q) => fiscalQuarterStartUTC(y, q);
 
     const quarters = [1, 2, 3, 4].map((q) => {
       const startAsOf = new Date(quarterStart(year, q).getTime() - 1); // instant before the quarter begins
@@ -1224,14 +1227,14 @@ router.get("/analytics/attrition", async (req, res) => {
     });
 
     const joinYears = docs
-      .map((d) => (d.joinedDate ? new Date(d.joinedDate).getFullYear() : null))
+      .map((d) => (d.joinedDate ? fiscalYearOf(d.joinedDate) : null))
       .filter(Boolean);
     const exitYears = employees
-      .map((e) => (e.resolvedExitDate ? e.resolvedExitDate.getFullYear() : null))
+      .map((e) => (e.resolvedExitDate ? fiscalYearOf(e.resolvedExitDate) : null))
       .filter(Boolean);
     const allYears = [...joinYears, ...exitYears];
     const minYear = allYears.length ? Math.min(...allYears) : year;
-    const maxYear = Math.max(new Date().getFullYear(), ...(allYears.length ? allYears : [year]));
+    const maxYear = Math.max(fiscalYearOf(new Date()), ...(allYears.length ? allYears : [year]));
     const availableYears = [];
     for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
 
@@ -1642,7 +1645,7 @@ router.put('/:id/contract', async (req, res) => {
 
 router.get("/analytics/interns", async (req, res) => {
   try {
-    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+    const year = parseInt(req.query.year, 10) || fiscalYearOf(new Date());
 
     const docs = await Onboarding.find(
       {},
@@ -1739,10 +1742,10 @@ router.get("/analytics/interns", async (req, res) => {
     });
 
     const joinYears = docs
-      .map((d) => (d.joinedDate ? new Date(d.joinedDate).getFullYear() : null))
+      .map((d) => (d.joinedDate ? fiscalYearOf(d.joinedDate) : null))
       .filter(Boolean);
     const minYear = joinYears.length ? Math.min(...joinYears) : year;
-    const maxYear = Math.max(new Date().getFullYear(), ...(joinYears.length ? joinYears : [year]));
+    const maxYear = Math.max(fiscalYearOf(new Date()), ...(joinYears.length ? joinYears : [year]));
     const availableYears = [];
     for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
 
@@ -1777,7 +1780,7 @@ router.get("/analytics/interns", async (req, res) => {
 // and several referred employees have since exited.
 router.get("/analytics/referred", async (req, res) => {
   try {
-    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+    const year = parseInt(req.query.year, 10) || fiscalYearOf(new Date());
 
     const docs = await Onboarding.find({ joiningStatus: "Joined" }, "referred joinedDate").lean();
     const total = docs.length;
@@ -1792,7 +1795,7 @@ router.get("/analytics/referred", async (req, res) => {
       const cohort = docs.filter((d) => {
         if (!d.joinedDate) return false;
         const joined = new Date(d.joinedDate);
-        return joined.getFullYear() === year && Math.floor(joined.getMonth() / 3) + 1 === q;
+        return fiscalYearOf(joined) === year && fiscalQuarterOf(joined) === q;
       });
       const qTotal = cohort.length;
       const qReferred = cohort.filter((d) => d.referred).length;
@@ -1805,10 +1808,10 @@ router.get("/analytics/referred", async (req, res) => {
     });
 
     const joinYears = docs
-      .map((d) => (d.joinedDate ? new Date(d.joinedDate).getFullYear() : null))
+      .map((d) => (d.joinedDate ? fiscalYearOf(d.joinedDate) : null))
       .filter(Boolean);
     const minYear = joinYears.length ? Math.min(...joinYears) : year;
-    const maxYear = Math.max(new Date().getFullYear(), ...(joinYears.length ? joinYears : [year]));
+    const maxYear = Math.max(fiscalYearOf(new Date()), ...(joinYears.length ? joinYears : [year]));
     const availableYears = [];
     for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
 
@@ -1827,7 +1830,7 @@ router.get("/analytics/referred", async (req, res) => {
 // would be as identifying as a name.
 router.get("/analytics/offer-dropout", async (req, res) => {
   try {
-    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+    const year = parseInt(req.query.year, 10) || fiscalYearOf(new Date());
 
     const total = await Onboarding.countDocuments({});
     const dropoutCount = await Onboarding.countDocuments({ joiningStatus: "Not Joining" });
@@ -1846,7 +1849,7 @@ router.get("/analytics/offer-dropout", async (req, res) => {
         const raw = bucketDate(d);
         if (!raw) return false;
         const dt = new Date(raw);
-        return dt.getFullYear() === year && Math.floor(dt.getMonth() / 3) + 1 === q;
+        return fiscalYearOf(dt) === year && fiscalQuarterOf(dt) === q;
       });
       const qTotal = cohort.length;
       const qDropout = cohort.filter((d) => d.joiningStatus === "Not Joining").length;
@@ -1859,10 +1862,10 @@ router.get("/analytics/offer-dropout", async (req, res) => {
     });
 
     const bucketYears = docs
-      .map((d) => { const raw = bucketDate(d); return raw ? new Date(raw).getFullYear() : null; })
+      .map((d) => { const raw = bucketDate(d); return raw ? fiscalYearOf(raw) : null; })
       .filter(Boolean);
     const minYear = bucketYears.length ? Math.min(...bucketYears) : year;
-    const maxYear = Math.max(new Date().getFullYear(), ...(bucketYears.length ? bucketYears : [year]));
+    const maxYear = Math.max(fiscalYearOf(new Date()), ...(bucketYears.length ? bucketYears : [year]));
     const availableYears = [];
     for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
 
@@ -2323,21 +2326,21 @@ router.get("/analytics/intern-conversions", async (req, res) => {
       .sort((a, b) => b.count - a.count);
 
     // Quarterly trend — by conversionDate.
-    const year = parseInt(req.query.year, 10) || new Date().getFullYear();
+    const year = parseInt(req.query.year, 10) || fiscalYearOf(new Date());
     const quarters = [1, 2, 3, 4].map((q) => {
       const count = conversions.filter((c) => {
         if (!c.conversionDate) return false;
         const d = new Date(c.conversionDate);
-        return d.getFullYear() === year && Math.floor(d.getMonth() / 3) + 1 === q;
+        return fiscalYearOf(d) === year && fiscalQuarterOf(d) === q;
       }).length;
       return { quarter: `Q${q}`, count };
     });
 
     const conversionYears = conversions
-      .map((c) => (c.conversionDate ? new Date(c.conversionDate).getFullYear() : null))
+      .map((c) => (c.conversionDate ? fiscalYearOf(c.conversionDate) : null))
       .filter(Boolean);
     const minYear = conversionYears.length ? Math.min(...conversionYears) : year;
-    const maxYear = Math.max(new Date().getFullYear(), ...(conversionYears.length ? conversionYears : [year]));
+    const maxYear = Math.max(fiscalYearOf(new Date()), ...(conversionYears.length ? conversionYears : [year]));
     const availableYears = [];
     for (let y = maxYear; y >= minYear; y--) availableYears.push(y);
 
