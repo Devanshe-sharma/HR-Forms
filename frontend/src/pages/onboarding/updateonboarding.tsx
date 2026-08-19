@@ -78,6 +78,10 @@ interface OnboardingDetail {
   notJoinedReason?: string;
   remarks?: string;
   fmsStatus?: string;
+  // Referral
+  referred?: boolean;
+  referredByName?: string;
+  referredByEmail?: string;
   // Salary
   basicSal?: number; hraSal?: number; travelAllowance?: number;
   childrenEducationAllowance?: number; supplementaryAllowance?: number;
@@ -131,6 +135,10 @@ const schema = z.object({
   newEmployeeCategory: z.string().optional(),
   managementLevel: z.string().optional(),
   newManagementLevel: z.string().optional(),
+  // Referral
+  referred: z.boolean().optional(),
+  referredByName: z.string().optional(),
+  referredByEmail: z.string().email("Invalid email").optional().or(z.literal("")),
   // Status
   statusChange: z.enum(["No Change In Status", "Joining Date Changed", "Joined", "Not Joining"]).optional(),
   notJoinedReason: z.string().optional(),
@@ -282,10 +290,12 @@ const UpdateOnboarding: React.FC = () => {
     defaultValues: {
       autoWelcomeEmail: false, autoReminderEmail: false,
       autoInstructionsToAllEmail: false, employeeConfirmationEmail: false,
+      referred: false, referredByName: "", referredByEmail: "",
     },
   });
 
   const statusChange = watch("statusChange");
+  const isReferred = watch("referred");
   const newEmployeeCategory = watch("newEmployeeCategory");
   const effectiveEmployeeCategory = newEmployeeCategory || detail?.employeeCategory || "";
   const isContractBasedCategory = CONTRACT_BASED_CATEGORIES.includes(effectiveEmployeeCategory);
@@ -357,6 +367,9 @@ const UpdateOnboarding: React.FC = () => {
           salReviewType: d.salReviewType ?? "",
           autoWelcomeEmail: false, autoReminderEmail: false,
           autoInstructionsToAllEmail: false, employeeConfirmationEmail: false,
+          referred: d.referred ?? false,
+          referredByName: d.referredByName ?? "",
+          referredByEmail: d.referredByEmail ?? "",
         });
 
         // Pre-fill dates
@@ -699,6 +712,32 @@ const UpdateOnboarding: React.FC = () => {
                     <label className={labelClass}>Official Email</label>
                     <input {...register("officialEmail")} className={inputClass} />
                   </div>
+                </div>
+              </section>
+
+              {/* ── Referral ────────────────────────────────────────────── */}
+              <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                {sectionTitle("Referral", "Tag who referred this joinee — used to check the Rs. 5,000 referral bonus on confirmation")}
+                <div className="space-y-4">
+                  <Controller name="referred" control={control} render={({ field }) => (
+                    <FormControlLabel
+                      control={<Checkbox checked={!!field.value} onChange={field.onChange} />}
+                      label="This joinee was referred by an existing employee"
+                    />
+                  )} />
+                  {isReferred && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={labelClass}>Referred By (Name)</label>
+                        <input {...register("referredByName")} className={inputClass} placeholder="Referrer's full name" />
+                      </div>
+                      <div>
+                        <label className={labelClass}>Referred By (Email)</label>
+                        <input {...register("referredByEmail")} className={inputClass} placeholder="Referrer's official email" />
+                        {errors.referredByEmail && <p className={errorClass}>{errors.referredByEmail.message}</p>}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </section>
 

@@ -11,4 +11,5 @@ module.exports = {
   triggerDailyApplicantSummary: require("./triggers/triggerDailyApplicantSummary"),
   triggerReferralInvite:        require("./triggers/triggerReferralInvite"),
   triggerReferralSubmitted:     require("./triggers/triggerReferralSubmitted"),
+  triggerReferralBonus:         require("./triggers/triggerReferralBonus"),
 };

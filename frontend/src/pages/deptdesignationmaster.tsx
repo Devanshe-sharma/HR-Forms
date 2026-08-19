@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box, Typography, Button, TextField, Select, MenuItem,
   FormControl, InputLabel, Table, TableBody, TableCell,
@@ -8,6 +8,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   IconButton, InputAdornment, Pagination, Alert, Snackbar,
   Card, CardContent, Tooltip, CircularProgress, Divider,
+  Autocomplete,
 } from '@mui/material';
 import {
   Add as AddIcon, Search as SearchIcon, Close as CloseIcon,
@@ -136,6 +137,23 @@ export default function DeptDesignationMaster() {
     open: false, msg: '', severity: 'success',
   });
 
+  // Current employees only — sourced from Onboarding's eligible-employees
+  // list (joiningStatus "Joined", exited employees excluded), same source
+  // Confirmationspage.tsx uses. Populates the Department Head / Deputy /
+  // Reporting Manager pickers instead of free text.
+  const [employees, setEmployees] = useState<{ name: string }[]>([]);
+
+  const fetchEmployees = useCallback(async () => {
+    try {
+      const res  = await fetch(`${API_BASE}/onboarding/eligible-employees`);
+      const json = await res.json();
+      const raw: any[] = Array.isArray(json) ? json : (json.data || []);
+      setEmployees(raw.map((e: any) => ({ name: e.full_name || '' })).filter(e => e.name));
+    } catch {
+      // Non-fatal — manager fields just fall back to free text entry.
+    }
+  }, []);
+
   // ─── Fetch ────────────────────────────────────────────────────────────────────
   // NOTE: confirmed via grep on index.js that this router is actually
   // mounted at app.use("/api/rolemaster", require("./routes/roles")) — so
@@ -183,7 +201,7 @@ export default function DeptDesignationMaster() {
     }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { fetchData(); fetchEmployees(); }, [fetchData, fetchEmployees]);
 
   // ─── Filter ───────────────────────────────────────────────────────────────────
 
@@ -214,6 +232,84 @@ export default function DeptDesignationMaster() {
   const pageCount = Math.ceil(filtered.length / PAGE_SIZE) || 1;
   const pageRows  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
+  // ─── Auto-ID lookups (department / designation) ───────────────────────────────
+  // Every existing row is a source of truth for its department's and its
+  // designation's master data. We key off the name (case-insensitive) so
+  // picking a known department/designation auto-fills its id + metadata,
+  // while an unrecognised name gets the next free id generated for it.
+
+  const deptDirectory = useMemo(() => {
+    const map = new Map<string, RoleMasterRow>();
+    rows.forEach(r => {
+      const key = r.department?.trim().toLowerCase();
+      if (key && !map.has(key)) map.set(key, r);
+    });
+    return map;
+  }, [rows]);
+
+  const desigDirectory = useMemo(() => {
+    const map = new Map<string, RoleMasterRow>();
+    rows.forEach(r => {
+      const key = r.designation?.trim().toLowerCase();
+      if (key && !map.has(key)) map.set(key, r);
+    });
+    return map;
+  }, [rows]);
+
+  const deptNameOptions  = useMemo(
+    () => Array.from(new Set(rows.map(r => r.department).filter(Boolean))).sort(),
+    [rows],
+  );
+
+  const employeeNameOptions = useMemo(
+    () => Array.from(new Set(employees.map(e => e.name).filter(Boolean))).sort(),
+    [employees],
+  );
+
+  // Designation dropdown is scoped to the department currently in the form —
+  // it only lists designations that already exist under that department.
+  // With no department chosen yet, fall back to the full designation list.
+  const desigNameOptions = useMemo(() => {
+    const deptKey = form.department.trim().toLowerCase();
+    const source  = deptKey ? rows.filter(r => r.department?.trim().toLowerCase() === deptKey) : rows;
+    return Array.from(new Set(source.map(r => r.designation).filter(Boolean))).sort();
+  }, [rows, form.department]);
+
+  const nextDeptId = useMemo(() => {
+    const ids = rows.map(r => Number(r.dept_id)).filter(n => !isNaN(n));
+    return ids.length ? Math.max(...ids) + 1 : 1;
+  }, [rows]);
+
+  // Desig ID is dept_id followed by a 2-digit sequence within that department
+  // — e.g. Marketing (dept_id 4) → 0401, 0402, 0403… (stored as the plain
+  // number 401, 402, 403…, so the dept_id is always desig_id's hundreds+
+  // portion and the sequence is desig_id % 100).
+  const nextDesigIdForDept = (deptId: number) => {
+    const usedSeqs = rows
+      .filter(r => Number(r.dept_id) === deptId)
+      .map(r => Number(r.desig_id))
+      .filter(n => !isNaN(n))
+      .map(n => n % 100);
+    const nextSeq = (usedSeqs.length ? Math.max(...usedSeqs) : 0) + 1;
+    return deptId * 100 + nextSeq;
+  };
+
+  // Resolves what a given (department, designation) pair already means:
+  // - deptScopedMatch: this exact designation already exists under this exact
+  //   department — reuse its id, management level and reporting manager as-is.
+  // - globalMatch: this designation name exists under some other department —
+  //   informational only. desig_id now encodes dept_id, so it is never reused
+  //   across departments; a new department always gets its own sequence.
+  const findDesigMatch = (department: string, designation: string) => {
+    const deptKey  = department.trim().toLowerCase();
+    const desigKey = designation.trim().toLowerCase();
+    const deptScopedMatch = (deptKey && desigKey)
+      ? rows.find(r => r.department?.trim().toLowerCase() === deptKey && r.designation?.trim().toLowerCase() === desigKey)
+      : undefined;
+    const globalMatch = desigKey ? desigDirectory.get(desigKey) : undefined;
+    return { deptScopedMatch, globalMatch };
+  };
+
   // ─── Form helpers ─────────────────────────────────────────────────────────────
 
   const openAdd  = () => { setForm(EMPTY_FORM); setEditId(null); setErrors({}); setOpen(true); };
@@ -223,6 +319,61 @@ export default function DeptDesignationMaster() {
   const handleField = (field: keyof RoleMasterRow, value: string | number) => {
     setForm(prev => ({ ...prev, [field]: value }));
     if (errors[field]) setErrors(prev => ({ ...prev, [field]: undefined }));
+  };
+
+  // Department name changed (typed or picked) — resolve id + dept-level fields,
+  // then re-resolve the designation against the new department (its reporting
+  // manager is department-specific).
+  const handleDepartmentChange = (value: string) => {
+    const key = value.trim().toLowerCase();
+    const existing = key ? deptDirectory.get(key) : undefined;
+    const resolvedDeptId: number | '' = existing ? existing.dept_id as number : (value.trim() ? nextDeptId : '');
+
+    setForm(prev => {
+      const { deptScopedMatch } = findDesigMatch(value, prev.designation);
+      const desigId = deptScopedMatch
+        ? deptScopedMatch.desig_id
+        : (prev.designation.trim() && resolvedDeptId !== '' ? nextDesigIdForDept(resolvedDeptId) : '');
+
+      return {
+        ...prev,
+        department: value,
+        dept_id: resolvedDeptId,
+        // Known department → pull in its saved metadata so it stays consistent.
+        // New department → leave whatever the user has already typed alone.
+        department_type:   existing ? existing.department_type   : prev.department_type,
+        parent_department: existing ? existing.parent_department : prev.parent_department,
+        department_head:   existing ? existing.department_head   : prev.department_head,
+        department_deputy: existing ? existing.department_deputy : prev.department_deputy,
+        dept_head_email:   existing ? existing.dept_head_email    : prev.dept_head_email,
+        dept_group_email:  existing ? existing.dept_group_email   : prev.dept_group_email,
+        desig_id: desigId,
+        management_level:  deptScopedMatch ? deptScopedMatch.management_level : prev.management_level,
+        reporting_manager: deptScopedMatch ? deptScopedMatch.reporting_manager : prev.reporting_manager,
+      };
+    });
+    if (errors.department) setErrors(prev => ({ ...prev, department: undefined, dept_id: undefined }));
+  };
+
+  // Designation name changed (typed or picked) — resolve id + designation-level
+  // fields, including the reporting manager for this exact department.
+  const handleDesignationChange = (value: string) => {
+    setForm(prev => {
+      const { deptScopedMatch } = findDesigMatch(prev.department, value);
+      const deptIdNum = Number(prev.dept_id);
+      const desigId = deptScopedMatch
+        ? deptScopedMatch.desig_id
+        : (value.trim() && prev.dept_id !== '' && !isNaN(deptIdNum) ? nextDesigIdForDept(deptIdNum) : '');
+
+      return {
+        ...prev,
+        designation: value,
+        desig_id: desigId,
+        management_level:  deptScopedMatch ? deptScopedMatch.management_level : prev.management_level,
+        reporting_manager: deptScopedMatch ? deptScopedMatch.reporting_manager : prev.reporting_manager,
+      };
+    });
+    if (errors.designation) setErrors(prev => ({ ...prev, designation: undefined, desig_id: undefined }));
   };
 
   const validate = () => {
@@ -590,13 +741,23 @@ export default function DeptDesignationMaster() {
                 sx={{ fontSize: '0.7rem', letterSpacing: 1 }}>Department info</Typography>
 
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1.5fr', gap: 2 }}>
-                <TextField fullWidth size="small" label="Dept ID *" type="number"
-                  value={form.dept_id}
-                  onChange={e => handleField('dept_id', e.target.value ? Number(e.target.value) : '')}
-                  error={!!errors.dept_id} helperText={errors.dept_id} />
-                <TextField fullWidth size="small" label="Department *"
-                  value={form.department} onChange={e => handleField('department', e.target.value)}
-                  error={!!errors.department} helperText={errors.department} />
+                <TextField fullWidth size="small" label="Dept ID" value={form.dept_id || ''}
+                  disabled error={!!errors.dept_id}
+                  helperText={errors.dept_id || (form.dept_id
+                    ? (deptDirectory.get(String(form.department).trim().toLowerCase()) ? 'Existing department' : 'New department — auto-assigned')
+                    : 'Auto-filled from department')} />
+                <Autocomplete
+                  freeSolo
+                  options={deptNameOptions}
+                  value={form.department}
+                  inputValue={form.department}
+                  onInputChange={(_, value) => handleDepartmentChange(value)}
+                  onChange={(_, value) => handleDepartmentChange(value || '')}
+                  renderInput={(params) => (
+                    <TextField {...params} fullWidth size="small" label="Department *"
+                      error={!!errors.department} helperText={errors.department} />
+                  )}
+                />
                 <FormControl fullWidth size="small">
                   <InputLabel>Type</InputLabel>
                   <Select value={form.department_type} label="Type"
@@ -610,10 +771,28 @@ export default function DeptDesignationMaster() {
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2 }}>
                 <TextField fullWidth size="small" label="Parent department"
                   value={form.parent_department} onChange={e => handleField('parent_department', e.target.value)} />
-                <TextField fullWidth size="small" label="Department head"
-                  value={form.department_head} onChange={e => handleField('department_head', e.target.value)} />
-                <TextField fullWidth size="small" label="Department deputy"
-                  value={form.department_deputy} onChange={e => handleField('department_deputy', e.target.value)} />
+                <Autocomplete
+                  freeSolo
+                  options={employeeNameOptions}
+                  value={form.department_head}
+                  inputValue={form.department_head}
+                  onInputChange={(_, value) => handleField('department_head', value)}
+                  onChange={(_, value) => handleField('department_head', value || '')}
+                  renderInput={(params) => (
+                    <TextField {...params} fullWidth size="small" label="Department head" />
+                  )}
+                />
+                <Autocomplete
+                  freeSolo
+                  options={employeeNameOptions}
+                  value={form.department_deputy}
+                  inputValue={form.department_deputy}
+                  onInputChange={(_, value) => handleField('department_deputy', value)}
+                  onChange={(_, value) => handleField('department_deputy', value || '')}
+                  renderInput={(params) => (
+                    <TextField {...params} fullWidth size="small" label="Department deputy" />
+                  )}
+                />
               </Box>
 
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
@@ -627,13 +806,27 @@ export default function DeptDesignationMaster() {
                 sx={{ fontSize: '0.7rem', letterSpacing: 1, mt: 1 }}>Designation info</Typography>
 
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1.5fr', gap: 2 }}>
-                <TextField fullWidth size="small" label="Desig ID *" type="number"
-                  value={form.desig_id}
-                  onChange={e => handleField('desig_id', e.target.value ? Number(e.target.value) : '')}
-                  error={!!errors.desig_id} helperText={errors.desig_id} />
-                <TextField fullWidth size="small" label="Designation *"
-                  value={form.designation} onChange={e => handleField('designation', e.target.value)}
-                  error={!!errors.designation} helperText={errors.designation} />
+                <TextField fullWidth size="small" label="Desig ID" value={form.desig_id || ''}
+                  disabled error={!!errors.desig_id}
+                  helperText={errors.desig_id || (() => {
+                    if (!form.desig_id) return 'Auto-filled from designation';
+                    const { deptScopedMatch, globalMatch } = findDesigMatch(form.department, form.designation);
+                    if (deptScopedMatch) return 'Existing in this department';
+                    if (globalMatch) return 'Also used in another dept — new ID for this dept';
+                    return 'New designation — auto-assigned';
+                  })()} />
+                <Autocomplete
+                  freeSolo
+                  options={desigNameOptions}
+                  value={form.designation}
+                  inputValue={form.designation}
+                  onInputChange={(_, value) => handleDesignationChange(value)}
+                  onChange={(_, value) => handleDesignationChange(value || '')}
+                  renderInput={(params) => (
+                    <TextField {...params} fullWidth size="small" label="Designation *"
+                      error={!!errors.designation} helperText={errors.designation} />
+                  )}
+                />
                 <FormControl fullWidth size="small">
                   <InputLabel>Management level</InputLabel>
                   <Select value={form.management_level} label="Management level"
@@ -645,8 +838,17 @@ export default function DeptDesignationMaster() {
               </Box>
 
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2 }}>
-                <TextField fullWidth size="small" label="Reporting manager"
-                  value={form.reporting_manager} onChange={e => handleField('reporting_manager', e.target.value)} />
+                <Autocomplete
+                  freeSolo
+                  options={employeeNameOptions}
+                  value={form.reporting_manager}
+                  inputValue={form.reporting_manager}
+                  onInputChange={(_, value) => handleField('reporting_manager', value)}
+                  onChange={(_, value) => handleField('reporting_manager', value || '')}
+                  renderInput={(params) => (
+                    <TextField {...params} fullWidth size="small" label="Reporting manager" />
+                  )}
+                />
                 <TextField fullWidth size="small" label="Designation email"
                   value={form.desig_email_id}
                   onChange={e => handleField('desig_email_id', e.target.value)} />

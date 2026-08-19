@@ -4,6 +4,7 @@ const Confirmations = require('../models/Confirmations');
 // Onboarding is the single employee master now — replaces the old,
 // separate Employee collection entirely.
 const Onboarding    = require('../models/onboardingModel');
+const { triggerReferralBonus } = require('../emails');
 
 const err = (res, code, msg) => res.status(code).json({ success: false, message: msg });
 
@@ -178,6 +179,41 @@ async function syncConfirmationStatusToOnboarding(record) {
     // Best-effort — a sync hiccup here should never block a confirmation
     // decision from being saved.
     console.error('[Confirmations] Failed to sync confirmationStatus to Onboarding:', e.message);
+  }
+}
+
+// ─── Referral bonus notification ───────────────────────────────────────────
+// Fires only on a genuinely final 'confirmed' outcome. "Never placed on
+// PIP" is read straight off this record's own history — an 'extended'
+// entry IS this system's PIP marker (see mapConfirmationStatusForOnboarding
+// above, which labels it "On PIP / Extended"), so a record that was ever
+// extended before eventually being confirmed still fails eligibility here,
+// even though its *current* status is 'confirmed'.
+async function maybeTriggerReferralBonus(record) {
+  try {
+    if (record.currentStatus !== 'confirmed') return;
+
+    const wasEverOnPIP = record.history.some(h => h.status === 'extended');
+    if (wasEverOnPIP) return;
+
+    const months = monthsSinceJoining(record.joiningDate);
+    if (months === null || months < 6) return;
+
+    const employee = await Onboarding.findById(record.employeeId).lean();
+    if (!employee?.referred || !employee.referredByName?.trim()) return;
+
+    await triggerReferralBonus({
+      employeeName:    record.employeeName || employee.name || '',
+      employeeEmail:   record.email || employee.officialEmail || '',
+      department:      record.department,
+      designation:     record.designation,
+      joiningDate:     record.joiningDate,
+      referredByName:  employee.referredByName,
+      referredByEmail: employee.referredByEmail,
+    });
+  } catch (e) {
+    // Best-effort — never let this block the confirmation decision itself.
+    console.error('[Confirmations] Referral bonus check failed:', e.message);
   }
 }
 
@@ -577,6 +613,7 @@ router.put('/:id/management', async (req, res) => {
 
     await record.save();
     await syncConfirmationStatusToOnboarding(record);
+    await maybeTriggerReferralBonus(record);
 
     res.json({ success: true, data: record });
   } catch (e) {

@@ -251,6 +251,11 @@ const onboardingSchema = new mongoose.Schema(
     // template, and never included in an aggregate dashboard stat's
     // per-employee/per-department breakdown — only an overall percentage.
     referred: { type: Boolean, default: false },
+    // Who referred this joinee — used by the Confirmations flow to check
+    // referral-bonus eligibility on confirmation. Unlike referredPerformance/
+    // referredReason above, this pair IS read by an email template.
+    referredByName: { type: String, default: "" },
+    referredByEmail: { type: String, default: "" },
     referredPerformance: { type: String, default: "" },
     referredReason: { type: String, default: "" },
 

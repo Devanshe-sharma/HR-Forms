@@ -27,7 +27,7 @@ function referralInviteTemplate(doc) {
   `;
 
   return {
-    subject: `Know someone for our ${doc.designation || 'open'} role? Refer them!`,
+    subject: `Know someone excellent for our ${doc.designation || 'open'} role? Refer & Earn Referral Bonus + our Gratitude!`,
     html,
   };
 }
