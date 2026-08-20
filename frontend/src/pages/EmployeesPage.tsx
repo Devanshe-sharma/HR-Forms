@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Box, Typography, Card, CardContent, Avatar, CircularProgress,
   Chip, TextField, InputAdornment, Stack, Button, MenuItem,
-  Divider, useTheme, Tooltip,
+  Divider, useTheme, Tooltip, Dialog, DialogTitle, DialogContent,
+  IconButton, Tabs, Tab,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -22,10 +23,12 @@ import {
   ViewKanbanOutlined as ViewKanbanIcon,
   CalendarMonthOutlined as CalendarIcon,
   DownloadOutlined as DownloadIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
+import { hasAnyRole } from '../config/rbac';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -49,6 +52,37 @@ interface EmployeeEntry {
 }
 
 type DateMode = 'all' | 'quarter' | 'year' | 'custom';
+
+// Full onboarding record, fetched on demand when an employee card is
+// clicked — the list view only carries the trimmed EmployeeEntry shape.
+interface EmployeeFullRecord {
+  companyName?: string;
+  jobLocation?: string;
+  citizenship?: string;
+  nationality?: string;
+  passportNo?: string;
+  passportValidUpto?: string | null;
+  passportIssuePlace?: string;
+  bankName?: string;
+  bankAccountNo?: string;
+  ifscCode?: string;
+  panCard?: string;
+  aadhaarNo?: string;
+  uanNo?: string;
+  ePassbookLink?: string;
+  birthday?: string | null;
+  bloodGroup?: string;
+  maritalStatus?: string;
+  emergencyContactName?: string;
+  emergencyContactRelation?: string;
+  emergencyContactPhone?: string;
+  emergencyContactPlace?: string;
+  familyFather?: string;
+  familyMother?: string;
+  familySiblings?: string;
+  familySpouse?: string;
+  familyChildren?: string;
+}
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL;
 
@@ -171,6 +205,201 @@ const ContactRow: React.FC<{ icon: React.ReactNode; label: string; value?: strin
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Employee detail dialog — Public Info / Personal Info / Client View tabs
+// ─────────────────────────────────────────────────────────────────────────────
+
+const formatDateOnly = (value?: string | null) =>
+  value ? new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+
+const InfoField: React.FC<{ label: string; value?: string; link?: boolean }> = ({ label, value, link }) => {
+  const trimmed = value?.trim();
+  return (
+    <Box sx={{ minWidth: 0 }}>
+      <Typography sx={{
+        fontSize: '0.65rem', color: 'text.disabled', textTransform: 'uppercase',
+        letterSpacing: 0.4, lineHeight: 1.2, mb: '3px',
+      }}>
+        {label}
+      </Typography>
+      {link && trimmed ? (
+        <Typography component="a" href={trimmed} target="_blank" rel="noreferrer" sx={{
+          fontSize: '0.8rem', color: 'primary.main', wordBreak: 'break-all', textDecoration: 'none',
+          '&:hover': { textDecoration: 'underline' },
+        }}>
+          {trimmed}
+        </Typography>
+      ) : (
+        <Typography sx={{
+          fontSize: '0.8rem', wordBreak: 'break-word',
+          color: trimmed ? 'text.primary' : 'text.disabled',
+        }}>
+          {trimmed || 'Not provided'}
+        </Typography>
+      )}
+    </Box>
+  );
+};
+
+const SectionLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <Typography variant="overline" color="text.secondary" fontWeight={600}
+    sx={{ fontSize: '0.68rem', letterSpacing: 1 }}>
+    {children}
+  </Typography>
+);
+
+const TabPanel: React.FC<{ active: boolean; children: React.ReactNode }> = ({ active, children }) =>
+  active ? <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 2.5 }}>{children}</Box> : null;
+
+const EmployeeDetailDialog: React.FC<{
+  open: boolean;
+  employee: EmployeeEntry | null;
+  onClose: () => void;
+}> = ({ open, employee, onClose }) => {
+  const [tab, setTab] = useState(0);
+  const [full, setFull] = useState<EmployeeFullRecord | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Admin/Management/HR only — everyone else never sees these tabs exist.
+  const canViewPersonal   = hasAnyRole(['Admin', 'Management', 'HR']);
+  const canViewClientView = hasAnyRole(['Admin', 'Management', 'HR']);
+
+  useEffect(() => {
+    if (!open || !employee) { setFull(null); setTab(0); return; }
+    setTab(0);
+    setLoading(true);
+    fetch(`${API_BASE}/onboarding/${employee._id}`)
+      .then(res => res.json())
+      .then(json => setFull(json?.data || null))
+      .catch(() => setFull(null))
+      .finally(() => setLoading(false));
+  }, [open, employee]);
+
+  if (!employee) return null;
+  const [bg, fg] = avatarColors(employee.full_name || 'A');
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth
+      PaperProps={{ sx: { borderRadius: 3, height: 640, maxHeight: '85vh', display: 'flex', flexDirection: 'column' } }}>
+      <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1.5 }}>
+        <Avatar sx={{ width: 44, height: 44, bgcolor: bg, color: fg, fontWeight: 700 }}>
+          {initials(employee.full_name)}
+        </Avatar>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="h6" fontWeight={700} noWrap>{employee.full_name || 'Unnamed Employee'}</Typography>
+          <Typography variant="body2" color="text.secondary" noWrap>
+            {[employee.designation, employee.department].filter(Boolean).join(' · ') || '—'}
+          </Typography>
+        </Box>
+        <IconButton onClick={onClose} size="small"><CloseIcon /></IconButton>
+      </DialogTitle>
+
+      <Divider />
+
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="fullWidth"
+        sx={{ minHeight: 40, '& .MuiTab-root': { minHeight: 40, textTransform: 'none', fontSize: '0.8rem', fontWeight: 600 } }}>
+        <Tab label="Public Info" />
+        {canViewPersonal   && <Tab label="Personal Info" />}
+        {canViewClientView && <Tab label="Client View" />}
+      </Tabs>
+
+      <DialogContent sx={{ pb: 3, flex: 1, overflowY: 'auto' }}>
+        {loading && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+            <CircularProgress size={26} />
+          </Box>
+        )}
+
+        {!loading && (
+          <>
+            <TabPanel active={tab === 0}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                <InfoField label="Company Name" value={full?.companyName} />
+                <InfoField label="Job Location" value={full?.jobLocation} />
+                <InfoField label="Phone No" value={employee.mobile} />
+                <InfoField label="Official Email ID" value={employee.official_email} />
+                <InfoField label="Department" value={employee.department} />
+                <InfoField label="Designation" value={employee.designation} />
+                <InfoField label="Reporting Manager" value={employee.reporting_head} />
+              </Box>
+            </TabPanel>
+
+            {canViewPersonal && (
+              <TabPanel active={tab === 1}>
+                <SectionLabel>Citizenship Details</SectionLabel>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2 }}>
+                  <InfoField label="Citizenship" value={full?.citizenship} />
+                  <InfoField label="Nationality" value={full?.nationality} />
+                  <InfoField label="Passport No" value={full?.passportNo} />
+                  <InfoField label="Valid Upto" value={formatDateOnly(full?.passportValidUpto)} />
+                  <InfoField label="Issue Place" value={full?.passportIssuePlace} />
+                </Box>
+
+                <Divider />
+
+                <SectionLabel>Bank Details</SectionLabel>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2 }}>
+                  <InfoField label="Bank Name" value={full?.bankName} />
+                  <InfoField label="Account No" value={full?.bankAccountNo} />
+                  <InfoField label="IFSC Code" value={full?.ifscCode} />
+                  <InfoField label="PAN Card" value={full?.panCard} />
+                  <InfoField label="Aadhaar Card No" value={full?.aadhaarNo} />
+                  <InfoField label="UAN No" value={full?.uanNo} />
+                  <InfoField label="E-Passbook" value={full?.ePassbookLink} link />
+                </Box>
+
+                <Divider />
+
+                <SectionLabel>Contact Details</SectionLabel>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2 }}>
+                  <InfoField label="Name" value={employee.full_name} />
+                  <InfoField label="Phone" value={employee.mobile} />
+                  <InfoField label="Personal Email ID" value={employee.personal_email} />
+                  <InfoField label="Birthday" value={formatDateOnly(full?.birthday)} />
+                  <InfoField label="Blood Group" value={full?.bloodGroup} />
+                  <InfoField label="Marital Status" value={full?.maritalStatus} />
+                </Box>
+
+                <Divider />
+
+                <SectionLabel>Emergency Contact</SectionLabel>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 2 }}>
+                  <InfoField label="Name" value={full?.emergencyContactName} />
+                  <InfoField label="Relation" value={full?.emergencyContactRelation} />
+                  <InfoField label="Phone" value={full?.emergencyContactPhone} />
+                  <InfoField label="Place" value={full?.emergencyContactPlace} />
+                </Box>
+
+                <Divider />
+
+                <SectionLabel>Family Details</SectionLabel>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2 }}>
+                  <InfoField label="Father" value={full?.familyFather} />
+                  <InfoField label="Mother" value={full?.familyMother} />
+                  <InfoField label="Siblings" value={full?.familySiblings} />
+                  <InfoField label="Spouse" value={full?.familySpouse} />
+                  <InfoField label="Children" value={full?.familyChildren} />
+                </Box>
+              </TabPanel>
+            )}
+
+            {canViewClientView && (
+              <TabPanel active={tab === 2}>
+                <Box sx={{ textAlign: 'center', py: 5 }}>
+                  <Typography color="text.secondary" fontWeight={600} mb={0.5}>Coming soon</Typography>
+                  <Typography variant="body2" color="text.disabled">
+                    Client view details haven't been defined yet.
+                  </Typography>
+                </Box>
+              </TabPanel>
+            )}
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -192,6 +421,10 @@ const EmployeesPage: React.FC = () => {
   const [dateMode,    setDateMode]    = useState<DateMode>('all');
   const [customFrom,  setCustomFrom]  = useState('');
   const [customTo,    setCustomTo]    = useState('');
+
+  const [detailEmployee, setDetailEmployee] = useState<EmployeeEntry | null>(null);
+  const openDetail  = (emp: EmployeeEntry) => setDetailEmployee(emp);
+  const closeDetail = () => setDetailEmployee(null);
 
   useEffect(() => {
     const load = async () => {
@@ -535,8 +768,8 @@ const EmployeesPage: React.FC = () => {
               {filtered.map(emp => {
                 const [bg, fg] = avatarColors(emp.full_name || 'A');
                 return (
-                  <Card key={emp._id} sx={{
-                    height: '100%', borderRadius: '14px',
+                  <Card key={emp._id} onClick={() => openDetail(emp)} sx={{
+                    height: '100%', borderRadius: '14px', cursor: 'pointer',
                     backgroundColor: theme.palette.background.paper,
                     border: `1.5px solid ${border}`,
                     boxShadow: isLight ? '0 1px 4px rgba(0,0,0,0.04)' : 'none',
@@ -632,8 +865,8 @@ const EmployeesPage: React.FC = () => {
                     {emps.map(emp => {
                       const [bg, fg] = avatarColors(emp.full_name || 'A');
                       return (
-                        <Card key={emp._id} sx={{
-                          borderRadius: '10px', border: `1px solid ${border}`,
+                        <Card key={emp._id} onClick={() => openDetail(emp)} sx={{
+                          borderRadius: '10px', border: `1px solid ${border}`, cursor: 'pointer',
                           boxShadow: 'none', bgcolor: theme.palette.background.paper,
                           '&:hover': { borderColor: theme.palette.primary.main },
                         }}>
@@ -689,6 +922,8 @@ const EmployeesPage: React.FC = () => {
 
         </main>
       </div>
+
+      <EmployeeDetailDialog open={!!detailEmployee} employee={detailEmployee} onClose={closeDetail} />
     </div>
   );
 };

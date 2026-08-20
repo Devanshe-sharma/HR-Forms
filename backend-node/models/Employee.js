@@ -67,7 +67,38 @@ const EmployeeSchema = new mongoose.Schema(
 
         // Archive fields
         isArchived: { type: Boolean, default: false },
-        archivedAt: { type: Date, default: null }
+        archivedAt: { type: Date, default: null },
+
+        // ── Personal info — self-service, edited from the employee's own
+        // Profile page. Not managed by HR flows, defaults blank.
+        citizenship: { type: String, default: '' },
+        nationality: { type: String, default: '' },
+        passportNo: { type: String, default: '' },
+        passportValidUpto: { type: Date, default: null },
+        passportIssuePlace: { type: String, default: '' },
+
+        bankName: { type: String, default: '' },
+        bankAccountNo: { type: String, default: '' },
+        ifscCode: { type: String, default: '' },
+        panCard: { type: String, default: '' },
+        aadhaarNo: { type: String, default: '' },
+        uanNo: { type: String, default: '' },
+        ePassbookLink: { type: String, default: '' },
+
+        birthday: { type: Date, default: null },
+        bloodGroup: { type: String, default: '' },
+        maritalStatus: { type: String, default: '' },
+
+        emergencyContactName: { type: String, default: '' },
+        emergencyContactRelation: { type: String, default: '' },
+        emergencyContactPhone: { type: String, default: '' },
+        emergencyContactPlace: { type: String, default: '' },
+
+        familyFather: { type: String, default: '' },
+        familyMother: { type: String, default: '' },
+        familySiblings: { type: String, default: '' },
+        familySpouse: { type: String, default: '' },
+        familyChildren: { type: String, default: '' },
     },
     {
         collection: 'Employee'

@@ -1401,6 +1401,35 @@ router.get("/employee-master", async (req, res) => {
   }
 });
 
+// GET /api/onboarding/by-email?email=... — full onboarding record for one
+// person, matched by official or personal email. Onboarding has a record for
+// every joinee, unlike the Employee collection (which only gets a row once
+// joiningStatus flips to "Joined") — used by the self-service Profile page
+// so Admin/HR-only accounts without an Employee row still see real data.
+// Registered before "/:id" so Express doesn't swallow "by-email" as an :id.
+router.get("/by-email", async (req, res) => {
+  try {
+    const email = (req.query.email || "").trim();
+    if (!email) {
+      return res.status(400).json({ success: false, message: "email query param is required" });
+    }
+    const escaped = email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const doc = await Onboarding.findOne({
+      $or: [
+        { officialEmail: { $regex: `^${escaped}$`, $options: "i" } },
+        { persEmail: { $regex: `^${escaped}$`, $options: "i" } },
+      ],
+    }).lean();
+
+    if (!doc) {
+      return res.status(404).json({ success: false, message: "No onboarding record found for this email" });
+    }
+    res.json({ success: true, data: doc });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 router.get("/", async (req, res) => {
   try {
     res.set("Cache-Control", "no-store");

@@ -92,6 +92,41 @@ router.get('/archived', async (req, res) => {
   }
 });
 
+// PUT /api/employees/:id/personal-info - Self-service update of Profile page
+// personal info fields only. Scoped to an allowlist so this can never be used
+// to touch HR-managed fields (salary, department, designation, etc.).
+const PERSONAL_INFO_FIELDS = [
+  'citizenship', 'nationality', 'passportNo', 'passportValidUpto', 'passportIssuePlace',
+  'bankName', 'bankAccountNo', 'ifscCode', 'panCard', 'aadhaarNo', 'uanNo', 'ePassbookLink',
+  'birthday', 'bloodGroup', 'maritalStatus',
+  'emergencyContactName', 'emergencyContactRelation', 'emergencyContactPhone', 'emergencyContactPlace',
+  'familyFather', 'familyMother', 'familySiblings', 'familySpouse', 'familyChildren',
+];
+
+router.put('/:id/personal-info', async (req, res) => {
+  try {
+    const update = {};
+    for (const key of PERSONAL_INFO_FIELDS) {
+      if (key in req.body) update[key] = req.body[key];
+    }
+
+    const employee = await Employee.findByIdAndUpdate(
+      req.params.id,
+      { $set: update },
+      { new: true }
+    );
+
+    if (!employee) {
+      return res.status(404).json({ success: false, error: 'Employee not found' });
+    }
+
+    return res.json({ success: true, data: employee });
+  } catch (err) {
+    console.error('Error updating personal info:', err);
+    return res.status(400).json({ success: false, error: err.message });
+  }
+});
+
 // PUT /api/employees/:id/archive - Archive an employee
 router.put('/:id/archive', async (req, res) => {
   try {

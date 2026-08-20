@@ -370,6 +370,57 @@ const onboardingSchema = new mongoose.Schema(
       type: [checklistGroupSchema],
       default: [],
     },
+
+    // ============================================================
+    // SECTION 12: PUBLIC PROFILE EXTRAS
+    // Shown on the Employees page "Public Info" tab alongside dept/
+    // designation/reporting head, which already exist above.
+    // ============================================================
+
+    companyName: { type: String, default: "" },
+    jobLocation: { type: String, default: "" },
+
+    // ============================================================
+    // SECTION 13: PERSONAL INFO
+    // Shown only to Admin / Management / HR on the Employees page
+    // "Personal Info" tab. Not editable yet — populated later via a
+    // dedicated form; fields default blank ("Not provided" in the UI).
+    // ============================================================
+
+    // Citizenship
+    citizenship: { type: String, default: "" },
+    nationality: { type: String, default: "" },
+    passportNo: { type: String, default: "" },
+    passportValidUpto: { type: Date, default: null },
+    passportIssuePlace: { type: String, default: "" },
+
+    // Bank details
+    bankName: { type: String, default: "" },
+    bankAccountNo: { type: String, default: "" },
+    ifscCode: { type: String, default: "" },
+    panCard: { type: String, default: "" },
+    aadhaarNo: { type: String, default: "" },
+    uanNo: { type: String, default: "" },
+    ePassbookLink: { type: String, default: "" },
+
+    // Contact details — name/phone/personal email already exist as
+    // name/mobile/persEmail above; these are the fields unique to this tab.
+    birthday: { type: Date, default: null },
+    bloodGroup: { type: String, default: "" },
+    maritalStatus: { type: String, default: "" },
+
+    // Emergency contact
+    emergencyContactName: { type: String, default: "" },
+    emergencyContactRelation: { type: String, default: "" },
+    emergencyContactPhone: { type: String, default: "" },
+    emergencyContactPlace: { type: String, default: "" },
+
+    // Family details
+    familyFather: { type: String, default: "" },
+    familyMother: { type: String, default: "" },
+    familySiblings: { type: String, default: "" },
+    familySpouse: { type: String, default: "" },
+    familyChildren: { type: String, default: "" },
   },
   {
     timestamps: true,

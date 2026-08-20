@@ -49,6 +49,16 @@ router.post('/', async (req, res) => {
 // Mongo _id (the /all list the frontend uses to pick a designation doesn't
 // expose _id). Must be declared before PUT /:id so Express doesn't treat
 // "designation" as an :id param.
+//
+// Goes through the RAW collection rather than the RoleMaster Mongoose model.
+// Most role_master documents were imported long before the model existed and
+// still carry capitalised legacy field names (Dept_Id/Desig_id/"JD Link"/
+// etc — see roleMasterController's g()/gNum() helpers, which check both
+// forms) instead of the model's lowercase schema paths (dept_id/desig_id/
+// jd_link). A Mongoose query only ever matches the lowercase paths, so it
+// silently misses the ~80% of documents still in the legacy shape. Matching
+// on both id forms, and writing both field-name forms, keeps this working
+// regardless of which shape a given document happens to be in.
 router.put('/designation', async (req, res) => {
   try {
     const { dept_id, desig_id, role_document_link, jd_link } = req.body;
@@ -56,10 +66,30 @@ router.put('/designation', async (req, res) => {
       return res.status(400).json({ success: false, message: 'dept_id and desig_id are required' });
     }
 
-    const doc = await RoleMaster.findOneAndUpdate(
-      { dept_id: Number(dept_id), desig_id: Number(desig_id) },
-      { $set: { role_document_link: (role_document_link || '').trim(), jd_link: (jd_link || '').trim() } },
-      { new: true }
+    const deptIdNum  = Number(dept_id);
+    const desigIdNum = Number(desig_id);
+    const roleDocLinkTrimmed = (role_document_link || '').trim();
+    const jdLinkTrimmed      = (jd_link || '').trim();
+
+    // Driver v7's findOneAndUpdate returns the document directly (or null)
+    // rather than the old {value: doc} wrapper — verified against this
+    // project's actual mongodb driver version before relying on it.
+    const doc = await RoleMaster.collection.findOneAndUpdate(
+      {
+        $or: [
+          { dept_id: deptIdNum, desig_id: desigIdNum },
+          { Dept_Id: deptIdNum, Desig_id: desigIdNum },
+        ],
+      },
+      {
+        $set: {
+          role_document_link: roleDocLinkTrimmed,
+          'Role Document Link': roleDocLinkTrimmed,
+          jd_link: jdLinkTrimmed,
+          'JD Link': jdLinkTrimmed,
+        },
+      },
+      { returnDocument: 'after' }
     );
 
     if (!doc) {
