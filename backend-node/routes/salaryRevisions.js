@@ -61,8 +61,14 @@ router.get('/analytics/increments', asyncHandler(async (req, res) => {
   // before judging low/high — someone who got a 5% increment in one
   // revision and another 6% later the same year genuinely received ~11%
   // that year, and judging either revision on its own as "low" would be
-  // misleading. No salary figures (CTC) are ever included here — only
-  // names and the combined percentage.
+  // misleading. employeeName/employeeCode are only used internally to
+  // group revisions by person — this endpoint is aggregate-only, same
+  // confidentiality rule as Asked-to-Leave/Referred/Offer Dropout: no
+  // name, designation, salary figure (CTC), or other per-employee
+  // identifier is ever included in what's actually sent back below.
+  // designation is deliberately left out too — in a small department a
+  // designation can narrow a row down to one specific person just as
+  // easily as a name would.
   const byEmployee = new Map();
   for (const r of inYear) {
     const key = r.employeeCode || r.employeeName;
@@ -72,9 +78,7 @@ router.get('/analytics/increments', asyncHandler(async (req, res) => {
       existing.revisionCount += 1;
     } else {
       byEmployee.set(key, {
-        employeeName: r.employeeName,
         department: r.department,
-        designation: r.designation,
         incrementPct: r.finalIncrementPct,
         revisionCount: 1,
       });

@@ -1,4 +1,4 @@
-import { AppBar, Toolbar, Typography, Tabs, Tab, Box } from '@mui/material';
+import { AppBar, Toolbar, Typography, Tabs, Tab, Box, Button } from '@mui/material';
 
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -395,21 +395,17 @@ export default function Navbar() {
             )}
           </Box>
 
-          <Box
+          <Button
             onClick={handleLogout}
             title={user ? `Logout (${user.name})` : 'Logout'}
-            sx={{
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1,
-              padding: '4px 8px',
-              borderRadius: '4px',
-              '&:hover': { backgroundColor: 'rgba(255,255,255,0.1)' }
-            }}
+            variant="contained"
+            color="error"
+            size="small"
+            startIcon={<LogoutIcon sx={{ fontSize: 18 }} />}
+            sx={{ textTransform: 'none', fontWeight: 600, boxShadow: 'none', '&:hover': { boxShadow: 'none' } }}
           >
-            <LogoutIcon sx={{ color: 'white', fontSize: 20 }} />
-          </Box>
+            Logout
+          </Button>
 
         </Toolbar>
 

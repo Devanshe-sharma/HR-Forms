@@ -20,7 +20,7 @@ export default function Login() {
 
     try {
       await login(email, password);
-      const redirectTo = location.state?.from?.pathname || "/hr-dashboard";
+      const redirectTo = location.state?.from?.pathname || "/company-orientation";
       navigate(redirectTo, { replace: true });
     } catch (err: any) {
       setError(err?.response?.data?.error || "Authentication failed. Please check your details.");

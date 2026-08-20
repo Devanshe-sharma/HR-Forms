@@ -358,7 +358,8 @@ function OutOfOfficeTab() {
       setLoading(true);
       const [rRes, eRes] = await Promise.all([axios.get(API), axios.get(EMP_API)]);
       setRecords(Array.isArray(rRes.data) ? rRes.data : rRes.data?.data || []);
-      setEmployees(Array.isArray(eRes.data) ? eRes.data : eRes.data?.data || []);
+      const employeeList: Employee[] = Array.isArray(eRes.data) ? eRes.data : eRes.data?.data || [];
+      setEmployees([...employeeList].sort((a, b) => a.full_name.localeCompare(b.full_name)));
     } catch { showToast('Failed to load data', 'error'); }
     finally { setLoading(false); }
   }, []);
