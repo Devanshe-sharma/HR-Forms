@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Chip, CircularProgress, Alert,
+  Box, Typography, Chip, CircularProgress, Alert, Modal, Divider,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Paper, Button, TextField, Autocomplete, Stack, IconButton,
+  Button, TextField, Autocomplete, Stack, IconButton,
 } from '@mui/material';
 import {
-  ArrowBack as ArrowBackIcon,
   Add as AddIcon,
+  Close as CloseIcon,
   WorkOff as WorkOffIcon,
   Today as TodayIcon,
   BeachAccess as BeachAccessIcon,
@@ -52,9 +52,13 @@ const API = `${API_URL}/out-of-office`;
 const EMP_API = `${API_URL}/onboarding/eligible-employees`;
 
 const ACCENT = '#4f46e5';
-const TH = { fontWeight: 600, fontSize: 11, color: '#64748b', bgcolor: '#f8fafc', whiteSpace: 'nowrap' as const, py: '8px', borderBottom: '1px solid #e2e8f0' };
+const TH = { fontWeight: 600, fontSize: 11, color: '#64748b', bgcolor: '#f8fafc', whiteSpace: 'nowrap' as const, py: '10px', borderBottom: '1px solid #e2e8f0' };
+const TD = { fontSize: 12, py: '10px', verticalAlign: 'top' as const };
+const ELLIPSIS = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, display: 'block' as const };
 
 const informedColor = (s: OutOfOfficeRecord['informedStatus']) => (s === 'advance' ? '#2563eb' : '#dc2626');
+const informedShortLabel = (s: OutOfOfficeRecord['informedStatus']) =>
+  s === 'advance' ? 'On time' : s === 'late_before_start' ? 'Late (<24h)' : 'Late (after start)';
 
 const fmtDate = (d?: string | Date | null) => {
   if (!d) return '—';
@@ -68,6 +72,14 @@ const fmtTime24 = (d?: string | Date | null) => {
   catch { return String(d); }
 };
 
+const fmtDateTime24 = (d?: string | Date | null) => {
+  if (!d) return '—';
+  try {
+    const dt = new Date(d);
+    return `${fmtDate(dt)}, ${fmtTime24(dt)}`;
+  } catch { return String(d); }
+};
+
 function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error'; onClose: () => void }) {
   useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, [onClose]);
   return (
@@ -77,17 +89,72 @@ function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error';
   );
 }
 
+// ─── Out of Office: detail modal ────────────────────────────────────────────────
+
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <Box sx={{ mb: 1.5 }}>
+      <Typography fontSize={11} color="text.secondary">{label}</Typography>
+      <Typography fontSize={13} fontWeight={600} sx={{ wordBreak: 'break-word' }}>{value}</Typography>
+    </Box>
+  );
+}
+
+function OutOfOfficeDetailModal({ record, onClose }: { record: OutOfOfficeRecord | null; onClose: () => void }) {
+  return (
+    <Modal open={!!record} onClose={onClose}>
+      <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+        width: { xs: '92vw', sm: 480 }, maxHeight: '85vh', overflowY: 'auto', bgcolor: 'white', borderRadius: 2, p: 3, outline: 'none' }}>
+        {record && (
+          <>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+              <Box>
+                <Typography fontSize={16} fontWeight={700}>Out of Office Details</Typography>
+                <Typography fontSize={12} color="text.secondary">Logged {fmtDateTime24(record.createdAt)}</Typography>
+              </Box>
+              <IconButton size="small" onClick={onClose}><CloseIcon fontSize="small" /></IconButton>
+            </Box>
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
+              <DetailRow label="Person Name" value={record.person.name} />
+              <DetailRow label="Person Email" value={record.person.email} />
+              <DetailRow label="Out of Office Date" value={fmtDate(record.startDateTime)} />
+              <DetailRow label="Start Time – Time Up To" value={`${fmtTime24(record.startDateTime)} – ${record.upToTime}`} />
+            </Box>
+
+            <Divider sx={{ my: 1.5 }} />
+            <DetailRow label="Reason" value={record.reason} />
+
+            <Divider sx={{ my: 1.5 }} />
+            <DetailRow label="Informed Before or After Event?" value={
+              <Chip size="small" label={record.informedLabel} sx={{ fontSize: 11, height: 'auto', py: 0.5, whiteSpace: 'normal',
+                bgcolor: '#f8fafc', color: informedColor(record.informedStatus), border: `1px solid ${informedColor(record.informedStatus)}30` }} />
+            } />
+
+            <Divider sx={{ my: 1.5 }} />
+            <DetailRow label="Keep in Cc?" value={
+              record.ccEmployees?.length ? record.ccEmployees.map(c => `${c.name} <${c.email}>`).join(', ') : '—'
+            } />
+          </>
+        )}
+      </Box>
+    </Modal>
+  );
+}
+
 // ─── Out of Office: dashboard ──────────────────────────────────────────────────
 
 function OutOfOfficeDashboard({ records, loading, onAdd }: {
   records: OutOfOfficeRecord[]; loading: boolean; onAdd: () => void;
 }) {
+  const [selected, setSelected] = useState<OutOfOfficeRecord | null>(null);
+
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
         <Box>
           <Typography fontSize={18} fontWeight={700} color="#0f172a">Out of Office</Typography>
-          <Typography fontSize={12} color="text.secondary">Advance notice of employees working out of office</Typography>
+          <Typography fontSize={12} color="text.secondary">Advance notice of employees working out of office — click a row for full details</Typography>
         </Box>
         <Button variant="contained" startIcon={<AddIcon />} onClick={onAdd} size="small"
           sx={{ bgcolor: ACCENT, textTransform: 'none', fontWeight: 600, borderRadius: 1.5, '&:hover': { bgcolor: '#4338ca' } }}>
@@ -97,16 +164,16 @@ function OutOfOfficeDashboard({ records, loading, onAdd }: {
 
       <Box sx={{ bgcolor: 'white', borderRadius: 2, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
         {loading ? <Box display="flex" justifyContent="center" py={6}><CircularProgress size={28} /></Box> : (
-          <TableContainer sx={{ maxHeight: 520, overflow: 'auto' }}>
-            <Table size="small" stickyHeader>
+          <TableContainer sx={{ maxHeight: 520, overflowY: 'auto', overflowX: 'hidden' }}>
+            <Table size="small" stickyHeader sx={{ tableLayout: 'fixed', width: '100%' }}>
               <TableHead>
                 <TableRow sx={{ '& th': TH }}>
-                  <TableCell>Date</TableCell>
-                  <TableCell>Person</TableCell>
-                  <TableCell>Timing</TableCell>
-                  <TableCell>Reason</TableCell>
-                  <TableCell>Kept in Cc</TableCell>
-                  <TableCell>Informed</TableCell>
+                  <TableCell sx={{ width: '16%' }}>Logged</TableCell>
+                  <TableCell sx={{ width: '24%' }}>Person</TableCell>
+                  <TableCell sx={{ width: '20%' }}>Out of Office</TableCell>
+                  <TableCell sx={{ width: '20%' }}>Reason</TableCell>
+                  <TableCell sx={{ width: '12%' }}>Informed</TableCell>
+                  <TableCell sx={{ width: '8%' }}>Cc</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -116,14 +183,25 @@ function OutOfOfficeDashboard({ records, loading, onAdd }: {
                   </TableCell></TableRow>
                 )}
                 {records.map(r => (
-                  <TableRow key={r._id} sx={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <TableCell sx={{ fontSize: 12 }}>{fmtDate(r.startDateTime)}</TableCell>
-                    <TableCell sx={{ fontSize: 12, fontWeight: 600 }}>{r.person.name}</TableCell>
-                    <TableCell sx={{ fontSize: 12 }}>{fmtTime24(r.startDateTime)} – {r.upToTime}</TableCell>
-                    <TableCell sx={{ fontSize: 12, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.reason}</TableCell>
-                    <TableCell sx={{ fontSize: 12 }}>{r.ccEmployees?.length ? r.ccEmployees.map(c => c.name).join(', ') : '—'}</TableCell>
-                    <TableCell>
-                      <Chip size="small" label={r.informedLabel} sx={{ fontSize: 10, height: 20, bgcolor: '#f8fafc', color: informedColor(r.informedStatus), border: `1px solid ${informedColor(r.informedStatus)}30` }} />
+                  <TableRow key={r._id} onClick={() => setSelected(r)}
+                    sx={{ cursor: 'pointer', '&:hover': { bgcolor: '#f8fafc' }, borderBottom: '1px solid #f1f5f9' }}>
+                    <TableCell sx={TD}>{fmtDateTime24(r.createdAt)}</TableCell>
+                    <TableCell sx={TD}>
+                      <Typography component="span" sx={{ ...ELLIPSIS, fontSize: 12, fontWeight: 600 }}>{r.person.name}</Typography>
+                      <Typography component="span" sx={{ ...ELLIPSIS, fontSize: 11, color: 'text.secondary' }}>{r.person.email}</Typography>
+                    </TableCell>
+                    <TableCell sx={TD}>
+                      <Typography component="span" sx={{ ...ELLIPSIS, fontSize: 12, fontWeight: 600 }}>{fmtDate(r.startDateTime)}</Typography>
+                      <Typography component="span" sx={{ ...ELLIPSIS, fontSize: 11, color: 'text.secondary' }}>{fmtTime24(r.startDateTime)} – {r.upToTime}</Typography>
+                    </TableCell>
+                    <TableCell sx={TD}>
+                      <Typography component="span" sx={{ ...ELLIPSIS, fontSize: 12 }}>{r.reason}</Typography>
+                    </TableCell>
+                    <TableCell sx={TD}>
+                      <Chip size="small" label={informedShortLabel(r.informedStatus)} sx={{ fontSize: 10, height: 20, bgcolor: '#f8fafc', color: informedColor(r.informedStatus), border: `1px solid ${informedColor(r.informedStatus)}30` }} />
+                    </TableCell>
+                    <TableCell sx={TD}>
+                      <Typography fontSize={12}>{r.ccEmployees?.length || '—'}</Typography>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -132,14 +210,16 @@ function OutOfOfficeDashboard({ records, loading, onAdd }: {
           </TableContainer>
         )}
       </Box>
+
+      <OutOfOfficeDetailModal record={selected} onClose={() => setSelected(null)} />
     </Box>
   );
 }
 
-// ─── Out of Office: form ────────────────────────────────────────────────────────
+// ─── Out of Office: form (popup) ────────────────────────────────────────────────
 
-function OutOfOfficeForm({ employees, onDone, onBack, showToast }: {
-  employees: Employee[]; onDone: () => void; onBack: () => void; showToast: (m: string, t: 'success' | 'error') => void;
+function OutOfOfficeFormModal({ open, employees, onDone, onClose, showToast }: {
+  open: boolean; employees: Employee[]; onDone: () => void; onClose: () => void; showToast: (m: string, t: 'success' | 'error') => void;
 }) {
   const { user } = useAuth();
 
@@ -152,6 +232,7 @@ function OutOfOfficeForm({ employees, onDone, onBack, showToast }: {
     ) || null;
   }, [employees, user]);
 
+  const [loggedAt, setLoggedAt] = useState<Date | null>(null);
   const [person, setPerson] = useState<Employee | null>(null);
   const [oooDate, setOooDate] = useState('');
   const [startTime, setStartTime] = useState('');
@@ -160,6 +241,14 @@ function OutOfOfficeForm({ employees, onDone, onBack, showToast }: {
   const [ccEmployees, setCcEmployees] = useState<Employee[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Reset the form and stamp the "logged at" time fresh each time the popup opens.
+  useEffect(() => {
+    if (!open) return;
+    setLoggedAt(new Date());
+    setPerson(null); setOooDate(''); setStartTime(''); setUpToTime('');
+    setReason(''); setCcEmployees([]); setError(null);
+  }, [open]);
 
   const submit = async () => {
     setError(null);
@@ -190,18 +279,25 @@ function OutOfOfficeForm({ employees, onDone, onBack, showToast }: {
   };
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-        <IconButton onClick={onBack} size="small" sx={{ bgcolor: '#f8fafc', borderRadius: 1.5 }}>
-          <ArrowBackIcon fontSize="small" />
-        </IconButton>
-        <Box>
-          <Typography fontSize={18} fontWeight={700} color="#0f172a">Log Out of Office</Typography>
-          <Typography fontSize={12} color="text.secondary">Notifies HR, the person, and anyone kept in cc</Typography>
+    <Modal open={open} onClose={onClose}>
+      <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+        width: { xs: '92vw', sm: 560 }, maxHeight: '85vh', overflowY: 'auto', bgcolor: 'white', borderRadius: 2, p: 3, outline: 'none' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+          <Box>
+            <Typography fontSize={16} fontWeight={700}>Log Out of Office</Typography>
+            <Typography fontSize={12} color="text.secondary">Notifies HR, plus anyone kept in cc</Typography>
+          </Box>
+          <IconButton size="small" onClick={onClose}><CloseIcon fontSize="small" /></IconButton>
         </Box>
-      </Box>
 
-      <Paper variant="outlined" sx={{ borderRadius: 2, p: 3, maxWidth: 640 }}>
+        {loggedAt && (
+          <Box sx={{ bgcolor: '#eef2ff', border: '1px solid #e0e7ff', borderRadius: 1.5, px: 1.5, py: 1, mb: 2.5 }}>
+            <Typography fontSize={12} color="#4338ca">
+              This entry will be logged at <b>{fmtDateTime24(loggedAt)}</b>
+            </Typography>
+          </Box>
+        )}
+
         <Stack spacing={2.5}>
           <Autocomplete options={employees} getOptionLabel={e => `${e.full_name} (${e.department})`}
             value={person} onChange={(_, v) => setPerson(v)}
@@ -233,15 +329,16 @@ function OutOfOfficeForm({ employees, onDone, onBack, showToast }: {
 
           {error && <Alert severity="error" sx={{ fontSize: 12 }}>{error}</Alert>}
 
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', pt: 1 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, pt: 1 }}>
+            <Button onClick={onClose} disabled={busy} sx={{ textTransform: 'none', fontWeight: 600 }}>Cancel</Button>
             <Button variant="contained" onClick={submit} disabled={busy}
               sx={{ bgcolor: '#059669', '&:hover': { bgcolor: '#047857' }, textTransform: 'none', fontWeight: 600 }}>
               {busy ? <CircularProgress size={20} sx={{ color: 'white' }} /> : 'Submit'}
             </Button>
           </Box>
         </Stack>
-      </Paper>
-    </Box>
+      </Box>
+    </Modal>
   );
 }
 
@@ -250,7 +347,7 @@ function OutOfOfficeForm({ employees, onDone, onBack, showToast }: {
 function OutOfOfficeTab() {
   const [records, setRecords] = useState<OutOfOfficeRecord[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [view, setView] = useState<'dashboard' | 'form'>('dashboard');
+  const [formOpen, setFormOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
@@ -272,16 +369,12 @@ function OutOfOfficeTab() {
     <Box sx={{ maxWidth: 1300, mx: 'auto' }}>
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
 
-      {view === 'dashboard' && (
-        <OutOfOfficeDashboard records={records} loading={loading} onAdd={() => setView('form')} />
-      )}
+      <OutOfOfficeDashboard records={records} loading={loading} onAdd={() => setFormOpen(true)} />
 
-      {view === 'form' && (
-        <OutOfOfficeForm employees={employees}
-          onBack={() => setView('dashboard')}
-          onDone={() => { setView('dashboard'); loadData(); }}
-          showToast={showToast} />
-      )}
+      <OutOfOfficeFormModal open={formOpen} employees={employees}
+        onClose={() => setFormOpen(false)}
+        onDone={() => { setFormOpen(false); loadData(); }}
+        showToast={showToast} />
     </Box>
   );
 }
