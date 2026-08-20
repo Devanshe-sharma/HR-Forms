@@ -1,13 +1,17 @@
 const signature = require('../../utils/signature');
+const formatDateIST = require('../utils/formatDateIST');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://hr.briskolive.com';
 
+// Must render in IST regardless of the server's own timezone, or a UTC-hosted
+// process shows a UTC-shifted hour instead of the time that was actually
+// picked in the (IST) browser — see emails/utils/formatDateIST.js.
 function fmtDate(d) {
-  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  return formatDateIST(d);
 }
 
 function fmtStartTime(d) {
-  return new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' });
 }
 
 // Sent whenever an employee's out-of-office is logged — notifies HR with a

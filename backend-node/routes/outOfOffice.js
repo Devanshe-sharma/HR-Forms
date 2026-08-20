@@ -16,7 +16,7 @@ router.get('/', async (req, res) => {
   try {
     const { limit = 100 } = req.query;
     const records = await OutOfOffice.find()
-      .sort({ startDateTime: -1 })
+      .sort({ createdAt: -1 })
       .limit(parseInt(limit));
     res.json({ success: true, data: records });
   } catch (err) {

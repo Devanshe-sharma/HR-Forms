@@ -122,6 +122,13 @@ function OutOfOfficeDetailModal({ record, onClose }: { record: OutOfOfficeRecord
               <DetailRow label="Start Time – Time Up To" value={`${fmtTime24(record.startDateTime)} – ${record.upToTime}`} />
             </Box>
 
+            {record.submittedByName && record.submittedByEmail?.toLowerCase() !== record.person.email?.toLowerCase() && (
+              <>
+                <Divider sx={{ my: 1.5 }} />
+                <DetailRow label="Logged By (on behalf of)" value={`${record.submittedByName} <${record.submittedByEmail}>`} />
+              </>
+            )}
+
             <Divider sx={{ my: 1.5 }} />
             <DetailRow label="Reason" value={record.reason} />
 
@@ -294,6 +301,10 @@ function OutOfOfficeFormModal({ open, employees, onDone, onClose, showToast }: {
           <Box sx={{ bgcolor: '#eef2ff', border: '1px solid #e0e7ff', borderRadius: 1.5, px: 1.5, py: 1, mb: 2.5 }}>
             <Typography fontSize={12} color="#4338ca">
               This entry will be logged at <b>{fmtDateTime24(loggedAt)}</b>
+              {submitter && <> by <b>{submitter.full_name}</b></>}
+              {person && submitter && person.official_email !== submitter.official_email && person.email !== submitter.email && (
+                <> on behalf of <b>{person.full_name}</b></>
+              )}
             </Typography>
           </Box>
         )}

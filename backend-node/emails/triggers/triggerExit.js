@@ -5,7 +5,7 @@ const sendExitReminder                  = require("../senders/sendExitReminder")
 const sendExitInstructionsToAll         = require("../senders/sendExitInstructionsToAll");
 const sendExitInstructionsToAllAlready  = require("../senders/sendExitInstructionsToAllAlready");
 
-const EXIT_EMAILS_TEMPORARILY_DISABLED = true;
+const EXIT_EMAILS_TEMPORARILY_DISABLED = false;
 
 // NOTE on doc's auto-email fields (autoExitEmail, autoReminderEmail,
 // autoInstructionsToAllEmail): the route handler is responsible for only
