@@ -10,6 +10,7 @@ const Exit = require('../models/exitModel');
 const { triggerNewOnboarding, triggerUpdateOnboarding } = require("../emails");
 const Employee = require('../models/Employee');
 const { syncUserEmailOnChange, syncEmployeeEmailOnChange } = require('../utils/syncUserEmail');
+const { getEmployeeMasterList } = require('../utils/employeeMaster');
 
 const router = express.Router();
 
@@ -1366,35 +1367,7 @@ router.post("/share-link", async (req, res) => {
 
 router.get("/employee-master", async (req, res) => {
   try {
-    const docs = await Onboarding.find(
-      {},
-      "name gender empId dept designation officialEmail persEmail mobile joiningStatus exitStatus joinedDate reportingHead employeeCategory managementLevel"
-    ).lean();
-
-    const employees = docs.map((d) => {
-      const isExited = EXITED_STATUS_VALUES.has(d.exitStatus || "");
-      const isCurrent = d.joiningStatus === "Joined" && !isExited;
-      return {
-        _id: String(d._id),
-        employee_id: d.empId || String(d._id),
-        full_name: d.name || "",
-        gender: d.gender || "",
-        department: d.dept || "",
-        designation: d.designation || "",
-        official_email: d.officialEmail || "",
-        personal_email: d.persEmail || "",
-        email: d.officialEmail || d.persEmail || "",
-        mobile: d.mobile || "",
-        joining_date: d.joinedDate || null,
-        employee_category: d.employeeCategory || "",
-        management_level: d.managementLevel || "",
-        reporting_head: d.reportingHead || "",
-        exit_status: d.exitStatus || "",
-        is_current: isCurrent,
-        is_exited: isExited,
-      };
-    });
-
+    const employees = await getEmployeeMasterList();
     res.json({ success: true, data: { employees } });
   } catch (err) {
     console.error(err);

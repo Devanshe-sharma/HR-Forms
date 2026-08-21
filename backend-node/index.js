@@ -33,7 +33,7 @@ app.use(cors({
  
     return callback(new Error(`Not allowed by CORS: ${origin}`));
   },
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-user-role'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-user-role', 'x-api-key'],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
 
@@ -70,6 +70,7 @@ app.get('/health', (req, res) => res.send('Backend server is alive!'));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/auth',               require('./routes/auth'));
 app.use('/api/users',              require('./routes/users'));
+app.use('/api/external',           require('./routes/externalApi'));
 app.use('/api/employees',          require('./routes/employees'));
 app.use('/api/confirmations',      require('./routes/confirmations'));
 app.use('/api/roles',              require('./routes/roles'));
