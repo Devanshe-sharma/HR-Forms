@@ -9,7 +9,7 @@ const { fiscalYearOf, fiscalQuarterOf, fiscalQuarterStartUTC, fiscalQuarterEndUT
 const Exit = require('../models/exitModel');
 const { triggerNewOnboarding, triggerUpdateOnboarding } = require("../emails");
 const Employee = require('../models/Employee');
-const { syncUserEmailOnChange } = require('../utils/syncUserEmail');
+const { syncUserEmailOnChange, syncEmployeeEmailOnChange } = require('../utils/syncUserEmail');
 
 const router = express.Router();
 
@@ -1601,13 +1601,19 @@ router.put("/:id", async (req, res) => {
       triggerUpdateOnboarding(updated, existing).catch(console.error);
     }
 
-    // Keep a login account (if one already exists under the old address)
-    // pointed at the same person's current email. Never creates accounts.
+    // Onboarding is the master record for email — propagate a change here
+    // to the matching login account and Employee record (if they exist
+    // under the old address). Never creates accounts or Employee records.
     if (body.officialEmail && body.officialEmail !== existing.officialEmail) {
       try {
         await syncUserEmailOnChange(existing.officialEmail, body.officialEmail);
       } catch (err) {
         console.error('[UserSync] Failed to sync login email:', err.message);
+      }
+      try {
+        await syncEmployeeEmailOnChange(existing.officialEmail, body.officialEmail);
+      } catch (err) {
+        console.error('[EmployeeSync] Failed to sync employee email:', err.message);
       }
     }
 
