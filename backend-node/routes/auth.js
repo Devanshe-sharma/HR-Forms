@@ -79,6 +79,7 @@ router.post('/change-password', authenticate, asyncHandler(async (req, res) => {
 
   user.passwordHash = await bcrypt.hash(newPassword, 10);
   user.mustChangePassword = false;
+  user.passwordChangedAt = new Date();
   await user.save();
 
   res.json({ success: true, message: 'Password updated successfully' });

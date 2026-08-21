@@ -17,6 +17,8 @@ function toPublicUser(user) {
     isActive: user.isActive,
     lastLoginAt: user.lastLoginAt,
     createdAt: user.createdAt,
+    mustChangePassword: user.mustChangePassword,
+    passwordChangedAt: user.passwordChangedAt,
   };
 }
 
@@ -90,9 +92,11 @@ router.post('/:id/reset-password', asyncHandler(async (req, res) => {
   if (!user) return res.status(404).json({ success: false, error: 'User not found' });
 
   user.passwordHash = await bcrypt.hash(newPassword, 10);
+  user.mustChangePassword = true;
+  user.passwordChangedAt = new Date();
   await user.save();
 
-  res.json({ success: true, message: 'Password reset successfully' });
+  res.json({ success: true, message: 'Password reset successfully', data: toPublicUser(user) });
 }));
 
 module.exports = router;

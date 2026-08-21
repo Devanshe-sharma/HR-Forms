@@ -20,6 +20,10 @@ const UserSchema = new mongoose.Schema(
     // the onboarding bulk-import script) — forces a real password before
     // the account can be used anywhere else in the app.
     mustChangePassword: { type: Boolean, default: false },
+    // When the password was last set (by the user themselves or an Admin
+    // reset) — lets Admin verify a reset actually took effect, since
+    // lastLoginAt/updatedAt don't reliably indicate a password change.
+    passwordChangedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

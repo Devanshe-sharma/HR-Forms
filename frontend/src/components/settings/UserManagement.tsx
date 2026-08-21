@@ -40,6 +40,8 @@ interface AppUser {
   role: Role;
   isActive: boolean;
   lastLoginAt: string | null;
+  mustChangePassword: boolean;
+  passwordChangedAt: string | null;
 }
 
 export default function UserManagement() {
@@ -119,6 +121,7 @@ export default function UserManagement() {
       setResetTarget(null);
       setResetPassword('');
       setToast('Password reset successfully');
+      loadUsers();
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Failed to reset password');
     } finally {
@@ -150,6 +153,7 @@ export default function UserManagement() {
                 <TableCell>Email</TableCell>
                 <TableCell>Role</TableCell>
                 <TableCell>Active</TableCell>
+                <TableCell>Password</TableCell>
                 <TableCell>Last Login</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
@@ -176,6 +180,18 @@ export default function UserManagement() {
                     <Switch checked={u.isActive} onChange={() => handleToggleActive(u)} size="small" />
                     {!u.isActive && <Chip label="Disabled" size="small" color="default" />}
                   </TableCell>
+                  <TableCell>
+                    {u.mustChangePassword ? (
+                      <Chip label="Reset pending" size="small" color="warning" />
+                    ) : u.passwordChangedAt ? (
+                      <Chip label="Changed" size="small" color="success" variant="outlined" />
+                    ) : (
+                      <Chip label="Original" size="small" variant="outlined" />
+                    )}
+                    <Typography variant="caption" display="block" color="text.secondary">
+                      {u.passwordChangedAt ? new Date(u.passwordChangedAt).toLocaleString() : 'Never changed'}
+                    </Typography>
+                  </TableCell>
                   <TableCell>{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'Never'}</TableCell>
                   <TableCell align="right">
                     <Button size="small" onClick={() => setResetTarget(u)}>Reset Password</Button>
@@ -184,7 +200,7 @@ export default function UserManagement() {
               ))}
               {users.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} align="center">No users yet.</TableCell>
+                  <TableCell colSpan={7} align="center">No users yet.</TableCell>
                 </TableRow>
               )}
             </TableBody>
