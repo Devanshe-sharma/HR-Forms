@@ -370,11 +370,11 @@ const OnboardingDashboard: React.FC = () => {
                 {/* Column header */}
                 <Box sx={{
                   display: "grid",
-                  gridTemplateColumns: "2fr 1fr 1fr 90px 120px 90px 90px",
+                  gridTemplateColumns: "2fr 1fr 1fr 90px 120px 90px",
                   gap: 1, px: 2, py: 1,
                   bgcolor: "#f8fafc", borderBottom: "1px solid #e2e8f0",
                 }}>
-                  {["Employee", "Department", "Status", "FMS", "Progress", "Tasks", "Actions"].map(h => (
+                  {["Employee", "Department", "Status", "FMS", "Progress", "Actions"].map(h => (
                     <Typography key={h} fontSize="0.6rem" fontWeight={700} color="#94a3b8"
                       textTransform="uppercase" letterSpacing="0.06em">{h}</Typography>
                   ))}
@@ -393,7 +393,7 @@ const OnboardingDashboard: React.FC = () => {
                       onClick={() => openViewModal(row)}
                       sx={{
                         display: "grid",
-                        gridTemplateColumns: "2fr 1fr 1fr 90px 120px 90px 90px",
+                        gridTemplateColumns: "2fr 1fr 1fr 90px 120px 90px",
                         gap: 1, px: 2, py: 1.5,
                         borderBottom: idx < paginated.length - 1 ? "1px solid #f1f5f9" : "none",
                         alignItems: "center",
@@ -481,28 +481,6 @@ const OnboardingDashboard: React.FC = () => {
                             </Typography>
                           )}
                         </Box>
-                      </Box>
-
-                      {/* Task counts */}
-                      <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
-                        <Tooltip title="Done on time">
-                          <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center",
-                            px: 0.8, py: 0.3, bgcolor: "#f0fdf4", borderRadius: 1 }}>
-                            <Typography fontSize="0.72rem" fontWeight={800} color="#15803d">
-                              {row.doneInTime ?? 0}
-                            </Typography>
-                            <Typography fontSize="0.52rem" color="#86efac">Done</Typography>
-                          </Box>
-                        </Tooltip>
-                        <Tooltip title="Total tasks">
-                          <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center",
-                            px: 0.8, py: 0.3, bgcolor: "#f8fafc", borderRadius: 1 }}>
-                            <Typography fontSize="0.72rem" fontWeight={800} color="#64748b">
-                              {row.totalTasks ?? 0}
-                            </Typography>
-                            <Typography fontSize="0.52rem" color="#94a3b8">Total</Typography>
-                          </Box>
-                        </Tooltip>
                       </Box>
 
                       {/* Actions */}

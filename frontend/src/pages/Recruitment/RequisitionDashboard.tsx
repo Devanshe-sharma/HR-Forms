@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Edit2, Plus, RefreshCw } from 'lucide-react';
+import dayjs from 'dayjs';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import Modal from '../../components/Modal';
@@ -8,6 +9,8 @@ import NewRequisitionForm from './new-requisition-form';
 import UpdateRequisition  from './UpdateRequisition';
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
+
+const fmtDate = (d?: string | null) => d ? dayjs(d).format('DD MMM YYYY') : '—';
 
 type Requisition = {
   _id: string;
@@ -244,24 +247,18 @@ export default function RequisitionDashboard() {
                       <th className="px-3 py-2.5 font-semibold">Designation</th>
                       <th className="px-3 py-2.5 font-semibold">Department</th>
                       <th className="px-3 py-2.5 font-semibold">Raised By</th>
-                      <th className="px-3 py-2.5 font-semibold">Request Date</th>
-                      <th className="px-3 py-2.5 font-semibold">Planned Joining</th>
+                      <th className="px-3 py-2.5 font-semibold w-32">Request Date</th>
+                      <th className="px-3 py-2.5 font-semibold w-32">Planned Joining</th>
                       <th className="px-3 py-2.5 font-semibold w-52">Hiring Status</th>
                       <th className="px-3 py-2.5 font-semibold w-24">FMS Status</th>
                       <th className="px-3 py-2.5 font-semibold w-20 text-right">FMS Score</th>
-                      <th className="px-3 py-2.5 font-semibold w-16 text-right">Total Tasks</th>
-                      <th className="px-3 py-2.5 font-semibold w-16 text-right">Done in Time</th>
-                      <th className="px-3 py-2.5 font-semibold w-16 text-right">Done Delayed</th>
-                      <th className="px-3 py-2.5 font-semibold w-16 text-right">Tasks Due</th>
-                      <th className="px-3 py-2.5 font-semibold w-16 text-right">Overdue</th>
-                      <th className="px-3 py-2.5 font-semibold w-16 text-right">Not Yet Due</th>
                       <th className="px-3 py-2.5 font-semibold w-20 text-center">Update</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {filteredRows.length === 0 && (
                       <tr>
-                        <td colSpan={16} className="py-12 text-center text-gray-400">No requisitions match the current filters</td>
+                        <td colSpan={10} className="py-12 text-center text-gray-400">No requisitions match the current filters</td>
                       </tr>
                     )}
                     {filteredRows.map(row => {
@@ -277,8 +274,8 @@ export default function RequisitionDashboard() {
 
                           <td className="px-3 py-2.5">{row.hiring_dept}</td>
                           <td className="px-3 py-2.5">{row.requisitioner_name}</td>
-                          <td className="px-3 py-2.5">{row.request_date || '—'}</td>
-                          <td className="px-3 py-2.5">{row.planned_joined || '—'}</td>
+                          <td className="px-3 py-2.5">{fmtDate(row.request_date)}</td>
+                          <td className="px-3 py-2.5">{fmtDate(row.planned_joined)}</td>
 
                           {/* Hiring Status — read-only display. All
                               changes go through the Update Requisition
@@ -312,12 +309,6 @@ export default function RequisitionDashboard() {
                           }`}>
                             {row.fms_score ?? 0}
                           </td>
-                          <td className="px-3 py-2.5 text-right text-gray-500">{row.total_tasks ?? 0}</td>
-                          <td className="px-3 py-2.5 text-right text-green-700">{row.done_in_time ?? 0}</td>
-                          <td className="px-3 py-2.5 text-right text-blue-700">{row.done_but_delayed ?? 0}</td>
-                          <td className="px-3 py-2.5 text-right text-yellow-700">{row.tasks_due ?? 0}</td>
-                          <td className="px-3 py-2.5 text-right text-red-700 font-medium">{row.tasks_overdue ?? 0}</td>
-                          <td className="px-3 py-2.5 text-right text-gray-400">{row.not_yet_due ?? 0}</td>
 
                           <td className="px-3 py-2.5 text-center">
                             <button
