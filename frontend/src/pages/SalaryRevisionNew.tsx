@@ -4,7 +4,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, Button, TextField, Select, MenuItem, FormControl, InputLabel,
   Avatar, Stack, IconButton, Divider, Slider, Autocomplete, Switch, FormControlLabel,
-  Checkbox, InputAdornment, Popover,
+  Checkbox, InputAdornment, Popover, Tooltip, Collapse, Link,
 } from '@mui/material';
 import {
   ArrowBack      as ArrowBackIcon,
@@ -19,6 +19,9 @@ import {
   Delete         as DeleteIcon,
   Settings       as SettingsIcon,
   Save           as SaveIcon,
+  KeyboardArrowRight as ChevronIcon,
+  InfoOutlined   as InfoIcon,
+  ExpandMore     as ExpandMoreIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import Sidebar from '../components/Sidebar';
@@ -167,7 +170,29 @@ const EMP_API  = `${API_URL}/onboarding/eligible-employees`;
 const CTC_API  = `${API_URL}/ctc-components/`;
 
 const ACCENT = '#4f46e5';
-const TH = { fontWeight: 600, fontSize: 11, color: '#64748b', bgcolor: '#f8fafc', whiteSpace: 'nowrap' as const, py: '8px', borderBottom: '1px solid #e2e8f0' };
+
+// Design tokens for the dashboard table/filter redesign — scoped as CSS custom
+// properties on the DashboardView root (see ROOT_TOKENS) rather than adopted
+// app-wide, since no global token system exists yet in this codebase.
+const ROOT_TOKENS = {
+  '--text-primary'  : '#0f172a',
+  '--text-secondary': '#64748b',
+  '--text-accent'   : ACCENT,
+  '--surface-1'     : '#f8fafc',
+  '--border'        : '#e2e8f0',
+} as const;
+
+// Table header keeps a full-strength 1px rule (reserved, per design spec, for
+// the header row and card outlines only — everything else uses the thinner
+// 0.5px --border rule below).
+const TH = { fontWeight: 700, fontSize: 12, color: 'var(--text-secondary)', bgcolor: 'var(--surface-1)', whiteSpace: 'nowrap' as const, py: '8px', borderBottom: `1px solid var(--border)` };
+// Body cell — dense but with enough vertical breathing room (>=4px), and the
+// thinner non-essential-divider rule between rows.
+const TD = { fontSize: 12, py: '10px', borderBottom: '0.5px solid var(--border)' };
+
+// A visible-but-not-loud tint fill for the one chip per row allowed to "pop"
+// (StatusChip) — everything else in a row is plain text or an outline badge.
+const statusFill = (color: string) => `${color}26`;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -370,11 +395,23 @@ const STATUS_COLOR: Record<Status,string> = {
   overdue: '#dc2626', done: '#059669', done_delayed: '#b45309',
 };
 
+// The one chip per row allowed a strong fill — everything else nearby in the
+// dashboard table is plain text or an outline-only badge, so Status is the
+// single thing that visually pops.
 function StatusChip({ status }: { status: Status }) {
   const color = STATUS_COLOR[status];
   return (
     <Chip size="small" label={STATUS_LABEL[status]}
-      sx={{ bgcolor: '#f8fafc', color, fontWeight: 600, fontSize: 11, border: `1px solid ${color}30` }}/>
+      sx={{ bgcolor: statusFill(color), color, fontWeight: 700, fontSize: 11, border: 'none' }}/>
+  );
+}
+
+// A quiet, no-fill badge — used for anything riding alongside StatusChip
+// that would otherwise compete with it (e.g. the "Full-Time Offer" marker).
+function OutlineBadge({ label, color }: { label: string; color: string }) {
+  return (
+    <Chip size="small" label={label} variant="outlined"
+      sx={{ bgcolor: 'transparent', color, fontWeight: 600, fontSize: 9, height: 16, borderColor: `${color}55` }}/>
   );
 }
 
@@ -772,6 +809,15 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
   const [status,   setStatus]   = useState('All');
   const [stageFilter, setStageFilter] = useState<'All'|'completed'|'not_completed'>('All');
   const [historyAnchor, setHistoryAnchor] = useState<{ el:HTMLElement; emp:Employee }|null>(null);
+  // Which row's secondary panel (Designation/Decision/Stage/CTC/Contract) is
+  // expanded — at most one at a time, per the expandable-row spec.
+  const [expandedRow, setExpandedRow] = useState<string|null>(null);
+  // "Stage" is tucked behind a "More filters" link instead of always being
+  // visible in the compact filter strip.
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
+  // Period/Year/Quarter (or the custom range) live inside a popover behind
+  // one compound "Period" button instead of three separate selects.
+  const [periodAnchorEl, setPeriodAnchorEl] = useState<HTMLElement|null>(null);
 
   // Every revision an employee has ever had, newest first (records already
   // arrive sorted that way) — NOT collapsed to just the latest, because a
@@ -994,12 +1040,18 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
     }).length,
   };
 
+  const periodLabel = period==='all' ? 'All Time'
+    : period==='custom' ? (customFrom&&customTo ? `${fmtDate(customFrom)} – ${fmtDate(customTo)}` : 'Custom Range')
+    : `Q${selQ} ${fiscalYearLabel(selFY)}`;
+
+  const compactFieldSx = { bgcolor:'white', '& .MuiInputBase-root':{ height:34, fontSize:12 }, '& .MuiSelect-select':{ display:'flex', alignItems:'center' } };
+
   return (
-    <Box sx={{ p:2.5, maxWidth:1300, mx:'auto' }}>
+    <Box sx={{ p:2.5, maxWidth:1300, mx:'auto', ...ROOT_TOKENS }}>
       <Box sx={{ display:'flex', alignItems:'center', justifyContent:'space-between', mb:2, flexWrap:'wrap', gap:1.5 }}>
         <Box>
-          <Typography fontSize={18} fontWeight={700} color="#0f172a">Salary Revision</Typography>
-          <Typography fontSize={12} color="text.secondary">
+          <Typography fontSize={18} fontWeight={700} color="var(--text-primary)">Salary Revision</Typography>
+          <Typography fontSize={12} color="var(--text-secondary)">
             {mainTab==='history'?(ppoOnly?'Every intern/contract employee who got a full-time offer':'Every employee whose revision is completed'):
              period==='all'?'All active employees':
              period==='custom'?(customFrom&&customTo?`Due between ${fmtDate(customFrom)} and ${fmtDate(customTo)}`:'Pick a date range below'):
@@ -1008,7 +1060,7 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
         </Box>
         <Stack direction="row" spacing={1}>
           <Button variant="outlined" startIcon={<SettingsIcon sx={{ fontSize: 16 }} />} onClick={onManageCtc} size="small"
-            sx={{ textTransform:'none', fontWeight:600, borderRadius: 1.5, borderColor: '#e2e8f0', color: '#475569' }}>
+            sx={{ textTransform:'none', fontWeight:600, borderRadius: 1.5, borderColor: 'var(--border)', color: '#475569' }}>
             CTC Components
           </Button>
           <Button variant="contained" startIcon={<AddIcon/>} onClick={onAdd} size="small"
@@ -1018,7 +1070,7 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
         </Stack>
       </Box>
 
-      <Box sx={{ borderBottom:'1px solid #e2e8f0', mb:2.5 }}>
+      <Box sx={{ borderBottom:'0.5px solid var(--border)', mb:2.5 }}>
         <Tabs value={mainTab} onChange={(_,v)=>setMainTab(v)} sx={{
           '& .MuiTab-root':{ fontSize:13, textTransform:'none', fontWeight:600, minHeight:40 },
           '& .MuiTabs-indicator':{ bgcolor:ACCENT },
@@ -1030,9 +1082,9 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
       </Box>
 
       {mainTab==='action'&&(
-        <Box sx={{ display:'flex', gap:3, mb:2.5, flexWrap:'wrap', pb: 2, borderBottom: '1px solid #e2e8f0' }}>
+        <Box sx={{ display:'flex', gap:3, mb:2.5, flexWrap:'wrap', pb: 2, borderBottom: '0.5px solid var(--border)' }}>
           {[
-            { label: 'Total', value: stats.total, color: '#0f172a' },
+            { label: 'Total', value: stats.total, color: 'var(--text-primary)' },
             { label: 'Overdue', value: stats.overdue, color: '#dc2626' },
             { label: 'Due', value: stats.due, color: '#d97706' },
             { label: 'Pending', value: stats.pending, color: '#eab308' },
@@ -1040,128 +1092,155 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
           ].map(s=>(
             <Box key={s.label}>
               <Typography fontSize={20} fontWeight={700} color={s.color} lineHeight={1}>{s.value}</Typography>
-              <Typography fontSize={11} color="text.secondary" mt={0.3}>{s.label}</Typography>
+              <Typography fontSize={11} color="var(--text-secondary)" mt={0.3}>{s.label}</Typography>
             </Box>
           ))}
         </Box>
       )}
 
       {mainTab==='history'&&(
-        <Box sx={{ display:'flex', gap:3, mb:2.5, flexWrap:'wrap', pb: 2, borderBottom: '1px solid #e2e8f0' }}>
+        <Box sx={{ display:'flex', gap:3, mb:2.5, flexWrap:'wrap', pb: 2, borderBottom: '0.5px solid var(--border)' }}>
           <Box>
-            <Typography fontSize={20} fontWeight={700} color="#0f172a" lineHeight={1}>{completedRows.length}</Typography>
-            <Typography fontSize={11} color="text.secondary" mt={0.3}>Total Completed</Typography>
+            <Typography fontSize={20} fontWeight={700} color="var(--text-primary)" lineHeight={1}>{completedRows.length}</Typography>
+            <Typography fontSize={11} color="var(--text-secondary)" mt={0.3}>Total Completed</Typography>
           </Box>
           <Box>
             <Typography fontSize={20} fontWeight={700} color="#059669" lineHeight={1}>{ppoRows.length}</Typography>
-            <Typography fontSize={11} color="text.secondary" mt={0.3}>PPO Conversions</Typography>
+            <Typography fontSize={11} color="var(--text-secondary)" mt={0.3}>PPO Conversions</Typography>
           </Box>
         </Box>
       )}
 
       {mainTab==='action'&&(
-        <Box sx={{ display:'flex', gap:1, mb:2, flexWrap:'wrap', alignItems:'center' }}>
-          <FormControl size="small" sx={{ minWidth:150 }}>
-            <InputLabel sx={{ fontSize:12 }}>Period</InputLabel>
-            <Select value={period} label="Period" onChange={e=>setPeriod(e.target.value as typeof period)} sx={{ fontSize:12 }}>
-              <MenuItem value="quarter" sx={{ fontSize:12 }}>This Quarter</MenuItem>
-              <MenuItem value="all" sx={{ fontSize:12 }}>All Time</MenuItem>
-              <MenuItem value="custom" sx={{ fontSize:12 }}>Custom Range</MenuItem>
-            </Select>
-          </FormControl>
-          {period==='quarter'&&(
-            <>
-              <FormControl size="small" sx={{ minWidth:130 }}>
-                <InputLabel sx={{ fontSize:12 }}>Year</InputLabel>
-                <Select value={selFY} label="Year" onChange={e=>setSelFY(Number(e.target.value))} sx={{ fontSize:12 }}>
-                  {Array.from({ length:6 }, (_,i)=>fiscalYearOf(now)-4+i).map(fy=>(
-                    <MenuItem key={fy} value={fy} sx={{ fontSize:12 }}>{fiscalYearLabel(fy)}</MenuItem>
-                  ))}
+        <Box sx={{ mb:2 }}>
+          <Box sx={{ display:'flex', alignItems:'center', gap:1, flexWrap:'wrap',
+            bgcolor:'var(--surface-1)', borderRadius:1.5, px:1.5, py:0.75 }}>
+            <Button
+              size="small" variant="outlined" onClick={e=>setPeriodAnchorEl(e.currentTarget)}
+              endIcon={<ExpandMoreIcon sx={{ fontSize:16 }}/>}
+              sx={{ height:34, textTransform:'none', fontSize:12, fontWeight:600,
+                borderColor:'var(--border)', color:'var(--text-primary)', bgcolor:'white',
+                '&:hover':{ borderColor:'var(--text-accent)', bgcolor:'white' } }}>
+              {periodLabel}
+            </Button>
+
+            <TextField size="small" placeholder="Search name…" value={search}
+              onChange={e=>setSearch(e.target.value)} sx={{ minWidth:170, ...compactFieldSx }}/>
+
+            <FormControl size="small" sx={{ minWidth:140, ...compactFieldSx }}>
+              <Select value={dept} onChange={e=>setDept(e.target.value)}>
+                {depts.map(d=><MenuItem key={d} value={d} sx={{ fontSize:12 }}>{d==='All'?'All Departments':d}</MenuItem>)}
+              </Select>
+            </FormControl>
+
+            <FormControl size="small" sx={{ minWidth:150, ...compactFieldSx }}>
+              <Select value={status} onChange={e=>setStatus(e.target.value)}>
+                {[['All','All Statuses'],['not_yet_due','Not Yet Due'],['pending','Pending'],
+                  ['due','Due'],['overdue','Overdue'],['done','Done'],['done_delayed','Done Delayed'],
+                ].map(([v,l])=><MenuItem key={v} value={v} sx={{ fontSize:12 }}>{l}</MenuItem>)}
+              </Select>
+            </FormControl>
+
+            <Box sx={{ flex:1 }}/>
+            <Link component="button" type="button" underline="hover" onClick={()=>setShowMoreFilters(s=>!s)}
+              sx={{ fontSize:12, fontWeight:600, color:'var(--text-accent)' }}>
+              {showMoreFilters?'Fewer filters':'More filters'}
+            </Link>
+          </Box>
+
+          {showMoreFilters && (
+            <Box sx={{ display:'flex', gap:1, mt:1, px:0.25 }}>
+              <FormControl size="small" sx={{ minWidth:150 }}>
+                <InputLabel sx={{ fontSize:12 }}>Stage</InputLabel>
+                <Select value={stageFilter} label="Stage" onChange={e=>setStageFilter(e.target.value as typeof stageFilter)} sx={{ fontSize:12, height:34 }}>
+                  <MenuItem value="All" sx={{ fontSize:12 }}>All</MenuItem>
+                  <MenuItem value="completed" sx={{ fontSize:12 }}>Completed</MenuItem>
+                  <MenuItem value="not_completed" sx={{ fontSize:12 }}>Not Completed</MenuItem>
                 </Select>
               </FormControl>
-              <FormControl size="small" sx={{ minWidth:100 }}>
-                <InputLabel sx={{ fontSize:12 }}>Quarter</InputLabel>
-                <Select value={selQ} label="Quarter" onChange={e=>setSelQ(Number(e.target.value))} sx={{ fontSize:12 }}>
-                  {[1,2,3,4].map(q=><MenuItem key={q} value={q} sx={{ fontSize:12 }}>{`Q${q}`}</MenuItem>)}
+            </Box>
+          )}
+
+          <Popover
+            open={!!periodAnchorEl}
+            anchorEl={periodAnchorEl}
+            onClose={()=>setPeriodAnchorEl(null)}
+            anchorOrigin={{ vertical:'bottom', horizontal:'left' }}
+          >
+            <Box sx={{ p:2, minWidth:250 }}>
+              <FormControl size="small" fullWidth sx={{ mb: period!=='all' ? 1.5 : 0 }}>
+                <InputLabel sx={{ fontSize:12 }}>Period</InputLabel>
+                <Select value={period} label="Period" onChange={e=>setPeriod(e.target.value as typeof period)} sx={{ fontSize:12 }}>
+                  <MenuItem value="quarter" sx={{ fontSize:12 }}>This Quarter</MenuItem>
+                  <MenuItem value="all" sx={{ fontSize:12 }}>All Time</MenuItem>
+                  <MenuItem value="custom" sx={{ fontSize:12 }}>Custom Range</MenuItem>
                 </Select>
               </FormControl>
-            </>
-          )}
-          {period==='custom'&&(
-            <>
-              <TextField label="From" type="date" size="small" value={customFrom}
-                onChange={e=>setCustomFrom(e.target.value)} InputLabelProps={{ shrink:true }} sx={{ minWidth:160 }}/>
-              <TextField label="To" type="date" size="small" value={customTo}
-                onChange={e=>setCustomTo(e.target.value)} InputLabelProps={{ shrink:true }} sx={{ minWidth:160 }}/>
-            </>
-          )}
-          <TextField size="small" placeholder="Search name…" value={search}
-            onChange={e=>setSearch(e.target.value)} sx={{ minWidth:180 }}
-            InputProps={{ sx:{ fontSize:13 } }}/>
-          <FormControl size="small" sx={{ minWidth:130 }}>
-            <InputLabel sx={{ fontSize:12 }}>Department</InputLabel>
-            <Select value={dept} label="Department" onChange={e=>setDept(e.target.value)} sx={{ fontSize:12 }}>
-              {depts.map(d=><MenuItem key={d} value={d} sx={{ fontSize:12 }}>{d}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth:155 }}>
-            <InputLabel sx={{ fontSize:12 }}>Status</InputLabel>
-            <Select value={status} label="Status" onChange={e=>setStatus(e.target.value)} sx={{ fontSize:12 }}>
-              {[['All','All'],['not_yet_due','Not Yet Due'],['pending','Pending'],
-                ['due','Due'],['overdue','Overdue'],['done','Done'],['done_delayed','Done Delayed'],
-              ].map(([v,l])=><MenuItem key={v} value={v} sx={{ fontSize:12 }}>{l}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth:150 }}>
-            <InputLabel sx={{ fontSize:12 }}>Stage</InputLabel>
-            <Select value={stageFilter} label="Stage" onChange={e=>setStageFilter(e.target.value as typeof stageFilter)} sx={{ fontSize:12 }}>
-              <MenuItem value="All" sx={{ fontSize:12 }}>All</MenuItem>
-              <MenuItem value="completed" sx={{ fontSize:12 }}>Completed</MenuItem>
-              <MenuItem value="not_completed" sx={{ fontSize:12 }}>Not Completed</MenuItem>
-            </Select>
-          </FormControl>
+              {period==='quarter'&&(
+                <Box sx={{ display:'flex', gap:1.5 }}>
+                  <FormControl size="small" sx={{ minWidth:130 }}>
+                    <InputLabel sx={{ fontSize:12 }}>Year</InputLabel>
+                    <Select value={selFY} label="Year" onChange={e=>setSelFY(Number(e.target.value))} sx={{ fontSize:12 }}>
+                      {Array.from({ length:6 }, (_,i)=>fiscalYearOf(now)-4+i).map(fy=>(
+                        <MenuItem key={fy} value={fy} sx={{ fontSize:12 }}>{fiscalYearLabel(fy)}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <FormControl size="small" sx={{ minWidth:100 }}>
+                    <InputLabel sx={{ fontSize:12 }}>Quarter</InputLabel>
+                    <Select value={selQ} label="Quarter" onChange={e=>setSelQ(Number(e.target.value))} sx={{ fontSize:12 }}>
+                      {[1,2,3,4].map(q=><MenuItem key={q} value={q} sx={{ fontSize:12 }}>{`Q${q}`}</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                </Box>
+              )}
+              {period==='custom'&&(
+                <Box sx={{ display:'flex', gap:1.5 }}>
+                  <TextField label="From" type="date" size="small" value={customFrom}
+                    onChange={e=>setCustomFrom(e.target.value)} InputLabelProps={{ shrink:true }} sx={{ minWidth:150 }}/>
+                  <TextField label="To" type="date" size="small" value={customTo}
+                    onChange={e=>setCustomTo(e.target.value)} InputLabelProps={{ shrink:true }} sx={{ minWidth:150 }}/>
+                </Box>
+              )}
+            </Box>
+          </Popover>
         </Box>
       )}
 
       {mainTab==='history'&&(
-        <Box sx={{ display:'flex', gap:1.5, mb:2, flexWrap:'wrap', alignItems:'center' }}>
+        <Box sx={{ display:'flex', alignItems:'center', gap:1.5, mb:2, flexWrap:'wrap',
+          bgcolor:'var(--surface-1)', borderRadius:1.5, px:1.5, py:0.75 }}>
           <TextField size="small" placeholder="Search name…" value={search}
-            onChange={e=>setSearch(e.target.value)} sx={{ minWidth:180 }}
-            InputProps={{ sx:{ fontSize:13 } }}/>
-          <FormControl size="small" sx={{ minWidth:130 }}>
-            <InputLabel sx={{ fontSize:12 }}>Department</InputLabel>
-            <Select value={dept} label="Department" onChange={e=>setDept(e.target.value)} sx={{ fontSize:12 }}>
-              {depts.map(d=><MenuItem key={d} value={d} sx={{ fontSize:12 }}>{d}</MenuItem>)}
+            onChange={e=>setSearch(e.target.value)} sx={{ minWidth:170, ...compactFieldSx }}/>
+          <FormControl size="small" sx={{ minWidth:140, ...compactFieldSx }}>
+            <Select value={dept} onChange={e=>setDept(e.target.value)}>
+              {depts.map(d=><MenuItem key={d} value={d} sx={{ fontSize:12 }}>{d==='All'?'All Departments':d}</MenuItem>)}
             </Select>
           </FormControl>
           <FormControlLabel
             control={<Checkbox size="small" checked={ppoOnly} onChange={e=>setPpoOnly(e.target.checked)}
-              sx={{ color:ACCENT, '&.Mui-checked':{ color:ACCENT } }}/>}
-            label={<Typography fontSize={12}>PPO conversions only</Typography>}/>
+              sx={{ color:'var(--text-accent)', '&.Mui-checked':{ color:'var(--text-accent)' } }}/>}
+            label={<Typography fontSize={12} color="var(--text-primary)">PPO conversions only</Typography>}/>
         </Box>
       )}
 
-      <Box sx={{ bgcolor:'white', borderRadius:2, border:'1px solid #e2e8f0', overflow:'hidden' }}>
+      <Box sx={{ bgcolor:'white', borderRadius:2, border:'1px solid var(--border)', overflow:'hidden' }}>
         {loading?<Box display="flex" justifyContent="center" py={6}><CircularProgress size={28}/></Box>:(
           <TableContainer sx={{ maxHeight:460, overflow:'auto' }}>
             <Table size="small" stickyHeader>
               <TableHead>
                 <TableRow sx={{ '& th':TH }}>
+                  <TableCell sx={{ width:34, px:1 }}/>
                   <TableCell>Employee</TableCell>
                   <TableCell>Department</TableCell>
-                  <TableCell>Designation</TableCell>
                   <TableCell>{mainTab==='history'?'Completed On':'Due Date'}</TableCell>
-                  <TableCell>Prev. CTC</TableCell>
-                  <TableCell>Decision</TableCell>
-                  <TableCell>New CTC</TableCell>
                   <TableCell>Status</TableCell>
-                  <TableCell>Stage</TableCell>
-                  <TableCell>Contract</TableCell>
+                  <TableCell>New CTC</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {filtered.length===0&&(
-                  <TableRow><TableCell colSpan={10} align="center" sx={{ py:6, color:'text.secondary', fontSize:13 }}>
+                  <TableRow><TableCell colSpan={6} align="center" sx={{ py:6, color:'var(--text-secondary)', fontSize:13 }}>
                     {mainTab==='history'?(ppoOnly?'No full-time conversions yet':'No completed revisions yet'):
                      period==='all'?'No employees found':
                      period==='custom'?(customFrom&&customTo?'No employees due in this range':'Pick a From and To date above'):
@@ -1177,75 +1256,128 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
                     && fiscalQuarterOf(dueDate) === fiscalQuarterOf(now)
                     && fiscalYearOf(dueDate) === fiscalYearOf(now);
                   const completedOn = rec?.applicableDate || rec?.createdAt;
+                  const st = mainTab==='history' ? ('done' as Status) : rowStatus(rec,dueDate);
+                  const isDoneStatus = st==='done' || st==='done_delayed';
+                  const isExpanded = expandedRow===emp._id;
+                  const toggleExpand = (e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    setExpandedRow(isExpanded ? null : emp._id);
+                  };
                   return (
-                    <TableRow key={emp._id} onClick={()=>onSelect(emp,rec)}
-                      sx={{ cursor:'pointer', '&:hover':{ bgcolor:'#f8fafc' }, borderBottom: '1px solid #f1f5f9' }}>
-                      <TableCell>
-                        <Box sx={{ display:'flex', alignItems:'center', gap:1 }}>
-                          <Avatar sx={{ width:26, height:26, bgcolor:ACCENT, fontSize:10, fontWeight:700 }}>{initials(emp.full_name)}</Avatar>
-                          <Typography fontSize={12} fontWeight={600}>{emp.full_name}</Typography>
-                        </Box>
-                      </TableCell>
-                      <TableCell sx={{ fontSize:12 }}>{emp.department||'—'}</TableCell>
-                      <TableCell sx={{ fontSize:12 }}>
-                        {emp.designation||'—'}
-                        {rec?.designationChanged && <Chip label="changed" size="small" sx={{ ml: 0.7, fontSize: 9, height: 16, bgcolor: '#eef2ff', color: ACCENT }}/>}
-                      </TableCell>
-                      <TableCell>
-                        {mainTab==='history' ? (
-                          <Box>
-                            <Typography component="span" fontSize={12} fontWeight={600}>{fmtDate(completedOn)}</Typography>
-                            {rec && isPpoRevision(rec) && (
-                              <Chip label="Full-Time Offer" size="small" sx={{ display:'block', width:'fit-content', mt:0.4, fontSize:9, height:16, bgcolor:'#f0fdf4', color:'#059669' }}/>
-                            )}
+                    <React.Fragment key={emp._id}>
+                      <TableRow onClick={()=>onSelect(emp,rec)}
+                        sx={{ cursor:'pointer', '&:hover':{ bgcolor:'var(--surface-1)' },
+                          borderBottom: isExpanded ? 'none' : '0.5px solid var(--border)' }}>
+                        <TableCell sx={{ ...TD, width:34, px:1 }}>
+                          <IconButton size="small" onClick={toggleExpand} sx={{ p:0.4 }}>
+                            <ChevronIcon sx={{ fontSize:16, color:'var(--text-secondary)',
+                              transform: isExpanded?'rotate(90deg)':'none', transition:'transform .15s' }}/>
+                          </IconButton>
+                        </TableCell>
+                        <TableCell sx={TD}>
+                          <Box sx={{ display:'flex', alignItems:'center', gap:1 }}>
+                            <Avatar sx={{ width:26, height:26, bgcolor:'var(--text-accent)', fontSize:10, fontWeight:700 }}>{initials(emp.full_name)}</Avatar>
+                            <Typography fontSize={12} fontWeight={600} color="var(--text-primary)">{emp.full_name}</Typography>
                           </Box>
-                        ) : emp.employee_category==='Intern' ? (
-                          <Box>
-                            <Typography component="span" fontSize={12} fontWeight={isThisQuarter?700:400} color={isThisQuarter?'#d97706':'inherit'}>
+                        </TableCell>
+                        <TableCell sx={{ ...TD, color:'var(--text-secondary)' }}>{emp.department||'—'}</TableCell>
+                        <TableCell sx={TD}>
+                          {mainTab==='history' ? (
+                            <Box>
+                              <Typography component="span" fontSize={12} fontWeight={600} color="var(--text-primary)">{fmtDate(completedOn)}</Typography>
+                              {rec && isPpoRevision(rec) && (
+                                <Box mt={0.4}><OutlineBadge label="Full-Time Offer" color="#059669"/></Box>
+                              )}
+                            </Box>
+                          ) : emp.employee_category==='Intern' ? (
+                            <Box>
+                              <Box sx={{ display:'flex', alignItems:'center', gap:0.5 }}>
+                                <Typography component="span" fontSize={12} fontWeight={isThisQuarter?700:400} color={isThisQuarter?'#d97706':'var(--text-primary)'}>
+                                  {dueDate?fmtDate(dueDate.toISOString()):'—'}
+                                </Typography>
+                                {!dueDate && (
+                                  <Tooltip title="No contract period on file" arrow>
+                                    <InfoIcon sx={{ fontSize:13, color:'var(--text-secondary)', cursor:'help' }}/>
+                                  </Tooltip>
+                                )}
+                              </Box>
+                              <Typography fontSize={10} color="var(--text-secondary)" mt={0.2}>PPO Review</Typography>
+                            </Box>
+                          ) : (
+                            <Typography component="span" fontSize={12} fontWeight={isThisQuarter?700:400} color={isThisQuarter?'#d97706':'var(--text-primary)'}>
                               {dueDate?fmtDate(dueDate.toISOString()):'—'}
                             </Typography>
-                            <Chip label="PPO Review" size="small" sx={{ display:'block', width:'fit-content', mt:0.4, bgcolor:'#eef2ff', color:ACCENT, fontSize:9, height:16 }}/>
-                            {!dueDate && (
-                              <Typography fontSize={10} color="#dc2626" mt={0.3}>No contract period on file</Typography>
-                            )}
-                          </Box>
-                        ) : (
-                          <Typography component="span" fontSize={12} fontWeight={isThisQuarter?700:400} color={isThisQuarter?'#d97706':'inherit'}>
-                            {dueDate?fmtDate(dueDate.toISOString()):'—'}
-                          </Typography>
-                        )}
-                      </TableCell>
-                      <TableCell sx={{ fontSize:12 }}>{fmtCurrency(rec?.previousCtc ?? emp.annual_ctc)}</TableCell>
-                      <TableCell>
-                        {rec
-                          ?<DecisionChip decision={rec.managerDecision?.decision}/>
-                          :<Typography fontSize={12} color="text.secondary">—</Typography>}
-                      </TableCell>
-                      <TableCell sx={{ fontSize:12, fontWeight:600, color:'#059669' }}>{rec?fmtCurrency(rec.newCtc):'—'}</TableCell>
-                      <TableCell>
-                        {mainTab==='history'
-                          ?<StatusChip status="done"/>
-                          :<StatusChip status={rowStatus(rec,dueDate)}/>}
-                      </TableCell>
-                      <TableCell>
-                        {rec?.stage==='completed'
-                          ?<Chip label="Completed" size="small" sx={{ bgcolor:'#f0fdf4', color:'#059669', fontSize:10 }}/>
-                          :<Chip label="Not Completed" size="small" sx={{ bgcolor:'#f8fafc', color:'#64748b', fontSize:10 }}/>}
-                      </TableCell>
-                      <TableCell sx={{ fontSize:12 }}>
-                        {emp.contract_start_date ? (
-                          <>
-                            {fmtDate(emp.contract_start_date)} → {emp.contract_end_date?fmtDate(emp.contract_end_date):'Ongoing'}
-                            {(emp.contract_history?.length||0)>1 && (
-                              <Typography component="span" onClick={(e)=>{ e.stopPropagation(); setHistoryAnchor({ el:e.currentTarget, emp }); }}
-                                sx={{ display:'block', fontSize:11, color:ACCENT, cursor:'pointer', fontWeight:600, '&:hover':{ textDecoration:'underline' } }}>
-                                Previous Contract
-                              </Typography>
-                            )}
-                          </>
-                        ) : '—'}
-                      </TableCell>
-                    </TableRow>
+                          )}
+                        </TableCell>
+                        <TableCell sx={TD}>
+                          <StatusChip status={st}/>
+                        </TableCell>
+                        <TableCell sx={{ ...TD, fontWeight:700, color: isDoneStatus?'#059669':'var(--text-primary)' }}>
+                          {rec?fmtCurrency(rec.newCtc):'—'}
+                        </TableCell>
+                      </TableRow>
+
+                      <TableRow>
+                        <TableCell colSpan={6} sx={{ p:0, border:'none' }}>
+                          <Collapse in={isExpanded} timeout={150} unmountOnExit>
+                            <Box sx={{ bgcolor:'var(--surface-1)', borderBottom:'0.5px solid var(--border)',
+                              px:3, py:2, display:'flex', gap:3, flexWrap:'wrap' }}>
+                              <Box sx={{ minWidth:150 }}>
+                                <Typography fontSize={10} fontWeight={700} color="var(--text-secondary)" mb={0.6}>DESIGNATION</Typography>
+                                <Box sx={{ display:'flex', alignItems:'center', gap:0.7, flexWrap:'wrap' }}>
+                                  <Typography fontSize={12} fontWeight={600} color="var(--text-primary)">{emp.designation||'—'}</Typography>
+                                  {rec?.designationChanged && <OutlineBadge label="changed" color={ACCENT}/>}
+                                </Box>
+                              </Box>
+
+                              <Divider orientation="vertical" flexItem sx={{ borderColor:'var(--border)' }}/>
+
+                              <Box sx={{ minWidth:170 }}>
+                                <Typography fontSize={10} fontWeight={700} color="var(--text-secondary)" mb={0.6}>DECISION &amp; STAGE</Typography>
+                                {rec ? (
+                                  <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
+                                    <DecisionChip decision={rec.managerDecision?.decision}/>
+                                    <StageChip stage={rec.stage}/>
+                                  </Stack>
+                                ) : <Typography fontSize={12} color="var(--text-secondary)">No revision record</Typography>}
+                              </Box>
+
+                              <Divider orientation="vertical" flexItem sx={{ borderColor:'var(--border)' }}/>
+
+                              <Box sx={{ minWidth:190 }}>
+                                <Typography fontSize={10} fontWeight={700} color="var(--text-secondary)" mb={0.6}>PREV. CTC → NEW CTC</Typography>
+                                <Box sx={{ display:'flex', alignItems:'center', gap:1 }}>
+                                  <Typography fontSize={12} color="var(--text-secondary)">{fmtCurrency(rec?.previousCtc ?? emp.annual_ctc)}</Typography>
+                                  <Typography fontSize={11} color="var(--text-secondary)">→</Typography>
+                                  <Typography fontSize={13} fontWeight={700} color={isDoneStatus?'#059669':'var(--text-primary)'}>
+                                    {rec?fmtCurrency(rec.newCtc):'—'}
+                                  </Typography>
+                                </Box>
+                              </Box>
+
+                              <Divider orientation="vertical" flexItem sx={{ borderColor:'var(--border)' }}/>
+
+                              <Box sx={{ minWidth:210 }}>
+                                <Typography fontSize={10} fontWeight={700} color="var(--text-secondary)" mb={0.6}>CONTRACT</Typography>
+                                {emp.contract_start_date ? (
+                                  <>
+                                    <Typography fontSize={12} color="var(--text-primary)">
+                                      {fmtDate(emp.contract_start_date)} → {emp.contract_end_date?fmtDate(emp.contract_end_date):'Ongoing'}
+                                    </Typography>
+                                    {(emp.contract_history?.length||0)>1 && (
+                                      <Typography component="span" onClick={(e)=>{ e.stopPropagation(); setHistoryAnchor({ el:e.currentTarget, emp }); }}
+                                        sx={{ display:'block', fontSize:11, color:'var(--text-accent)', cursor:'pointer', fontWeight:600, mt:0.3, '&:hover':{ textDecoration:'underline' } }}>
+                                        Previous Contract
+                                      </Typography>
+                                    )}
+                                  </>
+                                ) : <Typography fontSize={12} color="var(--text-secondary)">—</Typography>}
+                              </Box>
+                            </Box>
+                          </Collapse>
+                        </TableCell>
+                      </TableRow>
+                    </React.Fragment>
                   );
                 })}
               </TableBody>
@@ -1270,7 +1402,7 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
               const isLatest=i===arr.length-1;
               return (
                 <Box key={i} sx={{ display:'flex', justifyContent:'space-between', gap:2, p:0.75,
-                  bgcolor:isLatest?'#f0fdf4':'#f8fafc', borderRadius:1 }}>
+                  bgcolor:isLatest?'#f0fdf4':'var(--surface-1)', borderRadius:1 }}>
                   <Typography fontSize={11} color={isLatest?'#059669':'text.secondary'} fontWeight={isLatest?600:400}>
                     Contract {i+1}{isLatest?' (current)':''}
                   </Typography>
@@ -2643,7 +2775,7 @@ export default function SalaryRevisionPage() {
   if (loading&&view==='dashboard') return (
     <div className="flex min-h-screen bg-gray-50/70">
       <Sidebar/><div className="flex-1 flex flex-col"><Navbar/>
-        <main className="flex-1 flex items-center justify-center pt-16 md:pt-20">
+        <main className="flex-1 flex items-center justify-center  ">
           <CircularProgress size={40}/>
         </main>
       </div>

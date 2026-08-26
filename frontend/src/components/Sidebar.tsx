@@ -40,6 +40,7 @@ import {
   PersonAddAlt as PersonAddAltIcon,
   EditNote as EditNoteIcon,
   ReportProblem as ReportProblemIcon,
+  Gavel as GavelIcon,
 } from '@mui/icons-material';
 import { NavLink, useLocation } from 'react-router-dom';
 import { usePageVisibility } from '../contexts/PageVisibilityContext';
@@ -84,6 +85,7 @@ export default function Sidebar() {
   const [openRecruitment, setOpenRecruitment] = useState(false);
   const [openExit, setOpenExit] = useState(false);
   const [openOnboarding, setOpenOnboarding] = useState(false);
+  const [openEscalations, setOpenEscalations] = useState(false);
 
   const isActive = (path: string): boolean => {
     const current = location.pathname + location.search;
@@ -149,6 +151,9 @@ export default function Sidebar() {
       '/onboarding/update'
     ].some(path => isActive(path));
 
+    // Check if any escalations/grievances sub-item is active
+    const escalationsActive = ['/escalations', '/grievances'].some(path => isActive(path));
+
     setOpenAttendance(attendanceActive);
     setOpenTrainings(trainingActive);
     setOpenOuting(outingActive);
@@ -156,6 +161,7 @@ export default function Sidebar() {
     setOpenRecruitment(recruitmentActive);
     setOpenExit(exitActive);
     setOpenOnboarding(onboardingActive);
+    setOpenEscalations(escalationsActive);
   }, [location.pathname, location.search]);
 
   const { canViewKey } = usePageVisibility();
@@ -241,7 +247,17 @@ export default function Sidebar() {
     { to: '/confirmations', text: 'Confirmations', icon: <CheckCircleIcon />, pageKey: 'confirmations' },
     { to: '/salary-revision', text: 'Salary Revision', icon: <MonetizationOnIcon />, pageKey: 'salaryRevision' },
     { to: '/employee-letters', text: 'Employee Letters', icon: <MailIcon />, pageKey: 'employeeLetters' },
-    { to: '/escalations', text: 'Escalations', icon: <ReportProblemIcon />, pageKey: 'escalations' },
+    {
+      text: 'Escalations / Grievances',
+      icon: <ReportProblemIcon />,
+      onClick: () => setOpenEscalations(p => !p),
+      open: openEscalations,
+      pageKey: 'escalations',
+      subItems: [
+        { to: '/escalations', text: 'Escalations', icon: <ReportProblemIcon />, pageKey: 'escalations.list' },
+        { to: '/grievances', text: 'Grievances', icon: <GavelIcon />, pageKey: 'escalations.grievances' },
+      ],
+    },
     // { to: '/salary-sheet', text: 'Salary Sheet', icon: <PaymentsIcon /> },
 
     {

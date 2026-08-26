@@ -41,6 +41,7 @@ import ArchivedEmployeesPage from "./pages/ArchivedEmployeesPage";
 import SalaryRevisionNew from "./pages/SalaryRevisionNew";
 import DeptDesignationMaster from "./pages/deptdesignationmaster";
 import Escalationspage from "./pages/Escalationspage";
+import Grievancespage from "./pages/Grievancespage";
 import AttendancePage from "./pages/AttendancePage";
 // 👈 ADD THIS
 
@@ -103,6 +104,7 @@ export default function App() {
           <Route path="/checklist-delegation" element={<ComingSoon />} />
           <Route path="/confirmations" element={<Confirmationspage />} />
           <Route path="/escalations" element={<Escalationspage />} />
+          <Route path="/grievances" element={<Grievancespage />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/configuration" element={<Configuration />} />
           <Route path="/salary-sheet" element={<ComingSoon />} />

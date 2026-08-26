@@ -30,6 +30,7 @@ interface TargetPerson {
 
 interface Escalation {
   _id            : string;
+  caseNumber     : string;
   createdBy      : { employeeId: string; name: string; email: string; mobile: string; department: string; designation: string };
   escalationFor  : EscalationFor;
   targetEmployees: TargetPerson[];
@@ -118,6 +119,7 @@ function DashboardView({ records, loading, onAdd, onSelect }: {
 
   const filtered = useMemo(() => records.filter(r => {
     const searchOk = !search
+      || r.caseNumber?.toLowerCase().includes(search.toLowerCase())
       || r.createdBy.name.toLowerCase().includes(search.toLowerCase())
       || r.targetEmployees.some(t => t.name.toLowerCase().includes(search.toLowerCase()))
       || r.subject.toLowerCase().includes(search.toLowerCase());
@@ -126,6 +128,20 @@ function DashboardView({ records, loading, onAdd, onSelect }: {
     const forOk = escalationFor === 'All' || r.escalationFor === escalationFor;
     return searchOk && categoryOk && modeOk && forOk;
   }), [records, search, category, mode, escalationFor]);
+
+  const kpis = useMemo(() => {
+    const isThisMonth = (d?: string) => {
+      if (!d) return false;
+      const dt = new Date(d); const n = new Date();
+      return dt.getFullYear() === n.getFullYear() && dt.getMonth() === n.getMonth();
+    };
+    return {
+      thisMonth: records.filter(r => isThisMonth(r.createdAt)).length,
+      boEmployee: records.filter(r => r.escalationFor === 'BO Employee').length,
+      general: records.filter(r => r.escalationFor === 'General').length,
+      bad: records.filter(r => r.rating === 'Bad').length,
+    };
+  }, [records]);
 
   return (
     <Box sx={{ p: 2.5, maxWidth: 1300, mx: 'auto' }}>
@@ -140,8 +156,26 @@ function DashboardView({ records, loading, onAdd, onSelect }: {
         </Button>
       </Box>
 
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' }, gap: 1.5, mb: 2 }}>
+        {[
+          { label: 'Logged this month', value: kpis.thisMonth },
+          { label: 'BO Employee', value: kpis.boEmployee },
+          { label: 'General', value: kpis.general },
+          { label: 'Rated Bad', value: kpis.bad, crit: true },
+        ].map(k => (
+          <Box key={k.label} sx={{ bgcolor: 'white', border: '1px solid #e2e8f0', borderRadius: 2, p: '14px 16px' }}>
+            <Typography sx={{ fontSize: 10.5, letterSpacing: '0.4px', textTransform: 'uppercase', color: 'text.secondary', fontWeight: 600 }}>
+              {k.label}
+            </Typography>
+            <Typography sx={{ fontSize: 22, fontWeight: 700, mt: 0.5, color: k.crit ? '#dc2626' : '#0f172a' }}>
+              {k.value}
+            </Typography>
+          </Box>
+        ))}
+      </Box>
+
       <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-        <TextField size="small" placeholder="Search name or subject…" value={search}
+        <TextField size="small" placeholder="Search case #, name, or subject…" value={search}
           onChange={e => setSearch(e.target.value)} sx={{ minWidth: 200 }} InputProps={{ sx: { fontSize: 13 } }} />
         <FormControl size="small" sx={{ minWidth: 150 }}>
           <InputLabel sx={{ fontSize: 12 }}>For Whom</InputLabel>
@@ -172,6 +206,7 @@ function DashboardView({ records, loading, onAdd, onSelect }: {
             <Table size="small" stickyHeader>
               <TableHead>
                 <TableRow sx={{ '& th': TH }}>
+                  <TableCell>Case #</TableCell>
                   <TableCell>Date</TableCell>
                   <TableCell>Creator</TableCell>
                   <TableCell>For Whom</TableCell>
@@ -183,13 +218,14 @@ function DashboardView({ records, loading, onAdd, onSelect }: {
               </TableHead>
               <TableBody>
                 {filtered.length === 0 && (
-                  <TableRow><TableCell colSpan={7} align="center" sx={{ py: 6, color: 'text.secondary', fontSize: 13 }}>
+                  <TableRow><TableCell colSpan={8} align="center" sx={{ py: 6, color: 'text.secondary', fontSize: 13 }}>
                     No escalations logged yet
                   </TableCell></TableRow>
                 )}
                 {filtered.map(r => (
                   <TableRow key={r._id} onClick={() => onSelect(r)}
                     sx={{ cursor: 'pointer', '&:hover': { bgcolor: '#f8fafc' }, borderBottom: '1px solid #f1f5f9' }}>
+                    <TableCell sx={{ fontSize: 12, fontFamily: 'monospace', color: ACCENT, fontWeight: 600 }}>{r.caseNumber || '—'}</TableCell>
                     <TableCell sx={{ fontSize: 12 }}>{fmtDate(r.createdAt)}</TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -228,6 +264,7 @@ function DetailModal({ record, onClose }: { record: Escalation | null; onClose: 
           <>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
               <Box>
+                <Typography fontSize={10} fontWeight={700} letterSpacing={0.5} color={ACCENT} sx={{ fontFamily: 'monospace' }}>{record.caseNumber}</Typography>
                 <Typography fontSize={16} fontWeight={700}>Escalation Details</Typography>
                 <Typography fontSize={12} color="text.secondary">Logged on {fmtDateTime(record.createdAt)}</Typography>
               </Box>
@@ -566,7 +603,8 @@ export default function Escalationspage() {
       setLoading(true);
       const [rRes, eRes] = await Promise.all([axios.get(API), axios.get(EMP_API)]);
       setRecords(Array.isArray(rRes.data) ? rRes.data : rRes.data?.data || []);
-      setEmployees(Array.isArray(eRes.data) ? eRes.data : eRes.data?.data || []);
+      const empList: Employee[] = Array.isArray(eRes.data) ? eRes.data : eRes.data?.data || [];
+      setEmployees([...empList].sort((a, b) => a.full_name.localeCompare(b.full_name)));
     } catch { showToast('Failed to load data', 'error'); }
     finally { setLoading(false); }
   }, []);

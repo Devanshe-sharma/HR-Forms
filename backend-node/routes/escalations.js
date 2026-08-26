@@ -75,6 +75,7 @@ router.get('/', async (req, res) => {
     if (escalationFor) filter.escalationFor = escalationFor;
     if (search) {
       filter.$or = [
+        { caseNumber: { $regex: search, $options: 'i' } },
         { 'createdBy.name':    { $regex: search, $options: 'i' } },
         { 'targetEmployees.name': { $regex: search, $options: 'i' } },
         { subject: { $regex: search, $options: 'i' } },

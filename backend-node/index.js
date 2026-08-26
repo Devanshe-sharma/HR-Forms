@@ -113,6 +113,7 @@ app.use('/api/dept-orientation',   require('./routes/deptOrientationRoutes'));
 app.use('/api/orientation',        require('./routes/orientationRoutes'));
 app.use('/api/salary-revisions',   require('./routes/salaryRevisions'));
 app.use('/api/escalations',        require('./routes/escalations'));
+app.use('/api/grievances',         require('./routes/grievances'));
 app.use('/api/out-of-office',      require('./routes/outOfOffice'));
 
 /* ─────────────────── FRONTEND STATIC FILES ─────────────────────

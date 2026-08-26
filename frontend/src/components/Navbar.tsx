@@ -32,6 +32,7 @@ const pageTitles: Record<string, string> = {
   '/employee-letters':     'Employee Letters',
 
   '/escalations':          'Escalations',
+  '/grievances':           'Grievances',
 
   '/recruitment':          'All Requisitions',
 
