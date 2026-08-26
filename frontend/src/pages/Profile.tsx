@@ -11,11 +11,8 @@ import {
   Work as WorkIcon,
   CalendarToday as CalendarIcon,
   Badge as BadgeIcon,
-  Settings as SettingsIcon,
   Description as DocumentIcon,
   Group as TeamIcon,
-  Dashboard as DashboardIcon,
-  Logout as ExitIcon,
   Info as InfoIcon,
   Phone as PhoneIcon,
   LocationOn as LocationIcon,
@@ -34,8 +31,9 @@ import {
   Flag as CitizenshipIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import Sidebar from '../components/Sidebar';
+import Navbar from '../components/Navbar';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -453,8 +451,7 @@ export default function Profile() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const currentRole = user?.role ?? null;
 
   useEffect(() => { fetchUserProfile(); }, [user]);
@@ -519,11 +516,6 @@ export default function Profile() {
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login', { replace: true });
-  };
-
   const getRoleColor = (role: string | null) => {
     const map: Record<string, string> = { Admin: '#E53E3E', HR: '#3182CE', Manager: '#38A169', HeadOfDepartment: '#D69E2E', Employee: '#6B46C1' };
     return map[role || ''] || '#4A5568';
@@ -542,10 +534,18 @@ export default function Profile() {
     setUserProfile((prev) => prev ? { ...prev, ...patch } : prev);
 
   if (loading) return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#F8F9FB', gap: 2 }}>
-      <CircularProgress size={40} thickness={5} sx={{ color: '#3F6FE8' }} />
-      <Typography color="#6B7280" fontSize="0.85rem">Loading your profile...</Typography>
-    </Box>
+    <div className="flex min-h-screen bg-gray-50">
+      <Sidebar />
+      <div className="flex-1 flex flex-col">
+        <Navbar />
+        <main className="flex-1 flex items-center justify-center pt-16 md:pt-10">
+          <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 2 }}>
+            <CircularProgress size={40} thickness={5} sx={{ color: '#3F6FE8' }} />
+            <Typography color="#6B7280" fontSize="0.85rem">Loading your profile...</Typography>
+          </Box>
+        </main>
+      </div>
+    </div>
   );
 
   // ProtectedRoute already guarantees a logged-in user by the time this
@@ -553,35 +553,25 @@ export default function Profile() {
   // before that context settles.
   if (!user || !userProfile) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#F8F9FB' }}>
-        <CircularProgress size={40} thickness={5} sx={{ color: '#3F6FE8' }} />
-      </Box>
+      <div className="flex min-h-screen bg-gray-50">
+        <Sidebar />
+        <div className="flex-1 flex flex-col">
+          <Navbar />
+          <main className="flex-1 flex items-center justify-center pt-16 md:pt-20">
+            <CircularProgress size={40} thickness={5} sx={{ color: '#3F6FE8' }} />
+          </main>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#F3F5F8', display: 'flex', flexDirection: 'column' }}>
-
-      {/* ── Top Nav ── */}
-      <Box sx={{ bgcolor: '#fff', borderBottom: '1px solid #E8ECF0', px: 4, py: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, zIndex: 1000, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-        <Stack direction="row" spacing={1.5} alignItems="center">
-          <Box sx={{ bgcolor: '#3F6FE8', p: 0.7, borderRadius: '8px', display: 'flex' }}>
-            <DashboardIcon sx={{ color: 'white', fontSize: 20 }} />
-          </Box>
-          <Typography fontWeight="800" fontSize="0.95rem" letterSpacing={0.5} color="#1A1F36">HR PORTAL</Typography>
-        </Stack>
-        <Stack direction="row" spacing={1} alignItems="center">
-          {/* Confirms whose logged-in session this is */}
-          <Chip
-            icon={<CheckCircleIcon sx={{ fontSize: 14, color: '#059669 !important' }} />}
-            label={user.email}
-            size="small"
-            sx={{ bgcolor: '#ECFDF5', color: '#059669', fontWeight: 600, fontSize: '0.72rem', border: '1px solid #A7F3D0' }}
-          />
-          <Button startIcon={<SettingsIcon />} size="small" onClick={() => navigate('/configuration')} sx={{ color: '#6B7280', textTransform: 'none', fontWeight: 600, fontSize: '0.82rem' }}>Configuration</Button>
-          <Button startIcon={<ExitIcon />} size="small" color="error" onClick={handleLogout} sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.82rem' }}>Logout</Button>
-        </Stack>
-      </Box>
+    <div className="flex min-h-screen bg-gray-50">
+      <Sidebar />
+      <div className="flex-1 flex flex-col">
+        <Navbar />
+        <main className="flex-1 overflow-auto pt-20 md:pt-10">
+        <Box sx={{ minHeight: '100%', bgcolor: '#F3F5F8', display: 'flex', flexDirection: 'column' }}>
 
       {/* ── Status Banner ── */}
       {errorMsg && (
@@ -835,6 +825,9 @@ export default function Profile() {
           </Box>
         </Fade>
       </Box>
-    </Box>
+        </Box>
+        </main>
+      </div>
+    </div>
   );
 }

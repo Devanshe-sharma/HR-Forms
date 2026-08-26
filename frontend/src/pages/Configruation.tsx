@@ -42,6 +42,8 @@ import { getRole, hasAnyRole } from '../config/rbac';
 import { useTheme } from '../contexts/ThemeContext';
 import PermissionManager from '../components/settings/PermissionManager';  // ← new import
 import UserManagement from '../components/settings/UserManagement';
+import Sidebar from '../components/Sidebar';
+import Navbar from '../components/Navbar';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -115,6 +117,11 @@ export default function Configuration() {
   };
 
   return (
+    <div className="flex min-h-screen bg-gray-50">
+      <Sidebar />
+      <div className="flex-1 flex flex-col">
+        <Navbar />
+        <main className="flex-1 overflow-auto pt-16 md:pt-20">
     <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
       <Typography variant="h4" fontWeight="bold" gutterBottom>
         Configuration
@@ -287,5 +294,8 @@ export default function Configuration() {
         </Typography>
       </Alert>
     </Box>
+        </main>
+      </div>
+    </div>
   );
 }
