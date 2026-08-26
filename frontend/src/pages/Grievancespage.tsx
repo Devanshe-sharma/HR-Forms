@@ -627,16 +627,17 @@ export default function Grievancespage() {
           <Box sx={{ maxWidth: 1300, mx: 'auto', width: '100%', height: '100%', overflow: 'auto' }}>
             {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
 
-            {view === 'dashboard' && (
-              <DashboardView records={records} loading={loading} isHr={isHr} onAdd={() => setView('form')} onSelect={setSelected} />
-            )}
+            <DashboardView records={records} loading={loading} isHr={isHr} onAdd={() => setView('form')} onSelect={setSelected} />
 
-            {view === 'form' && (
-              <GrievanceForm employees={employees}
-                onBack={() => setView('dashboard')}
-                onDone={() => { setView('dashboard'); loadData(); }}
-                showToast={showToast} />
-            )}
+            <Modal open={view === 'form'} onClose={() => setView('dashboard')}>
+              <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+                width: { xs: '95vw', sm: 760 }, maxHeight: '90vh', overflowY: 'auto', bgcolor: 'white', borderRadius: 2, outline: 'none', boxShadow: 24 }}>
+                <GrievanceForm employees={employees}
+                  onBack={() => setView('dashboard')}
+                  onDone={() => { setView('dashboard'); loadData(); }}
+                  showToast={showToast} />
+              </Box>
+            </Modal>
 
             <DetailModal record={selected} isHr={isHr} onClose={() => setSelected(null)}
               onUpdated={updated => { setSelected(updated); setRecords(rs => rs.map(r => r._id === updated._id ? updated : r)); }}

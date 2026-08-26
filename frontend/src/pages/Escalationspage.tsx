@@ -630,16 +630,17 @@ export default function Escalationspage() {
           <Box sx={{ maxWidth: 1300, mx: 'auto', width: '100%', height: '100%', overflow: 'auto' }}>
             {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
 
-            {view === 'dashboard' && (
-              <DashboardView records={records} loading={loading} onAdd={() => setView('wizard')} onSelect={setSelected} />
-            )}
+            <DashboardView records={records} loading={loading} onAdd={() => setView('wizard')} onSelect={setSelected} />
 
-            {view === 'wizard' && (
-              <EscalationWizard employees={employees}
-                onBack={() => setView('dashboard')}
-                onDone={() => { setView('dashboard'); loadData(); }}
-                showToast={showToast} />
-            )}
+            <Modal open={view === 'wizard'} onClose={() => setView('dashboard')}>
+              <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+                width: { xs: '95vw', sm: 820 }, maxHeight: '90vh', overflowY: 'auto', bgcolor: 'white', borderRadius: 2, outline: 'none', boxShadow: 24 }}>
+                <EscalationWizard employees={employees}
+                  onBack={() => setView('dashboard')}
+                  onDone={() => { setView('dashboard'); loadData(); }}
+                  showToast={showToast} />
+              </Box>
+            </Modal>
 
             <DetailModal record={selected} onClose={() => setSelected(null)} />
           </Box>
