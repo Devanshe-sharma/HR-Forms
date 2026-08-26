@@ -75,12 +75,16 @@ grievanceSchema.index({ createdAt: -1 });
 grievanceSchema.index({ 'filedBy.employeeId': 1 });
 grievanceSchema.index({ status: 1 });
 
-grievanceSchema.pre('save', async function (next) {
+// Async pre-hooks must NOT also take a `next` callback param — Mongoose's
+// middleware runner (Kareem) picks callback-style vs promise-style based on
+// the function's declared arity, and an async function that both returns a
+// promise AND expects to call next() itself gets no real `next` passed in
+// (throws "next is not a function"). Just await; no next() call needed.
+grievanceSchema.pre('save', async function () {
   if (this.isNew && !this.caseNumber) {
     const n = await nextSequence('grievance');
     this.caseNumber = `GRV-${String(n).padStart(4, '0')}`;
   }
-  next();
 });
 
 module.exports = mongoose.model('Grievance', grievanceSchema);
