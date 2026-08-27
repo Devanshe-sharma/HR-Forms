@@ -159,13 +159,18 @@ const OnboardingDashboard: React.FC = () => {
 
   const isExited = (r: OnboardingRow) =>
     r.exitStatus === "Left" || r.exitStatus === "Already Left";
+  // A candidate who backed out before ever starting — not "exited" (that
+  // status only applies to someone who was actually on staff), but not a
+  // current employee either. Salary Revision / Confirmations already
+  // exclude these; "Current Employees" here needs to match.
+  const hasNotJoined = (r: OnboardingRow) => r.joiningStatus === "Not Joining";
 
   const total       = rows.length;
   const open        = rows.filter(r => r.fmsStatus === "Open").length;
   const closed      = rows.filter(r => r.fmsStatus === "Closed").length;
   const overdue     = rows.filter(r => r.fmsStatus === "Open" && (r.fmsScore ?? 0) < 0).length;
   const exitedCount = rows.filter(isExited).length;
-  const currentCount = total - exitedCount;
+  const currentCount = rows.filter(r => !isExited(r) && !hasNotJoined(r)).length;
 
   useEffect(() => {
     load();
@@ -221,7 +226,7 @@ const OnboardingDashboard: React.FC = () => {
 
   const filtered = rows.filter(r => {
     if (fmsFilter !== "All" && r.fmsStatus !== fmsFilter) return false;
-    if (employmentFilter === "Current" && isExited(r)) return false;
+    if (employmentFilter === "Current" && (isExited(r) || hasNotJoined(r))) return false;
     if (employmentFilter === "Exited" && !isExited(r)) return false;
     const q = search.toLowerCase();
     return !q || [r.name, r.dept, r.designation, r.persEmail,
