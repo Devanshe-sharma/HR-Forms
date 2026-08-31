@@ -63,7 +63,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
 // PATCH /api/users/:id
 router.patch('/:id', asyncHandler(async (req, res) => {
-  const { name, role, isActive, employeeId } = req.body || {};
+  const { name, role, isActive, employeeId, email } = req.body || {};
 
   if (role && !ROLES.includes(role)) {
     return res.status(400).json({ success: false, error: 'Invalid role' });
@@ -72,6 +72,17 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) return res.status(404).json({ success: false, error: 'User not found' });
 
+  if (email !== undefined) {
+    const normalizedEmail = String(email).trim().toLowerCase();
+    if (!normalizedEmail) {
+      return res.status(400).json({ success: false, error: 'Email cannot be empty' });
+    }
+    const existing = await User.findOne({ email: normalizedEmail, _id: { $ne: user._id } });
+    if (existing) {
+      return res.status(409).json({ success: false, error: 'A user with this email already exists' });
+    }
+    user.email = normalizedEmail;
+  }
   if (name !== undefined) user.name = String(name).trim();
   if (role !== undefined) user.role = role;
   if (isActive !== undefined) user.isActive = Boolean(isActive);

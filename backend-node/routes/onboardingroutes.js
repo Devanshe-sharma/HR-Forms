@@ -581,7 +581,7 @@ router.get("/eligible-employees", async (req, res) => {
   try {
     const docs = await Onboarding.find({ joiningStatus: "Joined" })
       .select(
-        "name dept designation officialEmail persEmail mobile joinedDate employeeCategory exitStatus managementLevel " +
+        "empId name dept designation officialEmail persEmail mobile joinedDate employeeCategory exitStatus managementLevel " +
         "annualCtc basicSal hraSal grossMonthly empEpf gratuity annualBonus " +
         "annualPerformanceIncentive medicalPremium travelAllowance telephoneReimbursement reportingHead " +
         "contractStartDate contractEndDate contractHistory contractPeriod"
@@ -593,6 +593,7 @@ router.get("/eligible-employees", async (req, res) => {
     const employees = activeDocs.map((d) => ({
       _id: String(d._id),
       employee_id: String(d._id),
+      emp_id: d.empId || null,
       full_name: d.name || "",
       department: d.dept || "",
       designation: d.designation || "",

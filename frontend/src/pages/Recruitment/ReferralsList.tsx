@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { Mail, Phone, ExternalLink, Search } from 'lucide-react';
-import Sidebar from '../../components/Sidebar';
-import Navbar from '../../components/Navbar';
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
 
@@ -32,7 +30,7 @@ type Referral = {
   createdAt: string;
 };
 
-export default function ReferralsList() {
+export default function ReferralsTab() {
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [loading, setLoading]     = useState(true);
   const [search, setSearch]       = useState('');
@@ -75,11 +73,7 @@ export default function ReferralsList() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-100 overflow-hidden">
-      <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
-        <Navbar />
-        <main className="flex-1 overflow-auto p-6">
+    <div>
           <h1 className="text-2xl font-bold text-gray-800 mb-4">Employee Referrals</h1>
 
           <div className="flex flex-wrap gap-3 mb-4">
@@ -160,8 +154,6 @@ export default function ReferralsList() {
               </tbody>
             </table>
           </div>
-        </main>
-      </div>
     </div>
   );
 }

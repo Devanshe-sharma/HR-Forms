@@ -13,6 +13,7 @@ const sendWeeklyExitSummary = require('./senders/sendWeeklyExitSummary');
 const sendDailyApplicantSummary = require('./senders/sendDailyApplicantSummary');
 const sendWeeklyRecruitmentSummary = require('./senders/sendWeeklyRecruitmentSummary');
 const sendWeeklyOnboardingSummary = require('./senders/sendWeeklyOnboardingSummary');
+const sendSalaryRevisionDue = require('./senders/sendSalaryRevisionDue');
 
 // Import models for auto-archive/complete
 const Outing = require('../models/Outing');
@@ -140,6 +141,20 @@ function startEmailScheduler() {
       await sendDailyApplicantSummary();
     } catch (err) {
       console.error('Daily applicant summary failed:', err);
+    }
+  }, { timezone: tz });
+
+  // 9d. Salary Revision — employees due this fiscal quarter, for
+  // Management. Fires on the 1st of each fiscal-quarter start month
+  // (Apr/Jul/Oct/Jan). TEMPORARY: routed to the developer only (see
+  // sendSalaryRevisionDue.js) until the real send to Management is approved.
+  cron.schedule('0 9 1 4,7,10,1 *', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending salary revision due-this-quarter digest`);
+    try {
+      const result = await sendSalaryRevisionDue();
+      console.log(`Salary revision due-this-quarter digest sent — ${result.dueCount} employee(s)`);
+    } catch (err) {
+      console.error('Salary revision due-this-quarter digest failed:', err);
     }
   }, { timezone: tz });
 

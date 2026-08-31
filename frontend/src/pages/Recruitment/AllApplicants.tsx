@@ -5,8 +5,6 @@ import {
   ExternalLink, Video, Search, SlidersHorizontal, RotateCcw, ArrowUpDown, Sparkles, Lock,
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
-import Sidebar from '../../components/Sidebar';
-import Navbar  from '../../components/Navbar';
 
 import CandidateInformationTab from './CandidateInformationTab';
 import ScreenerRoundTab from './ScreenerRoundTab';
@@ -377,7 +375,7 @@ const FilterBar = ({
 // ─────────────────────────────────────────────────────────────────────────────
 // Main page — Applicant Records table
 // ─────────────────────────────────────────────────────────────────────────────
-const AllApplicants: React.FC = () => {
+const CandidatesTab: React.FC = () => {
   const [records,    setRecords]    = useState<ApplicantRecordWithAI[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [selected,   setSelected]   = useState<ApplicantRecordWithAI | null>(null);
@@ -500,7 +498,7 @@ const AllApplicants: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-100 overflow-hidden">
+    <>
       <Toaster position="top-right" />
 
       {selected && (
@@ -512,16 +510,7 @@ const AllApplicants: React.FC = () => {
         />
       )}
 
-      <div className="w-64 flex-shrink-0 z-10 bg-white border-r">
-        <Sidebar />
-      </div>
-
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="h-16 bg-white shadow-sm z-20 flex items-center px-4">
-          <Navbar />
-        </div>
-
-        <main className="flex-1 overflow-auto p-6">
+      <div>
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-bold text-gray-800">Recruitment Tracker</h1>
             <span className="bg-blue-600 text-white px-3 py-1 rounded-full text-sm">
@@ -557,8 +546,6 @@ const AllApplicants: React.FC = () => {
                     <th className="p-4">Name</th>
                     <th className="p-4 w-48">Contact</th>
                     <th className="p-4">Profile</th>
-                    <th className="p-4">Current CTC</th>
-                    <th className="p-4">Expected CTC</th>
                     <th className="p-4">Exp</th>
                     <th className="p-4">Location</th>
                     <th className="p-4">Interview Status</th>
@@ -581,8 +568,6 @@ const AllApplicants: React.FC = () => {
                           <div className="flex items-center gap-2 text-gray-400 text-xs truncate"><Phone size={14} className="flex-shrink-0" />{r.phone}</div>
                         </td>
                         <td className="p-4 text-gray-600 text-xs">{r.designation || '—'}</td>
-                        <td className="p-4 font-medium">{r.current_ctc || 'N/A'}</td>
-                        <td className="p-4 font-medium">{r.expected_monthly_ctc || 'N/A'}</td>
                         <td className="p-4">
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                             r.experience === 'Yes' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
@@ -650,10 +635,9 @@ const AllApplicants: React.FC = () => {
               </table>
             </div>
           )}
-        </main>
       </div>
-    </div>
+    </>
   );
 };
 
-export default AllApplicants;
+export default CandidatesTab;

@@ -63,7 +63,7 @@ function TabPanel(props: TabPanelProps) {
       aria-labelledby={`configuration-tab-${index}`}
       {...other}
     >
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
+      {value === index && <Box sx={{ pt: 1.5, px: 3, pb: 3 }}>{children}</Box>}
     </div>
   );
 }
@@ -230,7 +230,7 @@ export default function Configuration() {
         <TabPanel value={tabValue} index={2}>
 
           {/* System sub-tabs */}
-          <Paper variant="outlined" sx={{ mb: 3 }}>
+          <Paper variant="outlined" sx={{ mb: 2 }}>
             <Tabs
               value={systemSubTab}
               onChange={(_, v) => setSystemSubTab(v)}
@@ -255,7 +255,7 @@ export default function Configuration() {
 
             {/* Sub-tab 0: User Management */}
             {systemSubTab === 0 && (
-              <Box sx={{ p: 3 }}>
+              <Box sx={{ pt: 1.5, px: 2, pb: 2 }}>
                 {isAdmin ? (
                   <UserManagement />
                 ) : (
@@ -280,7 +280,7 @@ export default function Configuration() {
 
             {/* Sub-tab 1: Role Permissions ← NEW */}
             {isHR && systemSubTab === 1 && (
-              <Box sx={{ p: 3 }}>
+              <Box sx={{ pt: 1.5, px: 2, pb: 2 }}>
                 <PermissionManager />
               </Box>
             )}

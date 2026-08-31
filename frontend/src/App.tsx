@@ -6,7 +6,6 @@ import OutsiderDashboard from "./pages/outsider/OutsiderDashboard";
 import CareersPage from "./pages/outsider/Careerspage";
 import CandidateApplicationPage from "./pages/Recruitment/CandidateApplication";
 import ReferCandidatePage from "./pages/outsider/ReferCandidate";
-import ReferralsList from "./pages/Recruitment/ReferralsList";
 import InterviewFeedbackPage from "./pages/outsider/InterviewFeedback";
 import ForceChangePasswordPage from "./pages/ForceChangePassword";
 import EmployeeLetter from "./pages/EmployeeLetter";
@@ -20,7 +19,7 @@ import Recruitment from "./pages/Recruitment/RequisitionDashboard";
 import CTCComponentsDashboard from "./components/CTCComponentsDashboard";
 import LetterTemplate from "./pages/LetterTemplate";
 import ComingSoon from "./pages/ComingSoon";
-import AllApplicants from "./pages/Recruitment/AllApplicants";
+import CandidatesReferrals from "./pages/Recruitment/CandidatesReferrals";
 import NewRequisitionForm from "./pages/Recruitment/new-requisition-form";
 import UpdateRequisition from './pages/Recruitment/UpdateRequisition';
 import TrainingPage from "./pages/TrainingPageNew";
@@ -80,9 +79,9 @@ export default function App() {
           <Route path="/employees" element={<EmployeesPage />} />
           <Route path="/employees/archive" element={<ArchivedEmployeesPage />} />
           <Route path="/candidates" element={<ComingSoon />} />
-          <Route path="/applicants" element={<AllApplicants />} />
-          <Route path="/recruitment/applicants" element={<AllApplicants />} />
-          <Route path="/referrals" element={<ReferralsList />} />
+          <Route path="/applicants" element={<CandidatesReferrals />} />
+          <Route path="/recruitment/applicants" element={<CandidatesReferrals />} />
+          <Route path="/referrals" element={<CandidatesReferrals />} />
           <Route path="/new-hiring-requisition" element={<NewRequisitionForm />} />
           <Route path="/recruitment/new" element={<NewRequisitionForm />} />
           <Route path="/recruitment/update/:id" element={<UpdateRequisition />} />
