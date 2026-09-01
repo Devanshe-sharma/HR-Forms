@@ -11,6 +11,8 @@ import {
   WorkOff as WorkOffIcon,
   Today as TodayIcon,
   BeachAccess as BeachAccessIcon,
+  Search as SearchIcon,
+  RestartAlt as RestartAltIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import Sidebar from '../components/Sidebar';
@@ -37,6 +39,7 @@ interface OutOfOfficeRecord {
   submittedByName: string;
   person: { employeeId?: string; name: string; email: string };
   startDateTime: string;
+  upToDate?: string;
   upToTime: string;
   reason: string;
   ccEmployees: CcEmployee[];
@@ -80,6 +83,11 @@ const fmtDateTime24 = (d?: string | Date | null) => {
   } catch { return String(d); }
 };
 
+// upToDate is only set when the OOO runs past the start day — same-day
+// records (the common case, and every pre-existing one) just show the time.
+const fmtUpTo = (upToTime: string, upToDate?: string | null) =>
+  upToDate ? `${fmtDate(upToDate)}, ${upToTime}` : upToTime;
+
 function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error'; onClose: () => void }) {
   useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, [onClose]);
   return (
@@ -119,7 +127,7 @@ function OutOfOfficeDetailModal({ record, onClose }: { record: OutOfOfficeRecord
               <DetailRow label="Person Name" value={record.person.name} />
               <DetailRow label="Person Email" value={record.person.email} />
               <DetailRow label="Out of Office Date" value={fmtDate(record.startDateTime)} />
-              <DetailRow label="Start Time – Time Up To" value={`${fmtTime24(record.startDateTime)} – ${record.upToTime}`} />
+              <DetailRow label="Start Time – Time Up To" value={`${fmtTime24(record.startDateTime)} – ${fmtUpTo(record.upToTime, record.upToDate)}`} />
             </Box>
 
             {record.submittedByName && record.submittedByEmail?.toLowerCase() !== record.person.email?.toLowerCase() && (
@@ -155,6 +163,35 @@ function OutOfOfficeDashboard({ records, loading, onAdd }: {
   records: OutOfOfficeRecord[]; loading: boolean; onAdd: () => void;
 }) {
   const [selected, setSelected] = useState<OutOfOfficeRecord | null>(null);
+  const [search, setSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  // Local-date key (yyyy-mm-dd) so the <input type="date"> filter compares
+  // against the same calendar day the table displays, not a UTC-shifted one.
+  const dateKey = (d?: string | Date | null) => {
+    if (!d) return '';
+    const dt = new Date(d);
+    if (Number.isNaN(dt.getTime())) return '';
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+  };
+
+  const filteredRecords = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return records.filter(r => {
+      const matchesSearch = !term ||
+        r.person.name?.toLowerCase().includes(term) ||
+        r.person.email?.toLowerCase().includes(term) ||
+        r.reason?.toLowerCase().includes(term) ||
+        r.submittedByName?.toLowerCase().includes(term);
+      const key = dateKey(r.startDateTime);
+      const matchesDate = (!dateFrom || key >= dateFrom) && (!dateTo || key <= dateTo);
+      return matchesSearch && matchesDate;
+    });
+  }, [records, search, dateFrom, dateTo]);
+
+  const hasActiveFilters = !!(search || dateFrom || dateTo);
+  const resetFilters = () => { setSearch(''); setDateFrom(''); setDateTo(''); };
 
   return (
     <Box>
@@ -167,6 +204,43 @@ function OutOfOfficeDashboard({ records, loading, onAdd }: {
           sx={{ bgcolor: ACCENT, textTransform: 'none', fontWeight: 600, borderRadius: 1.5, '&:hover': { bgcolor: '#4338ca' } }}>
           Log Out of Office
         </Button>
+      </Box>
+
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2, flexWrap: 'wrap' }}>
+        <TextField
+          size="small"
+          placeholder="Search name, email, reason…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          InputProps={{ startAdornment: <SearchIcon sx={{ fontSize: 18, color: 'text.secondary', mr: 0.75 }} /> }}
+          sx={{ minWidth: 240, bgcolor: 'white' }}
+        />
+        <TextField
+          type="date"
+          size="small"
+          label="From"
+          value={dateFrom}
+          onChange={e => setDateFrom(e.target.value)}
+          InputLabelProps={{ shrink: true }}
+          inputProps={{ max: dateTo || undefined }}
+          sx={{ bgcolor: 'white' }}
+        />
+        <TextField
+          type="date"
+          size="small"
+          label="To"
+          value={dateTo}
+          onChange={e => setDateTo(e.target.value)}
+          InputLabelProps={{ shrink: true }}
+          inputProps={{ min: dateFrom || undefined }}
+          sx={{ bgcolor: 'white' }}
+        />
+        {hasActiveFilters && (
+          <Button size="small" startIcon={<RestartAltIcon />} onClick={resetFilters}
+            sx={{ textTransform: 'none', fontWeight: 600, color: 'text.secondary' }}>
+            Reset
+          </Button>
+        )}
       </Box>
 
       <Box sx={{ bgcolor: 'white', borderRadius: 2, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
@@ -184,12 +258,12 @@ function OutOfOfficeDashboard({ records, loading, onAdd }: {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {records.length === 0 && (
+                {filteredRecords.length === 0 && (
                   <TableRow><TableCell colSpan={6} align="center" sx={{ py: 6, color: 'text.secondary', fontSize: 13 }}>
-                    No out-of-office records logged yet
+                    {records.length === 0 ? 'No out-of-office records logged yet' : 'No records match the current filters'}
                   </TableCell></TableRow>
                 )}
-                {records.map(r => (
+                {filteredRecords.map(r => (
                   <TableRow key={r._id} onClick={() => setSelected(r)}
                     sx={{ cursor: 'pointer', '&:hover': { bgcolor: '#f8fafc' }, borderBottom: '1px solid #f1f5f9' }}>
                     <TableCell sx={TD}>{fmtDateTime24(r.createdAt)}</TableCell>
@@ -199,7 +273,7 @@ function OutOfOfficeDashboard({ records, loading, onAdd }: {
                     </TableCell>
                     <TableCell sx={TD}>
                       <Typography component="span" sx={{ ...ELLIPSIS, fontSize: 12, fontWeight: 600 }}>{fmtDate(r.startDateTime)}</Typography>
-                      <Typography component="span" sx={{ ...ELLIPSIS, fontSize: 11, color: 'text.secondary' }}>{fmtTime24(r.startDateTime)} – {r.upToTime}</Typography>
+                      <Typography component="span" sx={{ ...ELLIPSIS, fontSize: 11, color: 'text.secondary' }}>{fmtTime24(r.startDateTime)} – {fmtUpTo(r.upToTime, r.upToDate)}</Typography>
                     </TableCell>
                     <TableCell sx={TD}>
                       <Typography component="span" sx={{ ...ELLIPSIS, fontSize: 12 }}>{r.reason}</Typography>
@@ -243,6 +317,7 @@ function OutOfOfficeFormModal({ open, employees, onDone, onClose, showToast }: {
   const [person, setPerson] = useState<Employee | null>(null);
   const [oooDate, setOooDate] = useState('');
   const [startTime, setStartTime] = useState('');
+  const [upToDate, setUpToDate] = useState('');
   const [upToTime, setUpToTime] = useState('');
   const [reason, setReason] = useState('');
   const [ccEmployees, setCcEmployees] = useState<Employee[]>([]);
@@ -253,9 +328,17 @@ function OutOfOfficeFormModal({ open, employees, onDone, onClose, showToast }: {
   useEffect(() => {
     if (!open) return;
     setLoggedAt(new Date());
-    setPerson(null); setOooDate(''); setStartTime(''); setUpToTime('');
+    setPerson(null); setOooDate(''); setStartTime(''); setUpToDate(''); setUpToTime('');
     setReason(''); setCcEmployees([]); setError(null);
   }, [open]);
+
+  // "Up to" date defaults to the out-of-office date so single-day entries
+  // (the common case) need no extra input — only touched if the user hasn't
+  // picked one of their own yet, so it never overwrites a multi-day choice.
+  useEffect(() => {
+    if (oooDate && !upToDate) setUpToDate(oooDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oooDate]);
 
   const submit = async () => {
     setError(null);
@@ -267,6 +350,12 @@ function OutOfOfficeFormModal({ open, employees, onDone, onClose, showToast }: {
     const startDateTime = new Date(`${oooDate}T${startTime}:00`);
     if (Number.isNaN(startDateTime.getTime())) { setError('Invalid date/time.'); return; }
 
+    const effectiveUpToDate = upToDate || oooDate;
+    if (effectiveUpToDate < oooDate) { setError('Time up to date cannot be before the out of office date.'); return; }
+    const upToDateTime = new Date(`${effectiveUpToDate}T${upToTime}:00`);
+    if (Number.isNaN(upToDateTime.getTime())) { setError('Invalid time up to date/time.'); return; }
+    if (upToDateTime <= startDateTime) { setError('Time up to must be after the start date and time.'); return; }
+
     setBusy(true);
     try {
       const payload = {
@@ -274,6 +363,9 @@ function OutOfOfficeFormModal({ open, employees, onDone, onClose, showToast }: {
         submittedByName: submitter?.full_name || '',
         person: { employeeId: person.employee_id, name: person.full_name, email: person.official_email || person.email },
         startDateTime: startDateTime.toISOString(),
+        // Only sent when it differs from the OOO date — keeps same-day
+        // entries (still the vast majority) identical to before.
+        upToDate: effectiveUpToDate !== oooDate ? effectiveUpToDate : '',
         upToTime,
         reason: reason.trim(),
         ccEmployees: ccEmployees.map(e => ({ employeeId: e.employee_id, name: e.full_name, email: e.official_email || e.email })),
@@ -327,9 +419,19 @@ function OutOfOfficeFormModal({ open, employees, onDone, onClose, showToast }: {
             </Box>
           </Box>
 
-          <TextField type="time" size="small" value={upToTime} onChange={e => setUpToTime(e.target.value)}
-            InputLabelProps={{ shrink: true }} inputProps={{ step: 300 }}
-            label="Time Up To *" helperText="24-hour format" />
+          <Box>
+            <Typography fontSize={12} color="text.secondary" mb={0.75}>
+              Time Up To *
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1.5 }}>
+              <TextField type="date" size="small" fullWidth value={upToDate}
+                onChange={e => setUpToDate(e.target.value)} InputLabelProps={{ shrink: true }}
+                inputProps={{ min: oooDate || undefined }} label="Date" />
+              <TextField type="time" size="small" fullWidth value={upToTime}
+                onChange={e => setUpToTime(e.target.value)} InputLabelProps={{ shrink: true }}
+                inputProps={{ step: 300 }} label="Time" />
+            </Box>
+          </Box>
 
           <TextField label="Reason *" multiline rows={3} size="small" value={reason}
             onChange={e => setReason(e.target.value)} fullWidth />

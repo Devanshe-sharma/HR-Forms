@@ -19,7 +19,10 @@ function fmtStartTime(d) {
 function outOfOfficeNoticeTemplate(doc) {
   const dateStr = fmtDate(doc.startDateTime);
   const startTime = fmtStartTime(doc.startDateTime);
-  const timing = `${startTime} - ${doc.upToTime}`;
+  // upToDate is only set when the OOO spans past the start day — same-day
+  // cases keep the plain "HH:MM - HH:MM" timing they've always shown.
+  const upToLabel = doc.upToDate ? `${formatDateIST(doc.upToDate)}, ${doc.upToTime}` : doc.upToTime;
+  const timing = `${startTime} - ${upToLabel}`;
   const recordsLink = `${FRONTEND_URL}/attendance?tab=out-of-office`;
   const informedColor = doc.informedStatus === 'advance' ? '#2563eb' : '#dc2626';
 

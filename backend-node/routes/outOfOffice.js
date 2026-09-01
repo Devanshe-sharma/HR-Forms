@@ -27,7 +27,7 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { submittedByEmail, submittedByName, person, startDateTime, upToTime, reason, ccEmployees } = req.body;
+    const { submittedByEmail, submittedByName, person, startDateTime, upToDate, upToTime, reason, ccEmployees } = req.body;
 
     if (!person?.name || !person?.email) {
       return res.status(400).json({ success: false, message: 'Person out of office is required' });
@@ -47,6 +47,16 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid out of office date/time' });
     }
 
+    if (upToDate) {
+      const upToDateTime = new Date(`${upToDate}T${upToTime}:00`);
+      if (Number.isNaN(upToDateTime.getTime())) {
+        return res.status(400).json({ success: false, message: 'Invalid time up to date' });
+      }
+      if (upToDateTime <= eventDate) {
+        return res.status(400).json({ success: false, message: 'Time up to must be after the start date and time' });
+      }
+    }
+
     const submittedAt = new Date();
     const { status, label } = computeInformedStatus(eventDate, submittedAt);
 
@@ -55,6 +65,7 @@ router.post('/', async (req, res) => {
       submittedByName: submittedByName || '',
       person,
       startDateTime: eventDate,
+      upToDate: upToDate || '',
       upToTime,
       reason: reason.trim(),
       ccEmployees: Array.isArray(ccEmployees) ? ccEmployees : [],

@@ -13,6 +13,10 @@ const OutOfOfficeSchema = new Schema(
     },
 
     startDateTime: { type: Date, required: true },
+    // Optional — omitted means "same day as startDateTime" (single-day OOO).
+    // Kept separate from upToTime (rather than one combined Date) so existing
+    // records that only ever stored a time-of-day keep working unchanged.
+    upToDate: { type: String, trim: true, default: '' },
     upToTime: { type: String, required: true, trim: true },
     reason: { type: String, required: true, trim: true },
 
