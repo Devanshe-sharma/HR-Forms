@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
 export default function Login() {
@@ -9,6 +10,7 @@ export default function Login() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -85,14 +87,25 @@ export default function Login() {
             <div style={passwordHeader}>
               <label style={label}>Password</label>
             </div>
-            <input
-              type="password"
-              placeholder="Enter your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={input}
-              required
-            />
+            <div style={passwordFieldWrap}>
+              <input
+                type={showPassword ? "text" : "password"}
+                placeholder="Enter your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                style={{ ...input, marginBottom: 0, paddingRight: 44 }}
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                style={passwordToggle}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
 
             <div style={remember}>
               <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
@@ -156,6 +169,12 @@ const subtitle: React.CSSProperties = { color: "#64748b", margin: "0 0 32px 0", 
 const label: React.CSSProperties = { fontSize: 13, fontWeight: 700, display: "block", marginBottom: 8, color: "#334155", textTransform: "uppercase", letterSpacing: 0.5 };
 const input: React.CSSProperties = { width: "100%", padding: "14px 16px", borderRadius: 10, border: "2px solid #e2e8f0", marginTop: 0, marginBottom: 20, fontSize: 14, boxSizing: "border-box", fontFamily: "inherit", backgroundColor: "#f8fafc", outline: "none" };
 const passwordHeader: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center" };
+const passwordFieldWrap: React.CSSProperties = { position: "relative", marginBottom: 20 };
+const passwordToggle: React.CSSProperties = {
+  position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)",
+  background: "none", border: "none", padding: 0, cursor: "pointer",
+  display: "flex", alignItems: "center", color: "#64748b",
+};
 const remember: React.CSSProperties = { display: "flex", alignItems: "center", gap: 10, fontSize: 14, marginBottom: 28, color: "#475569", fontWeight: 500 };
 const loginBtn: React.CSSProperties = { width: "100%", padding: 14, background: "linear-gradient(135deg, #556b2f 0%, #476b2a 100%)", color: "#fff", border: "none", borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: "pointer", boxShadow: "0 10px 25px rgba(85, 107, 47, 0.2)", letterSpacing: 0.5, textTransform: "uppercase" };
 const errorBox: React.CSSProperties = { background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", borderRadius: 8, padding: "10px 14px", fontSize: 13, fontWeight: 600, marginBottom: 20 };
