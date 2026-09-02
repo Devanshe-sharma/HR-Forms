@@ -17,7 +17,7 @@ function detailRow(label, value) {
 // the PDF mockup's own "log in to the Increment Portal" phrasing.
 function salaryRevisionManagerRequestTemplate({
   managerName, employeeName, department, designation, joiningDate,
-  currentCtc, lastIncrementDate, lastIncrementPct, fiscalYearLabel, dueDate, actionLink,
+  currentCtc, lastIncrementDate, lastIncrementPct, ppoOfferedDate, fiscalYearLabel, dueDate, actionLink,
 }) {
   const subject = `Salary Revision Recommendation – ${employeeName} | FY ${fiscalYearLabel}`;
 
@@ -33,6 +33,7 @@ function salaryRevisionManagerRequestTemplate({
       ${detailRow('Current CTC', `₹${Number(currentCtc || 0).toLocaleString('en-IN')}`)}
       ${detailRow('Last Increment Date', lastIncrementDate ? dateToDD_MMM_YY(lastIncrementDate) : 'N/A')}
       ${detailRow('Last Increment %', lastIncrementPct != null ? `${lastIncrementPct}%` : 'N/A')}
+      ${ppoOfferedDate ? detailRow('PPO Offered On', dateToDD_MMM_YY(ppoOfferedDate)) : ''}
     </table>
 
     <p>Kindly review the employee's overall performance, contribution, skill development, discipline, ownership, and business impact, then submit your recommendation (increment % or PIP) on or before <b>${dateToDD_MMM_YY(dueDate)}</b> using the button below.</p>

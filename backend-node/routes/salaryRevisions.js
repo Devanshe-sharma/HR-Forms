@@ -11,6 +11,7 @@ const sendSalaryRevisionEmployeeConfirmation = require('../emails/senders/sendSa
 const sendSalaryRevisionPipHold             = require('../emails/senders/sendSalaryRevisionPipHold');
 const resolveManagerContact = require('../utils/resolveManagerContact');
 const { verifySalaryRevisionAction } = require('../utils/salaryRevisionMailSigning');
+const isPpoConversion = require('../utils/isPpoConversion');
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
@@ -103,20 +104,14 @@ router.get('/', asyncHandler(async (req, res) => {
 // would falsely inflate the average and stuff the High Performer bucket
 // with conversions rather than actual raises.
 
-const CONVERTED_FROM = ['Intern', 'Contract Based'];
 const MAX_ANALYTIC_INCREMENT = 50;
-const isConversion = (r) => {
-  if (!CONVERTED_FROM.includes(r.previousCategory)) return false;
-  if (r.categoryChanged) return r.newCategory === 'Employee';
-  return r.category === 'Employee';
-};
 
 router.get('/analytics/increments', asyncHandler(async (req, res) => {
   const raw = await SalaryRevision.find({
     stage: 'completed',
   }, 'employeeName employeeCode department designation finalIncrementPct applicableDate createdAt categoryChanged previousCategory newCategory').lean();
   const completed = raw
-    .filter((r) => r.finalIncrementPct != null && !isConversion(r) && r.finalIncrementPct <= MAX_ANALYTIC_INCREMENT);
+    .filter((r) => r.finalIncrementPct != null && !isPpoConversion(r) && r.finalIncrementPct <= MAX_ANALYTIC_INCREMENT);
 
   const yearOf = (r) => fiscalYearOf(r.applicableDate || r.createdAt);
 
