@@ -76,6 +76,16 @@ async function resolveInterviewerEmail(name) {
 const ok  = (res, data, status = 200) => res.status(status).json({ success: true,  data });
 const err = (res, msg,  status = 500) => res.status(status).json({ success: false, message: msg });
 
+// A candidate only counts as actually "In Progress" once an interview round
+// has been carried out — merely scheduling one isn't enough. Never moves a
+// record OFF 'In Progress' (or back from Shortlisted/Rejected); it only ever
+// advances the initial 'New' default forward, once.
+function maybeAdvanceInterviewStatus(record) {
+  if (record.interviewFinalStatus !== 'New') return;
+  const hasDoneRound = (record.interviewRounds || []).some((r) => r.schedulingStatus === 'Done');
+  if (hasDoneRound) record.interviewFinalStatus = 'In Progress';
+}
+
 // Candidate-detail fields that HR is allowed to edit
 const CANDIDATE_FIELDS = [
   'full_name', 'email', 'phone', 'whatsapp_same', 'dob',
@@ -551,6 +561,7 @@ router.post('/:id/interview-rounds', async (req, res) => {
     };
 
     record.interviewRounds.push(newRound);
+    maybeAdvanceInterviewStatus(record);
     await record.save();
 
     ok(res, record.toObject(), 201);
@@ -581,6 +592,7 @@ router.patch('/:id/interview-rounds/:roundId', async (req, res) => {
       if (req.body[field] !== undefined) round[field] = req.body[field];
     }
 
+    maybeAdvanceInterviewStatus(record);
     await record.save();
     ok(res, record.toObject());
   } catch (e) {

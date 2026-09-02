@@ -15,6 +15,7 @@ import {
   ApplicantRecord, API_BASE,
   SCREENER_STATUS_COLORS,
   INTERVIEW_FINAL_STATUS_OPTIONS, INTERVIEW_FINAL_STATUS_COLORS,
+  STATUS_COLORS,
 } from './applicantTypes';
 
 // AI fit fields — kept as a local extension of ApplicantRecord rather
@@ -38,6 +39,92 @@ const TABS = [
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pipeline "Stage" shown on the dashboard table — the modal TAB name the
+// candidate is currently sitting at, derived from real progress (not just
+// which tabs are unlock-eligible) so it reads as "where they actually are"
+// rather than "what they're allowed to click into next".
+// ─────────────────────────────────────────────────────────────────────────────
+function getStageLabel(record: Pick<ApplicantRecordWithAI, 'interviewRounds' | 'finalDecision'>): string {
+  if (record.finalDecision?.decision && record.finalDecision.decision !== 'Pending') {
+    return TABS.find((t) => t.id === 'offer')!.label;
+  }
+  if ((record.interviewRounds?.length ?? 0) > 0) {
+    return TABS.find((t) => t.id === 'interview')!.label;
+  }
+  return TABS.find((t) => t.id === 'screener')!.label;
+}
+
+const STAGE_COLORS: Record<string, string> = {
+  'HR Round':          'bg-amber-100  text-amber-700',
+  'Interview Round':   'bg-blue-100   text-blue-700',
+  'Offer & Placement': 'bg-purple-100 text-purple-700',
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Clickable summary cards — quick one-click filters for the 4 pipeline
+// outcomes HR checks most often, on top of the free-form FilterBar below.
+// 'Joined' is distinguished from 'Offer Made' by joiningDate having actually
+// arrived — there's no separate "joined" flag on the record, so an offer
+// whose joining date is still in the future counts as Offer Made only.
+// ─────────────────────────────────────────────────────────────────────────────
+type CardFilterKey = 'offerMade' | 'internalInterviews' | 'rejected' | 'joined';
+
+type CardFilterRecord = Pick<ApplicantRecordWithAI, 'status' | 'finalDecision' | 'interviewRounds'>;
+
+function matchesCardFilter(r: CardFilterRecord, key: CardFilterKey): boolean {
+  const decision = r.finalDecision?.decision;
+  switch (key) {
+    case 'offerMade':
+      return decision === 'Offer Made';
+    case 'internalInterviews':
+      return getStageLabel(r) === 'Interview Round';
+    case 'rejected':
+      return r.status === 'Rejected';
+    case 'joined':
+      return decision === 'Offer Made'
+        && !!r.finalDecision?.joiningDate
+        && new Date(r.finalDecision.joiningDate).getTime() <= Date.now();
+    default:
+      return true;
+  }
+}
+
+const CARD_FILTERS: { key: CardFilterKey; label: string; activeClasses: string }[] = [
+  { key: 'offerMade',           label: 'Offer Made',          activeClasses: 'border-green-400 bg-green-50' },
+  { key: 'internalInterviews',  label: 'Internal Interviews', activeClasses: 'border-blue-400 bg-blue-50' },
+  { key: 'rejected',            label: 'Rejected',            activeClasses: 'border-red-400 bg-red-50' },
+  { key: 'joined',              label: 'Joined',              activeClasses: 'border-purple-400 bg-purple-50' },
+];
+
+const StatCards = ({
+  counts, active, onToggle,
+}: {
+  counts: Record<CardFilterKey, number>;
+  active: CardFilterKey | null;
+  onToggle: (key: CardFilterKey) => void;
+}) => (
+  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+    {CARD_FILTERS.map(({ key, label, activeClasses }) => {
+      const isActive = active === key;
+      return (
+        <button
+          key={key}
+          onClick={() => onToggle(key)}
+          className={`flex items-center gap-3 p-4 rounded-lg shadow border text-left transition ${
+            isActive ? activeClasses : 'bg-white border-gray-200 hover:border-gray-300'
+          }`}
+        >
+          <div>
+            <p className="text-xl font-bold text-gray-800 leading-none">{counts[key]}</p>
+            <p className="text-xs text-gray-500 mt-1">{label}</p>
+          </div>
+        </button>
+      );
+    })}
+  </div>
+);
 
 const ApplicantModal = ({
   record,
@@ -130,15 +217,19 @@ const ApplicantModal = ({
             <div className="relative flex items-center gap-1">
               {statusBusy && <Loader2 size={12} className="animate-spin text-gray-400" />}
               <select
-                value={localRec.interviewFinalStatus || 'In Progress'}
+                value={localRec.interviewFinalStatus || 'New'}
                 onChange={(e) => handleFinalStatusChange(e.target.value)}
                 disabled={statusBusy}
                 className={`text-xs font-bold px-2 py-1 rounded-full border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-lime-400 ${
-                  INTERVIEW_FINAL_STATUS_COLORS[localRec.interviewFinalStatus] || INTERVIEW_FINAL_STATUS_COLORS['In Progress']
+                  INTERVIEW_FINAL_STATUS_COLORS[localRec.interviewFinalStatus] || INTERVIEW_FINAL_STATUS_COLORS['New']
                 }`}
               >
                 {INTERVIEW_FINAL_STATUS_OPTIONS.map((s) => (
-                  <option key={s} value={s} disabled={(s === 'Rejected' && hasRecommended) || (s === 'Shortlisted' && hasNotRecommended)}>
+                  <option
+                    key={s}
+                    value={s}
+                    disabled={s === 'New' || (s === 'Rejected' && hasRecommended) || (s === 'Shortlisted' && hasNotRecommended)}
+                  >
                     {s}
                   </option>
                 ))}
@@ -389,6 +480,7 @@ const CandidatesTab: React.FC = () => {
   const [locationFilter,   setLocationFilter]   = useState('');
   const [experienceFilter, setExperienceFilter] = useState('');
   const [sortBy,           setSortBy]           = useState<SortOption>('newest');
+  const [cardFilter,       setCardFilter]       = useState<CardFilterKey | null>(null);
 
   useEffect(() => {
     fetch(`${API_BASE}/applicant-records`)
@@ -443,6 +535,16 @@ const CandidatesTab: React.FC = () => {
     return Array.from(new Set(locs));
   }, [records]);
 
+  const cardCounts = useMemo(() => ({
+    offerMade:          records.filter((r) => matchesCardFilter(r, 'offerMade')).length,
+    internalInterviews: records.filter((r) => matchesCardFilter(r, 'internalInterviews')).length,
+    rejected:           records.filter((r) => matchesCardFilter(r, 'rejected')).length,
+    joined:             records.filter((r) => matchesCardFilter(r, 'joined')).length,
+  }), [records]);
+
+  const toggleCardFilter = (key: CardFilterKey) =>
+    setCardFilter((prev) => (prev === key ? null : key));
+
   const filteredRecords = useMemo(() => {
     const term = search.trim().toLowerCase();
     return records.filter((r) => {
@@ -456,10 +558,11 @@ const CandidatesTab: React.FC = () => {
       const matchesCtc      = !ctcFilter        || r.expected_monthly_ctc === ctcFilter;
       const matchesLocation = !locationFilter   || [r.city, r.state].filter(Boolean).join(', ') === locationFilter;
       const matchesExp      = !experienceFilter || r.experience === experienceFilter;
+      const matchesCard     = !cardFilter       || matchesCardFilter(r, cardFilter);
 
-      return matchesSearch && matchesProfile && matchesCtc && matchesLocation && matchesExp;
+      return matchesSearch && matchesProfile && matchesCtc && matchesLocation && matchesExp && matchesCard;
     });
-  }, [records, search, profileFilter, ctcFilter, locationFilter, experienceFilter]);
+  }, [records, search, profileFilter, ctcFilter, locationFilter, experienceFilter, cardFilter]);
 
   // Sorting applied on top of the already-filtered set — a separate step
   // from filtering, so the two never interfere with each other.
@@ -487,7 +590,7 @@ const CandidatesTab: React.FC = () => {
     }
   }, [filteredRecords, sortBy]);
 
-  const hasActiveFilters = !!(search || profileFilter || ctcFilter || locationFilter || experienceFilter);
+  const hasActiveFilters = !!(search || profileFilter || ctcFilter || locationFilter || experienceFilter || cardFilter);
 
   const resetFilters = () => {
     setSearch('');
@@ -495,6 +598,7 @@ const CandidatesTab: React.FC = () => {
     setCtcFilter('');
     setLocationFilter('');
     setExperienceFilter('');
+    setCardFilter(null);
   };
 
   return (
@@ -517,6 +621,10 @@ const CandidatesTab: React.FC = () => {
               {sortedRecords.length} of {records.length} Applicants
             </span>
           </div>
+
+          {!loading && records.length > 0 && (
+            <StatCards counts={cardCounts} active={cardFilter} onToggle={toggleCardFilter} />
+          )}
 
           {!loading && records.length > 0 && (
             <FilterBar
@@ -548,7 +656,8 @@ const CandidatesTab: React.FC = () => {
                     <th className="p-4">Profile</th>
                     <th className="p-4">Exp</th>
                     <th className="p-4">Location</th>
-                    <th className="p-4">Interview Status</th>
+                    <th className="p-4">Stage</th>
+                    <th className="p-4">Status</th>
                     <th className="p-4">AI Fit</th>
                     <th className="p-4 text-center">Actions</th>
                   </tr>
@@ -577,8 +686,18 @@ const CandidatesTab: React.FC = () => {
                         </td>
                         <td className="p-4 text-gray-500 text-xs">{[r.city, r.state].filter(Boolean).join(', ')}</td>
                         <td className="p-4">
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${INTERVIEW_FINAL_STATUS_COLORS[r.interviewFinalStatus] || 'bg-gray-100 text-gray-600'}`}>
-                            {r.interviewFinalStatus || 'In Progress'}
+                          {(() => {
+                            const stage = getStageLabel(r);
+                            return (
+                              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${STAGE_COLORS[stage] || 'bg-gray-100 text-gray-600'}`}>
+                                {stage}
+                              </span>
+                            );
+                          })()}
+                        </td>
+                        <td className="p-4">
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${STATUS_COLORS[r.status] || 'bg-gray-100 text-gray-600'}`}>
+                            {r.status || 'New'}
                           </span>
                         </td>
                         <td className="p-4">

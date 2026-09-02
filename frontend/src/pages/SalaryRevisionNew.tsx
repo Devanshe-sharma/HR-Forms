@@ -31,10 +31,14 @@ import Navbar  from '../components/Navbar';
 
 type RevisionDecision = 'increment' | 'pip' | null;
 type RevisionStage    = 'pending_manager' | 'pending_management' | 'pending_hr' | 'completed' | 'on_hold';
-// Date-driven dashboard status — independent of RevisionStage. Due Date is
-// always 1 month before Done Date (the real anniversary/contract-end);
-// Done Date = joining + 12 months for employees, or the intern's contract
-// end date. See rowStatus in DashboardView for the exact rules.
+// Date-driven dashboard status — independent of RevisionStage. Two dates
+// per cycle: "Due Date" is the exact/true one (joining + 12 months for
+// employees, or the intern's contract end date) — this is what the table
+// column actually shows and labels as "Due Date". "Reminder Date" is 1
+// month earlier — internally still computed the same way (get11MonthDate),
+// used for status buckets (Overdue/Due/Pending, see rowStatus) and as the
+// point a reminder mail should go out, but no longer the value shown under
+// the "Due Date" label. See rowStatus in DashboardView for the exact rules.
 type Status = 'not_yet_due' | 'pending' | 'due' | 'overdue' | 'done' | 'done_delayed';
 
 interface PmsScore { period: string; score: number; }
@@ -374,8 +378,23 @@ function StageChip({ stage }: { stage: RevisionStage }) {
   );
 }
 
-function DecisionChip({ decision }: { decision: RevisionDecision }) {
+// isPpo marks a revision that's really an Intern/Contract-Based → Employee
+// conversion — the CTC jump there is a category conversion (stipend to full
+// CTC), not a real merit increment, so it must never read as "Increment"
+// even though managerDecision.decision is still literally 'increment' and
+// the underlying data (finalIncrementPct, newCtc, etc.) is left exactly
+// as-is. Same distinction analytics/increments already applies server-side
+// via isConversion — this just makes it visible here too.
+function DecisionChip({ decision, isPpo }: { decision: RevisionDecision; isPpo?: boolean }) {
   if (!decision) return <Chip size="small" label="Pending" sx={{ bgcolor:'#f8fafc', color:'#94a3b8', fontSize:11 }}/>;
+  if (decision==='increment' && isPpo) {
+    const color = '#2563eb';
+    return (
+      <Chip size="small"
+        label="PPO Conversion"
+        sx={{ bgcolor:'#f8fafc', color, fontWeight:600, fontSize:11, border:`1px solid ${color}30` }}/>
+    );
+  }
   const color = decision==='increment' ? '#059669' : '#dc2626';
   return (
     <Chip size="small"
@@ -468,6 +487,9 @@ function AddRevisionModal({ open, onClose, onAdded, showToast, employees, record
   const due = sel?.joining_date
     ? get11MonthDate(computeAnchorDate(sel.joining_date, records.filter(r=>r.employeeCode===sel.employee_id)).toISOString())
     : null;
+  // True/exact due date — the real anniversary, one month after the
+  // reminder date above.
+  const trueDue = due ? new Date(due.getFullYear(), due.getMonth()+1, due.getDate()) : null;
 
   return (
     <Modal open={open} onClose={onClose}>
@@ -504,7 +526,8 @@ function AddRevisionModal({ open, onClose, onAdded, showToast, employees, record
                 <Box sx={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:1.2 }}>
                   {[['Designation',sel.designation||'—'],['Email',sel.email||'—'],
                     ['Joining Date',fmtDate(sel.joining_date)],['Previous CTC',fmtCurrency(sel.annual_ctc)],
-                    ['Due Date (11m)',fmtDate(due?.toISOString())],
+                    ['Reminder Date',fmtDate(due?.toISOString())],
+                    ['Due Date',fmtDate(trueDue?.toISOString())],
                     ['Contract Start',fmtDate(sel.contract_start_date)],['Contract End',fmtDate(sel.contract_end_date)]
                   ].map(([l,v])=>(
                     <Box key={l}><Typography fontSize={10} color="text.secondary">{l}</Typography>
@@ -968,16 +991,20 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
     if (!rangeStart || !rangeEnd) return [];
 
     return allEmps.flatMap(e => {
-      // Interns aren't gated by due-date windows either — same reasoning
-      // as the eligibility gate above, they need to be findable for a
-      // PPO decision regardless of which quarter/range is selected. Their
-      // dueDate is still computed for real (joining date + contract
-      // months, one month early) whenever a contract period is on file,
-      // so the date shown isn't just a placeholder.
+      // Interns respect the selected quarter/range exactly like everyone
+      // else now — their PPO review date (joining + contract months, one
+      // month early) only qualifies them for this view if it actually
+      // falls inside [rangeStart, rangeEnd]. Previously every intern was
+      // shown regardless of range "so a pending PPO decision is always
+      // findable", but that meant someone due months away (or already
+      // completed) cluttered every quarter/custom view — confusing, not
+      // helpful. Switch to the "All Employees" view to browse every intern
+      // regardless of date.
       if (e.employee_category === 'Intern') {
         const dueDate = e.joining_date && e.contract_period_months
           ? internReviewDate(e.joining_date, e.contract_period_months)
           : null;
+        if (!dueDate || dueDate < rangeStart || dueDate > rangeEnd) return [];
         return [{ emp: e, rec: revisionForYear(e.employee_id, now.getFullYear()), dueDate }];
       }
       const anchor = anchorDateMap.get(e.employee_id);
@@ -1233,14 +1260,15 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
                   <TableCell sx={{ width:34, px:1 }}/>
                   <TableCell>Employee</TableCell>
                   <TableCell>Department</TableCell>
-                  <TableCell>{mainTab==='history'?'Completed On':'Due Date'}</TableCell>
+                  <TableCell>{mainTab==='history'?'Completed On':'Reminder Date'}</TableCell>
+                  {mainTab!=='history'&&<TableCell>Due Date</TableCell>}
                   <TableCell>Status</TableCell>
                   <TableCell>New CTC</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {filtered.length===0&&(
-                  <TableRow><TableCell colSpan={6} align="center" sx={{ py:6, color:'var(--text-secondary)', fontSize:13 }}>
+                  <TableRow><TableCell colSpan={mainTab==='history'?6:7} align="center" sx={{ py:6, color:'var(--text-secondary)', fontSize:13 }}>
                     {mainTab==='history'?(ppoOnly?'No full-time conversions yet':'No completed revisions yet'):
                      period==='all'?'No employees found':
                      period==='custom'?(customFrom&&customTo?'No employees due in this range':'Pick a From and To date above'):
@@ -1256,6 +1284,13 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
                     && fiscalQuarterOf(dueDate) === fiscalQuarterOf(now)
                     && fiscalYearOf(dueDate) === fiscalYearOf(now);
                   const completedOn = rec?.applicableDate || rec?.createdAt;
+                  // The exact/true due date — the real anniversary or
+                  // contract end, one month after the reminder date shown
+                  // in the previous column (same "-1 month early" offset
+                  // used everywhere else in this file).
+                  const trueDueDate = dueDate
+                    ? new Date(dueDate.getFullYear(), dueDate.getMonth()+1, dueDate.getDate())
+                    : null;
                   const st = mainTab==='history' ? ('done' as Status) : rowStatus(rec,dueDate);
                   const isDoneStatus = st==='done' || st==='done_delayed';
                   const isExpanded = expandedRow===emp._id;
@@ -1309,6 +1344,13 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
                             </Typography>
                           )}
                         </TableCell>
+                        {mainTab!=='history'&&(
+                          <TableCell sx={TD}>
+                            <Typography component="span" fontSize={12} fontWeight={isThisQuarter?700:400} color={isThisQuarter?'#d97706':'var(--text-primary)'}>
+                              {trueDueDate?fmtDate(trueDueDate.toISOString()):'—'}
+                            </Typography>
+                          </TableCell>
+                        )}
                         <TableCell sx={TD}>
                           <StatusChip status={st}/>
                         </TableCell>
@@ -1318,7 +1360,7 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
                       </TableRow>
 
                       <TableRow>
-                        <TableCell colSpan={6} sx={{ p:0, border:'none' }}>
+                        <TableCell colSpan={mainTab==='history'?6:7} sx={{ p:0, border:'none' }}>
                           <Collapse in={isExpanded} timeout={150} unmountOnExit>
                             <Box sx={{ bgcolor:'var(--surface-1)', borderBottom:'0.5px solid var(--border)',
                               px:3, py:2, display:'flex', gap:3, flexWrap:'wrap' }}>
@@ -1336,7 +1378,7 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onManageC
                                 <Typography fontSize={10} fontWeight={700} color="var(--text-secondary)" mb={0.6}>DECISION &amp; STAGE</Typography>
                                 {rec ? (
                                   <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
-                                    <DecisionChip decision={rec.managerDecision?.decision}/>
+                                    <DecisionChip decision={rec.managerDecision?.decision} isPpo={isPpoRevision(rec)}/>
                                     <StageChip stage={rec.stage}/>
                                   </Stack>
                                 ) : <Typography fontSize={12} color="var(--text-secondary)">No revision record</Typography>}
@@ -1697,7 +1739,7 @@ function HistoryPanel({ employeeCode }: { employeeCode: string }) {
                         : <span style={{ color: '#94a3b8' }}>—</span>}
                       {i === 0 && <Chip label="Latest" size="small" sx={{ ml: 0.7, fontSize: 9, height: 16, bgcolor: '#eef2ff', color: ACCENT }}/> }
                     </TableCell>
-                    <TableCell><DecisionChip decision={h.managerDecision?.decision}/></TableCell>
+                    <TableCell><DecisionChip decision={h.managerDecision?.decision} isPpo={isPpoRevision(h)}/></TableCell>
                     <TableCell sx={{ fontSize: 12 }}>
                       {h.designationChanged
                         ? <>{h.previousDesignation} → <strong>{h.newDesignation}</strong></>
@@ -2045,7 +2087,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
           employeeName  : emp.full_name,
           department    : emp.department,
           designation   : emp.designation,
-          email         : emp.official_email,
+          email         : emp.email,
           joiningDate   : emp.joining_date,
           contractStartDate: emp.contract_start_date||null,
           contractEndDate  : emp.contract_end_date||null,
@@ -2128,7 +2170,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
         employeeName: emp.full_name,
         department: emp.department,
         designation: emp.designation,
-        email: emp.official_email,
+        email: emp.email,
         joiningDate: emp.joining_date,
         contractStartDate: emp.contract_start_date || null,
         contractEndDate: emp.contract_end_date || null,
@@ -2189,7 +2231,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
           <Typography fontWeight={700} fontSize="0.95rem">{emp.full_name}</Typography>
           <Typography fontSize={12} color="text.secondary">{emp.designation} · {emp.department}</Typography>
         </Box>
-        {rec&&<DecisionChip decision={rec.managerDecision?.decision}/>}
+        {rec&&<DecisionChip decision={rec.managerDecision?.decision} isPpo={isPpoRevision(rec)}/>}
         {rec&&<StageChip stage={rec.stage}/>}
         {!rec&&<Chip label="No revision record" size="small" sx={{ bgcolor:'#fef2f2', color:'#dc2626' }}/>}
         {isCompleted&&(

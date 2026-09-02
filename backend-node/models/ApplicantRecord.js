@@ -209,10 +209,14 @@ const applicantRecordSchema = new mongoose.Schema(
     // have recommended on individual rounds, so a Recommended-P1/P2
     // candidate can't be silently marked Rejected, and a Not-Recommended
     // one can't be silently marked Shortlisted.
+    // Starts at 'New' — only advances to 'In Progress' once at least one
+    // interview round is actually marked Done (see maybeAdvanceInterviewStatus
+    // in routes/applicantRecords.js). Before that, a candidate who's merely
+    // had a round scheduled still reads as 'New', not 'In Progress'.
     interviewFinalStatus: {
       type: String,
-      enum: ['In Progress', 'Shortlisted', 'Rejected'],
-      default: 'In Progress',
+      enum: ['New', 'In Progress', 'Shortlisted', 'Rejected'],
+      default: 'New',
     },
 
     // ── Stage 3: Offer & Placement ────────────────────────────────────────────

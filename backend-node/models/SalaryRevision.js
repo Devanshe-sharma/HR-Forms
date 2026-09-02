@@ -110,6 +110,22 @@ const salaryRevisionSchema = new mongoose.Schema({
   // PIP re-evaluation date
   reviewDate: { type: Date, default: null },
 
+  // When the manager was (most recently) asked for a recommendation —
+  // set on initial creation AND whenever a PIP recommendation is rejected
+  // and the revision reopens to 'pending_manager'. The escalation chain
+  // measures "days pending" from here, NOT from createdAt, so a reopened
+  // cycle gets its own fresh response window instead of already reading
+  // as overdue from day one.
+  managerRequestedAt: { type: Date, default: null },
+
+  // Send-once gates for the manager-recommendation escalation chain (see
+  // utils/salaryRevisionEscalation.js) — same convention as Onboarding's
+  // autoWelcomeEmailSentAt: once set, the cron skips this revision so the
+  // same escalation doesn't go out again every day it stays pending. Reset
+  // alongside managerRequestedAt when a cycle reopens.
+  managerEscalationSentAt: { type: Date, default: null },
+  finalEscalationSentAt  : { type: Date, default: null },
+
   // PIP outcome — closes out an 'on_hold' PIP once the review date has
   // passed. Nothing else ever moves an approved PIP off 'on_hold', so
   // without this an active PIP had no way to resolve.

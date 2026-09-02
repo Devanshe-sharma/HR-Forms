@@ -114,9 +114,15 @@ export const SCHEDULING_STATUS_COLORS: Record<string, string> = {
 
 // Overall outcome of the interview stage — distinct from any single
 // round's scheduling state or the interviewer's own feedback on a round.
-export const INTERVIEW_FINAL_STATUS_OPTIONS = ['In Progress', 'Shortlisted', 'Rejected'];
+// 'New' is the starting value and is system-controlled only (see
+// maybeAdvanceInterviewStatus in routes/applicantRecords.js) — it's listed
+// here so an in-progress-less candidate's dropdown still renders correctly,
+// but it's always disabled as a manual selection (never selectable again
+// once the record has moved past it).
+export const INTERVIEW_FINAL_STATUS_OPTIONS = ['New', 'In Progress', 'Shortlisted', 'Rejected'];
 
 export const INTERVIEW_FINAL_STATUS_COLORS: Record<string, string> = {
+  New:           'bg-gray-100   text-gray-500',
   'In Progress': 'bg-blue-100   text-blue-700',
   Shortlisted:   'bg-green-100  text-green-700',
   Rejected:      'bg-red-100    text-red-700',

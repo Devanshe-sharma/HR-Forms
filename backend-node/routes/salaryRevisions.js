@@ -5,10 +5,78 @@ const asyncHandler = require('express-async-handler');
 const Onboarding   = require('../models/onboardingModel');
 const Confirmations = require('../models/Confirmations');
 const { fiscalYearOf, fiscalQuarterOf } = require('../utils/fiscalQuarter');
+const sendSalaryRevisionManagerRequest      = require('../emails/senders/sendSalaryRevisionManagerRequest');
+const sendSalaryRevisionManagementApproval  = require('../emails/senders/sendSalaryRevisionManagementApproval');
+const sendSalaryRevisionEmployeeConfirmation = require('../emails/senders/sendSalaryRevisionEmployeeConfirmation');
+const sendSalaryRevisionPipHold             = require('../emails/senders/sendSalaryRevisionPipHold');
+const resolveManagerContact = require('../utils/resolveManagerContact');
+const { verifySalaryRevisionAction } = require('../utils/salaryRevisionMailSigning');
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
 const caller = (req) => req.headers['x-user-name'] || 'System';
+
+// ─── Shared decision-application logic ───────────────────────────────────────
+// Used by both the authenticated dashboard routes below AND the public
+// mail-action routes (manager/management filling in their decision straight
+// from the request/approval/escalation email) — one place decides what a
+// manager/management decision actually does to a revision, so the two entry
+// points can never quietly diverge.
+
+function applyManagerDecision(revision, { decision, reason, recommendedPct, pipDurationMonths, pipNewDueDate }) {
+  if (!decision || !['increment', 'pip'].includes(decision)) {
+    return "decision must be 'increment' or 'pip'";
+  }
+  if (!reason || !reason.trim()) return 'reason is required';
+
+  revision.managerDecision = {
+    decision,
+    reason        : reason.trim(),
+    recommendedPct: decision === 'increment' ? (Number(recommendedPct) || 0) : null,
+    pipDurationMonths: decision === 'pip' ? (Number(pipDurationMonths) || null) : null,
+    pipNewDueDate : decision === 'pip' && pipNewDueDate ? new Date(pipNewDueDate) : null,
+    submittedAt   : new Date(),
+  };
+  revision.stage = 'pending_management';
+  if (decision === 'pip' && pipNewDueDate) revision.reviewDate = new Date(pipNewDueDate);
+  return null;
+}
+
+function applyManagementDecision(revision, { reason, finalPct, pipApproved }) {
+  if (!reason || !reason.trim()) return 'reason is required';
+
+  const mgrDecision = revision.managerDecision?.decision;
+  revision.managementDecision = {
+    reason     : reason.trim(),
+    finalPct   : mgrDecision === 'increment' ? (Number(finalPct) || 0) : null,
+    pipApproved: mgrDecision === 'pip' ? Boolean(pipApproved) : null,
+    submittedAt: new Date(),
+  };
+
+  if (mgrDecision === 'increment') {
+    revision.stage = 'pending_hr';
+    revision.finalIncrementPct = Number(finalPct) || 0;
+    revision.newCtc = Math.round(revision.previousCtc * (1 + (Number(finalPct) || 0) / 100));
+  } else if (pipApproved) {
+    revision.stage = 'on_hold';
+  } else {
+    revision.stage = 'pending_manager';
+    revision.managerDecision = {
+      decision         : null,
+      recommendedPct   : null,
+      pipDurationMonths: null,
+      pipNewDueDate    : null,
+      reason           : '',
+      submittedAt      : null,
+    };
+    // Reopened cycle — fresh response window, so it doesn't already
+    // read as overdue from the original request date.
+    revision.managerRequestedAt = new Date();
+    revision.managerEscalationSentAt = null;
+    revision.finalEscalationSentAt = null;
+  }
+  return null;
+}
 
 // ─── GET /api/salary-revisions ────────────────────────────────────────────────
 // Returns all revisions sorted newest first. Note: this includes every
@@ -423,6 +491,7 @@ router.post('/', asyncHandler(async (req, res) => {
     previousCtc   : Number(previousCtc),
     pmsScores     : Array.isArray(pmsScores) ? pmsScores.filter(p => p.period && p.period.trim()) : [],
     stage         : 'pending_manager',
+    managerRequestedAt: new Date(),
 
     designationChanged,
     previousDesignation  : previousDesignation || designation || '',
@@ -455,6 +524,13 @@ router.post('/', asyncHandler(async (req, res) => {
   try {
     const revision = new SalaryRevision(docData);
     await revision.save();
+
+    // Fire-and-forget — a mail failure must never fail the revision
+    // creation itself, same convention as every other email trigger in
+    // this codebase (e.g. rescoreAndSave's callers in hiringRequisitions.js).
+    sendSalaryRevisionManagerRequest(revision).catch((e) =>
+      console.error('[salary-revisions] manager request mail failed:', e.message));
+
     return res.status(201).json({ success: true, data: revision });
   } catch (saveErr) {
     console.error('SalaryRevision save error:', saveErr.message);
@@ -505,14 +581,6 @@ router.put('/:id/manager', asyncHandler(async (req, res) => {
     });
   }
 
-  if (!decision || !['increment', 'pip'].includes(decision)) {
-    return res.status(400).json({ success: false, message: "decision must be 'increment' or 'pip'" });
-  }
-
-  if (!reason || !reason.trim()) {
-    return res.status(400).json({ success: false, message: 'reason is required' });
-  }
-
   if (Array.isArray(pmsScores)) {
     revision.pmsScores = pmsScores.filter(p => p.period && p.period.trim());
   }
@@ -543,23 +611,14 @@ router.put('/:id/manager', asyncHandler(async (req, res) => {
     revision.newReportingHead = changed ? newReportingHead : null;
   }
 
-  revision.managerDecision = {
-    decision,
-    reason        : reason.trim(),
-    recommendedPct: decision === 'increment' ? (Number(recommendedPct) || 0) : null,
-    pipDurationMonths: decision === 'pip' ? (Number(pipDurationMonths) || null) : null,
-    pipNewDueDate : decision === 'pip' && pipNewDueDate ? new Date(pipNewDueDate) : null,
-    submittedAt   : new Date(),
-  };
-
-  revision.stage = 'pending_management';
-
-  if (decision === 'pip' && pipNewDueDate) {
-    revision.reviewDate = new Date(pipNewDueDate);
-  }
+  const decisionError = applyManagerDecision(revision, { decision, reason, recommendedPct, pipDurationMonths, pipNewDueDate });
+  if (decisionError) return res.status(400).json({ success: false, message: decisionError });
 
   revision.updatedBy = caller(req);
   await revision.save();
+
+  sendSalaryRevisionManagementApproval(revision).catch((e) =>
+    console.error('[salary-revisions] management approval mail failed:', e.message));
 
   res.status(200).json({ success: true, data: revision, message: 'Manager decision saved' });
 }));
@@ -581,43 +640,112 @@ router.put('/:id/management', asyncHandler(async (req, res) => {
     });
   }
 
-  if (!reason || !reason.trim()) {
-    return res.status(400).json({ success: false, message: 'reason is required' });
-  }
-
-  const mgrDecision = revision.managerDecision?.decision;
-
-  revision.managementDecision = {
-    reason     : reason.trim(),
-    finalPct   : mgrDecision === 'increment' ? (Number(finalPct) || 0) : null,
-    pipApproved: mgrDecision === 'pip' ? Boolean(pipApproved) : null,
-    submittedAt: new Date(),
-  };
-
-  if (mgrDecision === 'increment') {
-    revision.stage = 'pending_hr';
-    revision.finalIncrementPct = Number(finalPct) || 0;
-    revision.newCtc = Math.round(revision.previousCtc * (1 + (Number(finalPct) || 0) / 100));
-  } else {
-    if (pipApproved) {
-      revision.stage = 'on_hold';
-    } else {
-      revision.stage = 'pending_manager';
-      revision.managerDecision = {
-        decision         : null,
-        recommendedPct   : null,
-        pipDurationMonths: null,
-        pipNewDueDate    : null,
-        reason           : '',
-        submittedAt      : null,
-      };
-    }
-  }
+  const decisionError = applyManagementDecision(revision, { reason, finalPct, pipApproved });
+  if (decisionError) return res.status(400).json({ success: false, message: decisionError });
 
   revision.updatedBy = caller(req);
   await revision.save();
 
+  if (revision.stage === 'on_hold') {
+    sendSalaryRevisionPipHold(revision).catch((e) =>
+      console.error('[salary-revisions] PIP hold mail failed:', e.message));
+  } else if (revision.stage === 'pending_manager') {
+    // PIP rejected — reopened back to the manager for a fresh recommendation.
+    sendSalaryRevisionManagerRequest(revision).catch((e) =>
+      console.error('[salary-revisions] manager re-request mail failed:', e.message));
+  }
+
   res.status(200).json({ success: true, data: revision, message: 'Management decision saved' });
+}));
+
+// ─── GET /api/salary-revisions/:id/mail-action ───────────────────────────────
+// Public, unauthenticated — feeds the manager/management mail-action form
+// (frontend/src/pages/outsider/SalaryRevisionAction.tsx) with exactly what
+// it needs to render, and whether the link is still actionable. The
+// revision may have already moved past this role's stage since the mail
+// was sent (e.g. someone already actioned it from the dashboard, or this
+// link was already used once) — "actionable" tells the form to show a
+// "already handled" message instead of letting a stale link resubmit.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/:id/mail-action', asyncHandler(async (req, res) => {
+  const { role, sig } = req.query;
+  if (!['manager', 'management'].includes(role) || !verifySalaryRevisionAction(req.params.id, role, sig)) {
+    return res.status(403).json({ success: false, message: "This link couldn't be verified." });
+  }
+
+  const revision = await SalaryRevision.findById(req.params.id).lean();
+  if (!revision) return res.status(404).json({ success: false, message: 'Salary revision not found' });
+
+  const expectedStage = role === 'manager' ? 'pending_manager' : 'pending_management';
+  const manager = await resolveManagerContact(revision);
+
+  res.json({
+    success: true,
+    data: {
+      employeeName : revision.employeeName,
+      department   : revision.department,
+      designation  : revision.designation,
+      previousCtc  : revision.previousCtc,
+      managerName  : manager.name,
+      stage        : revision.stage,
+      actionable   : revision.stage === expectedStage,
+      // Management needs to see what the manager actually recommended.
+      managerDecision: role === 'management' ? revision.managerDecision : undefined,
+    },
+  });
+}));
+
+// ─── POST /api/salary-revisions/:id/mail-action ──────────────────────────────
+// Public, unauthenticated submit — applies the EXACT same
+// applyManagerDecision/applyManagementDecision used by the authenticated
+// dashboard routes above, and triggers the same follow-up mail, so a
+// decision filled in from the email shows up on the dashboard identically
+// to one entered there directly.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/mail-action', asyncHandler(async (req, res) => {
+  const { role, sig, ...body } = req.body;
+  if (!['manager', 'management'].includes(role) || !verifySalaryRevisionAction(req.params.id, role, sig)) {
+    return res.status(403).json({ success: false, message: "This link couldn't be verified." });
+  }
+
+  const revision = await SalaryRevision.findById(req.params.id);
+  if (!revision) return res.status(404).json({ success: false, message: 'Salary revision not found' });
+
+  if (role === 'manager') {
+    if (revision.stage !== 'pending_manager') {
+      return res.status(400).json({ success: false, message: `This request has already been actioned (current stage: ${revision.stage}).` });
+    }
+    const decisionError = applyManagerDecision(revision, body);
+    if (decisionError) return res.status(400).json({ success: false, message: decisionError });
+
+    revision.updatedBy = 'Manager (via email)';
+    await revision.save();
+
+    sendSalaryRevisionManagementApproval(revision).catch((e) =>
+      console.error('[salary-revisions] management approval mail failed:', e.message));
+
+    return res.json({ success: true, message: 'Manager decision saved' });
+  }
+
+  // role === 'management'
+  if (revision.stage !== 'pending_management') {
+    return res.status(400).json({ success: false, message: `This request has already been actioned (current stage: ${revision.stage}).` });
+  }
+  const decisionError = applyManagementDecision(revision, body);
+  if (decisionError) return res.status(400).json({ success: false, message: decisionError });
+
+  revision.updatedBy = 'Management (via email)';
+  await revision.save();
+
+  if (revision.stage === 'on_hold') {
+    sendSalaryRevisionPipHold(revision).catch((e) =>
+      console.error('[salary-revisions] PIP hold mail failed:', e.message));
+  } else if (revision.stage === 'pending_manager') {
+    sendSalaryRevisionManagerRequest(revision).catch((e) =>
+      console.error('[salary-revisions] manager re-request mail failed:', e.message));
+  }
+
+  res.json({ success: true, message: 'Management decision saved' });
 }));
 
 // ─── PUT /api/salary-revisions/:id/pip-outcome ───────────────────────────────
@@ -746,6 +874,13 @@ router.put('/:id/hr', asyncHandler(async (req, res) => {
     console.error('Onboarding sync-back failed:', syncErr.message);
   }
   // ─────────────────────────────────────────────────────────────────────────
+
+  // This route is only reachable from 'pending_hr', which the management
+  // route only sets on the increment path (PIP goes management -> on_hold
+  // -> pip-outcome -> completed, never through here) — so every successful
+  // finalisation here is an increment being confirmed to the employee.
+  sendSalaryRevisionEmployeeConfirmation(revision).catch((e) =>
+    console.error('[salary-revisions] employee confirmation mail failed:', e.message));
 
   res.status(200).json({ success: true, data: revision, message: 'Revision finalised successfully' });
 }));

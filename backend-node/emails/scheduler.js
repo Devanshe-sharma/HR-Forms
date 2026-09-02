@@ -14,6 +14,8 @@ const sendDailyApplicantSummary = require('./senders/sendDailyApplicantSummary')
 const sendWeeklyRecruitmentSummary = require('./senders/sendWeeklyRecruitmentSummary');
 const sendWeeklyOnboardingSummary = require('./senders/sendWeeklyOnboardingSummary');
 const sendSalaryRevisionDue = require('./senders/sendSalaryRevisionDue');
+const sendSalaryRevisionManagerEscalation = require('./senders/sendSalaryRevisionManagerEscalation');
+const sendSalaryRevisionFinalEscalation   = require('./senders/sendSalaryRevisionFinalEscalation');
 
 // Import models for auto-archive/complete
 const Outing = require('../models/Outing');
@@ -155,6 +157,30 @@ function startEmailScheduler() {
       console.log(`Salary revision due-this-quarter digest sent — ${result.dueCount} employee(s)`);
     } catch (err) {
       console.error('Salary revision due-this-quarter digest failed:', err);
+    }
+  }, { timezone: tz });
+
+  // 9e. Salary Revision — manager-recommendation escalation chain. Daily
+  // check for revisions still 'pending_manager' past the response window
+  // (Mail 5), and a further check for the final escalation (Mail 6).
+  // TEMPORARY: routed to the developer only, same as 9d above.
+  cron.schedule('0 9 * * *', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Checking salary revision manager escalations`);
+    try {
+      const result = await sendSalaryRevisionManagerEscalation();
+      console.log(`Salary revision manager escalation sent — ${result.escalatedCount} revision(s)`);
+    } catch (err) {
+      console.error('Salary revision manager escalation failed:', err);
+    }
+  }, { timezone: tz });
+
+  cron.schedule('20 9 * * *', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Checking salary revision final escalations`);
+    try {
+      const result = await sendSalaryRevisionFinalEscalation();
+      console.log(`Salary revision final escalation sent — ${result.escalatedCount} revision(s)`);
+    } catch (err) {
+      console.error('Salary revision final escalation failed:', err);
     }
   }, { timezone: tz });
 

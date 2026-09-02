@@ -517,8 +517,11 @@ const InterviewRoundTab = ({
 
         return (
           <div key={r._id} className="border border-gray-200 rounded-xl overflow-hidden hover:border-gray-300 transition">
-            {/* ── Header bar ── */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 bg-blue-50/60 border-b border-blue-100">
+            {/* ── Header bar — click anywhere on it to collapse/expand ── */}
+            <div
+              onClick={() => toggleCollapse(r._id)}
+              className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 bg-blue-50/60 border-b border-blue-100 cursor-pointer hover:bg-blue-50 transition"
+            >
               <span className="flex-shrink-0 text-[11px] font-bold text-white bg-slate-800 px-2.5 py-1 rounded">
                 Round {r.roundNumber}
               </span>
@@ -530,10 +533,8 @@ const InterviewRoundTab = ({
                 {r.schedulingStatus || 'Scheduled'}
               </span>
 
-              <div className="flex items-center gap-1 flex-shrink-0 ml-auto">
-                <button onClick={() => toggleCollapse(r._id)} className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded transition">
-                  {isCollapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
-                </button>
+              <div className="flex items-center gap-1 flex-shrink-0 ml-auto text-gray-400">
+                {isCollapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
               </div>
             </div>
 
