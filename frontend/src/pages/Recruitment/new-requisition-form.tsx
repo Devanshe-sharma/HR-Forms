@@ -185,7 +185,9 @@ export default function NewRequisitionForm({ asModal = false, onSuccess, onClose
   useEffect(() => {
     Promise.all([
       fetch(`${API_BASE}/rolemaster/all`).then(r => r.json()),
-      fetch(`${API_BASE}/onboarding/eligible-employees`).then(r => r.json()),
+      fetch(`${API_BASE}/onboarding/eligible-employees`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
+      }).then(r => r.json()),
     ])
       .then(([roleJson, empJson]) => {
         setRoleData(roleJson.data);

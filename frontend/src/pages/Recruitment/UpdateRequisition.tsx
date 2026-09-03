@@ -111,7 +111,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h2 className={sectionCls}>{children}</h2>;
 }
 
-function fmtDate(d?: string | null) {
+function fmtDate(d?: string | Date | null) {
   if (!d) return '—';
   try {
     const parsed = new Date(d);
@@ -187,7 +187,9 @@ export default function UpdateRequisition({ id: idProp, asModal = false, onSucce
     try {
       const [reqRes, empRes] = await Promise.all([
         fetch(`${API_BASE}/hiringrequisitions/${id}`),
-        fetch(`${API_BASE}/onboarding/eligible-employees`),
+        fetch(`${API_BASE}/onboarding/eligible-employees`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
+        }),
       ]);
       const reqJson = await reqRes.json();
       if (!reqRes.ok || !reqJson.success) throw new Error(reqJson.error || 'Failed to load requisition');

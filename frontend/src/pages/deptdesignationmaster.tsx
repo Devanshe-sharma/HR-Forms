@@ -145,7 +145,9 @@ export default function DeptDesignationMaster() {
 
   const fetchEmployees = useCallback(async () => {
     try {
-      const res  = await fetch(`${API_BASE}/onboarding/eligible-employees`);
+      const res  = await fetch(`${API_BASE}/onboarding/eligible-employees`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` },
+      });
       const json = await res.json();
       const raw: any[] = Array.isArray(json) ? json : (json.data || []);
       setEmployees(raw.map((e: any) => ({ name: e.full_name || '' })).filter(e => e.name));
