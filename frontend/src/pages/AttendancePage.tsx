@@ -95,6 +95,25 @@ const fmtDateTime24 = (d?: string | Date | null) => {
 const fmtUpTo = (upToTime: string, upToDate?: string | null) =>
   upToDate ? `${fmtDate(upToDate)}, ${upToTime}` : upToTime;
 
+const fmtDayMonth = (d?: string | Date | null) => {
+  if (!d) return '—';
+  try { return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }); }
+  catch { return String(d); }
+};
+
+// Table date column: single date for same-day entries, "start – end" range
+// (year only on the end) when upToDate pushes the OOO past the start day —
+// the time itself is shown separately, on its own line, in the row below.
+const fmtOooDateRange = (startDateTime: string, upToDate?: string | null) => {
+  if (!upToDate) return fmtDate(startDateTime);
+  const start = new Date(startDateTime);
+  const end = new Date(upToDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return fmtDate(startDateTime);
+  const sameDay = start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth() && start.getDate() === end.getDate();
+  if (sameDay) return fmtDate(startDateTime);
+  return `${fmtDayMonth(start)} – ${fmtDate(end)}`;
+};
+
 function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error'; onClose: () => void }) {
   useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, [onClose]);
   return (
@@ -268,7 +287,7 @@ function OutOfOfficeDashboard({ records, loading, onAdd }: {
                 <TableRow sx={{ '& th': TH }}>
                   <TableCell sx={{ width: '14%' }}>Logged</TableCell>
                   <TableCell sx={{ width: '21%' }}>Person</TableCell>
-                  <TableCell sx={{ width: '17%' }}>Out of Office</TableCell>
+                  <TableCell sx={{ width: '20%' }}>Out of Office Date</TableCell>
                   <TableCell sx={{ width: '17%' }}>Reason</TableCell>
                   <TableCell sx={{ width: '11%' }}>Informed</TableCell>
                   <TableCell sx={{ width: '13%' }}>Approval</TableCell>
@@ -290,8 +309,8 @@ function OutOfOfficeDashboard({ records, loading, onAdd }: {
                       <Typography component="span" sx={{ ...ELLIPSIS, fontSize: 11, color: 'text.secondary' }}>{r.person.email}</Typography>
                     </TableCell>
                     <TableCell sx={TD}>
-                      <Typography component="span" sx={{ ...ELLIPSIS, fontSize: 12, fontWeight: 600 }}>{fmtDate(r.startDateTime)}</Typography>
-                      <Typography component="span" sx={{ ...ELLIPSIS, fontSize: 11, color: 'text.secondary' }}>{fmtTime24(r.startDateTime)} – {fmtUpTo(r.upToTime, r.upToDate)}</Typography>
+                      <Typography component="span" sx={{ ...ELLIPSIS, fontSize: 12, fontWeight: 600 }}>{fmtOooDateRange(r.startDateTime, r.upToDate)}</Typography>
+                      <Typography component="span" sx={{ ...ELLIPSIS, fontSize: 11, color: 'text.secondary' }}>{fmtTime24(r.startDateTime)} – {r.upToTime}</Typography>
                     </TableCell>
                     <TableCell sx={TD}>
                       <Typography component="span" sx={{ ...ELLIPSIS, fontSize: 12 }}>{r.reason}</Typography>

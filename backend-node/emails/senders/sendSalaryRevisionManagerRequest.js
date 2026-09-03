@@ -14,6 +14,7 @@ const salaryRevisionManagerRequestTemplate = require('../templates/salaryRevisio
 // doesn't match anyone in Onboarding), falls back to HR so the revision
 // doesn't silently go unnoticed.
 const HR_FALLBACK = process.env.HR_EMAIL || 'hr.manager@briskolive.com';
+const CC_LIST = [process.env.EMAIL_MANAGEMENT, HR_FALLBACK].filter(Boolean).join(',');
 
 // Mail 1 — call right after a revision enters 'pending_manager' (fresh
 // creation in POST /, or reopened after Management rejects a PIP in
@@ -80,7 +81,7 @@ async function sendSalaryRevisionManagerRequest(revision) {
     actionLink: buildSalaryRevisionActionLink(revision._id, 'manager'),
   });
 
-  await sendEmail({ to, cc: process.env.EMAIL_MANAGEMENT, subject, html });
+  await sendEmail({ to, cc: CC_LIST, subject, html });
 }
 
 module.exports = sendSalaryRevisionManagerRequest;
