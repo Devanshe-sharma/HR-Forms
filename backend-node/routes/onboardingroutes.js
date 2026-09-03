@@ -11,6 +11,7 @@ const { triggerNewOnboarding, triggerUpdateOnboarding } = require("../emails");
 const Employee = require('../models/Employee');
 const { syncUserEmailOnChange, syncEmployeeEmailOnChange } = require('../utils/syncUserEmail');
 const { getEmployeeMasterList } = require('../utils/employeeMaster');
+const { authenticate } = require('../middleware/authenticate');
 
 const router = express.Router();
 
@@ -577,7 +578,18 @@ router.get("/employee-letters-source", async (req, res) => {
   }
 });
 
-router.get("/eligible-employees", async (req, res) => {
+// Returns salary/contact data for every active employee, so it now
+// requires login (previously reachable with no token at all). scope=mine
+// additionally narrows the result to only employees who list the caller
+// as their reporting head — opt-in via the query param, and only ever
+// applied for the Manager role, so the 9+ other pages that already call
+// this endpoint (Attendance, Escalations, Recruitment forms, Onboarding,
+// Confirmations, etc.) keep their existing unfiltered behaviour exactly as
+// before unless they're deliberately updated to pass it. Added specifically
+// because the Salary Revision dashboard was showing every employee's name
+// to a logged-in Manager, even though the revision data itself was already
+// correctly scoped — see routes/salaryRevisions.js.
+router.get("/eligible-employees", authenticate, async (req, res) => {
   try {
     const docs = await Onboarding.find({ joiningStatus: "Joined" })
       .select(
@@ -588,7 +600,21 @@ router.get("/eligible-employees", async (req, res) => {
       )
       .lean();
 
-    const activeDocs = docs.filter((d) => !EXITED_STATUS_VALUES.has(d.exitStatus || ""));
+    let activeDocs = docs.filter((d) => !EXITED_STATUS_VALUES.has(d.exitStatus || ""));
+
+    if (req.query.scope === 'mine' && req.user?.role === 'Manager') {
+      // req.user.name (from the login) is not reliable here — checked
+      // directly against real accounts, both existing Manager logins have
+      // a shorter/casual name ("Tanisha") than their own Onboarding
+      // record's full name ("Tanisha Sharma"), which is what actually
+      // appears in reportingHead on other employees' records. Resolve
+      // through email instead, which does line up.
+      const ownRecord = req.user.email
+        ? await Onboarding.findOne({ $or: [{ officialEmail: req.user.email }, { persEmail: req.user.email }] }).select('name').lean()
+        : null;
+      const managerName = (ownRecord?.name || req.user.name || '').trim().toLowerCase();
+      activeDocs = activeDocs.filter((d) => (d.reportingHead || '').trim().toLowerCase() === managerName);
+    }
 
     const employees = activeDocs.map((d) => ({
       _id: String(d._id),

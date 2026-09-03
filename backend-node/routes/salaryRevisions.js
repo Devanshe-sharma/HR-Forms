@@ -22,17 +22,32 @@ const { requireRole } = require('../config/roles');
 // access for a manager/management filling in a decision straight from an
 // email, who may never log into the dashboard at all — see below).
 // Admin/HR/Management see everything; Manager sees only revisions for
-// employees who list them as the reporting manager, checked via
-// isManagerOfRevision() rather than any broader role grant.
+// employees who list them as the reporting manager.
 const FULL_ACCESS_ROLES = ['Admin', 'HR', 'Management'];
 
-function isManagerOfRevision(revision, user) {
-  const name = (user?.name || '').trim().toLowerCase();
-  if (!name) return false;
+// The logged-in user's own User.name is NOT reliable for this comparison —
+// checked directly against real accounts and both existing Manager users
+// have a shorter/casual User.name ("Tanisha", "Shivharsh") than their full
+// name on their own Onboarding record ("Tanisha Sharma", "Shivharsh
+// Dubey"), which is what actually appears in reportingHead on OTHER
+// employees' records. Email is the one identifier guaranteed to line up
+// between the login and the Onboarding record, so resolve the manager's
+// real full name through that first, once per request, rather than
+// trusting req.user.name.
+async function resolveOwnFullName(user) {
+  if (!user?.email) return (user?.name || '').trim().toLowerCase();
+  const employee = await Onboarding.findOne({
+    $or: [{ officialEmail: user.email }, { persEmail: user.email }],
+  }).select('name').lean();
+  return (employee?.name || user.name || '').trim().toLowerCase();
+}
+
+function isManagerOfRevision(revision, resolvedManagerName) {
+  if (!resolvedManagerName) return false;
   return [revision.previousReportingHead, revision.newReportingHead]
     .filter(Boolean)
     .map((n) => n.trim().toLowerCase())
-    .includes(name);
+    .includes(resolvedManagerName);
 }
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -124,9 +139,11 @@ function applyManagementDecision(revision, { reason, finalPct, pipApproved }) {
 
 router.get('/', authenticate, requireRole([...FULL_ACCESS_ROLES, 'Manager']), asyncHandler(async (req, res) => {
   const revisions = await SalaryRevision.find().sort({ createdAt: -1 });
-  const visible = req.role === 'Manager'
-    ? revisions.filter((r) => isManagerOfRevision(r, req.user))
-    : revisions;
+  let visible = revisions;
+  if (req.role === 'Manager') {
+    const managerName = await resolveOwnFullName(req.user);
+    visible = revisions.filter((r) => isManagerOfRevision(r, managerName));
+  }
   res.status(200).json(visible);
 }));
 
@@ -353,8 +370,11 @@ router.get('/history/:employeeCode', authenticate, requireRole([...FULL_ACCESS_R
   const revisions = await SalaryRevision.find({ employeeCode: req.params.employeeCode })
     .sort({ createdAt: -1 });
 
-  if (req.role === 'Manager' && !revisions.some((r) => isManagerOfRevision(r, req.user))) {
-    return res.status(403).json({ success: false, message: 'Insufficient permissions' });
+  if (req.role === 'Manager') {
+    const managerName = await resolveOwnFullName(req.user);
+    if (!revisions.some((r) => isManagerOfRevision(r, managerName))) {
+      return res.status(403).json({ success: false, message: 'Insufficient permissions' });
+    }
   }
 
   res.status(200).json({ success: true, data: revisions });
@@ -367,8 +387,11 @@ router.get('/:id', authenticate, requireRole([...FULL_ACCESS_ROLES, 'Manager']),
   if (!revision) {
     return res.status(404).json({ success: false, message: 'Salary revision not found' });
   }
-  if (req.role === 'Manager' && !isManagerOfRevision(revision, req.user)) {
-    return res.status(403).json({ success: false, message: 'Insufficient permissions' });
+  if (req.role === 'Manager') {
+    const managerName = await resolveOwnFullName(req.user);
+    if (!isManagerOfRevision(revision, managerName)) {
+      return res.status(403).json({ success: false, message: 'Insufficient permissions' });
+    }
   }
   res.status(200).json({ success: true, data: revision });
 }));
@@ -620,8 +643,11 @@ router.put('/:id/manager', authenticate, requireRole([...FULL_ACCESS_ROLES, 'Man
     return res.status(404).json({ success: false, message: 'Salary revision not found' });
   }
 
-  if (req.role === 'Manager' && !isManagerOfRevision(revision, req.user)) {
-    return res.status(403).json({ success: false, message: 'Insufficient permissions' });
+  if (req.role === 'Manager') {
+    const managerName = await resolveOwnFullName(req.user);
+    if (!isManagerOfRevision(revision, managerName)) {
+      return res.status(403).json({ success: false, message: 'Insufficient permissions' });
+    }
   }
 
   if (revision.stage !== 'pending_manager') {

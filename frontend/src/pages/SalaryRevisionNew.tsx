@@ -2787,7 +2787,10 @@ export default function SalaryRevisionPage() {
   const loadData=useCallback(async()=>{
     try {
       setLoading(true);
-      const [rRes,eRes]=await Promise.all([axios.get(API),axios.get(EMP_API)]);
+      // scope=mine narrows the employee roster to the caller's own reports
+      // when they're logged in as Manager — no effect for other roles, see
+      // the eligible-employees route for why.
+      const [rRes,eRes]=await Promise.all([axios.get(API),axios.get(`${EMP_API}?scope=mine`)]);
       const rData=Array.isArray(rRes.data)?rRes.data:rRes.data?.data||[];
       const eData=Array.isArray(eRes.data)?eRes.data:eRes.data?.data||[];
       setRecords(rData);
