@@ -23,6 +23,7 @@ function salaryRevisionFinalEscalationTemplate({
     <p>Dear Senior Manager / Department Head,</p>
     <p>The salary revision recommendation for the following employee remains pending despite a reminder sent to the Reporting Manager.</p>
 
+    <p style="font-weight:bold; margin-bottom:4px;">Employee Details</p>
     <table style="border-collapse:collapse; font-family:Arial,sans-serif; font-size:13px; margin:12px 0;">
       ${detailRow('Employee Name', employeeName)}
       ${detailRow('Department', department || '-')}

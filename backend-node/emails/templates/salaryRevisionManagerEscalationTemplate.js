@@ -14,7 +14,7 @@ function detailRow(label, value) {
 // 'pending_manager' with no managerDecision.submittedAt, N days after the
 // original request (see SALARY_REVISION_ESCALATION_DAYS in the sender).
 function salaryRevisionManagerEscalationTemplate({
-  managerName, employeeName, department, designation, currentCtc, dueDate, actionLink,
+  managerName, employeeName, department, designation, joiningDate, currentCtc, dueDate, actionLink,
 }) {
   const subject = `Escalation: Pending Increment Review – ${employeeName}`;
 
@@ -22,15 +22,17 @@ function salaryRevisionManagerEscalationTemplate({
     <p>Dear ${managerName || 'Manager'},</p>
     <p>This is a gentle reminder that your salary revision recommendation for the following employee is still pending.</p>
 
+    <p style="font-weight:bold; margin-bottom:4px;">Employee Details</p>
     <table style="border-collapse:collapse; font-family:Arial,sans-serif; font-size:13px; margin:12px 0;">
       ${detailRow('Employee Name', employeeName)}
       ${detailRow('Department', department || '-')}
       ${detailRow('Designation', designation || '-')}
+      ${detailRow('Date of Joining', dateToDD_MMM_YY(joiningDate))}
       ${detailRow('Current CTC', `₹${Number(currentCtc || 0).toLocaleString('en-IN')}`)}
       ${detailRow('Recommendation Due Date', dateToDD_MMM_YY(dueDate))}
     </table>
 
-    <p>Kindly review the employee's performance and submit your recommendation at the earliest, using the button below, to ensure timely completion of the salary revision process.</p>
+    <p>Kindly review the employee's performance and submit your recommendation by <b>${dateToDD_MMM_YY(dueDate)}</b>, using the button below, to ensure timely completion of the salary revision process.</p>
     ${actionButton(actionLink, 'Submit Recommendation')}
     <p>If you have already submitted your recommendation, please disregard this email.</p>
     <p>Thank you for your cooperation.</p>

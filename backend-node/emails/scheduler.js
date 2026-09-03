@@ -14,11 +14,14 @@ const sendDailyApplicantSummary = require('./senders/sendDailyApplicantSummary')
 const sendWeeklyRecruitmentSummary = require('./senders/sendWeeklyRecruitmentSummary');
 const sendWeeklyOnboardingSummary = require('./senders/sendWeeklyOnboardingSummary');
 const sendSalaryRevisionDue = require('./senders/sendSalaryRevisionDue');
+const sendSalaryRevisionAutoTrigger = require('./senders/sendSalaryRevisionAutoTrigger');
 const sendSalaryRevisionManagerEscalation = require('./senders/sendSalaryRevisionManagerEscalation');
 const sendSalaryRevisionFinalEscalation   = require('./senders/sendSalaryRevisionFinalEscalation');
 
 // Import models for auto-archive/complete
 const Outing = require('../models/Outing');
+const SalaryRevision = require('../models/SalaryRevision');
+const { rescoreSalaryRevision } = require('../utils/salaryRevisionScoring');
 
 function startEmailScheduler() {
   const tz = 'Asia/Kolkata';
@@ -148,8 +151,7 @@ function startEmailScheduler() {
 
   // 9d. Salary Revision — employees due this fiscal quarter, for
   // Management. Fires on the 1st of each fiscal-quarter start month
-  // (Apr/Jul/Oct/Jan). TEMPORARY: routed to the developer only (see
-  // sendSalaryRevisionDue.js) until the real send to Management is approved.
+  // (Apr/Jul/Oct/Jan).
   cron.schedule('0 9 1 4,7,10,1 *', async () => {
     console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending salary revision due-this-quarter digest`);
     try {
@@ -160,10 +162,24 @@ function startEmailScheduler() {
     }
   }, { timezone: tz });
 
-  // 9e. Salary Revision — manager-recommendation escalation chain. Daily
+  // 9e. Salary Revision — auto-create + Mail 1 for anyone whose Reminder
+  // Date (due date minus 1 month) lands in the current calendar month.
+  // Runs before the escalation checks below so a same-day auto-created
+  // revision is never immediately flagged as escalation-worthy.
+  cron.schedule('45 8 * * *', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Checking for salary revisions due this month`);
+    try {
+      const result = await sendSalaryRevisionAutoTrigger();
+      console.log(`Salary revision auto-trigger — ${result.createdCount} revision(s) created: ${result.createdFor.join(', ') || '(none)'}`);
+      if (result.failures.length) console.error('Salary revision auto-trigger failures:', result.failures);
+    } catch (err) {
+      console.error('Salary revision auto-trigger failed:', err);
+    }
+  }, { timezone: tz });
+
+  // 9f. Salary Revision — manager-recommendation escalation chain. Daily
   // check for revisions still 'pending_manager' past the response window
   // (Mail 5), and a further check for the final escalation (Mail 6).
-  // TEMPORARY: routed to the developer only, same as 9d above.
   cron.schedule('0 9 * * *', async () => {
     console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Checking salary revision manager escalations`);
     try {
@@ -181,6 +197,23 @@ function startEmailScheduler() {
       console.log(`Salary revision final escalation sent — ${result.escalatedCount} revision(s)`);
     } catch (err) {
       console.error('Salary revision final escalation failed:', err);
+    }
+  }, { timezone: tz });
+
+  // 9g. Salary Revision — daily re-score sweep. A task's score/status can
+  // go stale purely from time passing (a plan date slipping into Overdue)
+  // with no route ever being hit — this keeps every open revision's FMS
+  // score current regardless of whether anyone actually acted that day.
+  cron.schedule('30 9 * * *', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Re-scoring open salary revisions`);
+    try {
+      const open = await SalaryRevision.find({ fmsStatus: 'Open' }).select('_id');
+      for (const { _id } of open) {
+        await rescoreSalaryRevision(_id);
+      }
+      console.log(`Salary revision re-score sweep — ${open.length} open revision(s) checked`);
+    } catch (err) {
+      console.error('Salary revision re-score sweep failed:', err);
     }
   }, { timezone: tz });
 

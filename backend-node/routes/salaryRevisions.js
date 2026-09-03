@@ -9,9 +9,31 @@ const sendSalaryRevisionManagerRequest      = require('../emails/senders/sendSal
 const sendSalaryRevisionManagementApproval  = require('../emails/senders/sendSalaryRevisionManagementApproval');
 const sendSalaryRevisionEmployeeConfirmation = require('../emails/senders/sendSalaryRevisionEmployeeConfirmation');
 const sendSalaryRevisionPipHold             = require('../emails/senders/sendSalaryRevisionPipHold');
+const sendSalaryRevisionHrNotify            = require('../emails/senders/sendSalaryRevisionHrNotify');
 const resolveManagerContact = require('../utils/resolveManagerContact');
 const { verifySalaryRevisionAction } = require('../utils/salaryRevisionMailSigning');
 const isPpoConversion = require('../utils/isPpoConversion');
+const { scoreSalaryRevision } = require('../utils/salaryRevisionScoring');
+const { authenticate } = require('../middleware/authenticate');
+const { requireRole } = require('../config/roles');
+
+// Salary data (CTC, remarks, PIP details) is sensitive — every route below
+// requires login, except the two public /mail-action routes (signed-link
+// access for a manager/management filling in a decision straight from an
+// email, who may never log into the dashboard at all — see below).
+// Admin/HR/Management see everything; Manager sees only revisions for
+// employees who list them as the reporting manager, checked via
+// isManagerOfRevision() rather than any broader role grant.
+const FULL_ACCESS_ROLES = ['Admin', 'HR', 'Management'];
+
+function isManagerOfRevision(revision, user) {
+  const name = (user?.name || '').trim().toLowerCase();
+  if (!name) return false;
+  return [revision.previousReportingHead, revision.newReportingHead]
+    .filter(Boolean)
+    .map((n) => n.trim().toLowerCase())
+    .includes(name);
+}
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
@@ -41,6 +63,22 @@ function applyManagerDecision(revision, { decision, reason, recommendedPct, pipD
   revision.stage = 'pending_management';
   if (decision === 'pip' && pipNewDueDate) revision.reviewDate = new Date(pipNewDueDate);
   return null;
+}
+
+// Recomputes and assigns the FMS-style score fields onto an in-memory
+// revision — call right before every save() so the persisted document is
+// never stale. See utils/salaryRevisionScoring.js for the actual formula.
+function applyScore(revision) {
+  const scored = scoreSalaryRevision(revision);
+  revision.checklistTasks = scored.checklistTasks;
+  revision.totalTasks     = scored.totalTasks;
+  revision.doneInTime     = scored.doneInTime;
+  revision.doneButDelayed = scored.doneButDelayed;
+  revision.tasksOverdue   = scored.tasksOverdue;
+  revision.tasksDue       = scored.tasksDue;
+  revision.notYetDue      = scored.notYetDue;
+  revision.fmsScore       = scored.fmsScore;
+  revision.fmsStatus      = scored.fmsStatus;
 }
 
 function applyManagementDecision(revision, { reason, finalPct, pipApproved }) {
@@ -84,9 +122,12 @@ function applyManagementDecision(revision, { reason, finalPct, pipApproved }) {
 // revision ever made (history included) — the frontend picks out the latest
 // one per employee for the dashboard table and treats the rest as history.
 
-router.get('/', asyncHandler(async (req, res) => {
+router.get('/', authenticate, requireRole([...FULL_ACCESS_ROLES, 'Manager']), asyncHandler(async (req, res) => {
   const revisions = await SalaryRevision.find().sort({ createdAt: -1 });
-  res.status(200).json(revisions);
+  const visible = req.role === 'Manager'
+    ? revisions.filter((r) => isManagerOfRevision(r, req.user))
+    : revisions;
+  res.status(200).json(visible);
 }));
 
 // ─── GET /api/salary-revisions/analytics/increments ──────────────────────────
@@ -106,7 +147,7 @@ router.get('/', asyncHandler(async (req, res) => {
 
 const MAX_ANALYTIC_INCREMENT = 50;
 
-router.get('/analytics/increments', asyncHandler(async (req, res) => {
+router.get('/analytics/increments', authenticate, requireRole(FULL_ACCESS_ROLES), asyncHandler(async (req, res) => {
   const raw = await SalaryRevision.find({
     stage: 'completed',
   }, 'employeeName employeeCode department designation finalIncrementPct applicableDate createdAt categoryChanged previousCategory newCategory').lean();
@@ -214,7 +255,7 @@ router.get('/analytics/increments', asyncHandler(async (req, res) => {
 // those need a human to correct via the Edit dialog or PIP close-out.
 const EXITED_STATUS_VALUES = new Set(['Left', 'Already Left']);
 
-router.get('/analytics/pip', asyncHandler(async (req, res) => {
+router.get('/analytics/pip', authenticate, requireRole(FULL_ACCESS_ROLES), asyncHandler(async (req, res) => {
   const year = parseInt(req.query.year, 10) || fiscalYearOf(new Date());
 
   // No employeeName in the projection — this endpoint is aggregate-only,
@@ -308,23 +349,31 @@ router.get('/analytics/pip', asyncHandler(async (req, res) => {
 // All revisions for one employee, newest first — used to show past history
 // separately from whichever one is currently driving the dashboard.
 
-router.get('/history/:employeeCode', asyncHandler(async (req, res) => {
+router.get('/history/:employeeCode', authenticate, requireRole([...FULL_ACCESS_ROLES, 'Manager']), asyncHandler(async (req, res) => {
   const revisions = await SalaryRevision.find({ employeeCode: req.params.employeeCode })
     .sort({ createdAt: -1 });
+
+  if (req.role === 'Manager' && !revisions.some((r) => isManagerOfRevision(r, req.user))) {
+    return res.status(403).json({ success: false, message: 'Insufficient permissions' });
+  }
+
   res.status(200).json({ success: true, data: revisions });
 }));
 
 // ─── GET /api/salary-revisions/:id ───────────────────────────────────────────
 
-router.get('/:id', asyncHandler(async (req, res) => {
+router.get('/:id', authenticate, requireRole([...FULL_ACCESS_ROLES, 'Manager']), asyncHandler(async (req, res) => {
   const revision = await SalaryRevision.findById(req.params.id);
   if (!revision) {
     return res.status(404).json({ success: false, message: 'Salary revision not found' });
   }
+  if (req.role === 'Manager' && !isManagerOfRevision(revision, req.user)) {
+    return res.status(403).json({ success: false, message: 'Insufficient permissions' });
+  }
   res.status(200).json({ success: true, data: revision });
 }));
 
-router.put('/:id', asyncHandler(async (req, res) => {
+router.put('/:id', authenticate, requireRole(FULL_ACCESS_ROLES), asyncHandler(async (req, res) => {
   const {
     applicableDate,
     previousCtc,
@@ -418,6 +467,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
   }
 
   revision.updatedBy = caller(req);
+  applyScore(revision);
   await revision.save();
 
   res.status(200).json({ success: true, data: revision, message: 'Revision updated successfully' });
@@ -437,7 +487,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
 // a category change" apart from "this revision was just created with
 // whatever category the employee already had."
 
-router.post('/', asyncHandler(async (req, res) => {
+router.post('/', authenticate, requireRole(['Admin', 'HR']), asyncHandler(async (req, res) => {
   const {
     onboardingId,
     employeeCode,
@@ -518,6 +568,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
   try {
     const revision = new SalaryRevision(docData);
+    applyScore(revision);
     await revision.save();
 
     // Fire-and-forget — a mail failure must never fail the revision
@@ -550,7 +601,7 @@ router.post('/', asyncHandler(async (req, res) => {
 // against previousCategory (fixed at creation, never touched again), and
 // only set categoryChanged/newCategory if it's genuinely different.
 
-router.put('/:id/manager', asyncHandler(async (req, res) => {
+router.put('/:id/manager', authenticate, requireRole([...FULL_ACCESS_ROLES, 'Manager']), asyncHandler(async (req, res) => {
   const {
     decision,
     reason,
@@ -567,6 +618,10 @@ router.put('/:id/manager', asyncHandler(async (req, res) => {
   const revision = await SalaryRevision.findById(req.params.id);
   if (!revision) {
     return res.status(404).json({ success: false, message: 'Salary revision not found' });
+  }
+
+  if (req.role === 'Manager' && !isManagerOfRevision(revision, req.user)) {
+    return res.status(403).json({ success: false, message: 'Insufficient permissions' });
   }
 
   if (revision.stage !== 'pending_manager') {
@@ -610,6 +665,7 @@ router.put('/:id/manager', asyncHandler(async (req, res) => {
   if (decisionError) return res.status(400).json({ success: false, message: decisionError });
 
   revision.updatedBy = caller(req);
+  applyScore(revision);
   await revision.save();
 
   sendSalaryRevisionManagementApproval(revision).catch((e) =>
@@ -620,7 +676,7 @@ router.put('/:id/manager', asyncHandler(async (req, res) => {
 
 // ─── PUT /api/salary-revisions/:id/management ────────────────────────────────
 
-router.put('/:id/management', asyncHandler(async (req, res) => {
+router.put('/:id/management', authenticate, requireRole(FULL_ACCESS_ROLES), asyncHandler(async (req, res) => {
   const { reason, finalPct, pipApproved } = req.body;
 
   const revision = await SalaryRevision.findById(req.params.id);
@@ -639,11 +695,18 @@ router.put('/:id/management', asyncHandler(async (req, res) => {
   if (decisionError) return res.status(400).json({ success: false, message: decisionError });
 
   revision.updatedBy = caller(req);
+  applyScore(revision);
   await revision.save();
 
   if (revision.stage === 'on_hold') {
     sendSalaryRevisionPipHold(revision).catch((e) =>
       console.error('[salary-revisions] PIP hold mail failed:', e.message));
+    sendSalaryRevisionHrNotify(revision).catch((e) =>
+      console.error('[salary-revisions] HR notify mail failed:', e.message));
+  } else if (revision.stage === 'pending_hr') {
+    // Both manager and management have now decided — HR's turn.
+    sendSalaryRevisionHrNotify(revision).catch((e) =>
+      console.error('[salary-revisions] HR notify mail failed:', e.message));
   } else if (revision.stage === 'pending_manager') {
     // PIP rejected — reopened back to the manager for a fresh recommendation.
     sendSalaryRevisionManagerRequest(revision).catch((e) =>
@@ -714,6 +777,7 @@ router.post('/:id/mail-action', asyncHandler(async (req, res) => {
     if (decisionError) return res.status(400).json({ success: false, message: decisionError });
 
     revision.updatedBy = 'Manager (via email)';
+    applyScore(revision);
     await revision.save();
 
     sendSalaryRevisionManagementApproval(revision).catch((e) =>
@@ -730,11 +794,17 @@ router.post('/:id/mail-action', asyncHandler(async (req, res) => {
   if (decisionError) return res.status(400).json({ success: false, message: decisionError });
 
   revision.updatedBy = 'Management (via email)';
+  applyScore(revision);
   await revision.save();
 
   if (revision.stage === 'on_hold') {
     sendSalaryRevisionPipHold(revision).catch((e) =>
       console.error('[salary-revisions] PIP hold mail failed:', e.message));
+    sendSalaryRevisionHrNotify(revision).catch((e) =>
+      console.error('[salary-revisions] HR notify mail failed:', e.message));
+  } else if (revision.stage === 'pending_hr') {
+    sendSalaryRevisionHrNotify(revision).catch((e) =>
+      console.error('[salary-revisions] HR notify mail failed:', e.message));
   } else if (revision.stage === 'pending_manager') {
     sendSalaryRevisionManagerRequest(revision).catch((e) =>
       console.error('[salary-revisions] manager re-request mail failed:', e.message));
@@ -748,7 +818,7 @@ router.post('/:id/mail-action', asyncHandler(async (req, res) => {
 // approved PIP off 'on_hold' — without this route it just sat open forever
 // with no record of whether the employee actually improved.
 
-router.put('/:id/pip-outcome', asyncHandler(async (req, res) => {
+router.put('/:id/pip-outcome', authenticate, requireRole(FULL_ACCESS_ROLES), asyncHandler(async (req, res) => {
   const { outcome, reason } = req.body;
 
   if (!['improved', 'not_improved'].includes(outcome)) {
@@ -773,6 +843,7 @@ router.put('/:id/pip-outcome', asyncHandler(async (req, res) => {
   revision.stage            = 'completed';
   revision.updatedBy        = caller(req);
 
+  applyScore(revision);
   await revision.save();
 
   res.status(200).json({ success: true, data: revision, message: 'PIP outcome recorded' });
@@ -788,7 +859,7 @@ router.put('/:id/pip-outcome', asyncHandler(async (req, res) => {
 // don't have their own explicit changed flag for THIS purpose — category
 // now has categoryChanged too, but Onboarding still gets the current
 // value unconditionally, same as CTC/applicable date).
-router.put('/:id/hr', asyncHandler(async (req, res) => {
+router.put('/:id/hr', authenticate, requireRole(['Admin', 'HR']), asyncHandler(async (req, res) => {
   const { notes, applicableDate, newCtc, newContractStartDate, newContractEndDate, fullTimeSince } = req.body;
 
   const revision = await SalaryRevision.findById(req.params.id);
@@ -828,6 +899,7 @@ router.put('/:id/hr', asyncHandler(async (req, res) => {
   revision.stage            = 'completed';
   revision.updatedBy        = caller(req);
 
+  applyScore(revision);
   await revision.save();
 
   // ─── Sync latest values back onto the Onboarding record ────────────────
@@ -882,7 +954,7 @@ router.put('/:id/hr', asyncHandler(async (req, res) => {
 
 // ─── DELETE /api/salary-revisions/:id ────────────────────────────────────────
 
-router.delete('/:id', asyncHandler(async (req, res) => {
+router.delete('/:id', authenticate, requireRole(['Admin', 'HR']), asyncHandler(async (req, res) => {
   const revision = await SalaryRevision.findByIdAndDelete(req.params.id);
   if (!revision) {
     return res.status(404).json({ success: false, message: 'Salary revision not found' });

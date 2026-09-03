@@ -12,7 +12,7 @@ const SalaryRevision = require('../models/SalaryRevision');
 const sendEmail = require('../emails/sendEmail');
 const resolveManagerContact = require('../utils/resolveManagerContact');
 const { fiscalYearOf, fiscalYearLabel } = require('../utils/fiscalQuarter');
-const { RESPONSE_DAYS, addDays } = require('../utils/salaryRevisionEscalation');
+const { MANAGER_WINDOW_DAYS, addDays } = require('../utils/salaryRevisionEscalation');
 
 const salaryRevisionManagerRequestTemplate     = require('../emails/templates/salaryRevisionManagerRequestTemplate');
 const salaryRevisionManagementApprovalTemplate = require('../emails/templates/salaryRevisionManagementApprovalTemplate');
@@ -56,7 +56,7 @@ async function main() {
       lastIncrementDate: priorCompleted?.applicableDate || null,
       lastIncrementPct: priorCompleted?.finalIncrementPct ?? null,
       fiscalYearLabel: fiscalYearLabel(fiscalYearOf(new Date())),
-      dueDate: addDays(pendingManager.managerRequestedAt || pendingManager.createdAt, RESPONSE_DAYS),
+      dueDate: addDays(pendingManager.managerRequestedAt || pendingManager.createdAt, MANAGER_WINDOW_DAYS),
     });
     await send('Mail 1 — Manager Request', subject, html);
 
@@ -66,8 +66,9 @@ async function main() {
       employeeName: pendingManager.employeeName,
       department: pendingManager.department,
       designation: pendingManager.designation,
+      joiningDate: pendingManager.joiningDate,
       currentCtc: pendingManager.previousCtc,
-      dueDate: addDays(pendingManager.managerRequestedAt || pendingManager.createdAt, RESPONSE_DAYS),
+      dueDate: addDays(pendingManager.managerRequestedAt || pendingManager.createdAt, MANAGER_WINDOW_DAYS),
     });
     await send('Mail 5 — Manager Escalation', escalation.subject, escalation.html);
 
@@ -76,7 +77,7 @@ async function main() {
       employeeName: pendingManager.employeeName,
       department: pendingManager.department,
       managerName: manager.name,
-      dueDate: addDays(pendingManager.managerRequestedAt || pendingManager.createdAt, RESPONSE_DAYS),
+      dueDate: addDays(pendingManager.managerRequestedAt || pendingManager.createdAt, MANAGER_WINDOW_DAYS),
       pendingDays: 25,
     });
     await send('Mail 6 — Final Escalation', finalEscalation.subject, finalEscalation.html);

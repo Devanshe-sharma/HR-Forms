@@ -17,27 +17,50 @@ function detailRow(label, value) {
 // the PDF mockup's own "log in to the Increment Portal" phrasing.
 function salaryRevisionManagerRequestTemplate({
   managerName, employeeName, department, designation, joiningDate,
-  currentCtc, lastIncrementDate, lastIncrementPct, ppoOfferedDate, fiscalYearLabel, dueDate, actionLink,
+  currentCtc, lastIncrementDate, lastIncrementPct,
+  ppoOfferedDate, ppoPreviousCtc, ppoNewCtc,
+  fiscalYearLabel, dueDate, actionLink,
 }) {
-  const subject = `Salary Revision Recommendation – ${employeeName} | FY ${fiscalYearLabel}`;
+  const subject = `Salary Revision Recommendation – ${employeeName} | ${fiscalYearLabel}`;
+
+  const ppoRows = ppoOfferedDate ? (
+    detailRow('PPO Offered On', dateToDD_MMM_YY(ppoOfferedDate))
+    + (ppoPreviousCtc != null ? detailRow('PPO Previous CTC (Stipend)', `₹${Number(ppoPreviousCtc).toLocaleString('en-IN')}`) : '')
+    + (ppoNewCtc != null ? detailRow('PPO Current CTC', `₹${Number(ppoNewCtc).toLocaleString('en-IN')}`) : '')
+  ) : '';
 
   const html = `
     <p>Dear ${managerName || 'Manager'},</p>
-    <p>This is to inform you that the annual performance review for <b>${employeeName}</b> is due, and as part of the annual salary revision process, kindly review the details below and provide your recommendation.</p>
+    <p>This is to inform you that as part of the annual salary revision process, kindly review the details of the below employee and provide your recommendation for salary revision.</p>
 
+    <p style="font-weight:bold; margin-bottom:4px;">Employee Details:</p>
     <table style="border-collapse:collapse; font-family:Arial,sans-serif; font-size:13px; margin:12px 0;">
       ${detailRow('Employee Name', employeeName)}
       ${detailRow('Department', department || '-')}
       ${detailRow('Designation', designation || '-')}
+      ${detailRow('Reporting Manager', managerName || '-')}
       ${detailRow('Date of Joining', dateToDD_MMM_YY(joiningDate))}
       ${detailRow('Current CTC', `₹${Number(currentCtc || 0).toLocaleString('en-IN')}`)}
       ${detailRow('Last Increment Date', lastIncrementDate ? dateToDD_MMM_YY(lastIncrementDate) : 'N/A')}
       ${detailRow('Last Increment %', lastIncrementPct != null ? `${lastIncrementPct}%` : 'N/A')}
-      ${ppoOfferedDate ? detailRow('PPO Offered On', dateToDD_MMM_YY(ppoOfferedDate)) : ''}
+      ${ppoRows}
     </table>
 
-    <p>Kindly review the employee's overall performance, contribution, skill development, discipline, ownership, and business impact, then submit your recommendation (increment % or PIP) on or before <b>${dateToDD_MMM_YY(dueDate)}</b> using the button below.</p>
+    <p>Kindly review the employee's overall performance, contribution, skill development, discipline, ownership, and business impact before submitting your recommendation.</p>
+
+    <p style="font-weight:bold; margin-bottom:4px;">Please provide the following:</p>
+    <ul style="margin:4px 0 16px; padding-left:20px;">
+      <li>Recommended Increment (%)</li>
+      <li>Recommended Revised CTC</li>
+      <li>Performance Rating (1-5)</li>
+      <li>Recommendation: Strongly Recommend / Recommend / Not Recommended</li>
+      <li>Manager's Remarks</li>
+    </ul>
+
+    <p>Please use the button below to submit the above.</p>
     ${actionButton(actionLink, 'Submit Recommendation')}
+
+    <p>Kindly submit your recommendation on or before <b>${dateToDD_MMM_YY(dueDate)}</b>.</p>
     <p>Your timely response will enable us to complete the salary revision process within the planned timeline.</p>
     ${signature()}
   `;

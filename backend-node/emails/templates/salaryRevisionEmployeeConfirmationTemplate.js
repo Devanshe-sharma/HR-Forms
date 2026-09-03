@@ -25,6 +25,7 @@ function salaryRevisionEmployeeConfirmationTemplate({
 
     <p style="font-weight:bold; margin-bottom:4px;">Salary Revision Details:</p>
     <table style="border-collapse:collapse; font-family:Arial,sans-serif; font-size:13px; margin:12px 0;">
+      ${detailRow('Employee Name', employeeName)}
       ${detailRow('Department', department || '-')}
       ${detailRow('Designation', designation || '-')}
       ${detailRow('Date of Joining', dateToDD_MMM_YY(joiningDate))}

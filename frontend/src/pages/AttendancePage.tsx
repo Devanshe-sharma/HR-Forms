@@ -45,6 +45,8 @@ interface OutOfOfficeRecord {
   ccEmployees: CcEmployee[];
   informedStatus: 'advance' | 'late_before_start' | 'late_after_start';
   informedLabel: string;
+  manager?: { name: string; email: string };
+  approval: { status: 'pending' | 'approved' | 'rejected'; reason?: string; decidedAt?: string };
   createdAt: string;
 }
 
@@ -62,6 +64,11 @@ const ELLIPSIS = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'no
 const informedColor = (s: OutOfOfficeRecord['informedStatus']) => (s === 'advance' ? '#2563eb' : '#dc2626');
 const informedShortLabel = (s: OutOfOfficeRecord['informedStatus']) =>
   s === 'advance' ? 'On time' : s === 'late_before_start' ? 'Late (<24h)' : 'Late (after start)';
+
+const approvalColor = (s: OutOfOfficeRecord['approval']['status']) =>
+  s === 'approved' ? '#16a34a' : s === 'rejected' ? '#dc2626' : '#d97706';
+const approvalLabel = (s: OutOfOfficeRecord['approval']['status']) =>
+  s === 'approved' ? 'Approved' : s === 'rejected' ? 'Rejected' : 'Pending';
 
 const fmtDate = (d?: string | Date | null) => {
   if (!d) return '—';
@@ -150,6 +157,16 @@ function OutOfOfficeDetailModal({ record, onClose }: { record: OutOfOfficeRecord
             <DetailRow label="Keep in Cc?" value={
               record.ccEmployees?.length ? record.ccEmployees.map(c => `${c.name} <${c.email}>`).join(', ') : '—'
             } />
+
+            <Divider sx={{ my: 1.5 }} />
+            <DetailRow label="Reporting Manager" value={record.manager?.name ? `${record.manager.name}${record.manager.email ? ` <${record.manager.email}>` : ''}` : '—'} />
+            <DetailRow label="Manager Approval" value={
+              <Chip size="small" label={approvalLabel(record.approval.status)} sx={{ fontSize: 11, height: 'auto', py: 0.5,
+                bgcolor: '#f8fafc', color: approvalColor(record.approval.status), border: `1px solid ${approvalColor(record.approval.status)}30` }} />
+            } />
+            {record.approval.status === 'rejected' && record.approval.reason && (
+              <DetailRow label="Rejection Reason" value={record.approval.reason} />
+            )}
           </>
         )}
       </Box>
@@ -249,17 +266,18 @@ function OutOfOfficeDashboard({ records, loading, onAdd }: {
             <Table size="small" stickyHeader sx={{ tableLayout: 'fixed', width: '100%' }}>
               <TableHead>
                 <TableRow sx={{ '& th': TH }}>
-                  <TableCell sx={{ width: '16%' }}>Logged</TableCell>
-                  <TableCell sx={{ width: '24%' }}>Person</TableCell>
-                  <TableCell sx={{ width: '20%' }}>Out of Office</TableCell>
-                  <TableCell sx={{ width: '20%' }}>Reason</TableCell>
-                  <TableCell sx={{ width: '12%' }}>Informed</TableCell>
-                  <TableCell sx={{ width: '8%' }}>Cc</TableCell>
+                  <TableCell sx={{ width: '14%' }}>Logged</TableCell>
+                  <TableCell sx={{ width: '21%' }}>Person</TableCell>
+                  <TableCell sx={{ width: '17%' }}>Out of Office</TableCell>
+                  <TableCell sx={{ width: '17%' }}>Reason</TableCell>
+                  <TableCell sx={{ width: '11%' }}>Informed</TableCell>
+                  <TableCell sx={{ width: '13%' }}>Approval</TableCell>
+                  <TableCell sx={{ width: '7%' }}>Cc</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {filteredRecords.length === 0 && (
-                  <TableRow><TableCell colSpan={6} align="center" sx={{ py: 6, color: 'text.secondary', fontSize: 13 }}>
+                  <TableRow><TableCell colSpan={7} align="center" sx={{ py: 6, color: 'text.secondary', fontSize: 13 }}>
                     {records.length === 0 ? 'No out-of-office records logged yet' : 'No records match the current filters'}
                   </TableCell></TableRow>
                 )}
@@ -280,6 +298,9 @@ function OutOfOfficeDashboard({ records, loading, onAdd }: {
                     </TableCell>
                     <TableCell sx={TD}>
                       <Chip size="small" label={informedShortLabel(r.informedStatus)} sx={{ fontSize: 10, height: 20, bgcolor: '#f8fafc', color: informedColor(r.informedStatus), border: `1px solid ${informedColor(r.informedStatus)}30` }} />
+                    </TableCell>
+                    <TableCell sx={TD}>
+                      <Chip size="small" label={approvalLabel(r.approval.status)} sx={{ fontSize: 10, height: 20, bgcolor: '#f8fafc', color: approvalColor(r.approval.status), border: `1px solid ${approvalColor(r.approval.status)}30` }} />
                     </TableCell>
                     <TableCell sx={TD}>
                       <Typography fontSize={12}>{r.ccEmployees?.length || '—'}</Typography>

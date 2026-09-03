@@ -21,6 +21,19 @@ const managementDecisionSchema = new mongoose.Schema({
   submittedAt : { type: Date,    default: null },
 }, { _id: false });
 
+// One entry per workflow step (Manager Recommendation / Management
+// Decision / Final Closure) — mirrors the FMS checklist-task pattern
+// already used by HiringRequisition/Onboarding/Exit (plan/done/score/
+// status/daysLeft per task), computed by utils/salaryRevisionScoring.js.
+const checklistTaskSchema = new mongoose.Schema({
+  task:     { type: String, required: true },
+  plan:     { type: Date,   default: null },
+  done:     { type: Date,   default: null },
+  score:    { type: Number, default: null },
+  status:   { type: String, default: '' },
+  daysLeft: { type: Number, default: null },
+}, { _id: false });
+
 const hrDecisionSchema = new mongoose.Schema({
   newCtc        : { type: Number, default: null },
   applicableDate: { type: Date,   default: null },
@@ -133,6 +146,19 @@ const salaryRevisionSchema = new mongoose.Schema({
   pipOutcomeReason: { type: String, default: '' },
   pipOutcomeDate  : { type: Date,   default: null },
 
+  // FMS-style scoring — see utils/salaryRevisionScoring.js. Recomputed
+  // (rescoreSalaryRevision) after every stage transition, same convention
+  // as HiringRequisition's rescoreAndSave.
+  checklistTasks: { type: [checklistTaskSchema], default: [] },
+  fmsScore      : { type: Number, default: 0 },
+  fmsStatus     : { type: String, enum: ['Open', 'Closed'], default: 'Open' },
+  totalTasks    : { type: Number, default: 0 },
+  doneInTime    : { type: Number, default: 0 },
+  doneButDelayed: { type: Number, default: 0 },
+  tasksOverdue  : { type: Number, default: 0 },
+  tasksDue      : { type: Number, default: 0 },
+  notYetDue     : { type: Number, default: 0 },
+
   // Audit — support BOTH old (created_by) and new (createdBy) names
   created_by: { type: String, default: 'System' },
   createdBy  : { type: String, default: 'System' },
@@ -143,5 +169,6 @@ const salaryRevisionSchema = new mongoose.Schema({
 
 salaryRevisionSchema.index({ employeeCode: 1, createdAt: -1 });
 salaryRevisionSchema.index({ stage: 1 });
+salaryRevisionSchema.index({ fmsStatus: 1 });
 
 module.exports = mongoose.model('SalaryRevision', salaryRevisionSchema);

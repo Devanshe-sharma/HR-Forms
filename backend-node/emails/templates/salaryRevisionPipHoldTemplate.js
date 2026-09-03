@@ -25,6 +25,7 @@ function salaryRevisionPipHoldTemplate({
     <p>Based on the review, it has been decided that your salary revision will <b>remain on hold</b> at this time while you continue under the Performance Improvement Plan (PIP).</p>
 
     <table style="border-collapse:collapse; font-family:Arial,sans-serif; font-size:13px; margin:12px 0;">
+      ${detailRow('Employee Name', employeeName)}
       ${detailRow('Department', department || '-')}
       ${detailRow('Designation', designation || '-')}
       ${detailRow('Date of Joining', dateToDD_MMM_YY(joiningDate))}

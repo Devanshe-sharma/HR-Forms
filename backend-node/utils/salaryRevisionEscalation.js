@@ -1,22 +1,34 @@
-// Day thresholds for the manager-recommendation escalation chain. The
-// source spec (Salary Revision_Mockup.pdf) gives two different timelines
-// in different places (30/10 days vs. -3/0/+2/+5) that don't agree with
-// each other — these are a reasonable reconciliation, not a verbatim copy
-// of either. Adjust here if the business wants different day counts; every
-// sender/route reads from this single place.
+// Day thresholds for the manager -> management -> HR chain. Specified
+// directly by the user on 2026-09-03 (superseding the earlier
+// reconciliation of the PDF mockup's conflicting timelines):
+//
+//   Reminder Date (day 0) -> Mail 1 to manager
+//   day 8  -> Mail 5 (Manager Escalation) — a nudge BEFORE the deadline,
+//             not after
+//   day 10 -> manager's window closes; if still nothing, Mail 6 (Final
+//             Escalation, to HR Head)
+//   Management then gets its own 10-day window from managerDecision.submittedAt
+//   HR then gets its own 10-day window from managementDecision.submittedAt
+//
+// Every sender/route/the scoring module reads from this single place.
 
-// How many days a manager is given to submit a recommendation before it's
-// considered "due" — shown to the manager in Mail 1, and is the anchor
-// Mail 5/6's day counts below are measured from.
-const RESPONSE_DAYS = 15;
+const MANAGER_WINDOW_DAYS = 10;
+// Mail 5 fires this many days BEFORE the manager's deadline (day 8 = day
+// 10 minus day 2) — a proactive nudge, not a post-deadline scold.
+const MANAGER_ESCALATION_LEAD_DAYS = 2;
+const MANAGEMENT_WINDOW_DAYS = 10;
+const HR_WINDOW_DAYS = 10;
+// Measured from the same anchor as MANAGER_WINDOW_DAYS — fires once the
+// manager's own window has fully expired with still no decision.
+const FINAL_ESCALATION_DAYS = 10;
 
-// Mail 5 — nudge the same reporting manager once this many days have
-// passed since the revision entered 'pending_manager' with no decision yet.
-const MANAGER_ESCALATION_DAYS = 15;
-
-// Mail 6 — escalate up to a senior manager/department head once this many
-// days have passed with still no manager decision.
-const FINAL_ESCALATION_DAYS = 25;
+// Only revisions requested on/after this date are eligible for the
+// escalation chain (Mail 5/6). Everything created before this was
+// pre-existing test/legacy data never actually being tracked as "in
+// process" — escalating a manager or HR Head about a months-old backlog
+// they were never told to expect would be confusing, not helpful. Per
+// explicit instruction 2026-09-03: only Sep 2026 onwards counts.
+const ESCALATION_ELIGIBLE_FROM = new Date(2026, 8, 1);
 
 function addDays(date, days) {
   const d = new Date(date);
@@ -24,4 +36,12 @@ function addDays(date, days) {
   return d;
 }
 
-module.exports = { RESPONSE_DAYS, MANAGER_ESCALATION_DAYS, FINAL_ESCALATION_DAYS, addDays };
+module.exports = {
+  MANAGER_WINDOW_DAYS,
+  MANAGER_ESCALATION_LEAD_DAYS,
+  MANAGEMENT_WINDOW_DAYS,
+  HR_WINDOW_DAYS,
+  FINAL_ESCALATION_DAYS,
+  ESCALATION_ELIGIBLE_FROM,
+  addDays,
+};

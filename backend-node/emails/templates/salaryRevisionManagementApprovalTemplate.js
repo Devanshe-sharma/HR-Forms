@@ -10,6 +10,13 @@ function detailRow(label, value) {
     </tr>`;
 }
 
+function sectionHeaderRow(label) {
+  return `
+    <tr>
+      <td colspan="2" style="border:1px solid #e2e8f0; padding:6px 10px; background:#eef2f7; font-weight:bold;">${label}</td>
+    </tr>`;
+}
+
 // Mail 2 — sent to Management the moment the manager's decision is
 // submitted (stage -> 'pending_management'). Recommendation is either an
 // increment % or a PIP + duration — never both, per managerDecision's
@@ -21,7 +28,8 @@ function salaryRevisionManagementApprovalTemplate({
   const isPip = managerDecision?.decision === 'pip';
 
   const recommendationRows = isPip
-    ? detailRow('PIP Duration', managerDecision.pipDurationMonths ? `${managerDecision.pipDurationMonths} month(s)` : '-')
+    ? detailRow('Recommendation', 'Place on PIP')
+      + detailRow('PIP Duration', managerDecision.pipDurationMonths ? `${managerDecision.pipDurationMonths} month(s)` : '-')
       + detailRow('Proposed Review Date', managerDecision.pipNewDueDate ? dateToDD_MMM_YY(managerDecision.pipNewDueDate) : '-')
     : detailRow('Recommended Increment', managerDecision?.recommendedPct != null ? `${managerDecision.recommendedPct}%` : '-')
       + detailRow('Proposed Revised CTC', managerDecision?.recommendedPct != null
@@ -32,20 +40,22 @@ function salaryRevisionManagementApprovalTemplate({
 
   const html = `
     <p>Dear Management,</p>
-    <p>The salary revision recommendation for the below employee has been reviewed by the Reporting Manager (${managerName || '-'}) and is submitted for your approval.</p>
+    <p>The salary revision recommendation for the below employee has been reviewed by the Reporting Manager and is submitted for your approval.</p>
 
+    <p style="font-weight:bold; margin-bottom:4px;">Employee Details</p>
     <table style="border-collapse:collapse; font-family:Arial,sans-serif; font-size:13px; margin:12px 0;">
       ${detailRow('Employee Name', employeeName)}
       ${detailRow('Department', department || '-')}
       ${detailRow('Designation', designation || '-')}
+      ${detailRow('Reporting Manager', managerName || '-')}
       ${detailRow('Date of Joining', dateToDD_MMM_YY(joiningDate))}
       ${detailRow('Current CTC', `₹${Number(currentCtc || 0).toLocaleString('en-IN')}`)}
-      ${detailRow('Manager Recommendation', isPip ? 'Place on PIP' : 'Increment')}
+      ${sectionHeaderRow('Manager Recommendation')}
       ${recommendationRows}
       ${detailRow('Manager Remarks', managerDecision?.reason || '-')}
     </table>
 
-    <p>Kindly review and record your decision using the button below, so HR can proceed.</p>
+    <p>Kindly review and provide your decision to enable HR to complete the salary revision process.</p>
     ${actionButton(actionLink, 'Review & Decide')}
     ${signature()}
   `;

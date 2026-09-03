@@ -34,6 +34,21 @@ const OutOfOfficeSchema = new Schema(
       required: true,
     },
     informedLabel: { type: String, trim: true, default: '' },
+
+    // Snapshot of the reporting manager resolved at submission time (same
+    // Onboarding.reviewerName/reviewerEmail lookup Salary Revision uses) —
+    // kept on the record so the mail-action link and dashboard don't depend
+    // on the org chart staying the same after the request was sent.
+    manager: {
+      name: { type: String, trim: true, default: '' },
+      email: { type: String, trim: true, lowercase: true, default: '' },
+    },
+
+    approval: {
+      status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+      reason: { type: String, trim: true, default: '' },
+      decidedAt: { type: Date, default: null },
+    },
   },
   {
     timestamps: true,

@@ -3,9 +3,8 @@ const resolveManagerContact = require('../../utils/resolveManagerContact');
 const { buildSalaryRevisionActionLink } = require('../../utils/salaryRevisionMailSigning');
 const salaryRevisionManagementApprovalTemplate = require('../templates/salaryRevisionManagementApprovalTemplate');
 
-// TODO: recipient is routed to the developer only, per explicit instruction,
-// until the real send to process.env.EMAIL_MANAGEMENT is approved.
-const RECIPIENT = 'software.developer@briskolive.com';
+// Live as of 2026-09-02.
+const RECIPIENT = process.env.EMAIL_MANAGEMENT;
 
 // Mail 2 — call right after PUT /:id/manager succeeds (stage ->
 // 'pending_management').

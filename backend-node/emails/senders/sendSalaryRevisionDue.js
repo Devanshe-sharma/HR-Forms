@@ -9,10 +9,8 @@ const {
 
 const EXITED_STATUS_VALUES = new Set(['Left', 'Already Left']);
 
-// TODO: this digest is meant for Management (process.env.EMAIL_MANAGEMENT)
-// but is routed to the developer only for now, per explicit instruction —
-// switch RECIPIENT back to EMAIL_MANAGEMENT once the real send is approved.
-const RECIPIENT = 'software.developer@briskolive.com';
+// Live as of 2026-09-02.
+const RECIPIENT = process.env.EMAIL_MANAGEMENT;
 
 async function sendSalaryRevisionDue(now = new Date()) {
   const fy = fiscalYearOf(now);
