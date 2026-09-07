@@ -57,14 +57,16 @@ function clearSession() {
 
 // Logging out here should also end the session on any SSO partner app —
 // each one's own storage lives on its own origin, so the only way in is to
-// load its /sso-logout page in a hidden iframe and let it clear itself.
+// load its /sso-logout page and let it clear itself. This uses a small,
+// off-screen popup rather than a hidden iframe: an iframe is a subresource
+// of this (HTTPS) page, so browsers block it as mixed content when the
+// partner app is still plain HTTP — a popup is its own top-level browsing
+// context and isn't subject to that restriction (same reason the SSO login
+// redirect already works fine across HTTP/HTTPS).
 function signOutOfPartnerApps() {
   for (const url of SSO_PARTNER_LOGOUT_URLS) {
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.src = url;
-    document.body.appendChild(iframe);
-    setTimeout(() => iframe.remove(), 5000);
+    const popup = window.open(url, '_blank', 'width=100,height=100,left=-1000,top=-1000');
+    if (popup) setTimeout(() => popup.close(), 3000);
   }
 }
 
