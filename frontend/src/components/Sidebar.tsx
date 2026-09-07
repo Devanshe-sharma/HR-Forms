@@ -268,7 +268,7 @@ export default function Sidebar() {
       pageKey: 'pms',
       subItems: [
         { to: '/pms?tab=kpi', text: 'KPI & Targets', icon: <KpiIcon />, pageKey: 'pms.kpi' },
-        { to: '/pms?tab=hygiene', text: 'Hygiene Factors', icon: <HygieneIcon />, pageKey: 'pms.hygiene' },
+        { to: '/pms?tab=hygiene', text: 'Attendance', icon: <HygieneIcon />, pageKey: 'pms.hygiene' },
         { to: '/pms?tab=growth', text: 'Growth', icon: <GrowthIcon />, pageKey: 'pms.growth' },
         { to: '/pms?tab=summary', text: 'Final Performance', icon: <SummaryIcon />, pageKey: 'pms.summary' },
       ],
@@ -277,7 +277,7 @@ export default function Sidebar() {
     
 
     {
-      text: 'Hygiene Factors',
+      text: 'Attendance',
       icon: <AccessTimeIcon />,
       onClick: () => setOpenAttendance(p => !p),
       open: openAttendance,
