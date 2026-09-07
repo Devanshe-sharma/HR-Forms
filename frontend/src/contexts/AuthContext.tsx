@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import axios from 'axios';
+import { SSO_PARTNER_LOGOUT_URLS } from '../config/sso';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -52,6 +53,19 @@ function clearSession() {
   localStorage.removeItem('authToken');
   localStorage.removeItem('authUser');
   localStorage.removeItem('role');
+}
+
+// Logging out here should also end the session on any SSO partner app —
+// each one's own storage lives on its own origin, so the only way in is to
+// load its /sso-logout page in a hidden iframe and let it clear itself.
+function signOutOfPartnerApps() {
+  for (const url of SSO_PARTNER_LOGOUT_URLS) {
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = url;
+    document.body.appendChild(iframe);
+    setTimeout(() => iframe.remove(), 5000);
+  }
 }
 
 interface AuthProviderProps {
@@ -116,6 +130,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     applyAuthHeader(null);
     setToken(null);
     setUser(null);
+    signOutOfPartnerApps();
   };
 
   // Re-pulls /auth/me — used right after changing a forced temporary

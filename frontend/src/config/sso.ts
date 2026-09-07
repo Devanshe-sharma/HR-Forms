@@ -17,3 +17,14 @@ export function isAllowedSsoRedirect(redirectUri: string): boolean {
     return false;
   }
 }
+
+/**
+ * Partner apps to silently sign out of whenever this app's own session ends
+ * (see AuthContext.logout). Each URL is loaded in a hidden iframe on its own
+ * origin, where it clears that app's session — this app's logout has no
+ * other way to reach a different origin's storage.
+ */
+export const SSO_PARTNER_LOGOUT_URLS = [
+  'http://3.110.162.1:3004/sso-logout',
+  'https://renewals.briskolive.com/sso-logout',
+];
