@@ -5,7 +5,7 @@ import { useAuth } from "../contexts/AuthContext";
 
 export default function Login() {
   const navigate = useNavigate();
-  const location = useLocation() as { state?: { from?: { pathname?: string } } };
+  const location = useLocation() as { state?: { from?: { pathname?: string; search?: string } } };
   const { login } = useAuth();
 
   const [email, setEmail] = useState("");
@@ -22,7 +22,8 @@ export default function Login() {
 
     try {
       await login(email, password);
-      const redirectTo = location.state?.from?.pathname || "/company-orientation";
+      const from = location.state?.from;
+      const redirectTo = from?.pathname ? `${from.pathname}${from.search || ""}` : "/company-orientation";
       navigate(redirectTo, { replace: true });
     } catch (err: any) {
       setError(err?.response?.data?.error || "Authentication failed. Please check your details.");

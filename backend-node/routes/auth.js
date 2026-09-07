@@ -4,6 +4,8 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const { authenticate } = require('../middleware/authenticate');
+const { requireSsoServiceKey } = require('../middleware/ssoServiceAuth');
+const { createCode, consumeCode } = require('../utils/ssoCodes');
 
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -83,6 +85,45 @@ router.post('/change-password', authenticate, asyncHandler(async (req, res) => {
   await user.save();
 
   res.json({ success: true, message: 'Password updated successfully' });
+}));
+
+// POST /api/auth/sso/code
+// Called by this app's own frontend (the /sso-authorize page) while the
+// user is already logged in here. Mints a one-time code a partner app's
+// backend can redeem for this user's identity, so the user isn't asked to
+// log in a second time on that app.
+router.post('/sso/code', authenticate, asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user.id);
+  if (!user || !user.isActive) {
+    return res.status(401).json({ success: false, error: 'Account no longer active' });
+  }
+
+  const code = createCode({
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    employeeId: user.employeeId,
+  });
+
+  res.json({ success: true, code });
+}));
+
+// POST /api/auth/sso/exchange
+// Called server-to-server by a partner app's backend (never a browser) to
+// redeem a code from `/sso/code` for the user's identity. Gated by
+// SSO_SERVICE_KEY instead of a user JWT, since the caller has no session.
+router.post('/sso/exchange', requireSsoServiceKey, asyncHandler(async (req, res) => {
+  const { code } = req.body || {};
+  if (!code) {
+    return res.status(400).json({ success: false, error: 'code is required' });
+  }
+
+  const identity = consumeCode(code);
+  if (!identity) {
+    return res.status(401).json({ success: false, error: 'Invalid, expired, or already-used code' });
+  }
+
+  res.json({ success: true, user: identity });
 }));
 
 module.exports = router;

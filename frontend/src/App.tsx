@@ -16,6 +16,7 @@ import Configuration from "./pages/Configruation";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Login from "./pages/Login";
 import Bridge from "./pages/Bridge";
+import SsoAuthorize from "./pages/SsoAuthorize";
 
 import Recruitment from "./pages/Recruitment/RequisitionDashboard";
 import CTCComponentsDashboard from "./components/CTCComponentsDashboard";
@@ -61,6 +62,7 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/bridge" element={<Bridge />} />
+        <Route path="/sso-authorize" element={<SsoAuthorize />} />
         <Route path="/outsider-dashboard" element={<OutsiderDashboard />} />
         <Route path="/careers" element={<CareersPage />} />
         <Route path="/candidate-application" element={<CandidateApplicationPage />} />
