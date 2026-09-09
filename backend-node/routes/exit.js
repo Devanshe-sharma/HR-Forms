@@ -114,50 +114,442 @@ function scoreChecklist(list, today, isApproved = true) {
   return { doneInTime, doneButDelayed, tasksOverdue, tasksDue, notYetDue, fmsScore, tasksNotDone };
 }
 
-// ─── Build the 3 default checklist groups (matches createFmsObject() exactly) ──
-function buildDefaultCheckLists() {
-  return [
+// ─── Checklist templates, keyed by employment type × exit type ─────────────
+// Interns get their own checklist per exit type; every other employment
+// type (Full Time Employment, Contract, Part Time, Temporary Staffing,
+// Consultant) shares one Employee/Consultant checklist. Any combo without a
+// specific template below (e.g. an Intern who is "Retirement"/"Termination",
+// or exitType/employmentType not yet chosen) falls back to
+// GENERIC_CHECKLIST_TEMPLATE — the original one-size-fits-all list. That
+// generic template must stay exactly as-is: buildLegacyExitChecklists()
+// below matches it positionally against LEGACY_TASK_BASE_MAP for CSV
+// imports of old records that predate exitType/employmentType.
+function isInternEmploymentType(employmentType) {
+  return String(employmentType || "").trim().toLowerCase() === "internship";
+}
+
+const GENERIC_CHECKLIST_TEMPLATE = [
+  {
+    name: "PRE-EXIT TASKS",
+    items: [
+      "Exit Email Done?",
+      "Reminder Email Done?",
+      "Take a Printout of Exit Email Done?",
+      "Exit Email to All Dept Cc Done?",
+      "Get a Handing Over Done from Employee?",
+      "Conducting Exit Interview with Mgmt Done?",
+    ],
+  },
+  {
+    name: "EXIT-DAY TASKS",
+    items: [
+      "Sign Exit Form Done?",
+      "Sign No Dues Certificate Done?",
+      "Ensure All Assets Are Returned Done?",
+      "Name Deleted from Employee List Done?",
+      "Tea Party Done?",
+    ],
+  },
+  {
+    name: "POST-EXIT TASKS",
+    items: [
+      "Close the Contract on Odoo Done?",
+      "Reassign Assets Done?",
+      "Sent an Approval Mail to Mgmt Done?",
+      "Issue FnF Salary Done?",
+      "Issue Experience Letter Done?",
+      "Reallotment of Delegation & Checklist Task Done?",
+      "Remove Email from Google Drive Done?",
+      "Remove Biometric Access Done?",
+      "Change S2ndLife Password Done?",
+      "Remove ERP Password Done?",
+      "Archive Employee Profile Done?",
+      "Remove the Access from Shared Contacts Done?",
+      "Delete Email from BO Domain Done?",
+      "Remove Employee from BO WhatsApp Gp Done?",
+    ],
+  },
+];
+
+const INTERN_CHECKLIST_TEMPLATES = {
+  "Resignation": [
     {
       name: "PRE-EXIT TASKS",
-      itemsList: [
-        { name: "Exit Email Done?" },
-        { name: "Reminder Email Done?" },
-        { name: "Take a Printout of Exit Email Done?" },
-        { name: "Exit Email to All Dept Cc Done?" },
-        { name: "Get a Handing Over Done from Employee?" },
-        { name: "Conducting Exit Interview with Mgmt Done?" },
+      items: [
+        "Exit Email / Resignation Received Done?",
+        "Resignation Approval and Last Working Day Informed Done?",
+        "Reminder Email Sent Done?",
+        "Exit Email Shared with Reporting Manager Done?",
+        "Handover Completed from Intern Done?",
       ],
     },
     {
       name: "EXIT-DAY TASKS",
-      itemsList: [
-        { name: "Sign Exit Form Done?" },
-        { name: "Sign No Dues Certificate Done?" },
-        { name: "Ensure All Assets Are Returned Done?" },
-        { name: "Name Deleted from Employee List Done?" },
-        { name: "Tea Party Done?" },
+      items: [
+        "Exit / Clearance Form Signed from Intern Done?",
+        "All Company Assets Returned Done?",
+        "Intern Name Removed from HR Portal, Gmail, WhatsApp Done?",
       ],
     },
     {
       name: "POST-EXIT TASKS",
-      itemsList: [
-        { name: "Close the Contract on Odoo Done?" },
-        { name: "Reassign Assets Done?" },
-        { name: "Sent an Approval Mail to Mgmt Done?" },
-        { name: "Issue FnF Salary Done?" },
-        { name: "Issue Experience Letter Done?" },
-        { name: "Reallotment of Delegation & Checklist Task Done?" },
-        { name: "Remove Email from Google Drive Done?" },
-        { name: "Remove Biometric Access Done?" },
-        { name: "Change S2ndLife Password Done?" },
-        { name: "Remove ERP Password Done?" },
-        { name: "Archive Employee Profile Done?" },
-        { name: "Remove the Access from Shared Contacts Done?" },
-        { name: "Delete Email from BO Domain Done?" },
-        { name: "Remove Employee from BO WhatsApp Gp Done?" },
+      items: [
+        "Close Intern Contract and Remove Details Done?",
+        "Stipend Processed Done?",
+        "Internship Certificate Issued Done?",
+        "Tasks Reassigned Done?",
+        "Update Status and Archive Intern Profile Done?",
       ],
     },
-  ];
+  ],
+  "Completion of Tenure": [
+    {
+      name: "PRE-EXIT TASKS",
+      items: [
+        "Completion of Internship Email Sent to the Reporting Manager Done?",
+        "Last Working Day Informed to the Intern Done?",
+        "Reminder Email Sent 15 Days Before Done?",
+        "Extension of Internship, if Applicable, Confirmed from Management Done?",
+        "Handover Completed from Intern Done?",
+        "Pending Tasks / Projects Reviewed Done?",
+      ],
+    },
+    {
+      name: "EXIT-DAY TASKS",
+      items: [
+        "Exit / Clearance Form Signed from Intern Done?",
+        "All Company Assets Returned Done?",
+        "Intern Name Removed from HR Portal, Gmail, WhatsApp Done?",
+      ],
+    },
+    {
+      name: "POST-EXIT TASKS",
+      items: [
+        "Close Intern Contract and Remove Details Done?",
+        "Stipend Processed Done?",
+        "Internship Certificate Issued Done?",
+        "Tasks Reassigned Done?",
+        "Archive Employee Profile Done?",
+      ],
+    },
+  ],
+  "Asked to Leave": [
+    {
+      name: "PRE-EXIT TASKS",
+      items: [
+        "Email Sent to Intern Asking Him to Leave Done?",
+        "Discussion with the Intern Done?",
+        "Reporting Manager Informed Regarding the Decision Done?",
+        "HR Exit Process Initiated Done?",
+        "Last Working Day Informed to Intern Done?",
+        "Reminder Sent to HR to Complete the Exit of Intern Done?",
+        "Handover Completed from Intern Done?",
+        "Management Decision to Ask Intern to Leave Approval Done?",
+      ],
+    },
+    {
+      name: "EXIT-DAY TASKS",
+      items: [
+        "Exit / Clearance Form Signed from Intern Done?",
+        "All Company Assets Returned Done?",
+        "Intern Name Removed from HR Portal, Gmail, WhatsApp Done?",
+      ],
+    },
+    {
+      name: "POST-EXIT TASKS",
+      items: [
+        "Close Intern Contract and Remove Details Done?",
+        "Stipend Processed, if Applicable Done?",
+        "Internship Certificate Issued, if Applicable Done?",
+        "Tasks Reassigned Done?",
+        "Archive Employee Profile Done?",
+      ],
+    },
+  ],
+  "Absconded": [
+    {
+      name: "PRE-EXIT TASKS",
+      items: [
+        "Intern Absence Identified & Reported to the Manager Done?",
+        "Reminder / Warning Email Sent to the Personal Email ID Done?",
+        "Absconding Notice Issued to the Intern Done?",
+        "Management, Reporting Manager Informed and Decision Updated in the HR Portal Done?",
+      ],
+    },
+    {
+      name: "EXIT-DAY TASKS",
+      items: [
+        "Last Attendance Date Confirmed Done?",
+        "Company Assets Identified & Returned Done?",
+        "Pending Salary / Dues & Recovery Amount Calculated Done?",
+      ],
+    },
+    {
+      name: "POST-EXIT TASKS",
+      items: [
+        "Close Contract in HR Portal Done?",
+        "F&F Salary / Dues Processed, if Applicable as per Policy Done?",
+        "Pending Tasks Reassigned Done?",
+        "Remove Intern from Biometric, WhatsApp, Gmail, or Any Other Shared Systems Done?",
+        "Update in the HR Portal Done?",
+      ],
+    },
+  ],
+  "Demise": [
+    {
+      name: "EXIT TASKS",
+      items: [
+        "Information Regarding the Demise Verified Done?",
+        "Management, HR, Accounts and Reporting Manager Informed Done?",
+        "Emergency Contact Details Retrieved Done?",
+        "Pending Salary and Dues Calculated Done?",
+        "PF / Insurance / Pending Salary Till Last Working Day Processed Done?",
+        "Gratuity Processed Done?",
+        "Status Updated Done?",
+        "Family Contacted Done?",
+        "All Company Assets Returned Done?",
+        "Name Removed from HR Portal, Gmail, WhatsApp Done?",
+        "Close Intern Contract Done?",
+        "Required Certificate Issued Done?",
+        "Tasks Reassigned Done?",
+        "Archive and Close Employee Profile in HR Portal Done?",
+      ],
+    },
+  ],
+};
+
+const EMPLOYEE_CHECKLIST_TEMPLATES = {
+  "Resignation": [
+    {
+      name: "PRE-EXIT TASKS",
+      items: [
+        "Resignation Approved by Reporting Manager, HR, Management Done?",
+        "Resignation Approved Email Sent to the Employee Done?",
+        "Last Working Day Updated in the HR Portal Done?",
+        "Accounts, HR and Reporting Manager Informed Done?",
+        "Handover Tasks Completed Done?",
+        "Exit Interview Conducted Done?",
+      ],
+    },
+    {
+      name: "EXIT-DAY TASKS",
+      items: [
+        "Exit / Clearance Form Signed Done?",
+        "All Company Assets Returned Done?",
+        "Name Removed from HR Portal, Gmail, WhatsApp Done?",
+        "Farewell Party Conducted Done?",
+      ],
+    },
+    {
+      name: "POST-EXIT TASKS",
+      items: [
+        "Close Contract and Remove Details Done?",
+        "F&F / Dues / Gratuity / PF Processed Done?",
+        "Experience Certificate Issued Done?",
+        "Tasks Reassigned Done?",
+        "Update Status and Archive Employee Profile Done?",
+      ],
+    },
+  ],
+  "Asked to Leave": [
+    {
+      name: "PRE-EXIT TASKS",
+      items: [
+        "Email Sent to Employee Asking Him to Leave Done?",
+        "Discussion with the Employee Done?",
+        "Reporting Manager Informed Regarding the Decision Done?",
+        "HR Exit Process Initiated Done?",
+        "Last Working Day Informed to Employee Done?",
+        "Reminder Sent to HR to Complete the Exit Done?",
+        "Handover Tasks Completed Done?",
+        "Management Decision to Ask Employee to Leave Approval Done?",
+      ],
+    },
+    {
+      name: "EXIT-DAY TASKS",
+      items: [
+        "Exit / Clearance Form Signed from Employee Done?",
+        "All Company Assets Returned Done?",
+        "Name Removed from HR Portal, Gmail, WhatsApp Done?",
+      ],
+    },
+    {
+      name: "POST-EXIT TASKS",
+      items: [
+        "Close Contract and Remove Details Done?",
+        "F&F / Dues / Gratuity / PF Processed Done?",
+        "Experience Certificate Issued, if Applicable Done?",
+        "Tasks Reassigned Done?",
+        "Update Status and Archive Employee Profile Done?",
+      ],
+    },
+  ],
+  "Absconded": [
+    {
+      name: "PRE-EXIT TASKS",
+      items: [
+        "Employee Absence Identified & Reported to the Manager Done?",
+        "Reminder / Warning Email Sent to the Personal Email ID Done?",
+        "Absconding Notice Issued to the Employee Done?",
+        "Management, Reporting Manager Informed and Decision Updated in the HR Portal Done?",
+      ],
+    },
+    {
+      name: "EXIT-DAY TASKS",
+      items: [
+        "Last Attendance Date Confirmed Done?",
+        "Company Assets Identified & Returned Done?",
+        "Pending Salary / Dues & Recovery Amount Calculated Done?",
+      ],
+    },
+    {
+      name: "POST-EXIT TASKS",
+      items: [
+        "Close Contract in HR Portal Done?",
+        "F&F Salary / Dues Processed, if Applicable as per Policy Done?",
+        "Pending Tasks Reassigned Done?",
+        "Name Removed from Biometric, WhatsApp, Gmail, or Any Other Shared Systems Done?",
+        "Update Status and Archive Employee Profile Done?",
+      ],
+    },
+  ],
+  "Termination": [
+    {
+      name: "PRE-EXIT TASKS",
+      items: [
+        "Termination Email Sent to Employee Done?",
+        "Discussion with the Employee Done?",
+        "Management Approval Completed Done?",
+        "Reporting Manager Informed Regarding the Decision Done?",
+        "HR Exit Process Initiated Done?",
+        "Last Working Day Informed Done?",
+        "Reminder Sent to HR to Complete the Exit Done?",
+        "Handover Tasks Completed Done?",
+      ],
+    },
+    {
+      name: "EXIT-DAY TASKS",
+      items: [
+        "Exit / Clearance Form Signed Done?",
+        "All Company Assets Returned Done?",
+        "Name Removed from HR Portal, Gmail, WhatsApp Done?",
+      ],
+    },
+    {
+      name: "POST-EXIT TASKS",
+      items: [
+        "Close Contract and Remove Details Done?",
+        "F&F / Dues / Gratuity / PF Processed, if Applicable Done?",
+        "Experience Certificate Issued, if Applicable Done?",
+        "Tasks Reassigned Done?",
+        "Update Status and Archive Employee Profile Done?",
+      ],
+    },
+  ],
+  "Completion of Tenure": [
+    {
+      name: "PRE-EXIT TASKS",
+      items: [
+        "Completion of Tenure Date Confirmed Done?",
+        "Completion of Employment Email Sent to Reporting Manager, HR and Management Done?",
+        "Last Working Day Informed to All Done?",
+        "Management Approval Done?",
+        "Reminder Email Sent 15 Days Before Done?",
+        "Extension / Renewal Decision Confirmed Done?",
+        "Handover of Tasks Completed Done?",
+        "Pending Tasks / Projects Reviewed Done?",
+        "Exit / Completion Discussion Conducted Done?",
+      ],
+    },
+    {
+      name: "EXIT-DAY TASKS",
+      items: [
+        "Exit / Clearance Form Signed Done?",
+        "All Company Assets Returned Done?",
+        "Experience Certificate Released Done?",
+        "Farewell Party Conducted Done?",
+      ],
+    },
+    {
+      name: "POST-EXIT TASKS",
+      items: [
+        "Close Contract Done?",
+        "Name Removed from HR Portal, Gmail, WhatsApp Done?",
+        "F&F / Dues / Gratuity / PF Processed, if Applicable Done?",
+        "Tasks Reassigned Done?",
+        "Update Status and Archive Employee Profile Done?",
+      ],
+    },
+  ],
+  "Retirement": [
+    {
+      name: "PRE-EXIT TASKS",
+      items: [
+        "Completion of Tenure Date Confirmed Done?",
+        "Completion of Employment Email Sent to Reporting Manager, HR and Management Done?",
+        "Last Working Day Informed to All Done?",
+        "Management Approval Done?",
+        "Reminder Email Sent 15 Days Before the Last Working Day Done?",
+        "Extension / Renewal Decision Confirmed Done?",
+        "Handover of Tasks Completed Done?",
+        "Pending Tasks / Projects Reviewed Done?",
+        "Exit / Completion Discussion Conducted Done?",
+      ],
+    },
+    {
+      name: "EXIT-DAY TASKS",
+      items: [
+        "Exit / Clearance Form Signed Done?",
+        "All Company Assets Returned Done?",
+        "Name Removed from HR Portal, Gmail, WhatsApp Done?",
+        "Farewell Party Conducted Done?",
+      ],
+    },
+    {
+      name: "POST-EXIT TASKS",
+      items: [
+        "Close Contract and Remove Details Done?",
+        "F&F / Dues / Gratuity / PF Processed, if Applicable Done?",
+        "Experience Certificate Issued Done?",
+        "Tasks Reassigned Done?",
+        "Update Status and Archive Employee Profile Done?",
+      ],
+    },
+  ],
+  "Demise": [
+    {
+      name: "EXIT TASKS",
+      items: [
+        "Information Regarding the Demise Verified Done?",
+        "Management, HR, Accounts and Reporting Manager Informed Done?",
+        "Emergency Contact Details Retrieved Done?",
+        "Pending Salary and Dues Calculated Done?",
+        "PF / Insurance / Pending Salary Till Last Working Day Processed Done?",
+        "Gratuity Processed Done?",
+        "Employee Status Updated Done?",
+        "Family Contacted Done?",
+        "All Company Assets Returned Done?",
+        "Name Removed from HR Portal, Gmail, WhatsApp Done?",
+        "Close Contract Done?",
+        "Required Certificate Issued Done?",
+        "Tasks Reassigned Done?",
+        "Archive and Close Employee Profile in HR Portal Done?",
+      ],
+    },
+  ],
+};
+
+// ─── Pick + build the checklist groups for a given employment/exit type ────
+function buildDefaultCheckLists(employmentType, exitType) {
+  const table = isInternEmploymentType(employmentType)
+    ? INTERN_CHECKLIST_TEMPLATES
+    : EMPLOYEE_CHECKLIST_TEMPLATES;
+  const template = (exitType && table[exitType]) ? table[exitType] : GENERIC_CHECKLIST_TEMPLATE;
+
+  return template.map((group) => ({
+    name: group.name,
+    itemsList: group.items.map((name) => ({ name })),
+  }));
 }
 
 // ─── Assign plan dates — hybrid base per group ──────────────────────────────
@@ -193,7 +585,9 @@ function assignExitPlanDates(checkLists, approvalDate, leftDate, plannedExitDate
     if (list.name === "PRE-EXIT TASKS") {
       base = resignationDate ? new Date(resignationDate) : (approvalDate ? new Date(approvalDate) : null);
       offsetDays = 5;
-    } else if (list.name === "EXIT-DAY TASKS") {
+    } else if (list.name === "EXIT-DAY TASKS" || list.name === "EXIT TASKS") {
+      // "EXIT TASKS" is the single Demise bucket (no pre/post split) —
+      // treated the same as EXIT-DAY: due on the exit day itself.
       base = exitDayBase;
       offsetDays = 0;
     } else {
@@ -243,8 +637,8 @@ function toPlainCheckLists(checkLists) {
 // data untouched, and any task present in the template but missing from
 // the record gets added fresh (inheriting the group's plan date, if any,
 // so it scores consistently with its siblings).
-function reconcileChecklistsWithTemplate(existingCheckLists) {
-  const template = buildDefaultCheckLists();
+function reconcileChecklistsWithTemplate(existingCheckLists, employmentType, exitType) {
+  const template = buildDefaultCheckLists(employmentType, exitType);
   const existingByGroupName = new Map((existingCheckLists || []).map((g) => [g.name, g]));
 
   return template.map((templateGroup) => {
@@ -398,7 +792,7 @@ async function syncExitStatusToOnboarding(exitDoc) {
 router.post("/", async (req, res) => {
   try {
     const body = req.body;
-    const checkLists = buildDefaultCheckLists();
+    const checkLists = buildDefaultCheckLists(body.employmentType, body.exitType);
 
     if (Array.isArray(body.checkLists)) {
       body.checkLists.forEach((submittedList, listIdx) => {
@@ -554,7 +948,11 @@ router.post("/reconcile-checklist-template", async (req, res) => {
 
     for (const existing of docs) {
       const existingPlain = existing.toObject();
-      const checkLists = reconcileChecklistsWithTemplate(existingPlain.checkLists);
+      const checkLists = reconcileChecklistsWithTemplate(
+        existingPlain.checkLists,
+        existingPlain.employmentType,
+        existingPlain.exitType
+      );
       const isApproved = !!existing.hr_approved_at;
 
       const today = new Date();

@@ -37,6 +37,18 @@ const EXIT_TYPE_OPTIONS = [
   "Absconded",
 ];
 
+// Interns don't retire or get "Terminated" in the HR-process sense — only
+// these 5 exit types have an Intern-specific checklist (see
+// INTERN_CHECKLIST_TEMPLATES below), so the dropdown is narrowed to match
+// whenever the selected employmentType is "Internship".
+const INTERN_EXIT_TYPE_OPTIONS = [
+  "Resignation",
+  "Completion of Tenure",
+  "Asked to Leave",
+  "Absconded",
+  "Demise",
+];
+
 // "Type of Employment" — auto-filled from the matched Onboarding record's
 // employeeCategory (see mapEmployeeCategoryToEmploymentType below), shown
 // here in HR-facing wording rather than Onboarding's internal enum values.
@@ -165,12 +177,22 @@ type DeptDesigMasterData = {
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || "http://localhost:5000/api";
 
-// ─── Checklist definitions (must match backend order exactly) ───────────────
-const CHECKLIST_DEFS = [
+// ─── Checklist templates (must match backend's buildDefaultCheckLists()
+// exactly — same groups/items per employment type × exit type combo, same
+// GENERIC fallback for combos with no specific template) ────────────────────
+const GROUP_STYLES: Record<string, { color: string; accent: string }> = {
+  "PRE-EXIT TASKS": { color: "bg-red-50 border-red-200", accent: "#dc2626" },
+  "EXIT-DAY TASKS": { color: "bg-amber-50 border-amber-200", accent: "#d97706" },
+  "POST-EXIT TASKS": { color: "bg-slate-50 border-slate-200", accent: "#475569" },
+  "EXIT TASKS": { color: "bg-purple-50 border-purple-200", accent: "#7c3aed" },
+};
+const DEFAULT_GROUP_STYLE = { color: "bg-slate-50 border-slate-200", accent: "#475569" };
+
+type ChecklistTemplateGroup = { name: string; items: string[] };
+
+const GENERIC_CHECKLIST_TEMPLATE: ChecklistTemplateGroup[] = [
   {
     name: "PRE-EXIT TASKS",
-    color: "bg-red-50 border-red-200",
-    accent: "#dc2626",
     items: [
       "Exit Email Done?",
       "Reminder Email Done?",
@@ -182,8 +204,6 @@ const CHECKLIST_DEFS = [
   },
   {
     name: "EXIT-DAY TASKS",
-    color: "bg-amber-50 border-amber-200",
-    accent: "#d97706",
     items: [
       "Sign Exit Form Done?",
       "Sign No Dues Certificate Done?",
@@ -195,8 +215,6 @@ const CHECKLIST_DEFS = [
   },
   {
     name: "POST-EXIT TASKS",
-    color: "bg-slate-50 border-slate-200",
-    accent: "#475569",
     items: [
       "Close the Contract on Odoo Done?",
       "Reassign Assets Done?",
@@ -216,7 +234,390 @@ const CHECKLIST_DEFS = [
   },
 ];
 
-const TOTAL_TASKS = CHECKLIST_DEFS.reduce((s, l) => s + l.items.length, 0);
+const INTERN_CHECKLIST_TEMPLATES: Record<string, ChecklistTemplateGroup[]> = {
+  "Resignation": [
+    {
+      name: "PRE-EXIT TASKS",
+      items: [
+        "Exit Email / Resignation Received Done?",
+        "Resignation Approval and Last Working Day Informed Done?",
+        "Reminder Email Sent Done?",
+        "Exit Email Shared with Reporting Manager Done?",
+        "Handover Completed from Intern Done?",
+      ],
+    },
+    {
+      name: "EXIT-DAY TASKS",
+      items: [
+        "Exit / Clearance Form Signed from Intern Done?",
+        "All Company Assets Returned Done?",
+        "Intern Name Removed from HR Portal, Gmail, WhatsApp Done?",
+      ],
+    },
+    {
+      name: "POST-EXIT TASKS",
+      items: [
+        "Close Intern Contract and Remove Details Done?",
+        "Stipend Processed Done?",
+        "Internship Certificate Issued Done?",
+        "Tasks Reassigned Done?",
+        "Update Status and Archive Intern Profile Done?",
+      ],
+    },
+  ],
+  "Completion of Tenure": [
+    {
+      name: "PRE-EXIT TASKS",
+      items: [
+        "Completion of Internship Email Sent to the Reporting Manager Done?",
+        "Last Working Day Informed to the Intern Done?",
+        "Reminder Email Sent 15 Days Before Done?",
+        "Extension of Internship, if Applicable, Confirmed from Management Done?",
+        "Handover Completed from Intern Done?",
+        "Pending Tasks / Projects Reviewed Done?",
+      ],
+    },
+    {
+      name: "EXIT-DAY TASKS",
+      items: [
+        "Exit / Clearance Form Signed from Intern Done?",
+        "All Company Assets Returned Done?",
+        "Intern Name Removed from HR Portal, Gmail, WhatsApp Done?",
+      ],
+    },
+    {
+      name: "POST-EXIT TASKS",
+      items: [
+        "Close Intern Contract and Remove Details Done?",
+        "Stipend Processed Done?",
+        "Internship Certificate Issued Done?",
+        "Tasks Reassigned Done?",
+        "Archive Employee Profile Done?",
+      ],
+    },
+  ],
+  "Asked to Leave": [
+    {
+      name: "PRE-EXIT TASKS",
+      items: [
+        "Email Sent to Intern Asking Him to Leave Done?",
+        "Discussion with the Intern Done?",
+        "Reporting Manager Informed Regarding the Decision Done?",
+        "HR Exit Process Initiated Done?",
+        "Last Working Day Informed to Intern Done?",
+        "Reminder Sent to HR to Complete the Exit of Intern Done?",
+        "Handover Completed from Intern Done?",
+        "Management Decision to Ask Intern to Leave Approval Done?",
+      ],
+    },
+    {
+      name: "EXIT-DAY TASKS",
+      items: [
+        "Exit / Clearance Form Signed from Intern Done?",
+        "All Company Assets Returned Done?",
+        "Intern Name Removed from HR Portal, Gmail, WhatsApp Done?",
+      ],
+    },
+    {
+      name: "POST-EXIT TASKS",
+      items: [
+        "Close Intern Contract and Remove Details Done?",
+        "Stipend Processed, if Applicable Done?",
+        "Internship Certificate Issued, if Applicable Done?",
+        "Tasks Reassigned Done?",
+        "Archive Employee Profile Done?",
+      ],
+    },
+  ],
+  "Absconded": [
+    {
+      name: "PRE-EXIT TASKS",
+      items: [
+        "Intern Absence Identified & Reported to the Manager Done?",
+        "Reminder / Warning Email Sent to the Personal Email ID Done?",
+        "Absconding Notice Issued to the Intern Done?",
+        "Management, Reporting Manager Informed and Decision Updated in the HR Portal Done?",
+      ],
+    },
+    {
+      name: "EXIT-DAY TASKS",
+      items: [
+        "Last Attendance Date Confirmed Done?",
+        "Company Assets Identified & Returned Done?",
+        "Pending Salary / Dues & Recovery Amount Calculated Done?",
+      ],
+    },
+    {
+      name: "POST-EXIT TASKS",
+      items: [
+        "Close Contract in HR Portal Done?",
+        "F&F Salary / Dues Processed, if Applicable as per Policy Done?",
+        "Pending Tasks Reassigned Done?",
+        "Remove Intern from Biometric, WhatsApp, Gmail, or Any Other Shared Systems Done?",
+        "Update in the HR Portal Done?",
+      ],
+    },
+  ],
+  "Demise": [
+    {
+      name: "EXIT TASKS",
+      items: [
+        "Information Regarding the Demise Verified Done?",
+        "Management, HR, Accounts and Reporting Manager Informed Done?",
+        "Emergency Contact Details Retrieved Done?",
+        "Pending Salary and Dues Calculated Done?",
+        "PF / Insurance / Pending Salary Till Last Working Day Processed Done?",
+        "Gratuity Processed Done?",
+        "Status Updated Done?",
+        "Family Contacted Done?",
+        "All Company Assets Returned Done?",
+        "Name Removed from HR Portal, Gmail, WhatsApp Done?",
+        "Close Intern Contract Done?",
+        "Required Certificate Issued Done?",
+        "Tasks Reassigned Done?",
+        "Archive and Close Employee Profile in HR Portal Done?",
+      ],
+    },
+  ],
+};
+
+const EMPLOYEE_CHECKLIST_TEMPLATES: Record<string, ChecklistTemplateGroup[]> = {
+  "Resignation": [
+    {
+      name: "PRE-EXIT TASKS",
+      items: [
+        "Resignation Approved by Reporting Manager, HR, Management Done?",
+        "Resignation Approved Email Sent to the Employee Done?",
+        "Last Working Day Updated in the HR Portal Done?",
+        "Accounts, HR and Reporting Manager Informed Done?",
+        "Handover Tasks Completed Done?",
+        "Exit Interview Conducted Done?",
+      ],
+    },
+    {
+      name: "EXIT-DAY TASKS",
+      items: [
+        "Exit / Clearance Form Signed Done?",
+        "All Company Assets Returned Done?",
+        "Name Removed from HR Portal, Gmail, WhatsApp Done?",
+        "Farewell Party Conducted Done?",
+      ],
+    },
+    {
+      name: "POST-EXIT TASKS",
+      items: [
+        "Close Contract and Remove Details Done?",
+        "F&F / Dues / Gratuity / PF Processed Done?",
+        "Experience Certificate Issued Done?",
+        "Tasks Reassigned Done?",
+        "Update Status and Archive Employee Profile Done?",
+      ],
+    },
+  ],
+  "Asked to Leave": [
+    {
+      name: "PRE-EXIT TASKS",
+      items: [
+        "Email Sent to Employee Asking Him to Leave Done?",
+        "Discussion with the Employee Done?",
+        "Reporting Manager Informed Regarding the Decision Done?",
+        "HR Exit Process Initiated Done?",
+        "Last Working Day Informed to Employee Done?",
+        "Reminder Sent to HR to Complete the Exit Done?",
+        "Handover Tasks Completed Done?",
+        "Management Decision to Ask Employee to Leave Approval Done?",
+      ],
+    },
+    {
+      name: "EXIT-DAY TASKS",
+      items: [
+        "Exit / Clearance Form Signed from Employee Done?",
+        "All Company Assets Returned Done?",
+        "Name Removed from HR Portal, Gmail, WhatsApp Done?",
+      ],
+    },
+    {
+      name: "POST-EXIT TASKS",
+      items: [
+        "Close Contract and Remove Details Done?",
+        "F&F / Dues / Gratuity / PF Processed Done?",
+        "Experience Certificate Issued, if Applicable Done?",
+        "Tasks Reassigned Done?",
+        "Update Status and Archive Employee Profile Done?",
+      ],
+    },
+  ],
+  "Absconded": [
+    {
+      name: "PRE-EXIT TASKS",
+      items: [
+        "Employee Absence Identified & Reported to the Manager Done?",
+        "Reminder / Warning Email Sent to the Personal Email ID Done?",
+        "Absconding Notice Issued to the Employee Done?",
+        "Management, Reporting Manager Informed and Decision Updated in the HR Portal Done?",
+      ],
+    },
+    {
+      name: "EXIT-DAY TASKS",
+      items: [
+        "Last Attendance Date Confirmed Done?",
+        "Company Assets Identified & Returned Done?",
+        "Pending Salary / Dues & Recovery Amount Calculated Done?",
+      ],
+    },
+    {
+      name: "POST-EXIT TASKS",
+      items: [
+        "Close Contract in HR Portal Done?",
+        "F&F Salary / Dues Processed, if Applicable as per Policy Done?",
+        "Pending Tasks Reassigned Done?",
+        "Name Removed from Biometric, WhatsApp, Gmail, or Any Other Shared Systems Done?",
+        "Update Status and Archive Employee Profile Done?",
+      ],
+    },
+  ],
+  "Termination": [
+    {
+      name: "PRE-EXIT TASKS",
+      items: [
+        "Termination Email Sent to Employee Done?",
+        "Discussion with the Employee Done?",
+        "Management Approval Completed Done?",
+        "Reporting Manager Informed Regarding the Decision Done?",
+        "HR Exit Process Initiated Done?",
+        "Last Working Day Informed Done?",
+        "Reminder Sent to HR to Complete the Exit Done?",
+        "Handover Tasks Completed Done?",
+      ],
+    },
+    {
+      name: "EXIT-DAY TASKS",
+      items: [
+        "Exit / Clearance Form Signed Done?",
+        "All Company Assets Returned Done?",
+        "Name Removed from HR Portal, Gmail, WhatsApp Done?",
+      ],
+    },
+    {
+      name: "POST-EXIT TASKS",
+      items: [
+        "Close Contract and Remove Details Done?",
+        "F&F / Dues / Gratuity / PF Processed, if Applicable Done?",
+        "Experience Certificate Issued, if Applicable Done?",
+        "Tasks Reassigned Done?",
+        "Update Status and Archive Employee Profile Done?",
+      ],
+    },
+  ],
+  "Completion of Tenure": [
+    {
+      name: "PRE-EXIT TASKS",
+      items: [
+        "Completion of Tenure Date Confirmed Done?",
+        "Completion of Employment Email Sent to Reporting Manager, HR and Management Done?",
+        "Last Working Day Informed to All Done?",
+        "Management Approval Done?",
+        "Reminder Email Sent 15 Days Before Done?",
+        "Extension / Renewal Decision Confirmed Done?",
+        "Handover of Tasks Completed Done?",
+        "Pending Tasks / Projects Reviewed Done?",
+        "Exit / Completion Discussion Conducted Done?",
+      ],
+    },
+    {
+      name: "EXIT-DAY TASKS",
+      items: [
+        "Exit / Clearance Form Signed Done?",
+        "All Company Assets Returned Done?",
+        "Experience Certificate Released Done?",
+        "Farewell Party Conducted Done?",
+      ],
+    },
+    {
+      name: "POST-EXIT TASKS",
+      items: [
+        "Close Contract Done?",
+        "Name Removed from HR Portal, Gmail, WhatsApp Done?",
+        "F&F / Dues / Gratuity / PF Processed, if Applicable Done?",
+        "Tasks Reassigned Done?",
+        "Update Status and Archive Employee Profile Done?",
+      ],
+    },
+  ],
+  "Retirement": [
+    {
+      name: "PRE-EXIT TASKS",
+      items: [
+        "Completion of Tenure Date Confirmed Done?",
+        "Completion of Employment Email Sent to Reporting Manager, HR and Management Done?",
+        "Last Working Day Informed to All Done?",
+        "Management Approval Done?",
+        "Reminder Email Sent 15 Days Before the Last Working Day Done?",
+        "Extension / Renewal Decision Confirmed Done?",
+        "Handover of Tasks Completed Done?",
+        "Pending Tasks / Projects Reviewed Done?",
+        "Exit / Completion Discussion Conducted Done?",
+      ],
+    },
+    {
+      name: "EXIT-DAY TASKS",
+      items: [
+        "Exit / Clearance Form Signed Done?",
+        "All Company Assets Returned Done?",
+        "Name Removed from HR Portal, Gmail, WhatsApp Done?",
+        "Farewell Party Conducted Done?",
+      ],
+    },
+    {
+      name: "POST-EXIT TASKS",
+      items: [
+        "Close Contract and Remove Details Done?",
+        "F&F / Dues / Gratuity / PF Processed, if Applicable Done?",
+        "Experience Certificate Issued Done?",
+        "Tasks Reassigned Done?",
+        "Update Status and Archive Employee Profile Done?",
+      ],
+    },
+  ],
+  "Demise": [
+    {
+      name: "EXIT TASKS",
+      items: [
+        "Information Regarding the Demise Verified Done?",
+        "Management, HR, Accounts and Reporting Manager Informed Done?",
+        "Emergency Contact Details Retrieved Done?",
+        "Pending Salary and Dues Calculated Done?",
+        "PF / Insurance / Pending Salary Till Last Working Day Processed Done?",
+        "Gratuity Processed Done?",
+        "Employee Status Updated Done?",
+        "Family Contacted Done?",
+        "All Company Assets Returned Done?",
+        "Name Removed from HR Portal, Gmail, WhatsApp Done?",
+        "Close Contract Done?",
+        "Required Certificate Issued Done?",
+        "Tasks Reassigned Done?",
+        "Archive and Close Employee Profile in HR Portal Done?",
+      ],
+    },
+  ],
+};
+
+function isInternEmploymentType(employmentType?: string): boolean {
+  return (employmentType || "").trim().toLowerCase() === "internship";
+}
+
+// Picks the checklist template for the currently selected employment/exit
+// type, matching backend's buildDefaultCheckLists() exactly, then attaches
+// display styling per group.
+function getChecklistDefs(employmentType?: string, exitType?: string) {
+  const table = isInternEmploymentType(employmentType) ? INTERN_CHECKLIST_TEMPLATES : EMPLOYEE_CHECKLIST_TEMPLATES;
+  const template = (exitType && table[exitType]) ? table[exitType] : GENERIC_CHECKLIST_TEMPLATE;
+  return template.map((group) => ({
+    ...(GROUP_STYLES[group.name] ?? DEFAULT_GROUP_STYLE),
+    name: group.name,
+    items: group.items,
+  }));
+}
 
 // ─── Component ───────────────────────────────────────────────────────────────
 const NewExit: React.FC = () => {
@@ -249,9 +650,7 @@ const NewExit: React.FC = () => {
     designations: [],
   });
 
-  const [checkStates, setCheckStates] = useState<boolean[][]>(
-    CHECKLIST_DEFS.map((l) => l.items.map(() => false))
-  );
+  const [checkStates, setCheckStates] = useState<boolean[][]>([]);
 
   // Thank-you screen: shows a brief loader, then a confirmation message —
   // same pattern already used on New Onboarding, so the form doesn't just
@@ -261,11 +660,47 @@ const NewExit: React.FC = () => {
 
   const exitStatus = watch("exitStatus");
   const exitType = watch("exitType");
+  const employmentType = watch("employmentType");
   const selectedDept = watch("dept");
   const selectedName = watch("name");
 
+  // Interns only get 5 exit types (no Retirement/Termination) — narrow the
+  // dropdown accordingly.
+  const exitTypeOptions = useMemo(
+    () => (isInternEmploymentType(employmentType) ? INTERN_EXIT_TYPE_OPTIONS : EXIT_TYPE_OPTIONS),
+    [employmentType]
+  );
+
+  // If employmentType flips to/from Internship and the currently selected
+  // exitType isn't valid for the new option set (e.g. "Retirement" was
+  // picked, then employmentType changed to Internship), clear it rather
+  // than silently submitting a value that isn't even in the dropdown.
+  useEffect(() => {
+    if (exitType && !exitTypeOptions.includes(exitType)) {
+      setValue("exitType", "");
+    }
+  }, [exitTypeOptions, exitType, setValue]);
+
+  // Which checklist template is active — depends on both the employee's
+  // employment type (Intern vs everyone else) and the selected exit type.
+  const checklistDefs = useMemo(
+    () => getChecklistDefs(employmentType, exitType),
+    [employmentType, exitType]
+  );
+  const totalTasks = useMemo(
+    () => checklistDefs.reduce((s, l) => s + l.items.length, 0),
+    [checklistDefs]
+  );
+
+  // The active template's shape changes with employment/exit type, so any
+  // ticks recorded against the previous template's indices no longer mean
+  // anything — reset whenever the template itself changes.
+  useEffect(() => {
+    setCheckStates(checklistDefs.map((l) => l.items.map(() => false)));
+  }, [checklistDefs]);
+
   const totalChecked = checkStates.flat().filter(Boolean).length;
-  const progress = Math.round((totalChecked / TOTAL_TASKS) * 100);
+  const progress = totalTasks > 0 ? Math.round((totalChecked / totalTasks) * 100) : 0;
 
   // WHO exists comes from Onboarding (the employee master). WHAT
   // departments/designations exist comes from the actual Dept &
@@ -347,7 +782,7 @@ const NewExit: React.FC = () => {
 
   const resetFormState = () => {
     reset();
-    setCheckStates(CHECKLIST_DEFS.map((l) => l.items.map(() => false)));
+    setCheckStates(checklistDefs.map((l) => l.items.map(() => false)));
     setResignationDate(null);
     setPlannedExitDate(null);
     setLeftDate(null);
@@ -364,7 +799,7 @@ const NewExit: React.FC = () => {
         leftDate: leftDate?.toISOString(),
         joiningDate: joiningDate?.toISOString(),
         employeesInCc,
-        checkLists: CHECKLIST_DEFS.map((listDef, listIdx) => ({
+        checkLists: checklistDefs.map((listDef, listIdx) => ({
           name: listDef.name,
           items: listDef.items.map((_, itemIdx) => ({
             checked: checkStates[listIdx][itemIdx],
@@ -421,7 +856,7 @@ const NewExit: React.FC = () => {
                   <div className="text-right">
                     <p className="text-xs text-slate-500">Tasks completed</p>
                     <p className="text-sm font-bold text-red-600">
-                      {totalChecked} / {TOTAL_TASKS}
+                      {totalChecked} / {totalTasks}
                     </p>
                   </div>
                   <div className="w-32">
@@ -588,7 +1023,7 @@ const NewExit: React.FC = () => {
                     <label className={labelClass}>Type of Exit *</label>
                     <select {...register("exitType")} className={inputClass}>
                       <option value="">Select Type of Exit</option>
-                      {EXIT_TYPE_OPTIONS.map((option) => (
+                      {exitTypeOptions.map((option) => (
                         <option key={option} value={option}>
                           {option}
                         </option>
@@ -741,7 +1176,7 @@ const NewExit: React.FC = () => {
                 </div>
 
                 <div className="space-y-3">
-                  {CHECKLIST_DEFS.map((listDef, listIdx) => (
+                  {checklistDefs.map((listDef, listIdx) => (
                     <Accordion
                       key={listDef.name}
                       defaultExpanded={listIdx === 0}
@@ -761,7 +1196,7 @@ const NewExit: React.FC = () => {
                           />
                           <span className="font-semibold text-slate-700 text-sm">{listDef.name}</span>
                           <span className="ml-auto text-xs text-slate-400">
-                            {checkStates[listIdx].filter(Boolean).length} / {listDef.items.length}
+                            {(checkStates[listIdx] ?? []).filter(Boolean).length} / {listDef.items.length}
                           </span>
                         </div>
                       </AccordionSummary>
@@ -774,13 +1209,13 @@ const NewExit: React.FC = () => {
                             >
                               <input
                                 type="checkbox"
-                                checked={checkStates[listIdx][itemIdx]}
+                                checked={checkStates[listIdx]?.[itemIdx] ?? false}
                                 onChange={() => toggleCheck(listIdx, itemIdx)}
                                 className="w-4 h-4 rounded accent-red-600 cursor-pointer"
                               />
                               <span
                                 className={`text-sm ${
-                                  checkStates[listIdx][itemIdx]
+                                  checkStates[listIdx]?.[itemIdx]
                                     ? "line-through text-slate-400"
                                     : "text-slate-700"
                                 }`}
@@ -802,7 +1237,7 @@ const NewExit: React.FC = () => {
                   type="button"
                   onClick={() => {
                     reset();
-                    setCheckStates(CHECKLIST_DEFS.map((l) => l.items.map(() => false)));
+                    setCheckStates(checklistDefs.map((l) => l.items.map(() => false)));
                   }}
                   className="px-6 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition"
                 >

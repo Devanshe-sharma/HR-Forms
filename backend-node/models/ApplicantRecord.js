@@ -78,6 +78,20 @@ const finalDecisionSchema = new mongoose.Schema(
   { _id: false },
 );
 
+// ── Document uploaded by the candidate via the post-offer upload link ───────
+// docType is one of REQUIRED_DOCUMENT_TYPES' keys (see routes/applicantRecords.js)
+// — kept as free text rather than an enum so an old upload stays valid even if
+// the required-document list itself changes later.
+const uploadedDocumentSchema = new mongoose.Schema(
+  {
+    docType:    { type: String, default: '' },
+    fileName:   { type: String, default: '' },
+    driveLink:  { type: String, default: '' },
+    uploadedAt: { type: Date,   default: null },
+  },
+  { _id: false },
+);
+
 // ── Main Schema ────────────────────────────────────────────────────────────────
 const applicantRecordSchema = new mongoose.Schema(
   {
@@ -221,6 +235,15 @@ const applicantRecordSchema = new mongoose.Schema(
 
     // ── Stage 3: Offer & Placement ────────────────────────────────────────────
     finalDecision: { type: finalDecisionSchema, default: () => ({}) },
+
+    // Offer Letter email — sent manually from OfferPlacementTab once
+    // finalDecision is "Offer Made". Creates documentsUploadFolder* the
+    // first time it's sent (idempotent on resend), then links the
+    // candidate to the public /candidate-upload/:id page.
+    offerLetterSentAt:         { type: Date,   default: null },
+    documentsUploadFolderId:   { type: String, default: '' },
+    documentsUploadFolderLink: { type: String, default: '' },
+    uploadedDocuments:         { type: [uploadedDocumentSchema], default: [] },
 
     // ── Convenience flags ─────────────────────────────────────────────────────
     isArchived: { type: Boolean, default: false },

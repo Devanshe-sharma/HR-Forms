@@ -1,44 +1,62 @@
-﻿const signature = require("../utils/signature");
+const signature = require("../utils/signature");
 const formatDateIST = require("../utils/formatDateIST");
 
-function instructionsToAllTemplate({ name, email, mobile, dept, deptLink, designation, designationLink, plannedJoiningDate }) {
+function instructionsToAllTemplate({ name, email, mobile, dept, designation, reportingHead, plannedJoiningDate }) {
   const date = formatDateIST(plannedJoiningDate) || "Pending";
 
   const html = `
-    <p>Dear All,</p>
-    <p>${name} will be joining Brisk Olive <b>at 9 am on ${date}</b></p>
-    <p>Please complete these pre-joining actions - to ensure a smooth onboarding:<br>
-    (Joinee's contact details are: ${email || "-"} ${mobile || ""})</p>
+    <p>Hello Team,</p>
+    <p>${name} will be joining us on <b>${date}</b>.</p>
+
+    <p><b>Employee Details</b></p>
     <ul>
-      <li>HR: Please prepare:
-        <ul><li>Company Onboarding Presentation.</li></ul>
-      </li>
-      <li>Department: Please prepare:
-        <ul>
-          <li>Department Onboarding Presentation.</li>
-          <li>Role Briefing.</li>
-        </ul>
-      </li>
-      <li>DME: Please keep these ready:
-        <ul>
-          <li>Creation of Passwords.</li>
-          <li>Adding Checklist tasks (in coordination with the Dept).</li>
-        </ul>
-      </li>
-      <li>Admin: Please keep these ready:
-        <ul>
-          <li>BO T-Shirt Size - (The Joinee will email you. If not, please check <a target="_blank" href="https://docs.google.com/spreadsheets/d/1C_hMicFGaw9wyKe-EMLorXY7eZX9XmlJ_UrXpmnSUQ0/">this sheet</a>, or call the Joinee)</li>
-          <li>Welcome Kit.</li>
-          <li>Provide Laptop.</li>
-          <li>Prepare seating.</li>
-        </ul>
-      </li>
+      <li>Name: ${name}</li>
+      <li>Designation: ${designation || "-"}</li>
+      <li>Department: ${dept || "-"}</li>
+      <li>Reporting Manager: ${reportingHead || "-"}</li>
+      <li>Phone: ${mobile || "-"}</li>
+      <li>Personal Email: ${email || "-"}</li>
     </ul>
-    <p>Please feel free to call me for any clarifications.</p>
+
+    <p>To ensure a smooth onboarding process, concerned teams are requested to complete the following:</p>
+
+    <p><b>HR</b></p>
+    <ul>
+      <li>Onboarding presentation &amp; company/policy induction</li>
+      <li>Employee profile creation in HR Portal</li>
+      <li>Document verification &amp; upload</li>
+      <li>Official email ID creation</li>
+      <li>Attendance &amp; joining formalities</li>
+    </ul>
+
+    <p><b>Department</b></p>
+    <ul>
+      <li>Team introduction</li>
+      <li>Role &amp; responsibility briefing</li>
+      <li>KRAs/KPIs and initial tasks</li>
+      <li>Relevant process/SOP briefing</li>
+    </ul>
+
+    <p><b>DME</b></p>
+    <ul>
+      <li>System/password setup</li>
+      <li>Required system access</li>
+      <li>Add onboarding checklist in coordination with the Department</li>
+    </ul>
+
+    <p><b>Admin</b></p>
+    <ul>
+      <li>Seating arrangement</li>
+      <li>Welcome Kit: Laptop, Charger, Coffee Mug, Pen &amp; Notebook</li>
+      <li>T-Shirt size &ndash; please check the T-Shirt Size Sheet or contact the joinee.</li>
+      <li>Access/ID card, wherever applicable</li>
+    </ul>
+
+    <p>All concerned teams are requested to ensure that the above arrangements are completed before/on the date of joining.</p>
     ${signature()}
   `;
   return {
-    subject: `Hi All, Preparation for New Joinee: ${name} joining on ${date} ( ${email || ""} ${mobile || ""} )`,
+    subject: `New Joining: ${name}, joining on ${date}`,
     html,
   };
 }

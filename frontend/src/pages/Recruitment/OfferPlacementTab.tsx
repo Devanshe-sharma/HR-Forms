@@ -1,7 +1,7 @@
 
 // pages/Recruitment/OfferPlacementTab.tsx
 import React, { useState, useEffect } from 'react';
-import { Loader2, Save, CheckSquare, CheckCircle2 } from 'lucide-react';
+import { Loader2, Save, CheckSquare, CheckCircle2, Mail } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Field, EditField, EditSelect } from './ApplicantFieldComponents';
 import { ApplicantRecord, FinalDecision, API_BASE, DECISION_OPTIONS, DECISION_COLORS } from './applicantTypes';
@@ -17,6 +17,7 @@ const OfferPlacementTab = ({
   const [saving, setSaving] = useState(false);
   const [editMode, setEditMode] = useState<'view' | 'edit'>('view');
   const [showSaved, setShowSaved] = useState(false);
+  const [sendingOffer, setSendingOffer] = useState(false);
 
   useEffect(() => {
     setDraft(record.finalDecision ?? {} as FinalDecision);
@@ -53,6 +54,22 @@ const OfferPlacementTab = ({
     }
   };
 
+  const handleSendOfferLetter = async () => {
+    if (!window.confirm(`Send the Offer Letter email to ${record.email || 'this candidate'}?`)) return;
+    setSendingOffer(true);
+    try {
+      const res = await fetch(`${API_BASE}/applicant-records/${record._id}/send-offer-letter`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to send offer letter');
+      onUpdate(json.data);
+      toast.success('Offer Letter sent');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to send offer letter');
+    } finally {
+      setSendingOffer(false);
+    }
+  };
+
   const currentDecision = record.finalDecision?.decision || 'Pending';
   const displayDecision = editMode === 'edit' ? draft.decision || 'Pending' : currentDecision;
 
@@ -70,6 +87,16 @@ const OfferPlacementTab = ({
         </div>
 
         <div className="flex gap-2 justify-end">
+          {editMode === 'view' && currentDecision === 'Offer Made' && (
+            <button
+              onClick={handleSendOfferLetter}
+              disabled={sendingOffer}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 rounded-xl transition"
+            >
+              {sendingOffer ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+              {record.offerLetterSentAt ? 'Resend Offer Letter' : 'Send Offer Letter'}
+            </button>
+          )}
           {editMode === 'view' ? (
             <button
               onClick={() => setEditMode('edit')}
@@ -165,6 +192,26 @@ const OfferPlacementTab = ({
             {record.finalDecision?.decisionDate && <div><span className="text-gray-400">Decided on:</span> <strong>{new Date(record.finalDecision.decisionDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</strong></div>}
           </div>
           {record.finalDecision?.notes && <p className="mt-2 text-xs text-gray-600 italic">"{record.finalDecision.notes}"</p>}
+        </div>
+      )}
+
+      {record.offerLetterSentAt && (
+        <div className="p-4 rounded-xl border border-indigo-100 bg-indigo-50">
+          <p className="text-xs font-bold uppercase tracking-wide text-indigo-400 mb-2">Offer Letter</p>
+          <p className="text-sm text-gray-700">
+            Sent on {new Date(record.offerLetterSentAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+            {record.documentsUploadFolderLink && (
+              <>
+                {' · '}
+                <a href={record.documentsUploadFolderLink} target="_blank" rel="noreferrer" className="text-indigo-600 underline">
+                  View Documents Folder
+                </a>
+              </>
+            )}
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            {record.uploadedDocuments?.length ?? 0} document{(record.uploadedDocuments?.length ?? 0) === 1 ? '' : 's'} uploaded by candidate so far
+          </p>
         </div>
       )}
 

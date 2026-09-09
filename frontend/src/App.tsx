@@ -7,6 +7,7 @@ import CareersPage from "./pages/outsider/Careerspage";
 import CandidateApplicationPage from "./pages/Recruitment/CandidateApplication";
 import ReferCandidatePage from "./pages/outsider/ReferCandidate";
 import InterviewFeedbackPage from "./pages/outsider/InterviewFeedback";
+import CandidateDocumentUpload from "./pages/outsider/CandidateDocumentUpload";
 import SalaryRevisionAction from "./pages/outsider/SalaryRevisionAction";
 import OutOfOfficeAction from "./pages/outsider/OutOfOfficeAction";
 import ForceChangePasswordPage from "./pages/ForceChangePassword";
@@ -68,6 +69,7 @@ export default function App() {
         <Route path="/candidate-application" element={<CandidateApplicationPage />} />
         <Route path="/refer/:requisitionId" element={<ReferCandidatePage />} />
         <Route path="/interview-feedback/:recordId/:roundId" element={<InterviewFeedbackPage />} />
+        <Route path="/candidate-upload/:id" element={<CandidateDocumentUpload />} />
         <Route path="/salary-revision-action/:id" element={<SalaryRevisionAction />} />
         <Route path="/out-of-office-action/:id" element={<OutOfOfficeAction />} />
 

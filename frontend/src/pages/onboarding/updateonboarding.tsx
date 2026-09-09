@@ -42,6 +42,7 @@ interface RoleEmployee {
 
 interface CheckItemState {
   doneHeader: string;
+  name?: string;
   doneDate?: string; // ISO string if already done
   score?: number;
   status?: string;
@@ -181,58 +182,20 @@ const MANAGEMENT_LEVEL_OPTIONS = [
 // (Employee, Consultant, Part Time, Temporary Staffing) gets Salary Details.
 const CONTRACT_BASED_CATEGORIES = ["Intern", "Contract Based"];
 
-// ─── Checklist definitions (same order as backend) ──────────────────────────
-const CHECKLIST_DEFS = [
-  {
-    name: "PRE-JOINING TASKS",
-    color: "bg-violet-50 border-violet-200",
-    accent: "#7c3aed",
-    items: [
-      "Welcome Email Done?", "Reminder Email Done?", "Blood Gp Reminder Done?",
-      "Photos Reminder Done?", "Photo Formal Dress Done?", "Reminder Email ToAll Done?",
-      "Verification Of Document Done?", "Company SIM Requirement Checked Done?",
-    ],
-  },
-  {
-    name: "JOINING-DAY TASKS",
-    color: "bg-sky-50 border-sky-200",
-    accent: "#0284c7",
-    items: [
-      "New BO Email Done?", "Odoo Profile Photo Done?", "Odoo Blood Gp Entry Done?",
-      "Odoo Profile 100% Done?", "Odoo Salary/Contract Done?", "EFP Forms 2/11 Done?",
-      "Employees List Done?", "Seating Done?", "System Issued if Applicable Done?",
-      "BO Presentation Done?", "Employees Hullo Done?", "Employee PAN Card Done?",
-    ],
-  },
-  {
-    name: "POST-JOINING TASKS",
-    color: "bg-emerald-50 border-emerald-200",
-    accent: "#059669",
-    items: [
-      "T-Shirt Issue Done?", "Welcome Kit Issue Done?", "Odoo Eqpt Entry Done?",
-      "Contract/Appt Issue Done?", "Employee File Done?", "Biometric Done?",
-      "Dept Onboarding Done?", "Role Briefing Done?", "Amend LinkedIn Profile Done?",
-      "Add Email for Google Contacts Sharing if Applicable Done?",
-      "Taken Over from Exiting Employee, If Applicable Done?",
-      "DME: Checklists/ Delegation Passwords Done?", "Dept: Allocate Checklist/ Delegation Done?",
-      "Allocate Buddy Done?", "Employee Confirms All OK Done?", "Onboarding Test Done?",
-      "Emailed All Clients New Member Has Joined if Applicable Done?",
-      "Coffee With Directors Done?", "Check if UAN Applicable Done?",
-      "UAN (PF) if applicable completed Done?", "KYC (PF) if applicable completed Done?",
-      "Add Employee to BO WhatsApp Gp Done?",
-    ],
-  },
-  {
-    name: "FINAL-JOINING TASKS",
-    color: "bg-amber-50 border-amber-200",
-    accent: "#d97706",
-    items: [
-      "Medical Insurance Card Issued if Applicable Done?", "First Salary Transfer Done?",
-    ],
-  },
-];
-
-const TOTAL_TASKS = CHECKLIST_DEFS.reduce((s, l) => s + l.items.length, 0);
+// ─── Checklist group styling ─────────────────────────────────────────────────
+// The actual checklist (which groups, which items) varies per record — it
+// depends on that person's employeeCategory (Intern vs everyone else, see
+// backend's buildDefaultCheckLists()) — so it's rendered straight off
+// detail.checkLists rather than a hardcoded template. Only the display
+// color/accent per group name is fixed here, with a fallback for any group
+// name not in the map.
+const GROUP_STYLES: Record<string, { color: string; accent: string }> = {
+  "PRE-JOINING TASKS": { color: "bg-violet-50 border-violet-200", accent: "#7c3aed" },
+  "JOINING-DAY TASKS": { color: "bg-sky-50 border-sky-200", accent: "#0284c7" },
+  "POST-JOINING TASKS": { color: "bg-emerald-50 border-emerald-200", accent: "#059669" },
+  "FINAL-JOINING TASKS": { color: "bg-amber-50 border-amber-200", accent: "#d97706" },
+};
+const DEFAULT_GROUP_STYLE = { color: "bg-slate-50 border-slate-200", accent: "#475569" };
 
 const STATUS_BADGE: Record<string, string> = {
   "DONE": "bg-green-100 text-green-700",
@@ -386,7 +349,7 @@ const UpdateOnboarding: React.FC = () => {
         );
 
         // Init newTicks — all false (only pending items can be ticked)
-        setNewTicks(CHECKLIST_DEFS.map((l) => l.items.map(() => false)));
+        setNewTicks((d.checkLists ?? []).map((l) => l.itemsList.map(() => false)));
       })
       .catch(() => toast.error("Failed to load joinee details"))
       .finally(() => setLoadingJoinee(false));
@@ -400,10 +363,11 @@ const UpdateOnboarding: React.FC = () => {
     !!getItemState(listIdx, itemIdx)?.doneDate;
 
   const totalNewlyTicked = newTicks.flat().filter(Boolean).length;
+  const totalTasks = detail?.checkLists.reduce((s, l) => s + l.itemsList.length, 0) ?? 0;
   const totalAlreadyDone = detail?.checkLists
   .flatMap((l) => l.itemsList)   // itemsList not items
   .filter((it) => !!it.doneDate).length ?? 0;
-  const progress = Math.round(((totalAlreadyDone + totalNewlyTicked) / TOTAL_TASKS) * 100);
+  const progress = totalTasks > 0 ? Math.round(((totalAlreadyDone + totalNewlyTicked) / totalTasks) * 100) : 0;
 
   const toggleNewTick = (listIdx: number, itemIdx: number) => {
     if (isAlreadyDone(listIdx, itemIdx)) return; // cannot uncheck old items
@@ -469,9 +433,9 @@ const UpdateOnboarding: React.FC = () => {
       salRevisionDueDate: newSalRevisionDueDate?.toISOString(),
       employeesInCc: employeesInCc,
       // Checklists: send name + item state (checked + name "new"/"old")
-      checkLists: CHECKLIST_DEFS.map((listDef, listIdx) => ({
+      checkLists: (detail.checkLists ?? []).map((listDef, listIdx) => ({
         name: listDef.name,
-        items: listDef.items.map((_, itemIdx) => ({
+        items: listDef.itemsList.map((_, itemIdx) => ({
           checked: isAlreadyDone(listIdx, itemIdx)
             ? false // already done items: don't re-mark
             : newTicks[listIdx]?.[itemIdx] ?? false,
@@ -555,7 +519,7 @@ const UpdateOnboarding: React.FC = () => {
                 <div className="text-right">
                   <p className="text-xs text-slate-500">Tasks completed</p>
                   <p className="text-sm font-bold text-indigo-600">
-                    {totalAlreadyDone + totalNewlyTicked} / {TOTAL_TASKS}
+                    {totalAlreadyDone + totalNewlyTicked} / {totalTasks}
                   </p>
                 </div>
                 <div className="w-32">
@@ -1087,10 +1051,10 @@ const UpdateOnboarding: React.FC = () => {
                   </div>
 
                   <div className="space-y-3">
-                    {CHECKLIST_DEFS.map((listDef, listIdx) => {
-                      const listData = detail.checkLists[listIdx];
-                      const planDate = listData?.planDate ? fmtDate(listData.planDate) : "—";
-                      const doneCount = listDef.items.filter((_, ii) => isAlreadyDone(listIdx, ii)).length;
+                    {(detail.checkLists ?? []).map((listDef, listIdx) => {
+                      const style = GROUP_STYLES[listDef.name] ?? DEFAULT_GROUP_STYLE;
+                      const planDate = listDef.planDate ? fmtDate(listDef.planDate) : "—";
+                      const doneCount = listDef.itemsList.filter((_, ii) => isAlreadyDone(listIdx, ii)).length;
                       const newCount = newTicks[listIdx]?.filter(Boolean).length ?? 0;
 
                       return (
@@ -1104,20 +1068,19 @@ const UpdateOnboarding: React.FC = () => {
                         >
                           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                             <div className="flex items-center gap-3 w-full pr-2">
-                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: listDef.accent }} />
+                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: style.accent }} />
                               <span className="font-semibold text-slate-700 text-sm">{listDef.name}</span>
                               <span className="text-xs text-slate-400 ml-1">Plan: {planDate}</span>
                               <span className="ml-auto text-xs text-slate-400">
-                                {doneCount + newCount} / {listDef.items.length}
+                                {doneCount + newCount} / {listDef.itemsList.length}
                               </span>
                             </div>
                           </AccordionSummary>
 
-                          <AccordionDetails className={`${listDef.color} !pt-0`}>
+                          <AccordionDetails className={`${style.color} !pt-0`}>
                             <div className="pt-2 space-y-1">
-                              {listDef.items.map((itemLabel, itemIdx) => {
+                              {listDef.itemsList.map((itemState, itemIdx) => {
                                 const done = isAlreadyDone(listIdx, itemIdx);
-                                const itemState = getItemState(listIdx, itemIdx);
                                 const pendingTick = newTicks[listIdx]?.[itemIdx] ?? false;
 
                                 return (
@@ -1141,7 +1104,7 @@ const UpdateOnboarding: React.FC = () => {
 
                                     {/* Label */}
                                     <span className={`text-sm flex-1 ${done ? "line-through text-slate-400" : pendingTick ? "text-indigo-700 font-medium" : "text-slate-700"}`}>
-                                      {itemLabel}
+                                      {itemState.name}
                                     </span>
 
                                     {/* Status badge */}

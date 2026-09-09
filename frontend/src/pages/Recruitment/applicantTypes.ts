@@ -32,6 +32,27 @@ export interface FinalDecision {
   notes:        string;
 }
 
+export interface UploadedDocument {
+  docType:    string;
+  fileName:   string;
+  driveLink:  string;
+  uploadedAt: string;
+}
+
+// Mirrors backend's utils/requiredCandidateDocuments.js — this app has no
+// shared package between frontend and backend, so the list is duplicated;
+// keep both in sync if it ever changes.
+export const REQUIRED_CANDIDATE_DOCUMENTS: { key: string; label: string }[] = [
+  { key: 'resume', label: 'Resume' },
+  { key: 'photos', label: '2 Passport Size Colour Photographs' },
+  { key: 'panOrVoterId', label: 'A Copy of PAN Card / Voter ID Card' },
+  { key: 'aadhar', label: 'A Copy of Aadhar Card' },
+  { key: 'bankDetails', label: 'A Copy of Bank Details' },
+  { key: 'uan', label: 'A Copy of UAN Number, if Applicable' },
+  { key: 'educationCertificates', label: 'A Copy of Education Certificates - 10th, 12th, Graduation, Post Graduation' },
+  { key: 'previousCompanyDocs', label: "A Copy of Previous Company Details - Experience Letter, Last 3 Months' Salary Slips, if Applicable" },
+];
+
 export interface ApplicantRecord {
   _id:                   string;
   applicationRef:        string;
@@ -71,6 +92,9 @@ export interface ApplicantRecord {
   interviewFinalStatus: string;
   // Stage 3 — Offer & Placement
   finalDecision:   FinalDecision;
+  offerLetterSentAt?:         string | null;
+  documentsUploadFolderLink?: string;
+  uploadedDocuments?:         UploadedDocument[];
   createdAt:       string;
 }
 

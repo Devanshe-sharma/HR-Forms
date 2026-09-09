@@ -143,83 +143,159 @@ const CONTRACT_BASED_CATEGORIES = [
   "Contract Based",
 ] as const;
 
-// ─── Checklist definitions (must match backend order exactly) ───────────────
-const CHECKLIST_DEFS = [
+// ─── Checklist templates (must match backend's buildDefaultCheckLists()
+// exactly — one for Interns, one shared by every other employeeCategory) ───
+const GROUP_STYLES: Record<string, { color: string; accent: string }> = {
+  "PRE-JOINING TASKS": { color: "bg-violet-50 border-violet-200", accent: "#7c3aed" },
+  "JOINING-DAY TASKS": { color: "bg-sky-50 border-sky-200", accent: "#0284c7" },
+  "POST-JOINING TASKS": { color: "bg-emerald-50 border-emerald-200", accent: "#059669" },
+  "FINAL-JOINING TASKS": { color: "bg-amber-50 border-amber-200", accent: "#d97706" },
+};
+const DEFAULT_GROUP_STYLE = { color: "bg-slate-50 border-slate-200", accent: "#475569" };
+
+type ChecklistTemplateGroup = { name: string; items: string[] };
+
+const EMPLOYEE_CHECKLIST_TEMPLATE: ChecklistTemplateGroup[] = [
   {
     name: "PRE-JOINING TASKS",
-    color: "bg-violet-50 border-violet-200",
-    accent: "#7c3aed",
     items: [
-      "Welcome Email Done?",
-      "Reminder Email Done?",
-      "Blood Gp Reminder Done?",
-      "Photos Reminder Done?",
-      "Photo Formal Dress Done?",
-      "Reminder Email ToAll Done?",
-      "Verification Of Document Done?",
-      "Company SIM Requirement Checked Done?",
+      "Offer Letter Released?",
+      "Welcome Email Shared with the Employee Done?",
+      "Onboarding and Company Introduction Shared with the New Joiner Done?",
+      "Employee Profile Created in the HR Portal Done?",
+      "Verification of Docs Done?",
+      "Informed the HR, Accounts, Admin, Management, Reporting Manager Done?",
     ],
   },
   {
     name: "JOINING-DAY TASKS",
-    color: "bg-sky-50 border-sky-200",
-    accent: "#0284c7",
     items: [
-      "New BO Email Done?",
-      "Odoo Profile Photo Done?",
-      "Odoo Blood Gp Entry Done?",
-      "Odoo Profile 100% Done?",
-      "Odoo Salary/Contract Done?",
-      "EFP Forms 2/11 Done?",
-      "Employees List Done?",
+      "Appointment Letter Released, Signed by the Employee Done?",
+      "HR Policies Informed to the Employee Done?",
+      "Introduction and Orientation Done?",
+      "Reporting Manager and Department Introduced Done?",
+      "Role and Responsibilities Informed by the Reporting Manager Done?",
+      "Official Email Created and Password Shared Done?",
+      "Employee Profile Completed Done?",
+      "Check Employee Documents Are Uploaded in the HR Portal Done?",
+      "Employee Contract Created Done?",
+      "PF / Form 2 / 11 Filled by the Employee, in Case PF Is Deducted Done?",
       "Seating Done?",
-      "System Issued if Applicable Done?",
-      "BO Presentation Done?",
-      "Employees Hullo Done?",
-      "Employee PAN Card Done?",
+      "Welcome Kit (Laptop, Charger, Notebook, Pen, T-Shirt, Coffee Mug) Given to Employee Done?",
     ],
   },
   {
     name: "POST-JOINING TASKS",
-    color: "bg-emerald-50 border-emerald-200",
-    accent: "#059669",
     items: [
-      "T-Shirt Issue Done?",
-      "Welcome Kit Issue Done?",
-      "Odoo Eqpt Entry Done?",
-      "Contract/Appt Issue Done?",
-      "Employee File Done?",
-      "Biometric Done?",
-      "Dept Onboarding Done?",
-      "Role Briefing Done?",
-      "Amend LinkedIn Profile Done?",
-      "Add Email for Google Contacts Sharing if Applicable Done?",
-      "Taken Over from Exiting Employee, If Applicable Done?",
-      "DME: Checklists/ Delegation Passwords Done?",
-      "Dept: Allocate Checklist/ Delegation Done?",
-      "Allocate Buddy Done?",
-      "Employee Confirms All OK Done?",
+      "Add Employee in the Attendance System Done?",
+      "Add Employee to the Gmail, WhatsApp Group, HR Portal or Any Other Systems Done?",
+      "Taken Over from the Existing Employee Done?",
+      "Allocated Buddy Done?",
+      "Coffee with Directors Session Done?",
+      "Emailed All the Clients, if Applicable Done?",
       "Onboarding Test Done?",
-      "Emailed All Clients New Member Has Joined if Applicable Done?",
-      "Coffee With Directors Done?",
-      "Check if UAN Applicable Done?",
-      "UAN (PF) if applicable completed Done?",
-      "KYC (PF) if applicable completed Done?",
-      "Add Employee to BO WhatsApp Gp Done?",
+      "Check UAN, if Applicable Done?",
+      "Check KYC, if Applicable Done?",
+      "Share the Feedback Form with the Employee Done?",
+      "Employee Confirms ALL OKAY Done?",
+      "Employee Added to the Medical Insurance Done?",
     ],
   },
   {
     name: "FINAL-JOINING TASKS",
-    color: "bg-amber-50 border-amber-200",
-    accent: "#d97706",
     items: [
-      "Medical Insurance Card Issued if Applicable Done?",
-      "First Salary Transfer Done?",
+      "First Salary Credited to Employee Done?",
+      "Feedback from the Employee Received Done?",
     ],
   },
 ];
 
-const TOTAL_TASKS = CHECKLIST_DEFS.reduce((s, l) => s + l.items.length, 0);
+const INTERN_CHECKLIST_TEMPLATE: ChecklistTemplateGroup[] = [
+  {
+    name: "PRE-JOINING TASKS",
+    items: [
+      "Offer Letter Released?",
+      "Welcome Email Shared with the Intern Done?",
+      "Onboarding and Company Introduction Shared with the New Joiner Done?",
+      "Intern Profile Created in the HR Portal Done?",
+      "Verification of Docs Done?",
+      "Informed the HR, Accounts, Admin, Management, Reporting Manager Done?",
+    ],
+  },
+  {
+    name: "JOINING-DAY TASKS",
+    items: [
+      "Contract Letter Released, Signed by the Intern Done?",
+      "HR Policies Informed to the Intern Done?",
+      "Introduction and Orientation Done?",
+      "Reporting Manager and Department Introduced Done?",
+      "Role and Responsibilities Informed by the Reporting Manager Done?",
+      "Official Email Created and Password Shared Done?",
+      "Intern Profile Completed Done?",
+      "Check Intern Documents Are Uploaded in the HR Portal Done?",
+      "Intern Contract Created Done?",
+      "Seating Done?",
+      "Welcome Kit (Notebook, Pen, T-Shirt, Coffee Mug) Given to Intern Done?",
+    ],
+  },
+  {
+    name: "POST-JOINING TASKS",
+    items: [
+      "Add Intern in the Attendance System Done?",
+      "Add Intern to the Gmail, WhatsApp Group, HR Portal or Any Other Systems Done?",
+      "Allocated Buddy Done?",
+      "Check UAN, if Applicable Done?",
+      "Check KYC, if Applicable Done?",
+      "Share the Feedback Form with the Intern Done?",
+      "Intern Confirms ALL OKAY Done?",
+    ],
+  },
+  {
+    name: "FINAL-JOINING TASKS",
+    items: [
+      "First Salary Credited to Intern Done?",
+      "Feedback from the Intern Received Done?",
+    ],
+  },
+];
+
+function isInternCategory(employeeCategory?: string): boolean {
+  return (employeeCategory || "").trim().toLowerCase() === "intern";
+}
+
+// Picks the checklist template for the currently selected employeeCategory,
+// matching backend's buildDefaultCheckLists() exactly, then attaches
+// display styling per group.
+function getChecklistDefs(employeeCategory?: string) {
+  const template = isInternCategory(employeeCategory) ? INTERN_CHECKLIST_TEMPLATE : EMPLOYEE_CHECKLIST_TEMPLATE;
+  return template.map((group) => ({
+    ...(GROUP_STYLES[group.name] ?? DEFAULT_GROUP_STYLE),
+    name: group.name,
+    items: group.items,
+  }));
+}
+
+// Mirrors backend's getEmailToChecklistItemMap() — which flag auto-ticks
+// which (group, item) in the ACTIVE template. Resolved by name (not a fixed
+// index) since the item's position differs between the Intern and
+// Employee/Consultant templates.
+function getEmailToChecklistItemNames(employeeCategory?: string) {
+  const isIntern = isInternCategory(employeeCategory);
+  return {
+    autoWelcomeEmail: {
+      listName: "PRE-JOINING TASKS",
+      itemName: isIntern ? "Welcome Email Shared with the Intern Done?" : "Welcome Email Shared with the Employee Done?",
+    },
+    autoInstructionsToAllEmail: {
+      listName: "PRE-JOINING TASKS",
+      itemName: "Informed the HR, Accounts, Admin, Management, Reporting Manager Done?",
+    },
+    employeeConfirmationEmail: {
+      listName: "POST-JOINING TASKS",
+      itemName: isIntern ? "Intern Confirms ALL OKAY Done?" : "Employee Confirms ALL OKAY Done?",
+    },
+  };
+}
 
 // ─── Component ───────────────────────────────────────────────────────────────
 const NewOnboarding: React.FC = () => {
@@ -260,9 +336,7 @@ const NewOnboarding: React.FC = () => {
   const [thankYouLoading, setThankYouLoading] = useState(true);
 
   // Checklist state: array of arrays of booleans
-  const [checkStates, setCheckStates] = useState<boolean[][]>(
-    CHECKLIST_DEFS.map((l) => l.items.map(() => false))
-  );
+  const [checkStates, setCheckStates] = useState<boolean[][]>([]);
 
   const joiningStatus = watch("joiningStatus");
   const employeeCategory = watch("employeeCategory");
@@ -276,28 +350,49 @@ const NewOnboarding: React.FC = () => {
   const isContractBasedCategory =
     !!employeeCategory && (CONTRACT_BASED_CATEGORIES as readonly string[]).includes(employeeCategory);
 
+  // Which checklist template is active — Intern vs everyone else.
+  const checklistDefs = useMemo(() => getChecklistDefs(employeeCategory), [employeeCategory]);
+  const totalTasks = useMemo(
+    () => checklistDefs.reduce((s, l) => s + l.items.length, 0),
+    [checklistDefs]
+  );
+
+  // The active template's shape changes with employeeCategory, so any ticks
+  // recorded against the previous template's indices no longer mean
+  // anything — reset whenever the template itself changes.
+  useEffect(() => {
+    setCheckStates(checklistDefs.map((l) => l.items.map(() => false)));
+  }, [checklistDefs]);
+
   // Sending one of these emails IS the matching checklist task — auto-tick
   // it in the UI the moment the email checkbox is ticked, so what you see
-  // here matches exactly what gets saved on submit.
+  // here matches exactly what gets saved on submit. Resolved by (group,
+  // item) NAME against the active template rather than a fixed index,
+  // since wording/position differs between Intern and Employee/Consultant.
   useEffect(() => {
-    const map: [boolean | undefined, number, number][] = [
-      [autoWelcomeEmail, 0, 0],              // Welcome Email Done?
-      [autoReminderEmail, 0, 1],             // Reminder Email Done?
-      [autoInstructionsToAllEmail, 0, 5],    // Reminder Email ToAll Done?
-      [employeeConfirmationEmail, 2, 14],    // Employee Confirms All OK Done?
+    const itemNames = getEmailToChecklistItemNames(employeeCategory);
+    const map: [boolean | undefined, string, string][] = [
+      [autoWelcomeEmail, itemNames.autoWelcomeEmail.listName, itemNames.autoWelcomeEmail.itemName],
+      [autoInstructionsToAllEmail, itemNames.autoInstructionsToAllEmail.listName, itemNames.autoInstructionsToAllEmail.itemName],
+      [employeeConfirmationEmail, itemNames.employeeConfirmationEmail.listName, itemNames.employeeConfirmationEmail.itemName],
     ];
     setCheckStates((prev) => {
       let changed = false;
       const next = prev.map((l) => [...l]);
-      for (const [emailOn, listIdx, itemIdx] of map) {
-        if (emailOn && !next[listIdx][itemIdx]) {
+      for (const [emailOn, listName, itemName] of map) {
+        if (!emailOn) continue;
+        const listIdx = checklistDefs.findIndex((l) => l.name === listName);
+        if (listIdx === -1) continue;
+        const itemIdx = checklistDefs[listIdx].items.indexOf(itemName);
+        if (itemIdx === -1) continue;
+        if (!next[listIdx]?.[itemIdx]) {
           next[listIdx][itemIdx] = true;
           changed = true;
         }
       }
       return changed ? next : prev;
     });
-  }, [autoWelcomeEmail, autoReminderEmail, autoInstructionsToAllEmail, employeeConfirmationEmail]);
+  }, [autoWelcomeEmail, autoInstructionsToAllEmail, employeeConfirmationEmail, employeeCategory, checklistDefs]);
 
   // Contract Amount doubles as Annual CTC for every non-Employee category
   // — Salary Revision, /eligible-employees, and everywhere else in the app
@@ -313,7 +408,7 @@ const NewOnboarding: React.FC = () => {
   }, [contractAmount, isContractBasedCategory, setValue]);
 
   const totalChecked = checkStates.flat().filter(Boolean).length;
-  const progress = Math.round((totalChecked / TOTAL_TASKS) * 100);
+  const progress = totalTasks > 0 ? Math.round((totalChecked / totalTasks) * 100) : 0;
 
   useEffect(() => {
     axios
@@ -352,7 +447,7 @@ const NewOnboarding: React.FC = () => {
 
   const resetFormState = () => {
     reset();
-    setCheckStates(CHECKLIST_DEFS.map((l) => l.items.map(() => false)));
+    setCheckStates(checklistDefs.map((l) => l.items.map(() => false)));
     setOfferAcceptedDate(null);
     setPlannedJoiningDate(null);
     setJoinedDate(null);
@@ -381,7 +476,7 @@ const NewOnboarding: React.FC = () => {
         confirmationDueDate: confirmationDueDate?.toISOString(),
         salRevisionDueDate: salRevisionDueDate?.toISOString(),
         employeesInCc: employeesInCc,
-        checkLists: CHECKLIST_DEFS.map((listDef, listIdx) => ({
+        checkLists: checklistDefs.map((listDef, listIdx) => ({
           name: listDef.name,
           items: listDef.items.map((_, itemIdx) => ({
             checked: checkStates[listIdx][itemIdx],
@@ -457,7 +552,7 @@ const NewOnboarding: React.FC = () => {
                   <div className="text-right">
                     <p className="text-xs text-slate-500">Tasks completed</p>
                     <p className="text-sm font-bold text-indigo-600">
-                      {totalChecked} / {TOTAL_TASKS}
+                      {totalChecked} / {totalTasks}
                     </p>
                   </div>
                   <div className="w-32">
@@ -888,7 +983,7 @@ const NewOnboarding: React.FC = () => {
                 </div>
 
                 <div className="space-y-3">
-                  {CHECKLIST_DEFS.map((listDef, listIdx) => (
+                  {checklistDefs.map((listDef, listIdx) => (
                     <Accordion
                       key={listDef.name}
                       defaultExpanded={listIdx === 0}
@@ -910,7 +1005,7 @@ const NewOnboarding: React.FC = () => {
                             {listDef.name}
                           </span>
                           <span className="ml-auto text-xs text-slate-400">
-                            {checkStates[listIdx].filter(Boolean).length} /{" "}
+                            {(checkStates[listIdx] ?? []).filter(Boolean).length} /{" "}
                             {listDef.items.length}
                           </span>
                         </div>
@@ -924,13 +1019,13 @@ const NewOnboarding: React.FC = () => {
                             >
                               <input
                                 type="checkbox"
-                                checked={checkStates[listIdx][itemIdx]}
+                                checked={checkStates[listIdx]?.[itemIdx] ?? false}
                                 onChange={() => toggleCheck(listIdx, itemIdx)}
                                 className="w-4 h-4 rounded accent-indigo-600 cursor-pointer"
                               />
                               <span
                                 className={`text-sm ${
-                                  checkStates[listIdx][itemIdx]
+                                  checkStates[listIdx]?.[itemIdx]
                                     ? "line-through text-slate-400"
                                     : "text-slate-700"
                                 }`}

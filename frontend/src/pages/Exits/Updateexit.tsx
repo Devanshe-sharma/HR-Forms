@@ -32,6 +32,7 @@ interface ExitListItem {
 }
 
 interface CheckItemState {
+  name?: string;
   doneDate?: string;
   score?: number;
   status?: string;
@@ -99,58 +100,19 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-// ─── Checklist definitions (same order as backend) ──────────────────────────
-const CHECKLIST_DEFS = [
-  {
-    name: "PRE-EXIT TASKS",
-    color: "bg-red-50 border-red-200",
-    accent: "#dc2626",
-    items: [
-      "Exit Email Done?",
-      "Reminder Email Done?",
-      "Take a Printout of Exit Email Done?",
-      "Exit Email to All Dept Cc Done?",
-      "Get a Handing Over Done from Employee?",
-      "Conducting Exit Interview with Mgmt Done?",
-    ],
-  },
-  {
-    name: "EXIT-DAY TASKS",
-    color: "bg-amber-50 border-amber-200",
-    accent: "#d97706",
-    items: [
-      "Sign Exit Form Done?",
-      "Sign No Dues Certificate Done?",
-      "Ensure All Assets Are Returned Done?",
-      "Name Deleted from Employee List Done?",
-      "Tea Party Done?",
-      "SIM Returned Done?",
-    ],
-  },
-  {
-    name: "POST-EXIT TASKS",
-    color: "bg-slate-50 border-slate-200",
-    accent: "#475569",
-    items: [
-      "Close the Contract on Odoo Done?",
-      "Reassign Assets Done?",
-      "Sent an Approval Mail to Mgmt Done?",
-      "Issue FnF Salary Done?",
-      "Issue Experience Letter Done?",
-      "Reallotment of Delegation & Checklist Task Done?",
-      "Remove Email from Google Drive Done?",
-      "Remove Biometric Access Done?",
-      "Change S2ndLife Password Done?",
-      "Remove ERP Password Done?",
-      "Archive Employee Profile Done?",
-      "Remove the Access from Shared Contacts Done?",
-      "Delete Email from BO Domain Done?",
-      "Remove Employee from BO WhatsApp Gp Done?",
-    ],
-  },
-];
-
-const TOTAL_TASKS = CHECKLIST_DEFS.reduce((s, l) => s + l.items.length, 0);
+// ─── Checklist group styling ─────────────────────────────────────────────────
+// The actual checklist (which groups, which items) now varies per record —
+// it depends on that employee's employment type × exit type (see backend's
+// buildDefaultCheckLists()) — so it's rendered straight off detail.checkLists
+// rather than a hardcoded template. Only the display color/accent per group
+// name is fixed here, with a fallback for any group name not in the map.
+const GROUP_STYLES: Record<string, { color: string; accent: string }> = {
+  "PRE-EXIT TASKS": { color: "bg-red-50 border-red-200", accent: "#dc2626" },
+  "EXIT-DAY TASKS": { color: "bg-amber-50 border-amber-200", accent: "#d97706" },
+  "POST-EXIT TASKS": { color: "bg-slate-50 border-slate-200", accent: "#475569" },
+  "EXIT TASKS": { color: "bg-purple-50 border-purple-200", accent: "#7c3aed" },
+};
+const DEFAULT_GROUP_STYLE = { color: "bg-slate-50 border-slate-200", accent: "#475569" };
 
 const STATUS_BADGE: Record<string, string> = {
   "DONE": "bg-green-100 text-green-700",
@@ -237,7 +199,7 @@ const UpdateExit: React.FC = () => {
           (d.employeesInCc ?? []).flatMap((v) => v.split(",").map((s) => s.trim()).filter(Boolean))
         );
 
-        setNewTicks(CHECKLIST_DEFS.map((l) => l.items.map(() => false)));
+        setNewTicks((d.checkLists ?? []).map((l) => l.itemsList.map(() => false)));
       })
       .catch(() => toast.error("Failed to load exit details"))
       .finally(() => setLoadingExit(false));
@@ -266,10 +228,11 @@ const UpdateExit: React.FC = () => {
     !!getItemState(listIdx, itemIdx)?.doneDate;
 
   const totalNewlyTicked = newTicks.flat().filter(Boolean).length;
+  const totalTasks = detail?.checkLists.reduce((s, l) => s + l.itemsList.length, 0) ?? 0;
   const totalAlreadyDone = detail?.checkLists
     .flatMap((l) => l.itemsList)
     .filter((it) => !!it.doneDate).length ?? 0;
-  const progress = Math.round(((totalAlreadyDone + totalNewlyTicked) / TOTAL_TASKS) * 100);
+  const progress = totalTasks > 0 ? Math.round(((totalAlreadyDone + totalNewlyTicked) / totalTasks) * 100) : 0;
 
   const toggleNewTick = (listIdx: number, itemIdx: number) => {
     if (isAlreadyDone(listIdx, itemIdx)) return;
@@ -309,9 +272,9 @@ const UpdateExit: React.FC = () => {
       plannedExitDate: newPlannedExitDate?.toISOString(),
       leftDate: newLeftDate?.toISOString(),
       employeesInCc,
-      checkLists: CHECKLIST_DEFS.map((listDef, listIdx) => ({
+      checkLists: (detail.checkLists ?? []).map((listDef, listIdx) => ({
         name: listDef.name,
-        items: listDef.items.map((_, itemIdx) => ({
+        items: listDef.itemsList.map((_, itemIdx) => ({
           checked: isAlreadyDone(listIdx, itemIdx) ? false : newTicks[listIdx]?.[itemIdx] ?? false,
           name: isAlreadyDone(listIdx, itemIdx) ? "old" : "new",
         })),
@@ -378,7 +341,7 @@ const UpdateExit: React.FC = () => {
                 <div className="text-right">
                   <p className="text-xs text-slate-500">Tasks completed</p>
                   <p className="text-sm font-bold text-red-600">
-                    {totalAlreadyDone + totalNewlyTicked} / {TOTAL_TASKS}
+                    {totalAlreadyDone + totalNewlyTicked} / {totalTasks}
                   </p>
                 </div>
                 <div className="w-32">
@@ -717,10 +680,10 @@ const UpdateExit: React.FC = () => {
                   </div>
 
                   <div className="space-y-3">
-                    {CHECKLIST_DEFS.map((listDef, listIdx) => {
-                      const listData = detail.checkLists[listIdx];
-                      const planDate = listData?.planDate ? fmtDate(listData.planDate) : "—";
-                      const doneCount = listDef.items.filter((_, ii) => isAlreadyDone(listIdx, ii)).length;
+                    {(detail.checkLists ?? []).map((listDef, listIdx) => {
+                      const style = GROUP_STYLES[listDef.name] ?? DEFAULT_GROUP_STYLE;
+                      const planDate = listDef.planDate ? fmtDate(listDef.planDate) : "—";
+                      const doneCount = listDef.itemsList.filter((_, ii) => isAlreadyDone(listIdx, ii)).length;
                       const newCount = newTicks[listIdx]?.filter(Boolean).length ?? 0;
 
                       return (
@@ -734,20 +697,19 @@ const UpdateExit: React.FC = () => {
                         >
                           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                             <div className="flex items-center gap-3 w-full pr-2">
-                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: listDef.accent }} />
+                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: style.accent }} />
                               <span className="font-semibold text-slate-700 text-sm">{listDef.name}</span>
                               <span className="text-xs text-slate-400 ml-1">Plan: {planDate}</span>
                               <span className="ml-auto text-xs text-slate-400">
-                                {doneCount + newCount} / {listDef.items.length}
+                                {doneCount + newCount} / {listDef.itemsList.length}
                               </span>
                             </div>
                           </AccordionSummary>
 
-                          <AccordionDetails className={`${listDef.color} !pt-0`}>
+                          <AccordionDetails className={`${style.color} !pt-0`}>
                             <div className="pt-2 space-y-1">
-                              {listDef.items.map((itemLabel, itemIdx) => {
+                              {listDef.itemsList.map((itemState, itemIdx) => {
                                 const done = isAlreadyDone(listIdx, itemIdx);
-                                const itemState = getItemState(listIdx, itemIdx);
                                 const pendingTick = newTicks[listIdx]?.[itemIdx] ?? false;
 
                                 return (
@@ -766,7 +728,7 @@ const UpdateExit: React.FC = () => {
                                       className="w-4 h-4 rounded accent-red-600 cursor-pointer flex-shrink-0"
                                     />
                                     <span className={`text-sm flex-1 ${done ? "line-through text-slate-400" : pendingTick ? "text-red-700 font-medium" : "text-slate-700"}`}>
-                                      {itemLabel}
+                                      {itemState.name}
                                     </span>
                                     {itemState?.status && (
                                       <span className={`text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ${STATUS_BADGE[itemState.status] ?? "bg-slate-100 text-slate-500"}`}>

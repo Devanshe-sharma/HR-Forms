@@ -23,15 +23,38 @@ const EMAIL_FIELDS = [
   ["employeeConfirmationEmail", "employeeConfirmationEmailSentAt"],
 ];
 
-const EMAIL_TO_CHECKLIST_ITEM = [
-  { flagField: "autoWelcomeEmail", sentAtField: "autoWelcomeEmailSentAt", listName: "PRE-JOINING TASKS", itemName: "Welcome Email Done?" },
-  { flagField: "autoReminderEmail", sentAtField: "autoReminderEmailSentAt", listName: "PRE-JOINING TASKS", itemName: "Reminder Email Done?" },
-  { flagField: "autoInstructionsToAllEmail", sentAtField: "autoInstructionsToAllEmailSentAt", listName: "PRE-JOINING TASKS", itemName: "Reminder Email ToAll Done?" },
-  { flagField: "employeeConfirmationEmail", sentAtField: "employeeConfirmationEmailSentAt", listName: "POST-JOINING TASKS", itemName: "Employee Confirms All OK Done?" },
-];
+// Sending one of these emails IS the matching checklist task, so ticking
+// the send-email checkbox auto-ticks it too. Item wording differs between
+// the Intern and Employee/Consultant checklists (see buildDefaultCheckLists
+// below), so the mapping is resolved per employeeCategory. There's no
+// checklist item left that corresponds to "autoReminderEmail" in either
+// template — that email still sends, it just doesn't auto-tick anything.
+function getEmailToChecklistItemMap(employeeCategory) {
+  const isIntern = isInternCategory(employeeCategory);
+  return [
+    {
+      flagField: "autoWelcomeEmail",
+      sentAtField: "autoWelcomeEmailSentAt",
+      listName: "PRE-JOINING TASKS",
+      itemName: isIntern ? "Welcome Email Shared with the Intern Done?" : "Welcome Email Shared with the Employee Done?",
+    },
+    {
+      flagField: "autoInstructionsToAllEmail",
+      sentAtField: "autoInstructionsToAllEmailSentAt",
+      listName: "PRE-JOINING TASKS",
+      itemName: "Informed the HR, Accounts, Admin, Management, Reporting Manager Done?",
+    },
+    {
+      flagField: "employeeConfirmationEmail",
+      sentAtField: "employeeConfirmationEmailSentAt",
+      listName: "POST-JOINING TASKS",
+      itemName: isIntern ? "Intern Confirms ALL OKAY Done?" : "Employee Confirms ALL OKAY Done?",
+    },
+  ];
+}
 
-function syncEmailChecklistItems(checkLists, emailFields) {
-  for (const { flagField, sentAtField, listName, itemName } of EMAIL_TO_CHECKLIST_ITEM) {
+function syncEmailChecklistItems(checkLists, emailFields, employeeCategory) {
+  for (const { flagField, sentAtField, listName, itemName } of getEmailToChecklistItemMap(employeeCategory)) {
     if (!emailFields[flagField]) continue;
     const list = checkLists.find((l) => l.name === listName);
     if (!list) continue;
@@ -136,72 +159,202 @@ function scoreChecklist(list, today) {
   };
 }
 
-function buildDefaultCheckLists() {
-  return [
-    {
-      name: "PRE-JOINING TASKS",
-      itemsList: [
-        { name: "Welcome Email Done?" },
-        { name: "Reminder Email Done?" },
-        { name: "Blood Gp Reminder Done?" },
-        { name: "Photos Reminder Done?" },
-        { name: "Photo Formal Dress Done?" },
-        { name: "Reminder Email ToAll Done?" },
-        { name: "Verification Of Document Done?" },
-      ],
-    },
-    {
-      name: "JOINING-DAY TASKS",
-      itemsList: [
-        { name: "New BO Email Done?" },
-        { name: "Odoo Profile Photo Done?" },
-        { name: "Odoo Blood Gp Entry Done?" },
-        { name: "Odoo Profile 100% Done?" },
-        { name: "Odoo Salary/Contract Done?" },
-        { name: "EFP Forms 2/11 Done?" },
-        { name: "Employees List Done?" },
-        { name: "Seating Done?" },
-        { name: "System Issued if Applicable Done?" },
-        { name: "BO Presentation Done?" },
-        { name: "Employees Hullo Done?" },
-        { name: "Employee PAN Card Done?" },
-      ],
-    },
-    {
-      name: "POST-JOINING TASKS",
-      itemsList: [
-        { name: "T-Shirt Issue Done?" },
-        { name: "Welcome Kit Issue Done?" },
-        { name: "Odoo Eqpt Entry Done?" },
-        { name: "Contract/Appt Issue Done?" },
-        { name: "Employee File Done?" },
-        { name: "Biometric Done?" },
-        { name: "Dept Onboarding Done?" },
-        { name: "Role Briefing Done?" },
-        { name: "Amend LinkedIn Profile Done?" },
-        { name: "Add Email for Google Contacts Sharing if Applicable Done?" },
-        { name: "Taken Over from Exiting Employee, If Applicable Done?" },
-        { name: "DME: Checklists/ Delegation Passwords Done?" },
-        { name: "Dept: Allocate Checklist/ Delegation Done?" },
-        { name: "Allocate Buddy Done?" },
-        { name: "Employee Confirms All OK Done?" },
-        { name: "Onboarding Test Done?" },
-        { name: "Emailed All Clients New Member Has Joined if Applicable Done?" },
-        { name: "Coffee With Directors Done?" },
-        { name: "Check if UAN Applicable Done?" },
-        { name: "UAN (PF) if applicable completed Done?" },
-        { name: "KYC (PF) if applicable completed Done?" },
-        { name: "Add Employee to BO WhatsApp Gp Done?" },
-      ],
-    },
-    {
-      name: "FINAL-JOINING TASKS",
-      itemsList: [
-        { name: "Medical Insurance Card Issued if Applicable Done?" },
-        { name: "First Salary Transfer Done?" },
-      ],
-    },
-  ];
+// ─── Checklist templates, keyed by employee category ───────────────────────
+// Interns get their own checklist; every other category (Employee,
+// Consultant, Contract Based, Part Time, Temporary Staffing — and no
+// category chosen yet) shares one Employee/Consultant checklist. Group
+// names ("PRE-JOINING TASKS" etc.) must stay exactly as-is: assignPlanDates
+// below and getEmailToChecklistItemMap() both match on them.
+//
+// GENERIC_CHECKLIST_TEMPLATE is the original one-size-fits-all list, kept
+// only for legacy CSV import (buildLegacyChecklists positionally matches
+// "<item> Plan?/Done?/Score?/Status?" columns against it) and the
+// /migrate/fix-names data-repair endpoint — both predate employeeCategory
+// and must keep working against the old item names unchanged.
+function isInternCategory(employeeCategory) {
+  return String(employeeCategory || "").trim().toLowerCase() === "intern";
+}
+
+function templateGroupsToCheckLists(template) {
+  return template.map((group) => ({
+    name: group.name,
+    itemsList: group.items.map((name) => ({ name })),
+  }));
+}
+
+const GENERIC_CHECKLIST_TEMPLATE = [
+  {
+    name: "PRE-JOINING TASKS",
+    items: [
+      "Welcome Email Done?",
+      "Reminder Email Done?",
+      "Blood Gp Reminder Done?",
+      "Photos Reminder Done?",
+      "Photo Formal Dress Done?",
+      "Reminder Email ToAll Done?",
+      "Verification Of Document Done?",
+    ],
+  },
+  {
+    name: "JOINING-DAY TASKS",
+    items: [
+      "New BO Email Done?",
+      "Odoo Profile Photo Done?",
+      "Odoo Blood Gp Entry Done?",
+      "Odoo Profile 100% Done?",
+      "Odoo Salary/Contract Done?",
+      "EFP Forms 2/11 Done?",
+      "Employees List Done?",
+      "Seating Done?",
+      "System Issued if Applicable Done?",
+      "BO Presentation Done?",
+      "Employees Hullo Done?",
+      "Employee PAN Card Done?",
+    ],
+  },
+  {
+    name: "POST-JOINING TASKS",
+    items: [
+      "T-Shirt Issue Done?",
+      "Welcome Kit Issue Done?",
+      "Odoo Eqpt Entry Done?",
+      "Contract/Appt Issue Done?",
+      "Employee File Done?",
+      "Biometric Done?",
+      "Dept Onboarding Done?",
+      "Role Briefing Done?",
+      "Amend LinkedIn Profile Done?",
+      "Add Email for Google Contacts Sharing if Applicable Done?",
+      "Taken Over from Exiting Employee, If Applicable Done?",
+      "DME: Checklists/ Delegation Passwords Done?",
+      "Dept: Allocate Checklist/ Delegation Done?",
+      "Allocate Buddy Done?",
+      "Employee Confirms All OK Done?",
+      "Onboarding Test Done?",
+      "Emailed All Clients New Member Has Joined if Applicable Done?",
+      "Coffee With Directors Done?",
+      "Check if UAN Applicable Done?",
+      "UAN (PF) if applicable completed Done?",
+      "KYC (PF) if applicable completed Done?",
+      "Add Employee to BO WhatsApp Gp Done?",
+    ],
+  },
+  {
+    name: "FINAL-JOINING TASKS",
+    items: [
+      "Medical Insurance Card Issued if Applicable Done?",
+      "First Salary Transfer Done?",
+    ],
+  },
+];
+
+const EMPLOYEE_CHECKLIST_TEMPLATE = [
+  {
+    name: "PRE-JOINING TASKS",
+    items: [
+      "Offer Letter Released?",
+      "Welcome Email Shared with the Employee Done?",
+      "Onboarding and Company Introduction Shared with the New Joiner Done?",
+      "Employee Profile Created in the HR Portal Done?",
+      "Verification of Docs Done?",
+      "Informed the HR, Accounts, Admin, Management, Reporting Manager Done?",
+    ],
+  },
+  {
+    name: "JOINING-DAY TASKS",
+    items: [
+      "Appointment Letter Released, Signed by the Employee Done?",
+      "HR Policies Informed to the Employee Done?",
+      "Introduction and Orientation Done?",
+      "Reporting Manager and Department Introduced Done?",
+      "Role and Responsibilities Informed by the Reporting Manager Done?",
+      "Official Email Created and Password Shared Done?",
+      "Employee Profile Completed Done?",
+      "Check Employee Documents Are Uploaded in the HR Portal Done?",
+      "Employee Contract Created Done?",
+      "PF / Form 2 / 11 Filled by the Employee, in Case PF Is Deducted Done?",
+      "Seating Done?",
+      "Welcome Kit (Laptop, Charger, Notebook, Pen, T-Shirt, Coffee Mug) Given to Employee Done?",
+    ],
+  },
+  {
+    name: "POST-JOINING TASKS",
+    items: [
+      "Add Employee in the Attendance System Done?",
+      "Add Employee to the Gmail, WhatsApp Group, HR Portal or Any Other Systems Done?",
+      "Taken Over from the Existing Employee Done?",
+      "Allocated Buddy Done?",
+      "Coffee with Directors Session Done?",
+      "Emailed All the Clients, if Applicable Done?",
+      "Onboarding Test Done?",
+      "Check UAN, if Applicable Done?",
+      "Check KYC, if Applicable Done?",
+      "Share the Feedback Form with the Employee Done?",
+      "Employee Confirms ALL OKAY Done?",
+      "Employee Added to the Medical Insurance Done?",
+    ],
+  },
+  {
+    name: "FINAL-JOINING TASKS",
+    items: [
+      "First Salary Credited to Employee Done?",
+      "Feedback from the Employee Received Done?",
+    ],
+  },
+];
+
+const INTERN_CHECKLIST_TEMPLATE = [
+  {
+    name: "PRE-JOINING TASKS",
+    items: [
+      "Offer Letter Released?",
+      "Welcome Email Shared with the Intern Done?",
+      "Onboarding and Company Introduction Shared with the New Joiner Done?",
+      "Intern Profile Created in the HR Portal Done?",
+      "Verification of Docs Done?",
+      "Informed the HR, Accounts, Admin, Management, Reporting Manager Done?",
+    ],
+  },
+  {
+    name: "JOINING-DAY TASKS",
+    items: [
+      "Contract Letter Released, Signed by the Intern Done?",
+      "HR Policies Informed to the Intern Done?",
+      "Introduction and Orientation Done?",
+      "Reporting Manager and Department Introduced Done?",
+      "Role and Responsibilities Informed by the Reporting Manager Done?",
+      "Official Email Created and Password Shared Done?",
+      "Intern Profile Completed Done?",
+      "Check Intern Documents Are Uploaded in the HR Portal Done?",
+      "Intern Contract Created Done?",
+      "Seating Done?",
+      "Welcome Kit (Notebook, Pen, T-Shirt, Coffee Mug) Given to Intern Done?",
+    ],
+  },
+  {
+    name: "POST-JOINING TASKS",
+    items: [
+      "Add Intern in the Attendance System Done?",
+      "Add Intern to the Gmail, WhatsApp Group, HR Portal or Any Other Systems Done?",
+      "Allocated Buddy Done?",
+      "Check UAN, if Applicable Done?",
+      "Check KYC, if Applicable Done?",
+      "Share the Feedback Form with the Intern Done?",
+      "Intern Confirms ALL OKAY Done?",
+    ],
+  },
+  {
+    name: "FINAL-JOINING TASKS",
+    items: [
+      "First Salary Credited to Intern Done?",
+      "Feedback from the Intern Received Done?",
+    ],
+  },
+];
+
+function buildDefaultCheckLists(employeeCategory) {
+  const template = isInternCategory(employeeCategory) ? INTERN_CHECKLIST_TEMPLATE : EMPLOYEE_CHECKLIST_TEMPLATE;
+  return templateGroupsToCheckLists(template);
 }
 
 function assignPlanDates(checkLists, joiningStatus, offerAcceptedDate, joinedDate) {
@@ -249,8 +402,8 @@ function toPlainCheckLists(checkLists) {
   }));
 }
 
-function reconcileChecklistsWithTemplate(existingCheckLists) {
-  const template = buildDefaultCheckLists();
+function reconcileChecklistsWithTemplate(existingCheckLists, employeeCategory) {
+  const template = buildDefaultCheckLists(employeeCategory);
   const existingByGroupName = new Map((existingCheckLists || []).map((g) => [g.name, g]));
 
   return template.map((templateGroup) => {
@@ -292,7 +445,7 @@ function reconcileChecklistsWithTemplate(existingCheckLists) {
 router.post("/", async (req, res) => {
   try {
     const body = req.body;
-    const checkLists = buildDefaultCheckLists();
+    const checkLists = buildDefaultCheckLists(body.employeeCategory);
 
     if (Array.isArray(body.checkLists)) {
       body.checkLists.forEach((submittedList, listIdx) => {
@@ -317,7 +470,7 @@ router.post("/", async (req, res) => {
     }
 
     const emailFields = resolveOneTimeEmails(null, body);
-    syncEmailChecklistItems(checkLists, emailFields);
+    syncEmailChecklistItems(checkLists, emailFields, body.employeeCategory);
 
     assignPlanDates(
       checkLists,
@@ -664,7 +817,7 @@ router.post("/reconcile-checklist-template", async (req, res) => {
 
     for (const existing of docs) {
       const existingPlain = existing.toObject();
-      const checkLists = reconcileChecklistsWithTemplate(existingPlain.checkLists);
+      const checkLists = reconcileChecklistsWithTemplate(existingPlain.checkLists, existingPlain.employeeCategory);
 
       const today = new Date();
       let doneInTime = 0, doneButDelayed = 0, tasksOverdue = 0,
@@ -1415,16 +1568,20 @@ router.get("/by-email", async (req, res) => {
       return res.status(400).json({ success: false, message: "email query param is required" });
     }
     const escaped = email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const doc = await Onboarding.findOne({
+    const matches = await Onboarding.find({
       $or: [
         { officialEmail: { $regex: `^${escaped}$`, $options: "i" } },
         { persEmail: { $regex: `^${escaped}$`, $options: "i" } },
       ],
     }).lean();
 
-    if (!doc) {
+    if (matches.length === 0) {
       return res.status(404).json({ success: false, message: "No onboarding record found for this email" });
     }
+    // An email can transiently match more than one record — e.g. it's
+    // handed over to a new employee before the old holder's old row is
+    // cleaned up. Prefer whoever isn't exited over an exited former holder.
+    const doc = matches.find((d) => !EXITED_STATUS_VALUES.has(d.exitStatus || "")) || matches[0];
     res.json({ success: true, data: doc });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -1458,7 +1615,9 @@ router.get("/:id", async (req, res) => {
 
 router.post("/migrate/fix-names", async (req, res) => {
   try {
-    const template = buildDefaultCheckLists();
+    // Legacy repair for records predating employeeCategory-specific
+    // templates — always matches against the original generic list.
+    const template = templateGroupsToCheckLists(GENERIC_CHECKLIST_TEMPLATE);
     const docs = await Onboarding.find();
     let updated = 0;
 
@@ -1552,7 +1711,10 @@ router.put("/:id", async (req, res) => {
     }
 
     const emailFields = resolveOneTimeEmails(existingPlain, body);
-    syncEmailChecklistItems(checkLists, emailFields);
+    // Matched against existingPlain.employeeCategory (not body's) since
+    // checkLists itself isn't rebuilt here — its item text is whatever
+    // category the record was created under.
+    syncEmailChecklistItems(checkLists, emailFields, existingPlain.employeeCategory);
 
     assignPlanDates(
       checkLists,
@@ -1929,7 +2091,7 @@ async function recomputeOnboarding(existing) {
   const existingPlain = existing.toObject();
   const checkLists = toPlainCheckLists(existingPlain.checkLists);
 
-  syncEmailChecklistItems(checkLists, existingPlain);
+  syncEmailChecklistItems(checkLists, existingPlain, existingPlain.employeeCategory);
 
   assignPlanDates(
     checkLists,
@@ -2153,7 +2315,10 @@ const SCHEMA_FIELD_WHITELIST = new Set([
 ]);
 
 function buildLegacyChecklists(rawDoc) {
-  const template = buildDefaultCheckLists();
+  // Legacy CSV columns are "<item> Plan?/Done?/Score?/Status?", matched
+  // against the original generic item names — always GENERIC, regardless
+  // of employeeCategory, same reasoning as /migrate/fix-names above.
+  const template = templateGroupsToCheckLists(GENERIC_CHECKLIST_TEMPLATE);
   let hasAnyTaskData = false;
 
   const checkLists = template.map((group) => ({

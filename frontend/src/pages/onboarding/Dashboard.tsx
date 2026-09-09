@@ -13,8 +13,14 @@ import {
   AddCircle, Search, Edit, Refresh,
   PeopleAlt, AssignmentTurnedIn, PendingActions, Warning,
   Close, Visibility, CalendarToday, Person, Email, Phone,
-  Business, WorkOutline, AccountBalance,
+  Business, WorkOutline, AccountBalance, RateReview,
 } from "@mui/icons-material";
+
+// Google Sheet where New Joiner Feedback Form (see emails/templates/
+// employeeFeedback.js) responses land — HR's own reference link, not
+// read by the app itself.
+const FEEDBACK_RESPONSES_SHEET_URL =
+  "https://docs.google.com/spreadsheets/d/1x3poCMAMYUIMG6qxWpMAROWVvQQTHuFzIVgC1RXgOVY/edit?resourcekey=&gid=939408980#gid=939408980";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -256,6 +262,20 @@ const OnboardingDashboard: React.FC = () => {
               <Typography variant="caption" color="#94a3b8">{total} records</Typography>
             </Box>
             <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+              <Tooltip title="Open New Joiner Feedback Form responses">
+                <Button
+                  variant="outlined"
+                  component="a"
+                  href={FEEDBACK_RESPONSES_SHEET_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  startIcon={<RateReview sx={{ fontSize: 16 }} />}
+                  sx={{ borderColor: "#e2e8f0", color: "#475569",
+                    borderRadius: "8px", textTransform: "none", fontWeight: 600, fontSize: "0.8rem" }}
+                >
+                  Feedback Responses
+                </Button>
+              </Tooltip>
               <Tooltip title="Refresh data">
                 <Button
                   variant="outlined"

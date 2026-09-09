@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 const express = require('express');
+const multer  = require('multer');
 const router  = express.Router();
 const ApplicantRecord = require('../models/ApplicantRecord');
 const HiringRequisition = require('../models/HiringRequisition');
@@ -15,6 +16,10 @@ const buildInterviewRoundMail = require('../emails/templates/interviewRoundMail'
 const sendCandidateRejection = require('../emails/senders/sendCandidateRejection');
 const buildCandidateRejection = require('../emails/templates/candidateRejection');
 const { signInterviewConfirm, verifyInterviewConfirm } = require('../utils/interviewConfirmSigning');
+const { signCandidateUpload, verifyCandidateUpload } = require('../utils/candidateUploadSigning');
+const { uploadFileToDrive, createDriveFolder } = require('../utils/googleDrive');
+const sendOfferLetter = require('../emails/senders/sendOfferLetter');
+const REQUIRED_CANDIDATE_DOCUMENTS = require('../utils/requiredCandidateDocuments');
 
 // Backend is reverse-proxied under the same domain as the frontend at
 // /api (see frontend/.env.production) — same FRONTEND_URL convention
@@ -939,6 +944,134 @@ router.patch('/:id/final-decision', async (req, res) => {
   } catch (e) {
     console.error(e);
     err(res, 'Failed to update final decision');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/applicant-records/:id/send-offer-letter
+// HR-triggered from OfferPlacementTab, once finalDecision.decision is
+// "Offer Made". Creates this candidate's own Drive documents folder the
+// first time it's sent (safe to resend — the folder is only ever created
+// once), then emails the Offer Letter with a signed link to the public
+// document-upload page.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/send-offer-letter', async (req, res) => {
+  try {
+    const record = await ApplicantRecord.findById(req.params.id);
+    if (!record) return err(res, 'Record not found', 404);
+    if (record.finalDecision?.decision !== 'Offer Made') {
+      return err(res, 'The Offer & Placement decision must be "Offer Made" before sending the Offer Letter.', 400);
+    }
+    if (!record.email) return err(res, 'This candidate has no email on file.', 400);
+
+    if (!record.documentsUploadFolderId) {
+      const parentFolderId = process.env.GOOGLE_DRIVE_CANDIDATE_DOCS_PARENT_FOLDER_ID || process.env.GOOGLE_DRIVE_RESUME_FOLDER_ID;
+      const folder = await createDriveFolder(`${record.full_name} - ${record._id}`, parentFolderId);
+      record.documentsUploadFolderId = folder.id;
+      record.documentsUploadFolderLink = folder.webViewLink;
+    }
+
+    const sig = signCandidateUpload(String(record._id));
+    const uploadLink = `${FRONTEND_URL}/candidate-upload/${record._id}?sig=${sig}`;
+
+    await sendOfferLetter({
+      to: record.email,
+      full_name: record.full_name,
+      joiningDate: record.finalDecision?.joiningDate,
+      uploadLink,
+    });
+
+    record.offerLetterSentAt = new Date();
+    await record.save();
+
+    ok(res, record.toObject());
+  } catch (e) {
+    console.error('[send-offer-letter] error:', e);
+    err(res, 'Failed to send offer letter');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/applicant-records/:id/document-upload-context?sig=...
+// Public, unauthenticated — feeds the candidate's document-upload page.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/:id/document-upload-context', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { sig } = req.query;
+    if (!verifyCandidateUpload(id, sig)) return err(res, 'This link could not be verified.', 403);
+
+    const record = await ApplicantRecord.findById(id).lean();
+    if (!record) return err(res, 'Record not found', 404);
+
+    ok(res, {
+      full_name: record.full_name,
+      designation: record.designation,
+      joiningDate: record.finalDecision?.joiningDate || null,
+      requiredDocuments: REQUIRED_CANDIDATE_DOCUMENTS,
+      uploadedDocuments: record.uploadedDocuments || [],
+    });
+  } catch (e) {
+    console.error('[document-upload-context] error:', e);
+    err(res, 'Something went wrong loading this page.');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/applicant-records/:id/upload-documents?sig=...
+// Public, unauthenticated — the candidate's document-upload page submits
+// here. One or more files per required-document key; each gets uploaded
+// straight to this candidate's own Drive folder (created when the Offer
+// Letter was sent) and appended to uploadedDocuments — never replaces what's
+// already there, so a candidate can upload across multiple visits.
+// ─────────────────────────────────────────────────────────────────────────────
+const uploadCandidateDocs = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB per file
+}).fields(REQUIRED_CANDIDATE_DOCUMENTS.map((d) => ({ name: d.key, maxCount: 10 })));
+
+router.post('/:id/upload-documents', uploadCandidateDocs, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { sig } = req.query;
+    if (!verifyCandidateUpload(id, sig)) return err(res, 'This link could not be verified.', 403);
+
+    const record = await ApplicantRecord.findById(id);
+    if (!record) return err(res, 'Record not found', 404);
+    if (!record.documentsUploadFolderId) {
+      return err(res, 'Your document folder isn’t ready yet — please contact HR.', 400);
+    }
+
+    const validKeys = new Set(REQUIRED_CANDIDATE_DOCUMENTS.map((d) => d.key));
+    const files = req.files || {};
+    let uploadedCount = 0;
+
+    for (const [docType, fileList] of Object.entries(files)) {
+      if (!validKeys.has(docType)) continue;
+      for (const file of fileList) {
+        // makePublic: false — these are candidate PII (Aadhar, PAN, bank
+        // details); keep them restricted to this Shared Drive's members
+        // rather than "anyone with the link", unlike resumes.
+        const driveLink = await uploadFileToDrive(file.buffer, file.originalname, file.mimetype, record.documentsUploadFolderId, { makePublic: false });
+        record.uploadedDocuments.push({
+          docType,
+          fileName: file.originalname,
+          driveLink,
+          uploadedAt: new Date(),
+        });
+        uploadedCount++;
+      }
+    }
+
+    if (uploadedCount === 0) {
+      return err(res, 'No files were uploaded.', 400);
+    }
+
+    await record.save();
+    ok(res, { uploadedDocuments: record.uploadedDocuments });
+  } catch (e) {
+    console.error('[upload-documents] error:', e);
+    err(res, 'Failed to upload documents');
   }
 });
 

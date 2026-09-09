@@ -31,7 +31,13 @@ function getDriveClient() {
 // returns an empty result instead of erroring, which is exactly what
 // made this look like it was "working" (0 files found) when it was
 // actually never seeing into the Shared Drive at all.
-async function uploadFileToDrive(fileBuffer, originalName, mimeType, folderId) {
+// makePublic defaults to true to preserve existing behavior for every
+// current caller (resumes, referrals) — pass { makePublic: false } for
+// anything sensitive (see candidate document uploads in
+// routes/applicantRecords.js), which skips the "anyone with the link"
+// grant entirely and leaves the file visible only to this Shared Drive's
+// members (still enough for HR to open webViewLink while logged in).
+async function uploadFileToDrive(fileBuffer, originalName, mimeType, folderId, { makePublic = true } = {}) {
   if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
     throw new Error('Google Drive credentials are not configured — check GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY in .env');
   }
@@ -59,11 +65,13 @@ async function uploadFileToDrive(fileBuffer, originalName, mimeType, folderId) {
     supportsAllDrives: true,
   });
 
-  await drive.permissions.create({
-    fileId: file.id,
-    requestBody: { role: 'reader', type: 'anyone' },
-    supportsAllDrives: true,
-  });
+  if (makePublic) {
+    await drive.permissions.create({
+      fileId: file.id,
+      requestBody: { role: 'reader', type: 'anyone' },
+      supportsAllDrives: true,
+    });
+  }
 
   return file.webViewLink;
 }
@@ -74,4 +82,36 @@ async function uploadResumeToDrive(fileBuffer, originalName, mimeType) {
   return uploadFileToDrive(fileBuffer, originalName, mimeType, FOLDER_ID);
 }
 
-module.exports = { uploadResumeToDrive, uploadFileToDrive };
+// Creates a new folder (used to give each offered candidate their own
+// documents folder — see routes/applicantRecords.js's send-offer-letter).
+// Same supportsAllDrives requirement as uploadFileToDrive — the parent
+// lives in a Shared Drive. Deliberately does NOT grant "anyone with the
+// link" access (unlike uploadFileToDrive's default) — this folder holds
+// candidate PII (Aadhar, PAN, bank details), and this org's Drive policy
+// rejects public link-sharing for it anyway (403: "user does not have
+// sufficient permissions"). Shared Drive members (HR) can still open
+// webViewLink while logged in without any explicit grant.
+async function createDriveFolder(name, parentFolderId) {
+  if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
+    throw new Error('Google Drive credentials are not configured — check GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY in .env');
+  }
+  if (!parentFolderId) {
+    throw new Error('No Google Drive parent folder ID configured for folder creation');
+  }
+
+  const drive = getDriveClient();
+
+  const { data: folder } = await drive.files.create({
+    requestBody: {
+      name,
+      mimeType: 'application/vnd.google-apps.folder',
+      parents: [parentFolderId],
+    },
+    fields: 'id, webViewLink',
+    supportsAllDrives: true,
+  });
+
+  return folder;
+}
+
+module.exports = { uploadResumeToDrive, uploadFileToDrive, createDriveFolder };
