@@ -46,7 +46,7 @@ async function triggerNewExit(doc) {
       await sendExitReminder(doc);
     }
 
-    // Instructions to internal teams (HR/DAA/Admin/Accounts).
+    // Instructions to internal teams (HR/Data Analytics and Automation/Admin/Accounts).
     if (doc.autoInstructionsToAllEmail) {
       if (doc.exitStatus === "Serving Notice Period") {
         await sendExitInstructionsToAll(doc);

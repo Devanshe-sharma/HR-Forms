@@ -773,14 +773,14 @@ function DeptNotes({dept,c,dd,onUpdate}:{dept:string;c:string;dd:DeptData|undefi
   };
 
   const handleFileUpload = async () => {
-    if (!selectedFile) return;
-    
+    if (!selectedFile || !dd?.id) return;
+
     const formData = new FormData();
     formData.append('file', selectedFile);
     formData.append('systemName', generateSystemName());
-    
+
     try {
-      const response = await fetch(`${API_BASE}/upload/note`, {
+      const response = await fetch(`${API_BASE}/dept-orientation/${dd.id}/notes/upload`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${getToken()}`,

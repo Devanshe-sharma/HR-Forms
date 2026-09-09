@@ -3,8 +3,11 @@ const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
 const Department = require('../models/Departmentorientation');
-const RoleMaster = require('../models/role_master');
 const { requireRole } = require('../config/roles');
+const { uploadFileToDrive, createDriveFolder } = require('../utils/googleDrive');
+const { getEmployeeMasterList } = require('../utils/employeeMaster');
+
+const DEPT_ORIENTATION_PARENT_FOLDER_ID = process.env.GOOGLE_DRIVE_DEPT_ORIENTATION_PARENT_FOLDER_ID;
 
 // ── MULTER CONFIG ─────────────────────────────────────────────
 const storage = multer.memoryStorage();
@@ -29,20 +32,41 @@ async function findDept(nameOrId) {
   return doc;
 }
 
-// This codebase's RoleMaster collection has a known history of field-name
-// casing inconsistency (some code paths write/read "Department", others
-// "department") — see the earlier reportingHead/empId backfill routes,
-// which had to work around the exact same ambiguity by using the raw
-// driver. Rather than guessing which casing is currently correct (and
-// silently returning zero departments if we guess wrong, which is what
-// was happening here — .distinct() only matches an EXACT field name),
-// this queries both and merges the results.
+// Creates this department's root Drive folder on first use and caches its
+// id on the document — every later upload for this department reuses it
+// instead of creating a new folder each time. Mirrors the per-candidate
+// folder pattern in routes/applicantRecords.js (send-offer-letter).
+async function ensureDeptFolder(dept) {
+  if (dept.driveFolderId) return dept.driveFolderId;
+  const folder = await createDriveFolder(dept.name, DEPT_ORIENTATION_PARENT_FOLDER_ID);
+  dept.driveFolderId = folder.id;
+  await dept.save();
+  return dept.driveFolderId;
+}
+
+// Creates a named subfolder (e.g. "Notes", "JD & Role Docs") inside the
+// department's root folder on first use, caching its id on `dept[field]`.
+async function ensureSubfolder(dept, field, subfolderName) {
+  if (dept[field]) return dept[field];
+  const rootId = await ensureDeptFolder(dept);
+  const folder = await createDriveFolder(subfolderName, rootId);
+  dept[field] = folder.id;
+  await dept.save();
+  return dept[field];
+}
+
+// Sourced from Onboarding (via the same getEmployeeMasterList() used by
+// /onboarding/employee-master) rather than RoleMaster — the frontend's
+// department list, and every dept-orientation save it makes, is keyed off
+// Onboarding's `dept` field. RoleMaster's department names don't reliably
+// match Onboarding's (e.g. "DAA" vs "Data Analytics and Automation"), so
+// upserting DepartmentOrientation docs from RoleMaster's names left no
+// matching record for departments as the frontend actually names them —
+// dd.id came back empty and every save 404'd. Matching Onboarding here
+// guarantees a record always exists for every department the UI shows.
 async function getDistinctDepartmentNames() {
-  const [pascal, lower] = await Promise.all([
-    RoleMaster.distinct('Department', { Department: { $ne: '' } }).catch(() => []),
-    RoleMaster.distinct('department', { department: { $ne: '' } }).catch(() => []),
-  ]);
-  return [...pascal, ...lower];
+  const employees = await getEmployeeMasterList();
+  return employees.filter(e => e.is_current).map(e => e.department);
 }
 
 // ── GET ALL ───────────────────────────────────────────────────
@@ -55,7 +79,7 @@ router.get('/', async (req, res) => {
     )].sort();
 
     if (!validNames.length) {
-      console.warn('[dept-orientation] No distinct department names found in RoleMaster under either "Department" or "department" — check the actual field name on the collection.');
+      console.warn('[dept-orientation] No distinct current department names found in Onboarding — check that employee-master returns data.');
       return res.json({ success: true, data: [] });
     }
 
@@ -121,7 +145,13 @@ router.post(
       // ✅ ensure arrays exist
       if (!dept.roleDocs) dept.roleDocs = [];
 
-      const docUrl = driveLink || `/uploads/${file.originalname}`;
+      let docUrl;
+      if (driveLink) {
+        docUrl = driveLink;
+      } else {
+        const folderId = await ensureSubfolder(dept, 'roleDocsFolderId', 'JD & Role Docs');
+        docUrl = await uploadFileToDrive(file.buffer, file.originalname, file.mimetype, folderId);
+      }
 
       const existingIndex = dept.roleDocs.findIndex(d => d.role === designation);
 
@@ -230,7 +260,7 @@ router.delete('/:deptId/review-ppts/:pptId', requireRole(['HR','Admin']), async 
 // ── NOTES ─────────────────────────────────────────────────────
 router.post('/:deptId/notes', requireRole(['HR','Admin']), async (req, res) => {
   try {
-    const { title, content } = req.body;
+    const { link, attachment, systemName } = req.body;
     const dept = await findDept(req.params.deptId);
 
     if (!dept) return res.status(404).json({ success: false });
@@ -239,8 +269,9 @@ router.post('/:deptId/notes', requireRole(['HR','Admin']), async (req, res) => {
 
     const note = {
       id: uuidv4(),
-      title,
-      content,
+      link: link || '',
+      attachment: attachment || '',
+      systemName: systemName || '',
       updatedAt: new Date().toLocaleDateString('en-IN')
     };
 
@@ -250,7 +281,28 @@ router.post('/:deptId/notes', requireRole(['HR','Admin']), async (req, res) => {
     res.json({ success: true, data: note });
 
   } catch (err) {
-    res.status(500).json({ success: false });
+    console.error('Add note error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Uploads a note attachment straight to this department's "Notes" Drive
+// subfolder and hands back its webViewLink — the frontend then saves
+// that URL as `attachment` via POST /:deptId/notes above.
+router.post('/:deptId/notes/upload', requireRole(['HR','Admin']), upload.single('file'), async (req, res) => {
+  try {
+    const dept = await findDept(req.params.deptId);
+    if (!dept) return res.status(404).json({ success: false, message: 'Department not found' });
+    if (!req.file) return res.status(400).json({ success: false, message: 'File required' });
+
+    const folderId = await ensureSubfolder(dept, 'notesFolderId', 'Notes');
+    const url = await uploadFileToDrive(req.file.buffer, req.file.originalname, req.file.mimetype, folderId);
+
+    res.json({ success: true, data: { url } });
+
+  } catch (err) {
+    console.error('Note upload error:', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 

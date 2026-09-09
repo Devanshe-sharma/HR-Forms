@@ -15,7 +15,7 @@
           <li>Issue Experience Letter.</li>
         </ul>
       </li>
-      <li>DAA: Please keep these ready:
+      <li>Data Analytics and Automation: Please keep these ready:
         <ul>
           <li>Remove the Name &amp; all access from Shared drive.</li>
           <li>Name deleted from Employee list.</li>

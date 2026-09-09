@@ -16,7 +16,7 @@
           <li>Issue Experience Letter.</li>
         </ul>
       </li>
-      <li>DAA: Please delete these:
+      <li>Data Analytics and Automation: Please delete these:
         <ul>
           <li>Remove the Name &amp; all access from Shared drive.</li>
           <li>Name deleted from Employee list.</li>
