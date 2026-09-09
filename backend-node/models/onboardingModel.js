@@ -204,6 +204,8 @@ const onboardingSchema = new mongoose.Schema(
         {
           contractPeriod:    { type: String, default: '' },
           contractAmount:    { type: String, default: '' },
+          contractStartDate: { type: Date,   default: null },
+          contractEndDate:   { type: Date,   default: null },
           salApplicableFrom: { type: String, default: '' },
           equivalentMonthlyCtc: { type: String, default: '' },
           updatedAt:         { type: Date,   default: Date.now },

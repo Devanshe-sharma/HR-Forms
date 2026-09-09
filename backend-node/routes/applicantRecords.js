@@ -950,10 +950,11 @@ router.patch('/:id/final-decision', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/applicant-records/:id/send-offer-letter
 // HR-triggered from OfferPlacementTab, once finalDecision.decision is
-// "Offer Made". Creates this candidate's own Drive documents folder the
-// first time it's sent (safe to resend — the folder is only ever created
-// once), then emails the Offer Letter with a signed link to the public
-// document-upload page.
+// "Offer Made". Just emails the Offer Letter with a signed link to the
+// public document-upload page — no Drive folder is created here. The
+// candidate's folder is only created once, lazily, the first time they
+// actually submit documents (see POST /:id/upload-documents below), not
+// merely because the email went out.
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/:id/send-offer-letter', async (req, res) => {
   try {
@@ -963,13 +964,6 @@ router.post('/:id/send-offer-letter', async (req, res) => {
       return err(res, 'The Offer & Placement decision must be "Offer Made" before sending the Offer Letter.', 400);
     }
     if (!record.email) return err(res, 'This candidate has no email on file.', 400);
-
-    if (!record.documentsUploadFolderId) {
-      const parentFolderId = process.env.GOOGLE_DRIVE_CANDIDATE_DOCS_PARENT_FOLDER_ID || process.env.GOOGLE_DRIVE_RESUME_FOLDER_ID;
-      const folder = await createDriveFolder(`${record.full_name} - ${record._id}`, parentFolderId);
-      record.documentsUploadFolderId = folder.id;
-      record.documentsUploadFolderLink = folder.webViewLink;
-    }
 
     const sig = signCandidateUpload(String(record._id));
     const uploadLink = `${FRONTEND_URL}/candidate-upload/${record._id}?sig=${sig}`;
@@ -1020,10 +1014,12 @@ router.get('/:id/document-upload-context', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/applicant-records/:id/upload-documents?sig=...
 // Public, unauthenticated — the candidate's document-upload page submits
-// here. One or more files per required-document key; each gets uploaded
-// straight to this candidate's own Drive folder (created when the Offer
-// Letter was sent) and appended to uploadedDocuments — never replaces what's
-// already there, so a candidate can upload across multiple visits.
+// ALL staged documents (across every required-document type) in one single
+// request from one Submit button. The candidate's own Drive folder is
+// created here, lazily, the first time they actually submit something —
+// not when the Offer Letter email goes out, and not for an empty
+// submission. Later visits reuse the same folder and just append to
+// uploadedDocuments, so nothing already uploaded is ever replaced.
 // ─────────────────────────────────────────────────────────────────────────────
 const uploadCandidateDocs = multer({
   storage: multer.memoryStorage(),
@@ -1038,16 +1034,26 @@ router.post('/:id/upload-documents', uploadCandidateDocs, async (req, res) => {
 
     const record = await ApplicantRecord.findById(id);
     if (!record) return err(res, 'Record not found', 404);
-    if (!record.documentsUploadFolderId) {
-      return err(res, 'Your document folder isn’t ready yet — please contact HR.', 400);
-    }
 
     const validKeys = new Set(REQUIRED_CANDIDATE_DOCUMENTS.map((d) => d.key));
     const files = req.files || {};
-    let uploadedCount = 0;
+    const filesToUpload = Object.entries(files).filter(([docType]) => validKeys.has(docType));
+    const hasFiles = filesToUpload.some(([, fileList]) => fileList.length > 0);
 
-    for (const [docType, fileList] of Object.entries(files)) {
-      if (!validKeys.has(docType)) continue;
+    if (!hasFiles) {
+      return err(res, 'No files were selected.', 400);
+    }
+
+    // Created here, on the candidate's first real submission — not when
+    // the Offer Letter was sent, and not for a would-be-empty submission.
+    if (!record.documentsUploadFolderId) {
+      const parentFolderId = process.env.GOOGLE_DRIVE_CANDIDATE_DOCS_PARENT_FOLDER_ID || process.env.GOOGLE_DRIVE_RESUME_FOLDER_ID;
+      const folder = await createDriveFolder(`${record.full_name} - ${record._id}`, parentFolderId);
+      record.documentsUploadFolderId = folder.id;
+      record.documentsUploadFolderLink = folder.webViewLink;
+    }
+
+    for (const [docType, fileList] of filesToUpload) {
       for (const file of fileList) {
         // makePublic: false — these are candidate PII (Aadhar, PAN, bank
         // details); keep them restricted to this Shared Drive's members
@@ -1059,12 +1065,7 @@ router.post('/:id/upload-documents', uploadCandidateDocs, async (req, res) => {
           driveLink,
           uploadedAt: new Date(),
         });
-        uploadedCount++;
       }
-    }
-
-    if (uploadedCount === 0) {
-      return err(res, 'No files were uploaded.', 400);
     }
 
     await record.save();

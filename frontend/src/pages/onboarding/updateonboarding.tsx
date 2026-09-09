@@ -21,6 +21,7 @@ import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs, { Dayjs } from "dayjs";
+import { useAuth } from "../../contexts/AuthContext";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -93,6 +94,13 @@ interface OnboardingDetail {
   gratuity?: number; medicalPremium?: number; annualCtc?: number;
   // Contract
   contractPeriod?: number; contractAmount?: number; equivalentMonthlyCtc?: number;
+  contractStartDate?: string; contractEndDate?: string;
+  contractHistory?: {
+    contractPeriod?: string; contractAmount?: string;
+    contractStartDate?: string; contractEndDate?: string;
+    salApplicableFrom?: string; equivalentMonthlyCtc?: string;
+    updatedAt?: string; updatedBy?: string; remarks?: string;
+  }[];
   // Probation & revision
   confirmationDueDate?: string;
   salSerialNo?: number; salApplicableFrom?: string;
@@ -220,6 +228,7 @@ const FMS_STATUS_STYLE: Record<string, { bg: string; text: string }> = {
 const UpdateOnboarding: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const API = process.env.REACT_APP_REACT_APP_API_BASE_URL ?? "";
 
   // ── State ──────────────────────────────────────────────────────────────────
@@ -240,6 +249,15 @@ const UpdateOnboarding: React.FC = () => {
   const [newSalApplicableFrom, setNewSalApplicableFrom] = useState<Dayjs | null>(null);
   const [newSalRevisionDueDate, setNewSalRevisionDueDate] = useState<Dayjs | null>(null);
   const [employeesInCc, setEmployeesInCc] = useState<string[]>([]);
+
+  // Add Contract mini-form (Intern / Contract Based only) — separate from
+  // the main save button so adding a contract period can fire its own
+  // "notify employee" email right away instead of waiting on/being bundled
+  // with an unrelated section's save.
+  const [addContractStartDate, setAddContractStartDate] = useState<Dayjs | null>(null);
+  const [addContractEndDate, setAddContractEndDate] = useState<Dayjs | null>(null);
+  const [addContractRemarks, setAddContractRemarks] = useState("");
+  const [addingContract, setAddingContract] = useState(false);
 
   // Thank-you screen: shows a brief loader, then a confirmation message
   const [showThankYou, setShowThankYou] = useState(false);
@@ -387,6 +405,58 @@ const UpdateOnboarding: React.FC = () => {
       value: employee.official_email,
       label: employee.full_name,
     }));
+
+  // ── Add Contract (Intern / Contract Based) ────────────────────────────────
+  // Hits the dedicated /:id/contract endpoint directly (independent of the
+  // main Save button below) so the contract is recorded — and the employee
+  // notified — the moment HR adds it, appending a contractHistory row.
+  const handleAddContract = async () => {
+    if (!selectedId || !detail) {
+      toast.error("Please select a joinee first");
+      return;
+    }
+    const contractPeriod = watch("contractPeriod");
+    const contractAmount = watch("contractAmount");
+    if (!contractPeriod || !addContractStartDate || !addContractEndDate) {
+      toast.error("Contract Period, Start Date and End Date are required");
+      return;
+    }
+
+    setAddingContract(true);
+    try {
+      const res = await axios.put<{ data: OnboardingDetail }>(
+        `${API}/onboarding/${selectedId}/contract`,
+        {
+          contractPeriod,
+          contractAmount,
+          contractStartDate: addContractStartDate.toISOString(),
+          contractEndDate: addContractEndDate.toISOString(),
+          equivalentMonthlyCtc: watch("equivalentMonthlyCtc"),
+          updatedBy: user?.name || "HR",
+          remarks: addContractRemarks,
+          notifyEmployee: true,
+        }
+      );
+
+      const updated = res.data.data;
+      setDetail(updated);
+      // Keep the main form's copies of these fields in sync so a later
+      // Save (which writes them via the general PUT /:id route) doesn't
+      // overwrite the contract just added with stale form values.
+      setValue("contractPeriod", updated.contractPeriod);
+      setValue("contractAmount", updated.contractAmount);
+      setValue("equivalentMonthlyCtc", updated.equivalentMonthlyCtc);
+
+      setAddContractStartDate(null);
+      setAddContractEndDate(null);
+      setAddContractRemarks("");
+      toast.success("Contract added — notification email sent to the employee");
+    } catch (err) {
+      toast.error("Failed to add contract");
+    } finally {
+      setAddingContract(false);
+    }
+  };
 
   // ── Submit ──────────────────────────────────────────────────────────────
   const onSubmit: SubmitHandler<FormValues> = async (data) => {
@@ -891,6 +961,96 @@ const UpdateOnboarding: React.FC = () => {
                     {numField("contractAmount", "Contract Amount (₹)")}
                     {numField("equivalentMonthlyCtc", "Equivalent Monthly CTC")}
                   </div>
+
+                  {detail.contractStartDate && detail.contractEndDate && (
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={labelClass}>Current Contract Start</label>
+                        <div className={disabledInputClass}>{fmtDate(detail.contractStartDate)}</div>
+                      </div>
+                      <div>
+                        <label className={labelClass}>Current Contract End</label>
+                        <div className={disabledInputClass}>{fmtDate(detail.contractEndDate)}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-6 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
+                    <p className="text-xs font-bold text-indigo-700 uppercase mb-1">Add Contract</p>
+                    <p className="text-xs text-slate-500 mb-3">
+                      Saves Contract Period/Amount above as a new contract and emails the employee
+                      the extension confirmation (CC: Accounts, Management, Reporting Manager).
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className={labelClass}>Contract Start Date</label>
+                        <DatePicker
+                          value={addContractStartDate}
+                          onChange={setAddContractStartDate}
+                          slotProps={{ textField: { size: "small", fullWidth: true } }}
+                        />
+                      </div>
+                      <div>
+                        <label className={labelClass}>Contract End Date</label>
+                        <DatePicker
+                          value={addContractEndDate}
+                          onChange={setAddContractEndDate}
+                          slotProps={{ textField: { size: "small", fullWidth: true } }}
+                        />
+                      </div>
+                      <div>
+                        <label className={labelClass}>Remarks (optional)</label>
+                        <input
+                          className={inputClass}
+                          value={addContractRemarks}
+                          onChange={(e) => setAddContractRemarks(e.target.value)}
+                          placeholder="e.g. Extended on manager's recommendation"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={addingContract}
+                      onClick={handleAddContract}
+                      className="mt-4 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                    >
+                      {addingContract ? "Adding…" : "Add Contract & Notify Employee"}
+                    </button>
+                  </div>
+
+                  {!!detail.contractHistory?.length && (
+                    <div className="mt-6">
+                      <p className="text-xs font-bold text-slate-600 uppercase mb-3">Contract History</p>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs border-collapse">
+                          <thead>
+                            <tr className="text-left text-slate-500 border-b border-slate-200">
+                              <th className="py-1.5 pr-3">Period</th>
+                              <th className="py-1.5 pr-3">Amount</th>
+                              <th className="py-1.5 pr-3">Start</th>
+                              <th className="py-1.5 pr-3">End</th>
+                              <th className="py-1.5 pr-3">Added On</th>
+                              <th className="py-1.5 pr-3">Added By</th>
+                              <th className="py-1.5">Remarks</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[...detail.contractHistory].reverse().map((h, i) => (
+                              <tr key={i} className="border-b border-slate-100 text-slate-700">
+                                <td className="py-1.5 pr-3">{h.contractPeriod || "—"}</td>
+                                <td className="py-1.5 pr-3">{h.contractAmount || "—"}</td>
+                                <td className="py-1.5 pr-3">{fmtDate(h.contractStartDate)}</td>
+                                <td className="py-1.5 pr-3">{fmtDate(h.contractEndDate)}</td>
+                                <td className="py-1.5 pr-3">{fmtDate(h.updatedAt)}</td>
+                                <td className="py-1.5 pr-3">{h.updatedBy || "—"}</td>
+                                <td className="py-1.5">{h.remarks || "—"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </section>
               )}
 

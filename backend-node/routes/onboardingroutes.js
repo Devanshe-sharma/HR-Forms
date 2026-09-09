@@ -8,6 +8,7 @@ const { fiscalYearOf, fiscalQuarterOf, fiscalQuarterStartUTC, fiscalQuarterEndUT
 // the current status, not the date it happened).
 const Exit = require('../models/exitModel');
 const { triggerNewOnboarding, triggerUpdateOnboarding } = require("../emails");
+const sendContractExtension = require('../emails/senders/sendContractExtension');
 const Employee = require('../models/Employee');
 const { syncUserEmailOnChange, syncEmployeeEmailOnChange } = require('../utils/syncUserEmail');
 const { getEmployeeMasterList } = require('../utils/employeeMaster');
@@ -1802,39 +1803,51 @@ router.get('/:id/contract', async (req, res) => {
   }
 });
  
+// Categories that carry a contract period instead of the full salary
+// breakdown — kept in sync with CONTRACT_BASED_CATEGORIES in the frontend
+// (NewOnboarding.tsx / updateonboarding.tsx).
+const CONTRACT_EMAIL_CATEGORIES = ['Intern', 'Contract Based'];
+
 // ─── PUT /api/onboarding/:id/contract ────────────────────────────────────────
 router.put('/:id/contract', async (req, res) => {
   try {
     const { id } = req.params;
- 
+
     const {
       contractPeriod,
       contractAmount,
+      contractStartDate,
+      contractEndDate,
       salApplicableFrom,
       equivalentMonthlyCtc,
       updatedBy,
       remarks,
+      notifyEmployee,
     } = req.body;
- 
+
     // Fields to update on the main record
     const updateData = {
       ...(contractPeriod       !== undefined && { contractPeriod }),
       ...(contractAmount       !== undefined && { contractAmount }),
+      ...(contractStartDate    !== undefined && { contractStartDate: contractStartDate ? new Date(contractStartDate) : null }),
+      ...(contractEndDate      !== undefined && { contractEndDate: contractEndDate ? new Date(contractEndDate) : null }),
       ...(salApplicableFrom    !== undefined && { salApplicableFrom }),
       ...(equivalentMonthlyCtc !== undefined && { equivalentMonthlyCtc }),
     };
- 
+
     // History entry — one row per save, appended to contractHistory array
     const historyEntry = {
       contractPeriod:       contractPeriod       || '',
       contractAmount:       contractAmount       || '',
+      contractStartDate:    contractStartDate    ? new Date(contractStartDate) : null,
+      contractEndDate:      contractEndDate      ? new Date(contractEndDate)   : null,
       salApplicableFrom:    salApplicableFrom    || '',
       equivalentMonthlyCtc: equivalentMonthlyCtc || '',
       updatedAt:            new Date(),
       updatedBy:            updatedBy            || 'HR',
       remarks:              remarks              || '',
     };
- 
+
     const updated = await Onboarding.findByIdAndUpdate(
       id,
       {
@@ -1843,9 +1856,19 @@ router.put('/:id/contract', async (req, res) => {
       },
       { new: true, runValidators: true }
     );
- 
+
     if (!updated) return res.status(404).json({ success: false, message: 'Onboarding record not found' });
- 
+
+    // Notify the employee (CC Accounts/Management/Manager) that a contract
+    // was added — only for the categories that actually have one, and only
+    // when this save is the one adding/renewing it (not every PATCH-like
+    // field tweak against this endpoint).
+    if (notifyEmployee && CONTRACT_EMAIL_CATEGORIES.includes(updated.employeeCategory)) {
+      sendContractExtension(updated).catch((err) =>
+        console.error('[contract PUT] Failed to send contract extension email:', err.message)
+      );
+    }
+
     res.json({ success: true, data: updated });
   } catch (err) {
     console.error('[contract PUT]', err);

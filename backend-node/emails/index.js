@@ -12,6 +12,5 @@ module.exports = {
   triggerReferralInvite:        require("./triggers/triggerReferralInvite"),
   triggerReferralSubmitted:     require("./triggers/triggerReferralSubmitted"),
   triggerReferralBonus:         require("./triggers/triggerReferralBonus"),
-  triggerOutOfOfficeNotice:          require("./triggers/triggerOutOfOffice").triggerOutOfOfficeNotice,
-  triggerOutOfOfficeManagerApproval: require("./triggers/triggerOutOfOffice").triggerOutOfOfficeManagerApproval,
+  triggerOutOfOfficeNotice:     require("./triggers/triggerOutOfOffice"),
 };

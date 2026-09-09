@@ -23,9 +23,12 @@ export default function CandidateDocumentUpload() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Files staged per doc key, not yet uploaded
+  // Files staged per doc key across every section — nothing is uploaded,
+  // and no candidate folder is created, until the single Submit button
+  // below is clicked.
   const [pendingFiles, setPendingFiles] = useState<Record<string, File[]>>({});
-  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [justSubmitted, setJustSubmitted] = useState(false);
 
   const loadContext = () => {
     if (!id || !sig) { setError('This link is invalid.'); setLoading(false); return; }
@@ -48,15 +51,19 @@ export default function CandidateDocumentUpload() {
     setPendingFiles((prev) => ({ ...prev, [key]: fileList ? Array.from(fileList) : [] }));
   };
 
-  const handleUpload = async (key: string) => {
-    const files = pendingFiles[key];
-    if (!files || files.length === 0) return;
+  const totalStaged = Object.values(pendingFiles).reduce((sum, files) => sum + files.length, 0);
 
-    setUploadingKey(key);
+  const handleSubmit = async () => {
+    if (totalStaged === 0) return;
+
+    setSubmitting(true);
     setError('');
+    setJustSubmitted(false);
     try {
       const formData = new FormData();
-      files.forEach((f) => formData.append(key, f));
+      for (const [key, files] of Object.entries(pendingFiles)) {
+        files.forEach((f) => formData.append(key, f));
+      }
 
       const res = await fetch(`${API_BASE}/applicant-records/${id}/upload-documents?sig=${encodeURIComponent(sig)}`, {
         method: 'POST',
@@ -65,15 +72,15 @@ export default function CandidateDocumentUpload() {
       const data = await res.json();
       if (!res.ok || !data.success) {
         setError(data.message || 'Failed to upload — please try again.');
-        setUploadingKey(null);
         return;
       }
-      setPendingFiles((prev) => ({ ...prev, [key]: [] }));
+      setPendingFiles({});
+      setJustSubmitted(true);
       loadContext();
     } catch {
       setError('Failed to upload — please try again.');
     } finally {
-      setUploadingKey(null);
+      setSubmitting(false);
     }
   };
 
@@ -109,10 +116,15 @@ export default function CandidateDocumentUpload() {
             </p>
           )}
           <p className="text-sm text-gray-500 pt-2">
-            Please upload each document below. You can come back and add more anytime before your joining day.
+            Select each document below, then submit them all together. You can come back and submit more anytime before your joining day.
           </p>
         </div>
 
+        {justSubmitted && !error && (
+          <p className="text-sm text-lime-700 bg-lime-50 border border-lime-200 rounded-lg px-4 py-2 mb-4">
+            Documents submitted successfully.
+          </p>
+        )}
         {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
         <div className="space-y-4">
@@ -135,25 +147,35 @@ export default function CandidateDocumentUpload() {
                   </ul>
                 )}
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="file"
-                    multiple
-                    onChange={(e) => handleFileChange(doc.key, e.target.files)}
-                    className="text-xs flex-1 min-w-[180px]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleUpload(doc.key)}
-                    disabled={staged.length === 0 || uploadingKey === doc.key}
-                    className="px-4 py-2 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-900 disabled:opacity-40 rounded-lg transition"
-                  >
-                    {uploadingKey === doc.key ? 'Uploading…' : 'Upload'}
-                  </button>
-                </div>
+                <input
+                  type="file"
+                  multiple
+                  onChange={(e) => handleFileChange(doc.key, e.target.files)}
+                  className="text-xs w-full"
+                />
+                {staged.length > 0 && (
+                  <p className="text-xs text-slate-500 mt-1">
+                    {staged.length} file{staged.length === 1 ? '' : 's'} selected — not submitted yet
+                  </p>
+                )}
               </div>
             );
           })}
+        </div>
+
+        <div className="sticky bottom-0 mt-6 pt-4 pb-6 bg-gradient-to-t from-white via-white to-transparent">
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={totalStaged === 0 || submitting}
+            className="w-full bg-slate-800 hover:bg-slate-900 disabled:opacity-40 text-white font-semibold py-3 rounded-lg transition"
+          >
+            {submitting
+              ? 'Submitting…'
+              : totalStaged > 0
+                ? `Submit ${totalStaged} Document${totalStaged === 1 ? '' : 's'}`
+                : 'Select documents to submit'}
+          </button>
         </div>
       </div>
     </div>
