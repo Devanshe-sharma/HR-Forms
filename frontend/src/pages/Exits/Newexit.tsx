@@ -668,6 +668,7 @@ const NewExit: React.FC = () => {
   const employmentType = watch("employmentType");
   const selectedDept = watch("dept");
   const selectedName = watch("name");
+  const selectedDesignation = watch("designation");
 
   // Interns only get 5 exit types (no Retirement/Termination) — narrow the
   // dropdown accordingly.
@@ -772,14 +773,30 @@ const NewExit: React.FC = () => {
     }
   }, [selectedName, currentEmployees, setValue]);
 
-  const filteredDesignations = useMemo(
-    () =>
-      deptDesig.designations.filter((item) => {
-        const dept = (item.department || (item as any).Department || "").trim().toLowerCase();
-        return dept === (selectedDept || "").trim().toLowerCase();
-      }),
-    [deptDesig.designations, selectedDept]
-  );
+  const filteredDesignations = useMemo(() => {
+    const base = deptDesig.designations.filter((item) => {
+      const dept = (item.department || (item as any).Department || "").trim().toLowerCase();
+      return dept === (selectedDept || "").trim().toLowerCase();
+    });
+
+    // The employee master's designation text (free text, set independently
+    // at onboarding time) can drift from Role Master's own list for this
+    // department — a rename in Role Master after the fact, or an older/
+    // imported record that never actually went through this dropdown.
+    // Without this, auto-filling a designation Role Master doesn't
+    // currently have listed for this department leaves the <select> with
+    // no matching <option> — the browser just renders it blank even
+    // though the real value is set correctly underneath. Add it as a
+    // selectable option so what got auto-filled is always visible.
+    const hasMatch = base.some((d) => d.designation === selectedDesignation);
+    if (selectedDesignation && !hasMatch) {
+      return [
+        ...base,
+        { department: selectedDept || "", desig_id: "current", designation: selectedDesignation },
+      ];
+    }
+    return base;
+  }, [deptDesig.designations, selectedDept, selectedDesignation]);
 
   // CC and "transfer knowledge to" should only offer currently employed
   // people — not exited employees, and not the old stale sheet's roster.
@@ -955,7 +972,12 @@ const NewExit: React.FC = () => {
                   </div>
                   <div>
                     <label className={labelClass}>Designation *</label>
-                    <select {...register("designation")} className={inputClass} disabled={!selectedDept}>
+                    <select
+                      {...register("designation")}
+                      value={selectedDesignation ?? ""}
+                      className={inputClass}
+                      disabled={!selectedDept}
+                    >
                       <option value="">
                         {selectedDept ? "Select designation" : "Select department first"}
                       </option>
