@@ -93,10 +93,21 @@ interface Props {
 }
 
 const HR_CHECKLISTS = [
-  { title: 'Shortlist CVs Checklist', items: ['Role And JD Checked Done?', 'Asked for Reference Done?', 'Checked Internal References Done?', 'Checked Internal Candidates Done?', 'Thanked All Applicants Done?', 'Emailed Shortlisted Candidates Done?'] },
-  { title: 'Interviews Checklist',    items: ['All Interviews Logged Done?', 'Asked Interviewers To Use Role Doc Done?', 'Asked Interviewers To Use Tests Done?', 'Asked Interviewers Hire Only Best Done?'] },
-  { title: 'Offer Letter Checklist',  items: ['Asked Confirmation In 2 Days Done?'] },
-  { title: 'General Feedback',        items: ['Kept All Needed In Cc Done?'] },
+  {
+    title: 'Recruitment Checklist',
+    items: [
+      'Role & JD Checked',
+      'Candidate Sourcing Completed',
+      'Candidates Shortlisted',
+      'HR Screening Completed',
+      'Technical Interviews Completed',
+      'Interview Feedback Received',
+      'Final Selection Completed',
+      'Offer Accepted',
+      'Joining Completed',
+      'Position Closed',
+    ],
+  },
 ];
 
 const JOINING_DAYS_OPTIONS = [

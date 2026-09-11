@@ -1,5 +1,14 @@
 const mongoose = require('mongoose');
 
+// One uploaded file — see routes/employees.js POST /:id/upload-documents.
+// Mirrors ApplicantRecord's uploadedDocumentSchema shape for consistency.
+const employeeDocumentSchema = new mongoose.Schema({
+    docType:    { type: String, default: '' },
+    fileName:   { type: String, default: '' },
+    driveLink:  { type: String, default: '' },
+    uploadedAt: { type: Date,   default: null },
+}, { _id: false });
+
 const EmployeeSchema = new mongoose.Schema(
     {
         employee_id: String,
@@ -99,6 +108,14 @@ const EmployeeSchema = new mongoose.Schema(
         familySiblings: { type: String, default: '' },
         familySpouse: { type: String, default: '' },
         familyChildren: { type: String, default: '' },
+
+        // ── Self-uploaded documents (Profile page, Financial & Documents
+        // tab) — one entry per successful upload, keyed by docType (see
+        // utils/employeeDocumentTypes.js). Files live in Google Drive, not
+        // on local disk; only the resulting link is stored here.
+        documents: { type: [employeeDocumentSchema], default: [] },
+        documentsUploadFolderId: { type: String, default: null },
+        documentsUploadFolderLink: { type: String, default: null },
     },
     {
         collection: 'Employee'

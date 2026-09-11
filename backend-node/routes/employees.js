@@ -5,7 +5,27 @@
 
 const express  = require('express');
 const router   = express.Router();
+const multer   = require('multer');
 const Employee = require('../models/Employee');
+const { authenticate } = require('../middleware/authenticate');
+const { uploadFileToDrive, createDriveFolder } = require('../utils/googleDrive');
+const EMPLOYEE_DOCUMENT_TYPES = require('../utils/employeeDocumentTypes');
+
+// Self-service writes (personal-info edits, document uploads) are only ever
+// meant to touch the requesting user's own Employee record — an Admin/HR
+// account can still reach any record (e.g. to fix a typo on someone's
+// behalf), but anyone else must own it (matched by their login email
+// against official_email/personal_email) or gets a 403.
+function canManageEmployeeRecord(user, employee) {
+  if (!user) return false;
+  if (user.role === 'Admin' || user.role === 'HR') return true;
+  const email = (user.email || '').trim().toLowerCase();
+  if (!email) return false;
+  return (
+    (employee.official_email || '').trim().toLowerCase() === email ||
+    (employee.personal_email || '').trim().toLowerCase() === email
+  );
+}
 
 router.get('/', async (req, res) => {
   try {
@@ -103,8 +123,16 @@ const PERSONAL_INFO_FIELDS = [
   'familyFather', 'familyMother', 'familySiblings', 'familySpouse', 'familyChildren',
 ];
 
-router.put('/:id/personal-info', async (req, res) => {
+router.put('/:id/personal-info', authenticate, async (req, res) => {
   try {
+    const existing = await Employee.findById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Employee not found' });
+    }
+    if (!canManageEmployeeRecord(req.user, existing)) {
+      return res.status(403).json({ success: false, error: 'You can only edit your own personal info' });
+    }
+
     const update = {};
     for (const key of PERSONAL_INFO_FIELDS) {
       if (key in req.body) update[key] = req.body[key];
@@ -116,13 +144,74 @@ router.put('/:id/personal-info', async (req, res) => {
       { new: true }
     );
 
-    if (!employee) {
-      return res.status(404).json({ success: false, error: 'Employee not found' });
-    }
-
     return res.json({ success: true, data: employee });
   } catch (err) {
     console.error('Error updating personal info:', err);
+    return res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/employees/:id/upload-documents - Self-service document upload
+// from the Profile page's "Financial & Documents" tab. One file per
+// request, keyed by `docType` (validated against EMPLOYEE_DOCUMENT_TYPES).
+// Files never touch local disk (multer memoryStorage) — they're streamed
+// straight to this employee's own Drive subfolder (created lazily, on
+// first upload) and only the resulting link is persisted. Re-uploading the
+// same docType appends a new entry rather than replacing the old one; the
+// frontend shows the most recent entry per docType.
+const uploadEmployeeDoc = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png'];
+    const ext = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
+    allowed.includes(ext) ? cb(null, true) : cb(new Error('Invalid file type — use PDF, Word, or an image.'));
+  },
+}).single('file');
+
+router.post('/:id/upload-documents', authenticate, uploadEmployeeDoc, async (req, res) => {
+  try {
+    const docType = req.body.docType;
+    if (!EMPLOYEE_DOCUMENT_TYPES.some((d) => d.key === docType)) {
+      return res.status(400).json({ success: false, error: 'Unknown document type' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No file was selected' });
+    }
+
+    const employee = await Employee.findById(req.params.id);
+    if (!employee) {
+      return res.status(404).json({ success: false, error: 'Employee not found' });
+    }
+    if (!canManageEmployeeRecord(req.user, employee)) {
+      return res.status(403).json({ success: false, error: 'You can only upload documents for your own profile' });
+    }
+
+    if (!employee.documentsUploadFolderId) {
+      const parentFolderId = process.env.GOOGLE_DRIVE_EMPLOYEE_DOCS_PARENT_FOLDER_ID || process.env.GOOGLE_DRIVE_RESUME_FOLDER_ID;
+      const folder = await createDriveFolder(`${employee.full_name || 'Employee'} - ${employee._id}`, parentFolderId);
+      employee.documentsUploadFolderId = folder.id;
+      employee.documentsUploadFolderLink = folder.webViewLink;
+    }
+
+    // makePublic: false — these are personal documents (Aadhaar/PAN,
+    // marksheets), kept restricted to this Shared Drive's members rather
+    // than "anyone with the link".
+    const driveLink = await uploadFileToDrive(
+      req.file.buffer, req.file.originalname, req.file.mimetype,
+      employee.documentsUploadFolderId, { makePublic: false }
+    );
+    employee.documents.push({
+      docType,
+      fileName: req.file.originalname,
+      driveLink,
+      uploadedAt: new Date(),
+    });
+
+    await employee.save();
+    return res.json({ success: true, data: employee.documents });
+  } catch (err) {
+    console.error('Error uploading employee document:', err);
     return res.status(400).json({ success: false, error: err.message });
   }
 });

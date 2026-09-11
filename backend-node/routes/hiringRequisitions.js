@@ -233,12 +233,30 @@ async function rescoreAndSave(id) {
   return doc;
 }
 
-// The actual HR checklist tasks — mirrors HR_CHECKLISTS in
-// Real task names confirmed against both the legacy sheet's column headers
-// and actual existing MongoDB documents — replaces an earlier guess that
-// was based on the New Requisition form's (purely decorative) checklist
-// display, which used different wording than the real data.
+// The actual HR checklist tasks — the recruitment pipeline stages, one
+// task per stage. Replaces the old 12-item granular-task list below (kept
+// as LEGACY_HR_CHECKLIST_TASK_NAMES purely so the legacy CSV importer can
+// still match that sheet's own column headers for historical data).
 const HR_CHECKLIST_TASK_NAMES = [
+  'Role & JD Checked',
+  'Candidate Sourcing Completed',
+  'Candidates Shortlisted',
+  'HR Screening Completed',
+  'Technical Interviews Completed',
+  'Interview Feedback Received',
+  'Final Selection Completed',
+  'Offer Accepted',
+  'Joining Completed',
+  'Position Closed',
+];
+
+// The original 12-item checklist — real task names confirmed against both
+// the legacy sheet's column headers and actual existing MongoDB documents.
+// Used ONLY by /import-legacy-checklist-csv below, which matches each
+// task name against that sheet's own "<task> Plan?"/"<task> Done?"
+// columns; must stay exactly as-is regardless of what the live checklist
+// (HR_CHECKLIST_TASK_NAMES above) becomes.
+const LEGACY_HR_CHECKLIST_TASK_NAMES = [
   'Role n JD Checked',
   'Checked Internally for Candidates',
   'Emailed Internally For References',
@@ -254,27 +272,23 @@ const HR_CHECKLIST_TASK_NAMES = [
 ];
 
 // Which of the requisition's 4 planned-milestone fields each checklist
-// task's own plan date should derive from — mirrors the old Apps
-// Script's four checklist groups exactly (Shortlisting Checklist,
-// Interviews Checklist, Offer Checklist, General Feedback), just
-// flattened into this one 12-item list instead of nested groups. This
-// connection never existed in the Node rewrite at all — every task was
-// seeded with plan: null regardless of what the requisition's own
-// planned dates said, which meant nothing could ever become Overdue (or
-// score negative) no matter how much time passed.
+// task's own plan date should derive from — same 4-stage lifecycle
+// (sourcing/shortlisting -> interviews -> offer -> joining) the
+// requisition's own milestone fields already track, so each stage's
+// checklist task inherits a real plan date instead of staying null
+// forever (which would mean it could never become Overdue or score
+// negative no matter how much time passed).
 const TASK_PLAN_SOURCE = {
-  'Role n JD Checked':                   'plan_start_sharing_cvs',
-  'Checked Internally for Candidates':   'plan_start_sharing_cvs',
-  'Emailed Internally For References':   'plan_start_sharing_cvs',
-  'Emailed Others For Reference':        'plan_start_sharing_cvs',
-  'Thanked All Applicants':              'plan_start_sharing_cvs',
-  'Emailed Shortlisted Candidates':      'plan_start_sharing_cvs',
-  'All Interviews Logged':               'planned_interviews_started',
-  'Asked Interviewers To Use Role Doc':  'planned_interviews_started',
-  'Asked Interviewers to Use Tests':     'planned_interviews_started',
-  'Asked Interviewers To Hire Only Best': 'planned_interviews_started',
-  'Asked Confirmation in 2 Days':        'planned_offer_accepted',
-  'Kept All in Cc':                      'planned_joined',
+  'Role & JD Checked':              'plan_start_sharing_cvs',
+  'Candidate Sourcing Completed':   'plan_start_sharing_cvs',
+  'Candidates Shortlisted':         'plan_start_sharing_cvs',
+  'HR Screening Completed':         'plan_start_sharing_cvs',
+  'Technical Interviews Completed': 'planned_interviews_started',
+  'Interview Feedback Received':    'planned_interviews_started',
+  'Final Selection Completed':      'planned_interviews_started',
+  'Offer Accepted':                 'planned_offer_accepted',
+  'Joining Completed':              'planned_joined',
+  'Position Closed':                'planned_joined',
 };
 
 // milestones is the requisition's own { plan_start_sharing_cvs,
@@ -358,7 +372,7 @@ router.post('/import-legacy-checklist-csv', express.text({ type: '*/*', limit: '
       }
       matched++;
 
-      const freshTasks = HR_CHECKLIST_TASK_NAMES.map((taskName) => ({
+      const freshTasks = LEGACY_HR_CHECKLIST_TASK_NAMES.map((taskName) => ({
         task: taskName,
         plan: parseSheetDate(row[`${taskName} Plan?`]),
         done: parseSheetDate(row[`${taskName} Done?`]),

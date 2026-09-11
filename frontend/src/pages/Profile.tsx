@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box, Card, CardContent, Typography, Avatar, Chip, Divider,
   Button, Tab, Tabs, List, ListItem, ListItemText, ListItemIcon,
@@ -105,6 +105,26 @@ interface UserProfile {
   familySiblings?: string;
   familySpouse?: string;
   familyChildren?: string;
+
+  // ── Self-uploaded documents (Financial & Documents tab) — one entry per
+  // successful upload, keyed by docType. Re-uploading the same docType
+  // appends rather than replaces, so latestDocFor() below picks the newest.
+  documents?: EmployeeDocument[];
+}
+
+interface EmployeeDocument {
+  docType: string;
+  fileName: string;
+  driveLink: string;
+  uploadedAt: string | null;
+}
+
+// Keys must match backend-node/utils/employeeDocumentTypes.js exactly —
+// this is what's sent as `docType` in the upload request.
+function latestDocFor(documents: EmployeeDocument[] | undefined, docType: string): EmployeeDocument | undefined {
+  return (documents || [])
+    .filter(d => d.docType === docType)
+    .sort((a, b) => new Date(b.uploadedAt || 0).getTime() - new Date(a.uploadedAt || 0).getTime())[0];
 }
 
 const PERSONAL_INFO_FIELDS = [
@@ -364,14 +384,57 @@ function EditableSectionCard({ title, icon, fields, profile, employeeId, onSaved
   );
 }
 
-function DocumentItem({ title, subtitle, tag, tagColor = '#3F6FE8', href }: {
-  title: string; subtitle: string; tag?: string; tagColor?: string; href?: string;
+// A document row that's either system-issued (staticHref — links out, e.g.
+// to /employee-letters, no upload control) or self-uploadable (docType +
+// employeeId — shows a real Upload/Replace control and, once uploaded, a
+// working View link straight to the Drive file).
+function DocumentItem({ docType, title, subtitle, requiredTag, requiredTagColor = '#3F6FE8', doc, employeeId, onUploaded, staticHref }: {
+  docType?: string;
+  title: string;
+  subtitle: string;
+  requiredTag?: string;
+  requiredTagColor?: string;
+  doc?: EmployeeDocument;
+  employeeId?: string;
+  onUploaded?: (documents: EmployeeDocument[]) => void;
+  staticHref?: string;
 }) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const uploaded = !!doc;
+  const tag = uploaded ? 'Uploaded' : requiredTag;
+  const tagColor = uploaded ? '#059669' : requiredTagColor;
+  const viewHref = doc?.driveLink || staticHref;
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // lets the same filename be re-selected later
+    if (!file || !employeeId || !docType) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('docType', docType);
+      // No explicit Content-Type — axios/the browser must set it from the
+      // FormData instance itself so the multipart boundary is included;
+      // hardcoding 'multipart/form-data' here drops that boundary and the
+      // server (multer) silently fails to parse the body at all.
+      const res = await axios.post(`${API_URL}/employees/${employeeId}/upload-documents`, formData);
+      if (res.data?.success) onUploaded?.(res.data.data || []);
+      else setError('Upload failed.');
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Upload failed.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
-    <ListItem component={href ? Link : 'div'} href={href} sx={{
-      px: 3, py: 2, textDecoration: 'none', color: 'inherit',
-      borderBottom: '1px solid #F0F2F5', cursor: 'pointer',
-      '&:last-child': { borderBottom: 'none' }, '&:hover': { bgcolor: '#F8F9FB' },
+    <ListItem sx={{
+      px: 3, py: 2, borderBottom: '1px solid #F0F2F5', '&:last-child': { borderBottom: 'none' },
     }}>
       <ListItemIcon sx={{ minWidth: 44 }}>
         <Box sx={{ width: 36, height: 36, borderRadius: '8px', bgcolor: '#F0F4FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -385,11 +448,31 @@ function DocumentItem({ title, subtitle, tag, tagColor = '#3F6FE8', href }: {
             {tag && <Chip label={tag} size="small" sx={{ bgcolor: `${tagColor}18`, color: tagColor, fontWeight: 700, fontSize: '0.7rem', height: 20, borderRadius: '4px' }} />}
           </Stack>
         }
-        secondary={<Typography variant="caption" color="#6B7280">{subtitle}</Typography>}
+        secondary={
+          <Typography variant="caption" color={error ? '#DC2626' : '#6B7280'}>
+            {error || (uploaded ? `${doc!.fileName}${formatDateDisplay(doc!.uploadedAt) ? ` • ${formatDateDisplay(doc!.uploadedAt)}` : ''}` : subtitle)}
+          </Typography>
+        }
       />
-      <Button size="small" variant="outlined" sx={{ borderRadius: '8px', textTransform: 'none', fontSize: '0.75rem', fontWeight: 600, borderColor: '#E0E5EC', color: '#475467', '&:hover': { borderColor: '#3F6FE8', color: '#3F6FE8' } }}>
-        View
-      </Button>
+      <Stack direction="row" spacing={1} alignItems="center">
+        {viewHref && (
+          <Button component={Link} href={viewHref} target="_blank" rel="noopener" size="small" variant="outlined"
+            sx={{ borderRadius: '8px', textTransform: 'none', fontSize: '0.75rem', fontWeight: 600, borderColor: '#E0E5EC', color: '#475467', '&:hover': { borderColor: '#3F6FE8', color: '#3F6FE8' } }}>
+            View
+          </Button>
+        )}
+        {docType && employeeId && (
+          <>
+            <input ref={inputRef} type="file" hidden accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onChange={handleFile} />
+            <Button
+              size="small" variant="text" disabled={uploading} onClick={() => inputRef.current?.click()}
+              startIcon={uploading ? <CircularProgress size={12} color="inherit" /> : <UploadIcon sx={{ fontSize: 14 }} />}
+              sx={{ textTransform: 'none', fontSize: '0.75rem', fontWeight: 700, color: '#3F6FE8' }}>
+              {uploading ? 'Uploading…' : uploaded ? 'Replace' : 'Upload'}
+            </Button>
+          </>
+        )}
+      </Stack>
     </ListItem>
   );
 }
@@ -532,6 +615,9 @@ export default function Profile() {
 
   const handlePersonalInfoSaved = (patch: Partial<UserProfile>) =>
     setUserProfile((prev) => prev ? { ...prev, ...patch } : prev);
+
+  const handleDocumentsUploaded = (documents: EmployeeDocument[]) =>
+    setUserProfile((prev) => prev ? { ...prev, documents } : prev);
 
   if (loading) return (
     <div className="flex min-h-screen bg-gray-50">
@@ -760,24 +846,35 @@ export default function Profile() {
                   />
                 </Box>
                 <Box>
-                  <SectionCard title="Onboarding Documents" icon={<OnboardingIcon sx={{ fontSize: 17 }} />} action={<Button size="small" startIcon={<UploadIcon sx={{ fontSize: 14 }} />} sx={{ textTransform: 'none', fontSize: '0.78rem', fontWeight: 700, color: '#3F6FE8' }}>Upload</Button>}>
+                  <SectionCard title="Onboarding Documents" icon={<OnboardingIcon sx={{ fontSize: 17 }} />}>
+                    {!userProfile?._id && (
+                      <Alert severity="info" sx={{ mb: 1.5, fontSize: '0.76rem' }}>
+                        No employee master record is linked to this account yet — uploads can't be saved until one exists.
+                      </Alert>
+                    )}
                     <List disablePadding sx={{ mx: -3, mb: -2.5 }}>
-                      <DocumentItem title="10th Marksheet" subtitle="Class X board certificate" tag="Required" tagColor="#E53E3E" href="#" />
-                      <DocumentItem title="12th Marksheet" subtitle="Class XII board certificate" tag="Required" tagColor="#E53E3E" href="#" />
-                      <DocumentItem title="Graduation Marksheet" subtitle="Bachelor's degree transcripts" tag="Required" tagColor="#E53E3E" href="#" />
-                      <DocumentItem title="Postgraduate Marksheet" subtitle="Master's / PG degree (if applicable)" tag="Optional" tagColor="#6B7280" href="#" />
-                      <DocumentItem title="Aadhaar / PAN Card" subtitle="Government identity proof" tag="Required" tagColor="#E53E3E" href="#" />
+                      <DocumentItem docType="tenthMarksheet" title="10th Marksheet" subtitle="Class X board certificate" requiredTag="Required" requiredTagColor="#E53E3E"
+                        doc={latestDocFor(userProfile?.documents, 'tenthMarksheet')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
+                      <DocumentItem docType="twelfthMarksheet" title="12th Marksheet" subtitle="Class XII board certificate" requiredTag="Required" requiredTagColor="#E53E3E"
+                        doc={latestDocFor(userProfile?.documents, 'twelfthMarksheet')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
+                      <DocumentItem docType="graduationMarksheet" title="Graduation Marksheet" subtitle="Bachelor's degree transcripts" requiredTag="Required" requiredTagColor="#E53E3E"
+                        doc={latestDocFor(userProfile?.documents, 'graduationMarksheet')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
+                      <DocumentItem docType="pgMarksheet" title="Postgraduate Marksheet" subtitle="Master's / PG degree (if applicable)" requiredTag="Optional" requiredTagColor="#6B7280"
+                        doc={latestDocFor(userProfile?.documents, 'pgMarksheet')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
+                      <DocumentItem docType="aadhaarPan" title="Aadhaar / PAN Card" subtitle="Government identity proof" requiredTag="Required" requiredTagColor="#E53E3E"
+                        doc={latestDocFor(userProfile?.documents, 'aadhaarPan')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
                     </List>
                   </SectionCard>
                 </Box>
                 <Box>
-                  <SectionCard title="My Documents" icon={<LetterIcon sx={{ fontSize: 17 }} />} action={<Button size="small" startIcon={<UploadIcon sx={{ fontSize: 14 }} />} sx={{ textTransform: 'none', fontSize: '0.78rem', fontWeight: 700, color: '#3F6FE8' }}>Upload</Button>}>
+                  <SectionCard title="My Documents" icon={<LetterIcon sx={{ fontSize: 17 }} />}>
                     <List disablePadding sx={{ mx: -3, mb: -2.5 }}>
-                      <DocumentItem title="Offer Letter" subtitle="Original employment offer document" tag="Issued" tagColor="#059669" href="/employee-letters" />
-                      <DocumentItem title="Appointment Letter" subtitle="Formal appointment confirmation" tag="Issued" tagColor="#059669" href="/employee-letters" />
-                      <DocumentItem title="Increment Letter" subtitle="Salary revision & increment details" tag="Issued" tagColor="#059669" href="/employee-letters" />
-                      <DocumentItem title="Experience Letter" subtitle="For previous employment (if applicable)" tag="Optional" tagColor="#6B7280" href="#" />
-                      <DocumentItem title="Payslips" subtitle="Monthly salary statements" tag="Auto-generated" tagColor="#3F6FE8" href="/employee-letters" />
+                      <DocumentItem title="Offer Letter" subtitle="Original employment offer document" requiredTag="Issued" requiredTagColor="#059669" staticHref="/employee-letters" />
+                      <DocumentItem title="Appointment Letter" subtitle="Formal appointment confirmation" requiredTag="Issued" requiredTagColor="#059669" staticHref="/employee-letters" />
+                      <DocumentItem title="Increment Letter" subtitle="Salary revision & increment details" requiredTag="Issued" requiredTagColor="#059669" staticHref="/employee-letters" />
+                      <DocumentItem docType="experienceLetter" title="Experience Letter" subtitle="For previous employment (if applicable)" requiredTag="Optional" requiredTagColor="#6B7280"
+                        doc={latestDocFor(userProfile?.documents, 'experienceLetter')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
+                      <DocumentItem title="Payslips" subtitle="Monthly salary statements" requiredTag="Auto-generated" requiredTagColor="#3F6FE8" staticHref="/employee-letters" />
                     </List>
                   </SectionCard>
                 </Box>

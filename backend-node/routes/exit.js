@@ -687,7 +687,7 @@ function normalizeCc(raw) {
 }
 
 function deriveFmsStatus(exitStatus, tasksNotDone) {
-  if (["Left", "Not Exiting", "Exit Cancelled"].includes(exitStatus)) return "Closed";
+  if (["Left", "Already Left", "Not Exiting", "Exit Cancelled"].includes(exitStatus)) return "Closed";
   return tasksNotDone === 0 ? "Closed" : "Open";
 }
 

@@ -60,23 +60,59 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
+// Everyone except Management only ever sees escalations they raised or
+// that were raised against them — matched by email, not name (name isn't
+// reliable for this: see onboardingroutes.js's eligible-employees
+// scope=mine, where a Manager's login name didn't match their own full
+// name as it appears elsewhere).
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function scopeToOwnEscalations(req) {
+  const email = (req.user?.email || '').trim();
+  const escaped = escapeRegex(email);
+  return {
+    $or: [
+      { 'createdBy.email': { $regex: `^${escaped}$`, $options: 'i' } },
+      { 'targetEmployees.email': { $regex: `^${escaped}$`, $options: 'i' } },
+    ],
+  };
+}
+
+function canViewEscalation(req, doc) {
+  if (req.user?.role === 'Management') return true;
+  const email = (req.user?.email || '').trim().toLowerCase();
+  if (!email) return false;
+  if ((doc.createdBy?.email || '').trim().toLowerCase() === email) return true;
+  return (doc.targetEmployees || []).some(
+    (t) => (t.email || '').trim().toLowerCase() === email
+  );
+}
+
 // GET /api/escalations — dashboard list, newest first.
-router.get('/', async (req, res) => {
+router.get('/', authenticate, async (req, res) => {
   try {
     const { category, escalationFor, search } = req.query;
 
-    const filter = {};
-    if (category)      filter.category      = category;
-    if (escalationFor) filter.escalationFor = escalationFor;
+    const clauses = [];
+    if (category)      clauses.push({ category });
+    if (escalationFor) clauses.push({ escalationFor });
     if (search) {
-      filter.$or = [
-        { caseNumber: { $regex: search, $options: 'i' } },
-        { 'createdBy.name':    { $regex: search, $options: 'i' } },
-        { 'targetEmployees.name': { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-      ];
+      clauses.push({
+        $or: [
+          { caseNumber: { $regex: search, $options: 'i' } },
+          { 'createdBy.name':    { $regex: search, $options: 'i' } },
+          { 'targetEmployees.name': { $regex: search, $options: 'i' } },
+          { description: { $regex: search, $options: 'i' } },
+        ],
+      });
+    }
+    if (req.user?.role !== 'Management') {
+      clauses.push(scopeToOwnEscalations(req));
     }
 
+    const filter = clauses.length ? { $and: clauses } : {};
     const data = await Escalation.find(filter).sort({ createdAt: -1 });
     res.json({ success: true, data });
   } catch (err) {
@@ -84,10 +120,13 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.get('/:id', async (req, res) => {
+router.get('/:id', authenticate, async (req, res) => {
   try {
     const doc = await Escalation.findById(req.params.id);
     if (!doc) return res.status(404).json({ success: false, message: 'Not found' });
+    if (!canViewEscalation(req, doc)) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this escalation.' });
+    }
     res.json({ success: true, data: doc });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
