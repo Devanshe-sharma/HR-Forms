@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useForm, Controller, SubmitHandler } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -731,7 +731,17 @@ const NewExit: React.FC = () => {
     [master.employees]
   );
 
+  // Set for the one dept-change caused by selecting an employee below (so
+  // that change doesn't wipe the designation the SAME selection just
+  // auto-filled) — never for a genuine manual department change by the
+  // user, which should still clear designation as before.
+  const skipDesignationResetRef = useRef(false);
+
   useEffect(() => {
+    if (skipDesignationResetRef.current) {
+      skipDesignationResetRef.current = false;
+      return;
+    }
     setValue("designation", "");
   }, [selectedDept, setValue]);
 
@@ -747,7 +757,10 @@ const NewExit: React.FC = () => {
       setValue("officialEmail", match.official_email || match.email || "");
 
       // Official data
-      if (match.department) setValue("dept", match.department);
+      if (match.department) {
+        if (match.designation) skipDesignationResetRef.current = true;
+        setValue("dept", match.department);
+      }
       if (match.designation) setValue("designation", match.designation);
       const mappedEmploymentType = mapEmployeeCategoryToEmploymentType(match.employee_category);
       if (mappedEmploymentType) setValue("employmentType", mappedEmploymentType);
