@@ -11,6 +11,7 @@ const EXITED_STATUS_VALUES = new Set(['Left', 'Already Left']);
 
 // Live as of 2026-09-02.
 const RECIPIENT = process.env.EMAIL_MANAGEMENT;
+const HR_HEAD_CC = process.env.HR_HEAD_EMAIL || 'hr.head@briskolive.com';
 
 async function sendSalaryRevisionDue(now = new Date()) {
   const fy = fiscalYearOf(now);
@@ -23,7 +24,11 @@ async function sendSalaryRevisionDue(now = new Date()) {
     .select('name dept designation joinedDate employeeCategory contractPeriod exitStatus')
     .lean();
 
-  const active = employees.filter((e) => !EXITED_STATUS_VALUES.has(e.exitStatus || ''));
+  // Plain Interns aren't part of this digest, but "Intern with PPO" is —
+  // exact match only, same as dueDateInRange's own intern check and the
+  // dashboard's (SalaryRevisionNew.tsx), so an "Intern with PPO" employee
+  // is still evaluated through the normal annual anchor-date logic below.
+  const active = employees.filter((e) => !EXITED_STATUS_VALUES.has(e.exitStatus || '') && e.employeeCategory !== 'Intern');
 
   const revisionsByEmployee = new Map();
   const allRevisions = await SalaryRevision.find({
@@ -60,7 +65,7 @@ async function sendSalaryRevisionDue(now = new Date()) {
 
   const { subject, html } = salaryRevisionDueTemplate(rows, quarterLabel);
 
-  await sendEmail({ to: RECIPIENT, subject, html });
+  await sendEmail({ to: RECIPIENT, subject, html, cc: HR_HEAD_CC });
 
   return { dueCount: rows.length };
 }

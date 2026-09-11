@@ -124,8 +124,11 @@ function scoreChecklist(list, today, isApproved = true) {
 // generic template must stay exactly as-is: buildLegacyExitChecklists()
 // below matches it positionally against LEGACY_TASK_BASE_MAP for CSV
 // imports of old records that predate exitType/employmentType.
+// startsWith (not exact match) so "Internship with PPO" gets the same
+// Intern checklist treatment as plain "Internship" without needing its
+// own separate template.
 function isInternEmploymentType(employmentType) {
-  return String(employmentType || "").trim().toLowerCase() === "internship";
+  return String(employmentType || "").trim().toLowerCase().startsWith("internship");
 }
 
 const GENERIC_CHECKLIST_TEMPLATE = [

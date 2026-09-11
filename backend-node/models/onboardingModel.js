@@ -102,7 +102,7 @@ const onboardingSchema = new mongoose.Schema(
     // with no employeeCategory/managementLevel set yet.
     employeeCategory: {
       type: String,
-      enum: ["", "Employee", "Consultant", "Intern", "Contract Based", "Part Time", "Temporary Staffing"],
+      enum: ["", "Employee", "Consultant", "Intern", "Intern with PPO", "Contract Based", "Part Time", "Temporary Staffing"],
       default: "",
     },
     managementLevel: {
@@ -305,6 +305,14 @@ const onboardingSchema = new mongoose.Schema(
     employmentType: String,
 
     fmsScore: {
+      type: Number,
+      default: 0,
+    },
+
+    // Drops by 1 each time an escalation names this employee (see
+    // backend-node/routes/escalations.js) — a running conduct tally,
+    // separate from fmsScore's task-completion tracking.
+    escalationScore: {
       type: Number,
       default: 0,
     },

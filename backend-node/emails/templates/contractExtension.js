@@ -1,10 +1,11 @@
 const formatDateIST = require("../utils/formatDateIST");
 
-// "Intern" gets the literal "internship" wording; every other contract-based
-// category (currently just "Contract Based") gets "contract" instead, so a
-// Contract Based hire isn't told their "internship" was extended.
+// "Intern" (including "Intern with PPO") gets the literal "internship"
+// wording; every other contract-based category (currently just
+// "Contract Based") gets "contract" instead, so a Contract Based hire
+// isn't told their "internship" was extended.
 function contractExtensionTemplate(doc) {
-  const roleWord = doc.employeeCategory === "Intern" ? "internship" : "contract";
+  const roleWord = doc.employeeCategory?.startsWith("Intern") ? "internship" : "contract";
   const months = doc.contractPeriod;
   const duration = months ? `${months} month${Number(months) === 1 ? "" : "s"}` : "extended";
   const startDate = formatDateIST(doc.contractStartDate) || "-";

@@ -1344,6 +1344,7 @@ const InternConversionsWidget: React.FC = () => {
               <PieBreakdownChart
                 data={[
                   { name: "Intern", value: conversions.filter((c) => c.previousCategory === "Intern").length, color: INTERN_COLOR },
+                  { name: "Intern with PPO", value: conversions.filter((c) => c.previousCategory === "Intern with PPO").length, color: "#a78bfa" },
                   { name: "Contract Based", value: conversions.filter((c) => c.previousCategory === "Contract Based").length, color: "#0284c7" },
                 ]}
               />

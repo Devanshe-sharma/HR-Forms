@@ -56,6 +56,7 @@ const EMPLOYMENT_TYPE_OPTIONS = [
   "Full Time Employment",
   "Contract",
   "Internship",
+  "Internship with PPO",
   "Part Time",
   "Temporary Staffing",
   "Consultant",
@@ -69,6 +70,8 @@ const mapEmployeeCategoryToEmploymentType = (category?: string): string => {
       return "Contract";
     case "Intern":
       return "Internship";
+    case "Intern with PPO":
+      return "Internship with PPO";
     case "Part Time":
       return "Part Time";
     case "Temporary Staffing":
@@ -602,8 +605,10 @@ const EMPLOYEE_CHECKLIST_TEMPLATES: Record<string, ChecklistTemplateGroup[]> = {
   ],
 };
 
+// startsWith (not exact match) so "Internship with PPO" gets the same
+// Intern checklist/exit-type treatment as plain "Internship".
 function isInternEmploymentType(employmentType?: string): boolean {
-  return (employmentType || "").trim().toLowerCase() === "internship";
+  return (employmentType || "").trim().toLowerCase().startsWith("internship");
 }
 
 // Picks the checklist template for the currently selected employment/exit

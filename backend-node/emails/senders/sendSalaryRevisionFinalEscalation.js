@@ -24,6 +24,10 @@ async function sendSalaryRevisionFinalEscalation(now = new Date()) {
     'managerDecision.submittedAt': null,
     finalEscalationSentAt: null,
     managerRequestedAt: { $gte: ESCALATION_ELIGIBLE_FROM, $lte: cutoff },
+    // Plain Interns never get mail here either — belt-and-suspenders in
+    // case a revision like this exists despite the create-time guard
+    // (e.g. pre-dates it). "Intern with PPO" is not excluded.
+    category: { $ne: 'Intern' },
   });
 
   for (const revision of overdue) {

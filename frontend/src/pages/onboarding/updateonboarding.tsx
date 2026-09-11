@@ -188,7 +188,7 @@ const MANAGEMENT_LEVEL_OPTIONS = [
 // Only Intern and Contract Based get the Contract Details section — keep in
 // sync with the same list in NewOnboarding.tsx. Every other category
 // (Employee, Consultant, Part Time, Temporary Staffing) gets Salary Details.
-const CONTRACT_BASED_CATEGORIES = ["Intern", "Contract Based"];
+const CONTRACT_BASED_CATEGORIES = ["Intern", "Intern with PPO", "Contract Based"];
 
 // ─── Checklist group styling ─────────────────────────────────────────────────
 // The actual checklist (which groups, which items) varies per record — it
@@ -827,6 +827,7 @@ const UpdateOnboarding: React.FC = () => {
                       <option value="Employee">Employee</option>
                       <option value="Consultant">Consultant</option>
                       <option value="Intern">Intern</option>
+                      <option value="Intern with PPO">Intern with PPO</option>
                       <option value="Part Time">Part Time</option>
                       <option value="Contract Based">Contract Based</option>
                       <option value="Temporary Staffing">Temporary Staffing</option>

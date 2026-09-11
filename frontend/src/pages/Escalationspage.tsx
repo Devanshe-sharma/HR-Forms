@@ -9,7 +9,6 @@ import {
   ArrowBack as ArrowBackIcon,
   Add as AddIcon,
   Close as CloseIcon,
-  AttachFile as AttachFileIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import Sidebar from '../components/Sidebar';
@@ -18,8 +17,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type EscalationFor = 'BO Employee' | 'General';
-type Rating = 'Good' | 'Bad' | 'Neutral';
+type EscalationFor = 'Department Related' | 'General';
 
 interface TargetPerson {
   employeeId  : string;
@@ -34,25 +32,28 @@ interface Escalation {
   createdBy      : { employeeId: string; name: string; email: string; mobile: string; department: string; designation: string };
   escalationFor  : EscalationFor;
   targetEmployees: TargetPerson[];
-  rating         : Rating | null;
   category       : string;
-  mode           : string;
-  subject        : string;
-  message        : string;
-  attachmentUrl  : string;
-  attachmentName : string;
+  description    : string;
+  dateOccurred   : string;
+  cc             : string[];
   createdAt      : string;
 }
 
+interface ManagementUser {
+  name : string;
+  email: string;
+}
+
 interface Employee {
-  _id           : string;
-  employee_id   : string;
-  full_name     : string;
-  department    : string;
-  designation   : string;
-  email         : string;
-  official_email: string;
-  mobile        : string;
+  _id             : string;
+  employee_id     : string;
+  full_name       : string;
+  department      : string;
+  designation     : string;
+  email           : string;
+  official_email  : string;
+  mobile          : string;
+  escalation_score: number;
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -64,19 +65,29 @@ const EMP_API = `${API_URL}/onboarding/eligible-employees`;
 const ACCENT = '#4f46e5';
 const TH = { fontWeight: 600, fontSize: 11, color: '#64748b', bgcolor: '#f8fafc', whiteSpace: 'nowrap' as const, py: '8px', borderBottom: '1px solid #e2e8f0' };
 
-const ESCALATION_FOR_OPTIONS: EscalationFor[] = ['BO Employee', 'General'];
-const RATING_OPTIONS: Rating[] = ['Good', 'Bad', 'Neutral'];
-const CATEGORY_OPTIONS = [
+const ESCALATION_FOR_OPTIONS: EscalationFor[] = ['Department Related', 'General'];
+
+// Category choices depend on the escalation type — kept in sync with the
+// backend's Escalation model validator.
+const GENERAL_CATEGORY_OPTIONS = [
   'Reminder', 'POSH', 'Misbehaviour', 'Absent from Work', 'Refused Offer',
   'Refused to Join', 'Blacklisted', 'Good Work', 'Provided a Reference', 'Other',
 ];
-const MODE_OPTIONS = ['Call', 'Video Call', 'Email', 'Face to Face', 'WhatsApp', 'Physical Letter', 'Other'];
+const DEPARTMENT_CATEGORY_OPTIONS = [
+  'Employee Files/Data incomplete', 'Payroll incorrect', 'POSH Case', 'Problem Without Solution',
+];
+const ALL_CATEGORY_OPTIONS = [...GENERAL_CATEGORY_OPTIONS, ...DEPARTMENT_CATEGORY_OPTIONS];
 
-const STEP_TITLES = ['Creator', 'This is for whom?', 'Classification', 'Details', 'Review & submit'];
+const categoryOptionsFor = (escalationFor: EscalationFor | '') =>
+  escalationFor === 'General' ? GENERAL_CATEGORY_OPTIONS : DEPARTMENT_CATEGORY_OPTIONS;
+
+const STEP_TITLES = ['Creator', 'This is for whom?', 'Classification', 'Review & submit'];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const initials = (n: string) => n.split(' ').map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
+
+const todayStr = () => new Date().toISOString().slice(0, 10);
 
 const fmtDate = (d?: string | Date | null) => {
   if (!d) return '—';
@@ -90,13 +101,8 @@ const fmtDateTime = (d?: string | Date | null) => {
   catch { return String(d); }
 };
 
-const ratingColor = (r: Rating | null) => r === 'Good' ? '#059669' : r === 'Bad' ? '#dc2626' : '#64748b';
-
-const targetSummary = (rec: Pick<Escalation, 'escalationFor' | 'targetEmployees'>) => {
-  if (rec.escalationFor === 'General') return 'General';
-  if (!rec.targetEmployees.length) return '—';
-  return rec.targetEmployees.map(t => t.name).join(', ');
-};
+const targetSummary = (rec: Pick<Escalation, 'targetEmployees'>) =>
+  rec.targetEmployees.length ? rec.targetEmployees.map(t => t.name).join(', ') : '—';
 
 function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error'; onClose: () => void }) {
   useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, [onClose]);
@@ -109,12 +115,17 @@ function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error';
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
-function DashboardView({ records, loading, onAdd, onSelect }: {
-  records: Escalation[]; loading: boolean; onAdd: () => void; onSelect: (r: Escalation) => void;
+function DashboardView({ records, employees, loading, onAdd, onSelect }: {
+  records: Escalation[]; employees: Employee[]; loading: boolean; onAdd: () => void; onSelect: (r: Escalation) => void;
 }) {
+  const scoreById = useMemo(() => {
+    const m = new Map<string, number>();
+    employees.forEach(e => m.set(e.employee_id, e.escalation_score ?? 0));
+    return m;
+  }, [employees]);
+
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
-  const [mode, setMode] = useState('All');
   const [escalationFor, setEscalationFor] = useState('All');
 
   const filtered = useMemo(() => records.filter(r => {
@@ -122,12 +133,11 @@ function DashboardView({ records, loading, onAdd, onSelect }: {
       || r.caseNumber?.toLowerCase().includes(search.toLowerCase())
       || r.createdBy.name.toLowerCase().includes(search.toLowerCase())
       || r.targetEmployees.some(t => t.name.toLowerCase().includes(search.toLowerCase()))
-      || r.subject.toLowerCase().includes(search.toLowerCase());
+      || r.description.toLowerCase().includes(search.toLowerCase());
     const categoryOk = category === 'All' || r.category === category;
-    const modeOk = mode === 'All' || r.mode === mode;
     const forOk = escalationFor === 'All' || r.escalationFor === escalationFor;
-    return searchOk && categoryOk && modeOk && forOk;
-  }), [records, search, category, mode, escalationFor]);
+    return searchOk && categoryOk && forOk;
+  }), [records, search, category, escalationFor]);
 
   const kpis = useMemo(() => {
     const isThisMonth = (d?: string) => {
@@ -137,9 +147,9 @@ function DashboardView({ records, loading, onAdd, onSelect }: {
     };
     return {
       thisMonth: records.filter(r => isThisMonth(r.createdAt)).length,
-      boEmployee: records.filter(r => r.escalationFor === 'BO Employee').length,
+      departmentRelated: records.filter(r => r.escalationFor === 'Department Related').length,
       general: records.filter(r => r.escalationFor === 'General').length,
-      bad: records.filter(r => r.rating === 'Bad').length,
+      posh: records.filter(r => r.category === 'POSH' || r.category === 'POSH Case').length,
     };
   }, [records]);
 
@@ -148,7 +158,7 @@ function DashboardView({ records, loading, onAdd, onSelect }: {
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
         <Box>
           <Typography fontSize={18} fontWeight={700} color="#0f172a">Escalations</Typography>
-          <Typography fontSize={12} color="text.secondary">Inter-department interaction log — BO to BO</Typography>
+          <Typography fontSize={12} color="text.secondary">Department-related and general escalation log</Typography>
         </Box>
         <Button variant="contained" startIcon={<AddIcon />} onClick={onAdd} size="small"
           sx={{ bgcolor: ACCENT, textTransform: 'none', fontWeight: 600, borderRadius: 1.5, '&:hover': { bgcolor: '#4338ca' } }}>
@@ -159,9 +169,9 @@ function DashboardView({ records, loading, onAdd, onSelect }: {
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' }, gap: 1.5, mb: 2 }}>
         {[
           { label: 'Logged this month', value: kpis.thisMonth },
-          { label: 'BO Employee', value: kpis.boEmployee },
+          { label: 'Department Related', value: kpis.departmentRelated },
           { label: 'General', value: kpis.general },
-          { label: 'Rated Bad', value: kpis.bad, crit: true },
+          { label: 'POSH cases', value: kpis.posh, crit: true },
         ].map(k => (
           <Box key={k.label} sx={{ bgcolor: 'white', border: '1px solid #e2e8f0', borderRadius: 2, p: '14px 16px' }}>
             <Typography sx={{ fontSize: 10.5, letterSpacing: '0.4px', textTransform: 'uppercase', color: 'text.secondary', fontWeight: 600 }}>
@@ -175,27 +185,20 @@ function DashboardView({ records, loading, onAdd, onSelect }: {
       </Box>
 
       <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-        <TextField size="small" placeholder="Search case #, name, or subject…" value={search}
+        <TextField size="small" placeholder="Search case #, name, or description…" value={search}
           onChange={e => setSearch(e.target.value)} sx={{ minWidth: 200 }} InputProps={{ sx: { fontSize: 13 } }} />
-        <FormControl size="small" sx={{ minWidth: 150 }}>
+        <FormControl size="small" sx={{ minWidth: 170 }}>
           <InputLabel sx={{ fontSize: 12 }}>For Whom</InputLabel>
           <Select value={escalationFor} label="For Whom" onChange={e => setEscalationFor(e.target.value)} sx={{ fontSize: 12 }}>
             <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
             {ESCALATION_FOR_OPTIONS.map(o => <MenuItem key={o} value={o} sx={{ fontSize: 12 }}>{o}</MenuItem>)}
           </Select>
         </FormControl>
-        <FormControl size="small" sx={{ minWidth: 170 }}>
+        <FormControl size="small" sx={{ minWidth: 200 }}>
           <InputLabel sx={{ fontSize: 12 }}>Category</InputLabel>
           <Select value={category} label="Category" onChange={e => setCategory(e.target.value)} sx={{ fontSize: 12 }}>
             <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
-            {CATEGORY_OPTIONS.map(o => <MenuItem key={o} value={o} sx={{ fontSize: 12 }}>{o}</MenuItem>)}
-          </Select>
-        </FormControl>
-        <FormControl size="small" sx={{ minWidth: 150 }}>
-          <InputLabel sx={{ fontSize: 12 }}>Mode</InputLabel>
-          <Select value={mode} label="Mode" onChange={e => setMode(e.target.value)} sx={{ fontSize: 12 }}>
-            <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
-            {MODE_OPTIONS.map(o => <MenuItem key={o} value={o} sx={{ fontSize: 12 }}>{o}</MenuItem>)}
+            {ALL_CATEGORY_OPTIONS.map(o => <MenuItem key={o} value={o} sx={{ fontSize: 12 }}>{o}</MenuItem>)}
           </Select>
         </FormControl>
       </Box>
@@ -207,22 +210,25 @@ function DashboardView({ records, loading, onAdd, onSelect }: {
               <TableHead>
                 <TableRow sx={{ '& th': TH }}>
                   <TableCell>Case #</TableCell>
-                  <TableCell>Date</TableCell>
+                  <TableCell>Logged</TableCell>
                   <TableCell>Creator</TableCell>
                   <TableCell>For Whom</TableCell>
+                  <TableCell>Employee</TableCell>
+                  <TableCell>Score</TableCell>
                   <TableCell>Category</TableCell>
-                  <TableCell>Rating</TableCell>
-                  <TableCell>Mode</TableCell>
-                  <TableCell>Subject</TableCell>
+                  <TableCell>Occurred</TableCell>
+                  <TableCell>Description</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {filtered.length === 0 && (
-                  <TableRow><TableCell colSpan={8} align="center" sx={{ py: 6, color: 'text.secondary', fontSize: 13 }}>
+                  <TableRow><TableCell colSpan={9} align="center" sx={{ py: 6, color: 'text.secondary', fontSize: 13 }}>
                     No escalations logged yet
                   </TableCell></TableRow>
                 )}
-                {filtered.map(r => (
+                {filtered.map(r => {
+                  const score = r.targetEmployees.length ? scoreById.get(r.targetEmployees[0].employeeId) : undefined;
+                  return (
                   <TableRow key={r._id} onClick={() => onSelect(r)}
                     sx={{ cursor: 'pointer', '&:hover': { bgcolor: '#f8fafc' }, borderBottom: '1px solid #f1f5f9' }}>
                     <TableCell sx={{ fontSize: 12, fontFamily: 'monospace', color: ACCENT, fontWeight: 600 }}>{r.caseNumber || '—'}</TableCell>
@@ -233,17 +239,17 @@ function DashboardView({ records, loading, onAdd, onSelect }: {
                         <Typography fontSize={12} fontWeight={600}>{r.createdBy.name}</Typography>
                       </Box>
                     </TableCell>
+                    <TableCell><Chip size="small" label={r.escalationFor} sx={{ fontSize: 10, height: 20, bgcolor: '#eef2ff', color: ACCENT }} /></TableCell>
                     <TableCell sx={{ fontSize: 12 }}>{targetSummary(r)}</TableCell>
-                    <TableCell><Chip size="small" label={r.category} sx={{ fontSize: 10, height: 20, bgcolor: '#eef2ff', color: ACCENT }} /></TableCell>
-                    <TableCell>
-                      {r.rating
-                        ? <Chip size="small" label={r.rating} sx={{ fontSize: 10, height: 20, bgcolor: '#f8fafc', color: ratingColor(r.rating), border: `1px solid ${ratingColor(r.rating)}30` }} />
-                        : <Typography fontSize={12} color="text.secondary">—</Typography>}
+                    <TableCell sx={{ fontSize: 12, fontWeight: 700, color: score !== undefined && score < 0 ? '#dc2626' : '#0f172a' }}>
+                      {score !== undefined ? score : '—'}
                     </TableCell>
-                    <TableCell sx={{ fontSize: 12 }}>{r.mode}</TableCell>
-                    <TableCell sx={{ fontSize: 12, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.subject || '—'}</TableCell>
+                    <TableCell sx={{ fontSize: 12 }}>{r.category}</TableCell>
+                    <TableCell sx={{ fontSize: 12 }}>{fmtDate(r.dateOccurred)}</TableCell>
+                    <TableCell sx={{ fontSize: 12, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description || '—'}</TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </TableContainer>
@@ -290,31 +296,19 @@ function DetailModal({ record, onClose }: { record: Escalation | null; onClose: 
                   <Typography fontSize={13} fontWeight={600}>{record.category}</Typography>
                 </Box>
                 <Box>
-                  <Typography fontSize={11} color="text.secondary">Rating</Typography>
-                  <Typography fontSize={13} fontWeight={600} color={record.rating ? ratingColor(record.rating) : 'inherit'}>{record.rating || '—'}</Typography>
+                  <Typography fontSize={11} color="text.secondary">Date occurred on</Typography>
+                  <Typography fontSize={13} fontWeight={600}>{fmtDate(record.dateOccurred)}</Typography>
                 </Box>
               </Box>
               <Divider />
               <Box>
-                <Typography fontSize={11} color="text.secondary">Mode</Typography>
-                <Typography fontSize={13} fontWeight={600}>{record.mode}</Typography>
+                <Typography fontSize={11} color="text.secondary">Description</Typography>
+                <Typography fontSize={13} sx={{ whiteSpace: 'pre-wrap' }}>{record.description}</Typography>
               </Box>
-              {record.subject && (
+              {record.cc?.length > 0 && (
                 <Box>
-                  <Typography fontSize={11} color="text.secondary">Subject</Typography>
-                  <Typography fontSize={13} fontWeight={600}>{record.subject}</Typography>
-                </Box>
-              )}
-              <Box>
-                <Typography fontSize={11} color="text.secondary">Message</Typography>
-                <Typography fontSize={13}>{record.message}</Typography>
-              </Box>
-              {record.attachmentUrl && (
-                <Box>
-                  <Typography fontSize={11} color="text.secondary">Attachment</Typography>
-                  <a href={record.attachmentUrl} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: ACCENT, fontWeight: 600 }}>
-                    {record.attachmentName || 'View attachment'}
-                  </a>
+                  <Typography fontSize={11} color="text.secondary">Notified by email</Typography>
+                  <Typography fontSize={12}>{record.cc.join(', ')}</Typography>
                 </Box>
               )}
             </Stack>
@@ -327,8 +321,8 @@ function DetailModal({ record, onClose }: { record: Escalation | null; onClose: 
 
 // ─── Wizard ───────────────────────────────────────────────────────────────────
 
-function EscalationWizard({ employees, onDone, onBack, showToast }: {
-  employees: Employee[]; onDone: () => void; onBack: () => void; showToast: (m: string, t: 'success' | 'error') => void;
+function EscalationWizard({ employees, managementUsers, onDone, onBack, showToast }: {
+  employees: Employee[]; managementUsers: ManagementUser[]; onDone: () => void; onBack: () => void; showToast: (m: string, t: 'success' | 'error') => void;
 }) {
   const { user } = useAuth();
   const [step, setStep] = useState(0);
@@ -355,13 +349,12 @@ function EscalationWizard({ employees, onDone, onBack, showToast }: {
   const [escalationFor, setEscalationFor] = useState<EscalationFor | ''>('');
   const [targetEmployee, setTargetEmployee] = useState<Employee | null>(null);
 
-  const [rating, setRating] = useState<Rating | ''>('');
   const [category, setCategory] = useState('');
-
-  const [mode, setMode] = useState('');
-  const [subject, setSubject] = useState('');
-  const [message, setMessage] = useState('');
-  const [attachment, setAttachment] = useState<File | null>(null);
+  const [description, setDescription] = useState('');
+  const [dateOccurred, setDateOccurred] = useState('');
+  // Defaults to everyone with the 'Management' role — the filer can add or
+  // remove people from there.
+  const [ccList, setCcList] = useState<ManagementUser[]>(managementUsers);
 
   const goNext = () => {
     setStepError(null);
@@ -371,21 +364,18 @@ function EscalationWizard({ employees, onDone, onBack, showToast }: {
     }
     if (step === 1) {
       if (!escalationFor) { setStepError('Select who this is for.'); return; }
-      if (escalationFor === 'BO Employee' && !targetEmployee) { setStepError('Select the BO employee.'); return; }
+      if (!targetEmployee) { setStepError('Select the employee this concerns.'); return; }
     }
     if (step === 2) {
-      if (!rating) { setStepError('Select a rating.'); return; }
       if (!category) { setStepError('Select a category.'); return; }
-    }
-    if (step === 3) {
-      if (!mode) { setStepError('Select the interaction mode.'); return; }
-      if (!message.trim()) { setStepError('Enter a message.'); return; }
+      if (!description.trim()) { setStepError('Enter a description.'); return; }
+      if (!dateOccurred) { setStepError('Select the date this occurred on.'); return; }
     }
     setStep(s => Math.min(s + 1, STEP_TITLES.length - 1));
   };
   const goBack = () => { setStepError(null); setStep(s => Math.max(s - 1, 0)); };
 
-  const targetEmployeesPayload: TargetPerson[] = escalationFor === 'BO Employee' && targetEmployee
+  const targetEmployeesPayload: TargetPerson[] = targetEmployee
     ? [{ employeeId: targetEmployee.employee_id, name: targetEmployee.full_name, department: targetEmployee.department, designation: targetEmployee.designation }]
     : [];
 
@@ -393,27 +383,56 @@ function EscalationWizard({ employees, onDone, onBack, showToast }: {
     if (!creator) return;
     setBusy(true);
     try {
-      const fd = new FormData();
-      fd.append('createdBy', JSON.stringify({
-        employeeId: creator.employee_id, name: creator.full_name,
-        email: creator.official_email || creator.email, mobile: creator.mobile,
-        department: creator.department, designation: creator.designation,
-      }));
-      fd.append('targetEmployees', JSON.stringify(targetEmployeesPayload));
-      fd.append('escalationFor', escalationFor);
-      fd.append('rating', rating);
-      fd.append('category', category);
-      fd.append('mode', mode);
-      fd.append('subject', subject);
-      fd.append('message', message);
-      if (attachment) fd.append('attachment', attachment);
-
-      const { data } = await axios.post(API, fd);
-      if (data.success) { showToast('Escalation logged', 'success'); onDone(); }
+      const payload = {
+        createdBy: {
+          employeeId: creator.employee_id, name: creator.full_name,
+          email: creator.official_email || creator.email, mobile: creator.mobile,
+          department: creator.department, designation: creator.designation,
+        },
+        escalationFor,
+        targetEmployees: targetEmployeesPayload,
+        category,
+        description,
+        dateOccurred,
+        cc: ccList.map(u => u.email),
+      };
+      const { data } = await axios.post(API, payload);
+      if (data.success) { showToast(`Escalation ${data.data.caseNumber} logged`, 'success'); onDone(); }
       else showToast(data.message || 'Failed', 'error');
     } catch (e: any) { showToast(e?.response?.data?.message || 'Failed to submit', 'error'); }
     finally { setBusy(false); }
   };
+
+  const categoryOptions = categoryOptionsFor(escalationFor);
+
+  const categoryField = (
+    <FormControl size="small" fullWidth>
+      <InputLabel>Category</InputLabel>
+      <Select value={category} label="Category" onChange={e => setCategory(e.target.value)}>
+        {categoryOptions.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+      </Select>
+    </FormControl>
+  );
+  const descriptionField = (
+    <TextField label="Description *" multiline rows={4} size="small" value={description}
+      onChange={e => setDescription(e.target.value)} fullWidth />
+  );
+  const dateOccurredField = (
+    <TextField label="Date occurred on" type="date" size="small" value={dateOccurred}
+      onChange={e => setDateOccurred(e.target.value)} fullWidth
+      InputLabelProps={{ shrink: true }} inputProps={{ max: todayStr() }} />
+  );
+  const ccField = (
+    <Box>
+      <Autocomplete multiple options={managementUsers} getOptionLabel={u => `${u.name} (${u.email})`}
+        isOptionEqualToValue={(a, b) => a.email === b.email}
+        value={ccList} onChange={(_, v) => setCcList(v)}
+        renderInput={p => <TextField {...p} size="small" label="Notify by email" placeholder="Add people to notify…" />} />
+      <Typography fontSize={11} color="text.secondary" mt={0.5}>
+        Defaults to Management. The notification email is sent to whoever is listed here.
+      </Typography>
+    </Box>
+  );
 
   return (
     <Box sx={{ p: 2.5, maxWidth: 900, mx: 'auto' }}>
@@ -422,8 +441,8 @@ function EscalationWizard({ employees, onDone, onBack, showToast }: {
           <ArrowBackIcon fontSize="small" />
         </IconButton>
         <Box>
-          <Typography fontSize={18} fontWeight={700} color="#0f172a">Log Inter-Dept Interaction</Typography>
-          <Typography fontSize={12} color="text.secondary">BO to BO only</Typography>
+          <Typography fontSize={18} fontWeight={700} color="#0f172a">Log Escalation</Typography>
+          <Typography fontSize={12} color="text.secondary">Department related or general</Typography>
         </Box>
       </Box>
 
@@ -470,7 +489,7 @@ function EscalationWizard({ employees, onDone, onBack, showToast }: {
             <Box sx={{ display: 'flex', gap: 1.5, mb: 2 }}>
               {ESCALATION_FOR_OPTIONS.map(o => (
                 <Button key={o} variant={escalationFor === o ? 'contained' : 'outlined'}
-                  onClick={() => { setEscalationFor(o); setTargetEmployee(null); }}
+                  onClick={() => { setEscalationFor(o); setCategory(''); }}
                   sx={{ flex: 1, textTransform: 'none', fontWeight: 600,
                     bgcolor: escalationFor === o ? ACCENT : 'transparent', borderColor: ACCENT,
                     color: escalationFor === o ? 'white' : ACCENT, '&:hover': { bgcolor: escalationFor === o ? '#4338ca' : '#eef2ff' } }}>
@@ -478,10 +497,15 @@ function EscalationWizard({ employees, onDone, onBack, showToast }: {
                 </Button>
               ))}
             </Box>
-            {escalationFor === 'BO Employee' && (
+            {escalationFor && (
               <Autocomplete options={employees} getOptionLabel={e => `${e.full_name} (${e.department})`}
                 value={targetEmployee} onChange={(_, v) => setTargetEmployee(v)}
-                renderInput={p => <TextField {...p} size="small" label="Select BO employee" placeholder="Search name or department…" />} />
+                renderInput={p => <TextField {...p} size="small" label="Select employee" placeholder="Search name or department…" />} />
+            )}
+            {targetEmployee && (
+              <Typography fontSize={11} color="text.secondary" mt={1}>
+                Current escalation score: <b style={{ color: targetEmployee.escalation_score < 0 ? '#dc2626' : '#0f172a' }}>{targetEmployee.escalation_score ?? 0}</b> — logging this will bring it to {(targetEmployee.escalation_score ?? 0) - 1}.
+              </Typography>
             )}
           </Box>
         )}
@@ -489,54 +513,27 @@ function EscalationWizard({ employees, onDone, onBack, showToast }: {
         {step === 2 && (
           <Box>
             <Typography fontWeight={700} fontSize={13} mb={0.5}>Classification</Typography>
-            <Typography fontSize={12} color="text.secondary" mb={2}>Rate the interaction and pick a category.</Typography>
-
-            <Box sx={{ mb: 2.5 }}>
-              <Typography fontSize={12} color="text.secondary" mb={1}>Good, bad, or neutral</Typography>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                {RATING_OPTIONS.map(o => (
-                  <Chip key={o} label={o} onClick={() => setRating(o)}
-                    sx={{ fontWeight: 600, bgcolor: rating === o ? ratingColor(o) : '#f8fafc',
-                      color: rating === o ? 'white' : ratingColor(o), border: `1px solid ${ratingColor(o)}30` }} />
-                ))}
-              </Box>
-            </Box>
-
-            <FormControl size="small" fullWidth>
-              <InputLabel>Category</InputLabel>
-              <Select value={category} label="Category" onChange={e => setCategory(e.target.value)}>
-                {CATEGORY_OPTIONS.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
-              </Select>
-            </FormControl>
-          </Box>
-        )}
-
-        {step === 3 && (
-          <Box>
-            <Typography fontWeight={700} fontSize={13} mb={0.5}>Details</Typography>
-            <Typography fontSize={12} color="text.secondary" mb={2}>How the interaction happened, and what was said.</Typography>
+            <Typography fontSize={12} color="text.secondary" mb={2}>Pick a category and describe what happened.</Typography>
             <Stack spacing={2}>
-              <FormControl size="small" fullWidth>
-                <InputLabel>Mode</InputLabel>
-                <Select value={mode} label="Mode" onChange={e => setMode(e.target.value)}>
-                  {MODE_OPTIONS.map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
-                </Select>
-              </FormControl>
-              <TextField label="Subject" size="small" value={subject} onChange={e => setSubject(e.target.value)} fullWidth />
-              <TextField label="Message *" multiline rows={4} size="small" value={message}
-                onChange={e => setMessage(e.target.value)} fullWidth />
-              <Box>
-                <Button component="label" variant="outlined" size="small" startIcon={<AttachFileIcon />}
-                  sx={{ textTransform: 'none' }}>
-                  {attachment ? attachment.name : 'Attach a file (optional)'}
-                  <input type="file" hidden onChange={e => setAttachment(e.target.files?.[0] || null)} />
-                </Button>
-              </Box>
+              {escalationFor === 'General' ? (
+                <>
+                  {categoryField}
+                  {descriptionField}
+                  {dateOccurredField}
+                </>
+              ) : (
+                <>
+                  {descriptionField}
+                  {categoryField}
+                  {dateOccurredField}
+                </>
+              )}
+              {ccField}
             </Stack>
           </Box>
         )}
 
-        {step === 4 && (
+        {step === 3 && (
           <Box>
             <Typography fontWeight={700} fontSize={13} mb={0.5}>Review & submit</Typography>
             <Typography fontSize={12} color="text.secondary" mb={2}>Confirm the details below, then submit.</Typography>
@@ -544,20 +541,19 @@ function EscalationWizard({ employees, onDone, onBack, showToast }: {
               {[
                 ['Creator', creator?.full_name || '—'],
                 ['For whom', escalationFor],
-                ['Target(s)', targetEmployeesPayload.map(t => t.name).join(', ') || '—'],
-                ['Rating', rating || '—'],
+                ['Employee', targetEmployeesPayload.map(t => t.name).join(', ') || '—'],
                 ['Category', category],
-                ['Mode', mode],
-                ['Subject', subject || '—'],
+                ['Date occurred on', dateOccurred ? fmtDate(dateOccurred) : '—'],
+                ['Notify by email', ccList.map(u => u.name).join(', ') || '—'],
               ].map(([l, v], i) => (
                 <Box key={l} sx={{ display: 'flex', justifyContent: 'space-between', px: 2, py: 1.25, fontSize: 13,
-                  borderBottom: i < 6 ? '1px solid #f1f5f9' : 'none' }}>
+                  borderBottom: i < 5 ? '1px solid #f1f5f9' : 'none' }}>
                   <Typography fontSize={13} color="text.secondary">{l}</Typography>
                   <Typography fontSize={13} fontWeight={600}>{v}</Typography>
                 </Box>
               ))}
             </Box>
-            <Typography fontSize={12} color="text.secondary" mt={1.5}>{message}</Typography>
+            <Typography fontSize={12} color="text.secondary" mt={1.5}>{description}</Typography>
           </Box>
         )}
 
@@ -591,6 +587,7 @@ type View = 'dashboard' | 'wizard';
 export default function Escalationspage() {
   const [records, setRecords] = useState<Escalation[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [managementUsers, setManagementUsers] = useState<ManagementUser[]>([]);
   const [view, setView] = useState<View>('dashboard');
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
@@ -601,10 +598,11 @@ export default function Escalationspage() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [rRes, eRes] = await Promise.all([axios.get(API), axios.get(EMP_API)]);
+      const [rRes, eRes, mRes] = await Promise.all([axios.get(API), axios.get(EMP_API), axios.get(`${API}/management-users`)]);
       setRecords(Array.isArray(rRes.data) ? rRes.data : rRes.data?.data || []);
       const empList: Employee[] = Array.isArray(eRes.data) ? eRes.data : eRes.data?.data || [];
       setEmployees([...empList].sort((a, b) => a.full_name.localeCompare(b.full_name)));
+      setManagementUsers(Array.isArray(mRes.data) ? mRes.data : mRes.data?.data || []);
     } catch { showToast('Failed to load data', 'error'); }
     finally { setLoading(false); }
   }, []);
@@ -630,12 +628,12 @@ export default function Escalationspage() {
           <Box sx={{ maxWidth: 1300, mx: 'auto', width: '100%', height: '100%', overflow: 'auto' }}>
             {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
 
-            <DashboardView records={records} loading={loading} onAdd={() => setView('wizard')} onSelect={setSelected} />
+            <DashboardView records={records} employees={employees} loading={loading} onAdd={() => setView('wizard')} onSelect={setSelected} />
 
             <Modal open={view === 'wizard'} onClose={() => setView('dashboard')}>
               <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
                 width: { xs: '95vw', sm: 820 }, maxHeight: '90vh', overflowY: 'auto', bgcolor: 'white', borderRadius: 2, outline: 'none', boxShadow: 24 }}>
-                <EscalationWizard employees={employees}
+                <EscalationWizard employees={employees} managementUsers={managementUsers}
                   onBack={() => setView('dashboard')}
                   onDone={() => { setView('dashboard'); loadData(); }}
                   showToast={showToast} />

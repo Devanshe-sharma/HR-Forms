@@ -172,8 +172,11 @@ function scoreChecklist(list, today) {
 // "<item> Plan?/Done?/Score?/Status?" columns against it) and the
 // /migrate/fix-names data-repair endpoint — both predate employeeCategory
 // and must keep working against the old item names unchanged.
+// startsWith (not exact match) so "Intern with PPO" gets the same Intern
+// checklist/email treatment as plain "Intern" without needing its own
+// separate template.
 function isInternCategory(employeeCategory) {
-  return String(employeeCategory || "").trim().toLowerCase() === "intern";
+  return String(employeeCategory || "").trim().toLowerCase().startsWith("intern");
 }
 
 function templateGroupsToCheckLists(template) {
@@ -750,7 +753,7 @@ router.get("/eligible-employees", authenticate, async (req, res) => {
         "empId name dept designation officialEmail persEmail mobile joinedDate employeeCategory exitStatus managementLevel " +
         "annualCtc basicSal hraSal grossMonthly empEpf gratuity annualBonus " +
         "annualPerformanceIncentive medicalPremium travelAllowance telephoneReimbursement reportingHead " +
-        "contractStartDate contractEndDate contractHistory contractPeriod"
+        "contractStartDate contractEndDate contractHistory contractPeriod escalationScore"
       )
       .lean();
 
@@ -795,6 +798,7 @@ router.get("/eligible-employees", authenticate, async (req, res) => {
       travel_allowance: d.travelAllowance ?? "",
       telephone_allowance: d.telephoneReimbursement ?? "",
       reporting_head: d.reportingHead || "",
+      escalation_score: d.escalationScore || 0,
       contract_start_date: d.contractStartDate || null,
       contract_end_date: d.contractEndDate || null,
       contract_period_months: d.contractPeriod ?? null,
@@ -1806,7 +1810,7 @@ router.get('/:id/contract', async (req, res) => {
 // Categories that carry a contract period instead of the full salary
 // breakdown — kept in sync with CONTRACT_BASED_CATEGORIES in the frontend
 // (NewOnboarding.tsx / updateonboarding.tsx).
-const CONTRACT_EMAIL_CATEGORIES = ['Intern', 'Contract Based'];
+const CONTRACT_EMAIL_CATEGORIES = ['Intern', 'Intern with PPO', 'Contract Based'];
 
 // ─── PUT /api/onboarding/:id/contract ────────────────────────────────────────
 router.put('/:id/contract', async (req, res) => {
@@ -1886,7 +1890,7 @@ router.get("/analytics/interns", async (req, res) => {
       "employeeCategory dept joinedDate joiningStatus exitStatus persEmail officialEmail"
     ).lean();
 
-    const isIntern = (d) => (d.employeeCategory || "").trim().toLowerCase() === "intern";
+    const isIntern = (d) => isInternCategory(d.employeeCategory);
 
     // Current (as-of-today) snapshot — unchanged from before, still drives
     // the summary card and department breakdown.
@@ -2507,7 +2511,7 @@ router.delete("/:id", async (req, res) => {
 
 router.get("/analytics/intern-conversions", async (req, res) => {
   try {
-    const CONVERTIBLE_FROM = ["Intern", "Contract Based"];
+    const CONVERTIBLE_FROM = ["Intern", "Intern with PPO", "Contract Based"];
 
     const revisions = await SalaryRevision.find(
       { categoryChanged: true },

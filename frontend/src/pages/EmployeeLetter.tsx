@@ -57,13 +57,14 @@ interface Employee {
   gratuity: string;
 }
 
-const categories = ['All', 'Employee', 'Consultant', 'Intern', 'Temporary Staff', 'Contract Based'];
+const categories = ['All', 'Employee', 'Consultant', 'Intern', 'Intern with PPO', 'Temporary Staff', 'Contract Based'];
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL;
 
 const CATEGORY_COLORS: Record<string, string> = {
   Employee: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   Consultant: 'bg-amber-50 text-amber-700 border-amber-200',
   Intern: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  'Intern with PPO': 'bg-violet-50 text-violet-700 border-violet-200',
   'Temporary Staff': 'bg-sky-50 text-sky-700 border-sky-200',
   'Contract Based': 'bg-rose-50 text-rose-700 border-rose-200',
 

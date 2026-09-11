@@ -20,6 +20,15 @@ const CC_LIST = [process.env.EMAIL_MANAGEMENT, HR_FALLBACK].filter(Boolean).join
 // creation in POST /, or reopened after Management rejects a PIP in
 // PUT /:id/management).
 async function sendSalaryRevisionManagerRequest(revision) {
+  // Hard stop for plain Interns — no mail goes out for them, regardless
+  // of how this revision got created (auto-trigger, manual "Add
+  // Revision", or a reopened PIP). Exact match only: "Intern with PPO"
+  // is treated like any other employee and is NOT excluded.
+  if (revision.category === 'Intern') {
+    console.log(`[sendSalaryRevisionManagerRequest] Skipped — ${revision.employeeName} is a plain Intern, no mail sent.`);
+    return;
+  }
+
   const manager = await resolveManagerContact(revision);
   if (!manager.email) {
     console.error(`[sendSalaryRevisionManagerRequest] No manager email resolved for revision ${revision._id} (employee: ${revision.employeeName}, reportingHead: ${manager.name || '(none)'}) — falling back to HR.`);

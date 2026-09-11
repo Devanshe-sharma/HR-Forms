@@ -1,6 +1,6 @@
 const Onboarding = require('../../models/onboardingModel');
 const SalaryRevision = require('../../models/SalaryRevision');
-const { computeAnchorDate, get11MonthDate, internReviewDate } = require('../../utils/salaryRevisionDueDate');
+const { computeAnchorDate, get11MonthDate } = require('../../utils/salaryRevisionDueDate');
 const sendSalaryRevisionManagerRequest = require('./sendSalaryRevisionManagerRequest');
 const { rescoreSalaryRevision } = require('../../utils/salaryRevisionScoring');
 
@@ -47,14 +47,14 @@ async function sendSalaryRevisionAutoTrigger(now = new Date()) {
     const revisions = revisionsByEmployee.get(String(e._id)) || [];
     if (revisions.some((r) => OPEN_STAGES.includes(r.stage))) continue;
 
-    let reminderDate;
-    if (e.employeeCategory === 'Intern') {
-      if (!e.contractPeriod) continue;
-      reminderDate = internReviewDate(e.joinedDate, e.contractPeriod);
-    } else {
-      const anchor = computeAnchorDate(e.joinedDate, revisions);
-      reminderDate = get11MonthDate(anchor);
-    }
+    // Plain Interns never get a revision auto-created (and so never get
+    // Mail 1) — exact match, same rule as the dashboard and quarterly
+    // digest. "Intern with PPO" is NOT excluded here — it's treated like
+    // any other employee, on the normal annual anchor-date cycle.
+    if (e.employeeCategory === 'Intern') continue;
+
+    const anchor = computeAnchorDate(e.joinedDate, revisions);
+    const reminderDate = get11MonthDate(anchor);
 
     if (reminderDate < monthStart || reminderDate > todayEnd) continue;
 

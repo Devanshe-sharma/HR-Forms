@@ -74,7 +74,7 @@ const salaryRevisionSchema = new mongoose.Schema({
 
   category: {
     type   : String,
-    enum   : ['Employee', 'Consultant', 'Intern', 'Temporary Staff', 'Contract Based', 'Part Time'],
+    enum   : ['Employee', 'Consultant', 'Intern', 'Intern with PPO', 'Temporary Staff', 'Contract Based', 'Part Time'],
     default: 'Employee',
   },
 
@@ -158,6 +158,20 @@ const salaryRevisionSchema = new mongoose.Schema({
   tasksOverdue  : { type: Number, default: 0 },
   tasksDue      : { type: Number, default: 0 },
   notYetDue     : { type: Number, default: 0 },
+
+  // Overall-cycle status/score — the whole Reminder Date -> Due Date
+  // annual-review cycle judged as ONE thing, separate from the 3
+  // individual actor-response tasks above. See scoreOverallCycle in
+  // utils/salaryRevisionScoring.js for the exact rules. No "Overdue"
+  // state here by design — cycleStatus stays 'due' for as long as the
+  // revision is open past its stage milestone, and lateness is only
+  // reflected as a negative cycleScore once it's actually closed late.
+  cycleStatus: {
+    type   : String,
+    enum   : ['not_yet_due', 'pending', 'due', 'done', 'done_delayed'],
+    default: 'not_yet_due',
+  },
+  cycleScore: { type: Number, default: null },
 
   // Audit — support BOTH old (created_by) and new (createdBy) names
   created_by: { type: String, default: 'System' },

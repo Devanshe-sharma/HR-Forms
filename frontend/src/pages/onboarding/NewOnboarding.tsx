@@ -40,7 +40,7 @@ const schema = z.object({
   designation: z.string().min(1, "Designation is required"),
   laptopPc: z.string().optional(),
   joiningStatus: z.enum(["Yet To Join Office", "Joined", "Not Joining"]),
-  employeeCategory: z.enum(["Employee", "Consultant", "Intern", "Contract Based", "Part Time", "Temporary Staffing" ]).optional(),
+  employeeCategory: z.enum(["Employee", "Consultant", "Intern", "Intern with PPO", "Contract Based", "Part Time", "Temporary Staffing" ]).optional(),
   managementLevel: z.enum([
     "Office Staff",
     "Junior Management",
@@ -140,6 +140,7 @@ const MANAGEMENT_LEVEL_OPTIONS = [
 // breakdown instead.
 const CONTRACT_BASED_CATEGORIES = [
   "Intern",
+  "Intern with PPO",
   "Contract Based",
 ] as const;
 
@@ -259,8 +260,10 @@ const INTERN_CHECKLIST_TEMPLATE: ChecklistTemplateGroup[] = [
   },
 ];
 
+// startsWith (not exact match) so "Intern with PPO" gets the same Intern
+// checklist/email treatment as plain "Intern".
 function isInternCategory(employeeCategory?: string): boolean {
-  return (employeeCategory || "").trim().toLowerCase() === "intern";
+  return (employeeCategory || "").trim().toLowerCase().startsWith("intern");
 }
 
 // Picks the checklist template for the currently selected employeeCategory,
@@ -741,7 +744,7 @@ const NewOnboarding: React.FC = () => {
               <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
                 {sectionTitle("Employee Category")}
                 <div className="grid grid-cols-3 gap-3">
-                  {(["Employee", "Consultant", "Intern", "Contract Based", "Part Time", "Temporary Staffing"] as const).map((cat) => (
+                  {(["Employee", "Consultant", "Intern", "Intern with PPO", "Contract Based", "Part Time", "Temporary Staffing"] as const).map((cat) => (
                     <label
                       key={cat}
                       className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${

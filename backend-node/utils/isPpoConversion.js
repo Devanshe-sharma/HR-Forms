@@ -5,7 +5,7 @@
 // isConversion in routes/salaryRevisions.js's analytics endpoint and
 // isPpoRevision in frontend/src/pages/SalaryRevisionNew.tsx — keep all
 // three in sync if this definition ever changes.
-const PPO_SOURCE_CATEGORIES = ['Intern', 'Contract Based'];
+const PPO_SOURCE_CATEGORIES = ['Intern', 'Intern with PPO', 'Contract Based'];
 
 function isPpoConversion(revision) {
   if (!PPO_SOURCE_CATEGORIES.includes(revision.previousCategory)) return false;
