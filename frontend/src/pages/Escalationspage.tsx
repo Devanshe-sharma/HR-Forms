@@ -24,6 +24,7 @@ interface TargetPerson {
   name        : string;
   department  : string;
   designation : string;
+  email       : string;
 }
 
 interface Escalation {
@@ -256,7 +257,7 @@ function DashboardView({ records, employees, loading, onAdd, onSelect }: {
 
 // ─── Detail modal ─────────────────────────────────────────────────────────────
 
-function DetailModal({ record, onClose }: { record: Escalation | null; onClose: () => void }) {
+function DetailModal({ record, onClose, onEdit }: { record: Escalation | null; onClose: () => void; onEdit: (r: Escalation) => void }) {
   return (
     <Modal open={!!record} onClose={onClose}>
       <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
@@ -269,7 +270,10 @@ function DetailModal({ record, onClose }: { record: Escalation | null; onClose: 
                 <Typography fontSize={16} fontWeight={700}>Escalation Details</Typography>
                 <Typography fontSize={12} color="text.secondary">Logged on {fmtDateTime(record.createdAt)}</Typography>
               </Box>
-              <IconButton size="small" onClick={onClose}><CloseIcon fontSize="small" /></IconButton>
+              <Box sx={{ display: 'flex', gap: 0.5 }}>
+                <Button size="small" onClick={() => onEdit(record)} sx={{ textTransform: 'none', fontWeight: 600 }}>Edit</Button>
+                <IconButton size="small" onClick={onClose}><CloseIcon fontSize="small" /></IconButton>
+              </Box>
             </Box>
             <Stack spacing={1.5}>
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
@@ -372,7 +376,7 @@ function EscalationWizard({ employees, onDone, onBack, showToast }: {
   const goBack = () => { setStepError(null); setStep(s => Math.max(s - 1, 0)); };
 
   const targetEmployeesPayload: TargetPerson[] = targetEmployee
-    ? [{ employeeId: targetEmployee.employee_id, name: targetEmployee.full_name, department: targetEmployee.department, designation: targetEmployee.designation }]
+    ? [{ employeeId: targetEmployee.employee_id, name: targetEmployee.full_name, department: targetEmployee.department, designation: targetEmployee.designation, email: targetEmployee.official_email || targetEmployee.email }]
     : [];
 
   const submit = async () => {
@@ -576,6 +580,120 @@ function EscalationWizard({ employees, onDone, onBack, showToast }: {
   );
 }
 
+// ─── Edit ─────────────────────────────────────────────────────────────────────
+
+function EditEscalationForm({ record, employees, onDone, onCancel, showToast }: {
+  record: Escalation; employees: Employee[]; onDone: () => void; onCancel: () => void; showToast: (m: string, t: 'success' | 'error') => void;
+}) {
+  const [escalationFor, setEscalationFor] = useState<EscalationFor>(record.escalationFor);
+  const [targetEmployee, setTargetEmployee] = useState<Employee | null>(() =>
+    employees.find(e => e.employee_id === record.targetEmployees[0]?.employeeId) || null);
+  const [category, setCategory] = useState(record.category);
+  const [description, setDescription] = useState(record.description);
+  const [dateOccurred, setDateOccurred] = useState(record.dateOccurred ? record.dateOccurred.slice(0, 10) : '');
+  const [ccList, setCcList] = useState<Employee[]>(() =>
+    employees.filter(e => (record.cc || []).includes(e.official_email) || (record.cc || []).includes(e.email)));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const categoryOptions = categoryOptionsFor(escalationFor);
+
+  const submit = async () => {
+    setError(null);
+    if (!targetEmployee) { setError('Select the employee this concerns.'); return; }
+    if (!category) { setError('Select a category.'); return; }
+    if (!description.trim()) { setError('Enter a description.'); return; }
+    if (!dateOccurred) { setError('Select the date this occurred on.'); return; }
+
+    setBusy(true);
+    try {
+      const payload = {
+        escalationFor,
+        targetEmployees: [{
+          employeeId: targetEmployee.employee_id, name: targetEmployee.full_name,
+          department: targetEmployee.department, designation: targetEmployee.designation,
+          email: targetEmployee.official_email || targetEmployee.email,
+        }],
+        category, description, dateOccurred,
+        cc: ccList.map(e => e.official_email || e.email).filter(Boolean),
+      };
+      const { data } = await axios.put(`${API}/${record._id}`, payload);
+      if (data.success) { showToast(`Escalation ${record.caseNumber} updated`, 'success'); onDone(); }
+      else setError(data.message || 'Failed to save.');
+    } catch (e: any) { setError(e?.response?.data?.message || 'Failed to save.'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Box sx={{ p: 2.5, maxWidth: 720, mx: 'auto' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2.5 }}>
+        <IconButton onClick={onCancel} size="small" sx={{ bgcolor: '#f8fafc', borderRadius: 1.5 }}>
+          <ArrowBackIcon fontSize="small" />
+        </IconButton>
+        <Box>
+          <Typography fontSize={18} fontWeight={700} color="#0f172a">Edit Escalation</Typography>
+          <Typography fontSize={12} color="text.secondary">{record.caseNumber}</Typography>
+        </Box>
+      </Box>
+
+      <Stack spacing={2}>
+        <Box>
+          <Typography fontSize={13} fontWeight={600} mb={1}>This is for whom?</Typography>
+          <Box sx={{ display: 'flex', gap: 1.5, mb: 2 }}>
+            {ESCALATION_FOR_OPTIONS.map(o => (
+              <Button key={o} variant={escalationFor === o ? 'contained' : 'outlined'}
+                onClick={() => { setEscalationFor(o); setCategory(''); }}
+                sx={{ flex: 1, textTransform: 'none', fontWeight: 600,
+                  bgcolor: escalationFor === o ? ACCENT : 'transparent', borderColor: ACCENT,
+                  color: escalationFor === o ? 'white' : ACCENT, '&:hover': { bgcolor: escalationFor === o ? '#4338ca' : '#eef2ff' } }}>
+                {o}
+              </Button>
+            ))}
+          </Box>
+          <Autocomplete options={employees} getOptionLabel={e => `${e.full_name} (${e.department})`}
+            isOptionEqualToValue={(a, b) => a.employee_id === b.employee_id}
+            value={targetEmployee} onChange={(_, v) => setTargetEmployee(v)}
+            renderInput={p => <TextField {...p} size="small" label="Select employee" placeholder="Search name or department…" />} />
+        </Box>
+
+        <FormControl size="small" fullWidth>
+          <InputLabel>Category</InputLabel>
+          <Select value={category} label="Category" onChange={e => setCategory(e.target.value)}>
+            {categoryOptions.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+          </Select>
+        </FormControl>
+
+        <TextField label="Description *" multiline rows={4} size="small" value={description}
+          onChange={e => setDescription(e.target.value)} fullWidth />
+
+        <TextField label="Date occurred on" type="date" size="small" value={dateOccurred}
+          onChange={e => setDateOccurred(e.target.value)} fullWidth
+          InputLabelProps={{ shrink: true }} inputProps={{ max: todayStr() }} />
+
+        <Box>
+          <Autocomplete multiple options={employees} getOptionLabel={e => `${e.full_name} (${e.department})`}
+            isOptionEqualToValue={(a, b) => a.employee_id === b.employee_id}
+            value={ccList} onChange={(_, v) => setCcList(v)}
+            renderInput={p => <TextField {...p} size="small" label="Also notify (optional)" placeholder="Search by name or department…" />} />
+          <Typography fontSize={11} color="text.secondary" mt={0.5}>
+            Management is always notified. Editing does not send a new email.
+          </Typography>
+        </Box>
+
+        {error && <Alert severity="error" sx={{ fontSize: 12 }}>{error}</Alert>}
+
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1.5, pt: 1, borderTop: '1px solid #e2e8f0' }}>
+          <Button onClick={onCancel} sx={{ textTransform: 'none' }}>Cancel</Button>
+          <Button variant="contained" onClick={submit} disabled={busy}
+            sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', fontWeight: 600 }}>
+            {busy ? <CircularProgress size={20} sx={{ color: 'white' }} /> : 'Save changes'}
+          </Button>
+        </Box>
+      </Stack>
+    </Box>
+  );
+}
+
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
 type View = 'dashboard' | 'wizard';
@@ -587,6 +705,7 @@ export default function Escalationspage() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [selected, setSelected] = useState<Escalation | null>(null);
+  const [editing, setEditing] = useState<Escalation | null>(null);
 
   const showToast = (msg: string, type: 'success' | 'error' = 'success') => setToast({ msg, type });
 
@@ -634,7 +753,20 @@ export default function Escalationspage() {
               </Box>
             </Modal>
 
-            <DetailModal record={selected} onClose={() => setSelected(null)} />
+            <DetailModal record={selected} onClose={() => setSelected(null)}
+              onEdit={r => { setSelected(null); setEditing(r); }} />
+
+            <Modal open={!!editing} onClose={() => setEditing(null)}>
+              <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+                width: { xs: '95vw', sm: 760 }, maxHeight: '90vh', overflowY: 'auto', bgcolor: 'white', borderRadius: 2, outline: 'none', boxShadow: 24 }}>
+                {editing && (
+                  <EditEscalationForm record={editing} employees={employees}
+                    onCancel={() => setEditing(null)}
+                    onDone={() => { setEditing(null); loadData(); }}
+                    showToast={showToast} />
+                )}
+              </Box>
+            </Modal>
           </Box>
         </main>
       </div>

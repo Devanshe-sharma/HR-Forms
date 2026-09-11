@@ -17,9 +17,11 @@ const createTransporter = () => {
  * @param {string} options.subject - email subject
  * @param {string} [options.text] - plain text version
  * @param {string} [options.html] - HTML version (recommended)
+ * @param {string} [options.cc] - Cc recipient(s), comma-separated
+ * @param {string} [options.bcc] - Bcc recipient(s), comma-separated
  * @returns {Promise<{success: boolean, messageId?: string, error?: any}>}
  */
-const sendEmail = async ({ to, subject, text, html, cc }) => {
+const sendEmail = async ({ to, subject, text, html, cc, bcc }) => {
   try {
     const transporter = createTransporter();
 
@@ -30,6 +32,7 @@ const sendEmail = async ({ to, subject, text, html, cc }) => {
       text: text || 'No plain text version available',
       html: html || `<p>${text?.replace(/\n/g, '<br>') || 'No content'}</p>`,
       ...(cc ? { cc } : {}),
+      ...(bcc ? { bcc } : {}),
     };
 
     const info = await transporter.sendMail(mailOptions);

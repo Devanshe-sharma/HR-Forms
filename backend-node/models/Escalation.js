@@ -18,6 +18,7 @@ const targetPersonSchema = new mongoose.Schema(
     name: { type: String, required: true },
     department: { type: String, default: '' },
     designation: { type: String, default: '' },
+    email: { type: String, default: '' },
   },
   { _id: false }
 );
