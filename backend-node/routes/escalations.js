@@ -3,21 +3,8 @@ const router  = express.Router();
 
 const Escalation = require('../models/Escalation');
 const Onboarding = require('../models/onboardingModel');
-const User = require('../models/User');
 const { authenticate } = require('../middleware/authenticate');
 const sendEscalationNotification = require('../emails/senders/sendEscalationNotification');
-
-// GET /api/escalations/management-users — the default/selectable Cc pool
-// for the notification mail. Declared before GET /:id so it isn't
-// swallowed by that param route.
-router.get('/management-users', authenticate, async (req, res) => {
-  try {
-    const users = await User.find({ role: 'Management', isActive: true }).select('name email').lean();
-    res.json({ success: true, data: users });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
 
 // POST /api/escalations — log a new escalation (General or Department Related).
 router.post('/', authenticate, async (req, res) => {

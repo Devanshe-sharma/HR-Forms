@@ -3,16 +3,18 @@ const escalationNotificationTemplate = require('../templates/escalationNotificat
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://hr.briskolive.com';
 
-// Fire right after an escalation is created. To: whoever the filer picked
-// in the form (default: everyone with the 'Management' role) — no
-// hardcoded HR recipient. If the filer clears the list entirely, there's
-// no one to send to; the caller's .catch() already handles that quietly.
+// The Management group always gets every escalation — hardcoded here, not
+// dependent on any department/role lookup. Override via env if the roster
+// changes without needing a code deploy.
+const MANAGEMENT_GROUP_EMAILS = (process.env.ESCALATION_MANAGEMENT_EMAILS ||
+  'archana.prem@briskolive.com,amitmathur@briskolive.com,sunil.prem@briskolive.com')
+  .split(',').map(s => s.trim()).filter(Boolean);
+
+// Fire right after an escalation is created. To: the hardcoded Management
+// group, plus whoever the filer additionally picked in the form.
 async function sendEscalationNotification(escalation) {
-  const to = (escalation.cc || []).filter(Boolean).join(',');
-  if (!to) {
-    console.warn(`[sendEscalationNotification] No recipients for ${escalation.caseNumber} — skipping.`);
-    return;
-  }
+  const extra = (escalation.cc || []).filter(Boolean);
+  const to = Array.from(new Set([...MANAGEMENT_GROUP_EMAILS, ...extra])).join(',');
 
   const { subject, html } = escalationNotificationTemplate({
     caseNumber: escalation.caseNumber,

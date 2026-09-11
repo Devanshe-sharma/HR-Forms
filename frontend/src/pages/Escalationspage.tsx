@@ -39,11 +39,6 @@ interface Escalation {
   createdAt      : string;
 }
 
-interface ManagementUser {
-  name : string;
-  email: string;
-}
-
 interface Employee {
   _id             : string;
   employee_id     : string;
@@ -321,8 +316,8 @@ function DetailModal({ record, onClose }: { record: Escalation | null; onClose: 
 
 // ─── Wizard ───────────────────────────────────────────────────────────────────
 
-function EscalationWizard({ employees, managementUsers, onDone, onBack, showToast }: {
-  employees: Employee[]; managementUsers: ManagementUser[]; onDone: () => void; onBack: () => void; showToast: (m: string, t: 'success' | 'error') => void;
+function EscalationWizard({ employees, onDone, onBack, showToast }: {
+  employees: Employee[]; onDone: () => void; onBack: () => void; showToast: (m: string, t: 'success' | 'error') => void;
 }) {
   const { user } = useAuth();
   const [step, setStep] = useState(0);
@@ -352,9 +347,10 @@ function EscalationWizard({ employees, managementUsers, onDone, onBack, showToas
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
   const [dateOccurred, setDateOccurred] = useState('');
-  // Defaults to everyone with the 'Management' role — the filer can add or
-  // remove people from there.
-  const [ccList, setCcList] = useState<ManagementUser[]>(managementUsers);
+
+  // Management always gets the notification (hardcoded server-side) — this
+  // is purely for optionally notifying anyone else too.
+  const [ccList, setCcList] = useState<Employee[]>([]);
 
   const goNext = () => {
     setStepError(null);
@@ -394,7 +390,7 @@ function EscalationWizard({ employees, managementUsers, onDone, onBack, showToas
         category,
         description,
         dateOccurred,
-        cc: ccList.map(u => u.email),
+        cc: ccList.map(e => e.official_email || e.email).filter(Boolean),
       };
       const { data } = await axios.post(API, payload);
       if (data.success) { showToast(`Escalation ${data.data.caseNumber} logged`, 'success'); onDone(); }
@@ -424,12 +420,12 @@ function EscalationWizard({ employees, managementUsers, onDone, onBack, showToas
   );
   const ccField = (
     <Box>
-      <Autocomplete multiple options={managementUsers} getOptionLabel={u => `${u.name} (${u.email})`}
-        isOptionEqualToValue={(a, b) => a.email === b.email}
+      <Autocomplete multiple options={employees} getOptionLabel={e => `${e.full_name} (${e.department})`}
+        isOptionEqualToValue={(a, b) => a.employee_id === b.employee_id}
         value={ccList} onChange={(_, v) => setCcList(v)}
-        renderInput={p => <TextField {...p} size="small" label="Notify by email" placeholder="Add people to notify…" />} />
+        renderInput={p => <TextField {...p} size="small" label="Also notify (optional)" placeholder="Search by name or department…" />} />
       <Typography fontSize={11} color="text.secondary" mt={0.5}>
-        Defaults to Management. The notification email is sent to whoever is listed here.
+        Management is always notified. Add anyone else you'd also like to notify.
       </Typography>
     </Box>
   );
@@ -544,7 +540,7 @@ function EscalationWizard({ employees, managementUsers, onDone, onBack, showToas
                 ['Employee', targetEmployeesPayload.map(t => t.name).join(', ') || '—'],
                 ['Category', category],
                 ['Date occurred on', dateOccurred ? fmtDate(dateOccurred) : '—'],
-                ['Notify by email', ccList.map(u => u.name).join(', ') || '—'],
+                ['Also notify', ccList.map(e => e.full_name).join(', ') || 'Management only'],
               ].map(([l, v], i) => (
                 <Box key={l} sx={{ display: 'flex', justifyContent: 'space-between', px: 2, py: 1.25, fontSize: 13,
                   borderBottom: i < 5 ? '1px solid #f1f5f9' : 'none' }}>
@@ -587,7 +583,6 @@ type View = 'dashboard' | 'wizard';
 export default function Escalationspage() {
   const [records, setRecords] = useState<Escalation[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [managementUsers, setManagementUsers] = useState<ManagementUser[]>([]);
   const [view, setView] = useState<View>('dashboard');
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
@@ -598,11 +593,10 @@ export default function Escalationspage() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [rRes, eRes, mRes] = await Promise.all([axios.get(API), axios.get(EMP_API), axios.get(`${API}/management-users`)]);
+      const [rRes, eRes] = await Promise.all([axios.get(API), axios.get(EMP_API)]);
       setRecords(Array.isArray(rRes.data) ? rRes.data : rRes.data?.data || []);
       const empList: Employee[] = Array.isArray(eRes.data) ? eRes.data : eRes.data?.data || [];
       setEmployees([...empList].sort((a, b) => a.full_name.localeCompare(b.full_name)));
-      setManagementUsers(Array.isArray(mRes.data) ? mRes.data : mRes.data?.data || []);
     } catch { showToast('Failed to load data', 'error'); }
     finally { setLoading(false); }
   }, []);
@@ -633,7 +627,7 @@ export default function Escalationspage() {
             <Modal open={view === 'wizard'} onClose={() => setView('dashboard')}>
               <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
                 width: { xs: '95vw', sm: 820 }, maxHeight: '90vh', overflowY: 'auto', bgcolor: 'white', borderRadius: 2, outline: 'none', boxShadow: 24 }}>
-                <EscalationWizard employees={employees} managementUsers={managementUsers}
+                <EscalationWizard employees={employees}
                   onBack={() => setView('dashboard')}
                   onDone={() => { setView('dashboard'); loadData(); }}
                   showToast={showToast} />
