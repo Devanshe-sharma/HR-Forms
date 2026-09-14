@@ -28,75 +28,81 @@ function startEmailScheduler() {
 
   console.log('Email & auto-archive scheduler started');
 
-  // 1. Quarterly Training approval request
-  cron.schedule('0 9 1 3,6,9,12 *', async () => {
-    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending quarterly training approval request`);
-    try {
-      await sendQuarterlyApprovalRequest();
-    } catch (err) {
-      console.error('Quarterly training approval failed:', err);
-    }
-  }, { timezone: tz });
+  // 1-5. ALL Training mail jobs are PAUSED, per explicit request (2026-09-14).
+  // Re-enable by uncommenting.
+  //
+  // // 1. Quarterly Training approval request
+  // cron.schedule('0 9 1 3,6,9,12 *', async () => {
+  //   console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending quarterly training approval request`);
+  //   try {
+  //     await sendQuarterlyApprovalRequest();
+  //   } catch (err) {
+  //     console.error('Quarterly training approval failed:', err);
+  //   }
+  // }, { timezone: tz });
+  //
+  // // 2. 2-week upcoming training reminder
+  // cron.schedule('15 9 * * *', async () => {
+  //   console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Checking 2-week training reminders`);
+  //   try {
+  //     await sendUpcomingTrainingReminder();
+  //   } catch (err) {
+  //     console.error('2-week training reminder failed:', err);
+  //   }
+  // }, { timezone: tz });
+  //
+  // // 3. 1-week training invitation
+  // cron.schedule('30 9 * * *', async () => {
+  //   console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending 1-week training invitations`);
+  //   try {
+  //     await send1WeekInvitation();
+  //   } catch (err) {
+  //     console.error('1-week training invitation failed:', err);
+  //   }
+  // }, { timezone: tz });
+  //
+  // // 4. 1-week material upload reminder
+  // cron.schedule('45 9 * * *', async () => {
+  //   console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending material upload reminders`);
+  //   try {
+  //     await send1WeekMaterialUploadReminder();
+  //   } catch (err) {
+  //     console.error('Material upload reminder failed:', err);
+  //   }
+  // }, { timezone: tz });
+  //
+  // // 5. On-day training feedback reminder
+  // cron.schedule('0 10 * * *', async () => {
+  //   console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending on-day training feedback reminders`);
+  //   try {
+  //     await sendOnDayFeedbackReminder();
+  //   } catch (err) {
+  //     console.error('On-day training feedback reminder failed:', err);
+  //   }
+  // }, { timezone: tz });
 
-  // 2. 2-week upcoming training reminder
-  cron.schedule('15 9 * * *', async () => {
-    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Checking 2-week training reminders`);
-    try {
-      await sendUpcomingTrainingReminder();
-    } catch (err) {
-      console.error('2-week training reminder failed:', err);
-    }
-  }, { timezone: tz });
-
-  // 3. 1-week training invitation
-  cron.schedule('30 9 * * *', async () => {
-    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending 1-week training invitations`);
-    try {
-      await send1WeekInvitation();
-    } catch (err) {
-      console.error('1-week training invitation failed:', err);
-    }
-  }, { timezone: tz });
-
-  // 4. 1-week material upload reminder
-  cron.schedule('45 9 * * *', async () => {
-    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending material upload reminders`);
-    try {
-      await send1WeekMaterialUploadReminder();
-    } catch (err) {
-      console.error('Material upload reminder failed:', err);
-    }
-  }, { timezone: tz });
-
-  // 5. On-day training feedback reminder
-  cron.schedule('0 10 * * *', async () => {
-    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending on-day training feedback reminders`);
-    try {
-      await sendOnDayFeedbackReminder();
-    } catch (err) {
-      console.error('On-day training feedback reminder failed:', err);
-    }
-  }, { timezone: tz });
-
-  // 6. Quarterly Outing/Event approval request
-  cron.schedule('0 9 1 3,6,9,12 *', async () => {
-    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending quarterly outing approval request`);
-    try {
-      await sendQuarterlyOutingApprovalRequest();
-    } catch (err) {
-      console.error('Quarterly outing approval failed:', err);
-    }
-  }, { timezone: tz });
-
-  // 7. 2-week upcoming outing/event reminder
-  cron.schedule('0 9 * * *', async () => {
-    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Checking 2-week outing reminders`);
-    try {
-      await sendUpcomingOutingReminder();
-    } catch (err) {
-      console.error('2-week outing reminder failed:', err);
-    }
-  }, { timezone: tz });
+  // 6-7. ALL Outing mail jobs are PAUSED, per explicit request (2026-09-14).
+  // Re-enable by uncommenting.
+  //
+  // // 6. Quarterly Outing/Event approval request
+  // cron.schedule('0 9 1 3,6,9,12 *', async () => {
+  //   console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending quarterly outing approval request`);
+  //   try {
+  //     await sendQuarterlyOutingApprovalRequest();
+  //   } catch (err) {
+  //     console.error('Quarterly outing approval failed:', err);
+  //   }
+  // }, { timezone: tz });
+  //
+  // // 7. 2-week upcoming outing/event reminder
+  // cron.schedule('0 9 * * *', async () => {
+  //   console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Checking 2-week outing reminders`);
+  //   try {
+  //     await sendUpcomingOutingReminder();
+  //   } catch (err) {
+  //     console.error('2-week outing reminder failed:', err);
+  //   }
+  // }, { timezone: tz });
 
   // 8. Weekly Exit summary — every Monday at 9am (port of the Apps
   // Script's sendWeeklyEmail(), which had no explicit cron trigger visible

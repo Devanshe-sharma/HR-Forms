@@ -112,17 +112,17 @@ router.patch('/:id', async (req, res) => {
     const statusChanged = req.body.status && req.body.status !== oldOuting.status;
     const hasRemarkOrReason = req.body.remark || req.body.reason;
 
-    // Send email if status changed (e.g. Approved) OR remark/reason added
-    if (statusChanged || hasRemarkOrReason) {
-      try {
-        await sendOutingProposalUpdateEmail(updated._id);
-        console.log(`Update email sent to HR for outing: ${updated.topic} (status changed or remark added)`);
-      } catch (emailErr) {
-        console.error('Failed to send update email:', emailErr);
-      }
-    } else {
-      console.log(`Minor update (no status/remark/reason change) on outing ${updated._id} → skipping email`);
-    }
+    // All outing mail is PAUSED per explicit request (2026-09-14).
+    // if (statusChanged || hasRemarkOrReason) {
+    //   try {
+    //     await sendOutingProposalUpdateEmail(updated._id);
+    //     console.log(`Update email sent to HR for outing: ${updated.topic} (status changed or remark added)`);
+    //   } catch (emailErr) {
+    //     console.error('Failed to send update email:', emailErr);
+    //   }
+    // } else {
+    //   console.log(`Minor update (no status/remark/reason change) on outing ${updated._id} → skipping email`);
+    // }
 
     res.json({ success: true, data: updated });
   } catch (err) {
