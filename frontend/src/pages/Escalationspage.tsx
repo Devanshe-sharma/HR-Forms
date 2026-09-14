@@ -272,6 +272,13 @@ function DashboardView({ records, employees, loading, onAdd, onSelect }: {
 // ─── Detail modal ─────────────────────────────────────────────────────────────
 
 function DetailModal({ record, onClose, onEdit }: { record: Escalation | null; onClose: () => void; onEdit: (r: Escalation) => void }) {
+  const { user } = useAuth();
+  // Only whoever raised the escalation can edit it — not the person it's
+  // raised against, and not even Management/Admin. Mirrors the backend's
+  // canEditEscalation check in routes/escalations.js.
+  const canEdit = !!record && !!user?.email
+    && record.createdBy.email.trim().toLowerCase() === user.email.trim().toLowerCase();
+
   return (
     <Modal open={!!record} onClose={onClose}>
       <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
@@ -285,7 +292,7 @@ function DetailModal({ record, onClose, onEdit }: { record: Escalation | null; o
                 <Typography fontSize={12} color="text.secondary">Logged on {fmtDateTime(record.createdAt)}</Typography>
               </Box>
               <Box sx={{ display: 'flex', gap: 0.5 }}>
-                <Button size="small" onClick={() => onEdit(record)} sx={{ textTransform: 'none', fontWeight: 600 }}>Edit</Button>
+                {canEdit && <Button size="small" onClick={() => onEdit(record)} sx={{ textTransform: 'none', fontWeight: 600 }}>Edit</Button>}
                 <IconButton size="small" onClick={onClose}><CloseIcon fontSize="small" /></IconButton>
               </Box>
             </Box>

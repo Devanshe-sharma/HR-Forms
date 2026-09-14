@@ -117,6 +117,16 @@ function canViewEscalation(req, doc) {
   );
 }
 
+// Editing is narrower than viewing: only whoever raised the escalation can
+// edit it — not the person it's raised against, and not even
+// Management/Admin (they can view and act via updates elsewhere, but not
+// rewrite the original record).
+function canEditEscalation(req, doc) {
+  const email = (req.user?.email || '').trim().toLowerCase();
+  if (!email) return false;
+  return (doc.createdBy?.email || '').trim().toLowerCase() === email;
+}
+
 // GET /api/escalations — dashboard list, newest first.
 router.get('/', authenticate, async (req, res) => {
   try {
@@ -167,6 +177,9 @@ router.put('/:id', authenticate, async (req, res) => {
   try {
     const doc = await Escalation.findById(req.params.id);
     if (!doc) return res.status(404).json({ success: false, message: 'Not found' });
+    if (!canEditEscalation(req, doc)) {
+      return res.status(403).json({ success: false, message: 'You do not have permission to edit this escalation.' });
+    }
 
     const { escalationFor, targetEmployees, department, reportedBy, company, project, event, category, description, dateOccurred, cc } = req.body;
 
