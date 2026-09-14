@@ -1,5 +1,6 @@
 const sendEmail = require('../sendEmail');
 const escalationNotificationTemplate = require('../templates/escalationNotification');
+const { CATEGORY_NAMES } = require('../../models/Escalation');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://hr.briskolive.com';
 
@@ -46,7 +47,7 @@ async function sendEscalationNotification(escalation) {
     createdByDepartment: escalation.createdBy.department,
     escalationFor: escalation.escalationFor,
     targetNames: escalation.targetEmployees.map(t => t.name).join(', ') || '-',
-    category: escalation.category,
+    category: `${escalation.category} — ${CATEGORY_NAMES[escalation.category] || escalation.category}`,
     dateOccurred: escalation.dateOccurred,
     description: escalation.description,
     dashboardLink: `${FRONTEND_URL}/escalations`,

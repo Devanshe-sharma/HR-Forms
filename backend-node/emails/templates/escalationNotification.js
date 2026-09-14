@@ -2,10 +2,11 @@ const formatDateIST = require('../utils/formatDateIST');
 const actionButton = require('../utils/actionButton');
 const signature = require('../utils/signature');
 
-// Notifies HR (To) and the chosen recipients (Cc, default: Management)
-// whenever an escalation is logged — links straight to the dashboard
-// rather than embedding the full description, since only HR/Management
-// can act on it there and the mail is a heads-up, not the record itself.
+// Notifies the concerned employee (To) and Management/chosen recipients (Cc)
+// whenever an escalation is logged — links straight to the dashboard rather
+// than embedding the full description, since only HR/Management can act on
+// it there and the mail is a heads-up, not the record itself. `category` is
+// expected pre-formatted as "CODE — Full Name" by the caller.
 function escalationNotificationTemplate({
   caseNumber, createdByName, createdByDepartment, escalationFor,
   targetNames, category, dateOccurred, description, dashboardLink,

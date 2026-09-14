@@ -3,8 +3,22 @@ const { nextSequence } = require('./Counter');
 
 // Universal category list — same across all three modes (Employee, External,
 // BO). Kept here (not just in the frontend) so the API rejects a code that
-// doesn't exist even if a future caller isn't the current form.
-const CATEGORY_CODES = ['T', 'Q', 'C', 'P', 'H', 'Ext', 'Culture', 'POSH', 'Ext Factors', 'Other'];
+// doesn't exist even if a future caller isn't the current form. Names are
+// duplicated from the frontend's CATEGORIES list so emails (which render
+// server-side) can show "T — Timeliness-Reliability" instead of a bare code.
+const CATEGORY_NAMES = {
+  T: 'Timeliness-Reliability',
+  Q: 'Quality',
+  C: 'Profit-Economy-CashFlow',
+  P: 'Process-Reporting-Data',
+  H: 'Honesty-Ethics',
+  Ext: 'External Escalation',
+  Culture: 'Culture-Leadership Behaviour',
+  POSH: 'POSH Case',
+  'Ext Factors': 'External Factors Log',
+  Other: 'Any Other',
+};
+const CATEGORY_CODES = Object.keys(CATEGORY_NAMES);
 
 const targetPersonSchema = new mongoose.Schema(
   {
@@ -90,3 +104,4 @@ escalationSchema.pre('save', async function () {
 
 module.exports = mongoose.model('Escalation', escalationSchema);
 module.exports.CATEGORY_CODES = CATEGORY_CODES;
+module.exports.CATEGORY_NAMES = CATEGORY_NAMES;
