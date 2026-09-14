@@ -85,11 +85,13 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
-// Everyone except Management only ever sees escalations they raised or
-// that were raised against them — matched by email, not name (name isn't
-// reliable for this: see onboardingroutes.js's eligible-employees
-// scope=mine, where a Manager's login name didn't match their own full
-// name as it appears elsewhere).
+// Management and Admin see everything; everyone else only ever sees
+// escalations they raised or that were raised against them — matched by
+// email, not name (name isn't reliable for this: see onboardingroutes.js's
+// eligible-employees scope=mine, where a Manager's login name didn't match
+// their own full name as it appears elsewhere).
+const FULL_VISIBILITY_ROLES = ['Management', 'Admin'];
+
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -106,7 +108,7 @@ function scopeToOwnEscalations(req) {
 }
 
 function canViewEscalation(req, doc) {
-  if (req.user?.role === 'Management') return true;
+  if (FULL_VISIBILITY_ROLES.includes(req.user?.role)) return true;
   const email = (req.user?.email || '').trim().toLowerCase();
   if (!email) return false;
   if ((doc.createdBy?.email || '').trim().toLowerCase() === email) return true;
@@ -133,7 +135,7 @@ router.get('/', authenticate, async (req, res) => {
         ],
       });
     }
-    if (req.user?.role !== 'Management') {
+    if (!FULL_VISIBILITY_ROLES.includes(req.user?.role)) {
       clauses.push(scopeToOwnEscalations(req));
     }
 

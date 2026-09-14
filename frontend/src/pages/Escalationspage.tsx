@@ -387,6 +387,9 @@ function CreateEscalationForm({ employees, onDone, onBack, showToast }: {
   const [event, setEvent] = useState('');
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
+  // Management and the concerned employee are always notified server-side —
+  // this is purely for optionally notifying anyone else too.
+  const [ccList, setCcList] = useState<Employee[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<Escalation | null>(null);
@@ -397,7 +400,7 @@ function CreateEscalationForm({ employees, onDone, onBack, showToast }: {
   const changeMode = (m: EscalationMode) => {
     setMode(m); setDepartment(''); setTargetEmployee(null);
     setReportedBy(''); setCompany(''); setProject(''); setEvent('');
-    setCategory(''); setDescription(''); setError(null);
+    setCategory(''); setDescription(''); setCcList([]); setError(null);
   };
 
   const canSubmit = () => {
@@ -410,7 +413,7 @@ function CreateEscalationForm({ employees, onDone, onBack, showToast }: {
   const resetAll = () => {
     setMode('Employee'); setDepartment(''); setTargetEmployee(null);
     setReportedBy(''); setCompany(''); setProject(''); setEvent('');
-    setCategory(''); setDescription(''); setError(null); setSubmitted(null);
+    setCategory(''); setDescription(''); setCcList([]); setError(null); setSubmitted(null);
   };
 
   const submit = async () => {
@@ -438,7 +441,7 @@ function CreateEscalationForm({ employees, onDone, onBack, showToast }: {
         category,
         description,
         dateOccurred: todayStr(),
-        cc: [],
+        cc: ccList.map(e => e.official_email || e.email).filter(Boolean),
       };
       const { data } = await axios.post(API, payload);
       if (data.success) { setSubmitted(data.data); onDone(); }
@@ -509,6 +512,17 @@ function CreateEscalationForm({ employees, onDone, onBack, showToast }: {
       </Box>
     </Box>
   );
+  const ccField = (
+    <Box>
+      <Autocomplete multiple options={employees} getOptionLabel={e => `${e.full_name} (${e.department})`}
+        isOptionEqualToValue={(a, b) => a.employee_id === b.employee_id}
+        value={ccList} onChange={(_, v) => setCcList(v)}
+        renderInput={p => <TextField {...p} size="small" label="Also notify (optional)" placeholder="Search by name or department…" />} />
+      <Typography fontSize={11} color="text.secondary" mt={0.5}>
+        Management and the concerned employee are always notified. Add anyone else you'd also like to notify.
+      </Typography>
+    </Box>
+  );
 
   return (
     <Box sx={{ p: 3, maxWidth: 700, mx: 'auto' }}>
@@ -545,6 +559,7 @@ function CreateEscalationForm({ employees, onDone, onBack, showToast }: {
             {projectEventRow}
             {descriptionField}
             {autoTilesRow}
+            {ccField}
           </>
         )}
 
@@ -560,6 +575,7 @@ function CreateEscalationForm({ employees, onDone, onBack, showToast }: {
             {descriptionField}
             {projectEventRow}
             {autoTilesRow}
+            {ccField}
           </>
         )}
 
@@ -570,6 +586,7 @@ function CreateEscalationForm({ employees, onDone, onBack, showToast }: {
             {departmentField(false)}
             {descriptionField}
             {autoTilesRow}
+            {ccField}
           </>
         )}
 
@@ -609,6 +626,8 @@ function EditEscalationForm({ record, employees, onDone, onCancel, showToast }: 
   const [event, setEvent] = useState(record.event || '');
   const [category, setCategory] = useState(record.category);
   const [description, setDescription] = useState(record.description);
+  const [ccList, setCcList] = useState<Employee[]>(() =>
+    employees.filter(e => (record.cc || []).includes(e.official_email) || (record.cc || []).includes(e.email)));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -640,7 +659,7 @@ function EditEscalationForm({ record, employees, onDone, onCancel, showToast }: 
         event: event.trim(),
         category, description,
         dateOccurred: record.dateOccurred,
-        cc: record.cc || [],
+        cc: ccList.map(e => e.official_email || e.email).filter(Boolean),
       };
       const { data } = await axios.put(`${API}/${record._id}`, payload);
       if (data.success) { showToast(`Escalation ${record.caseNumber} updated`, 'success'); onDone(); }
@@ -724,6 +743,16 @@ function EditEscalationForm({ record, employees, onDone, onCancel, showToast }: 
 
         <TextField label="Description *" multiline rows={4} size="small" value={description}
           onChange={e => setDescription(e.target.value)} fullWidth />
+
+        <Box>
+          <Autocomplete multiple options={employees} getOptionLabel={e => `${e.full_name} (${e.department})`}
+            isOptionEqualToValue={(a, b) => a.employee_id === b.employee_id}
+            value={ccList} onChange={(_, v) => setCcList(v)}
+            renderInput={p => <TextField {...p} size="small" label="Also notify (optional)" placeholder="Search by name or department…" />} />
+          <Typography fontSize={11} color="text.secondary" mt={0.5}>
+            Management and the concerned employee are always notified. Editing does not send a new email.
+          </Typography>
+        </Box>
 
         {error && <Alert severity="error" sx={{ fontSize: 12 }}>{error}</Alert>}
 
