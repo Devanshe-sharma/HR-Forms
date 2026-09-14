@@ -593,6 +593,38 @@ router.get('/analytics/days-to-hire', async (req, res) => {
   }
 });
 
+// GET /api/hiringrequisitions/analytics/cost-per-hire — HR Dashboard's
+// "Cost per Hire" card. hiring_status === 'Joined' is the one status that
+// genuinely means a hire happened (unlike 'On Hold'/'Cancelled', which
+// also force-close the requisition without anyone joining — see
+// HIRING_STATUS_FORCES_CLOSED above). Only requisitions with a budget on
+// file can contribute; count vs totalJoined tells the caller how much of
+// the real hiring volume that average is actually based on. No quarterly
+// breakdown yet — this is a single current-state number on the dashboard
+// face, not a full drill-down widget.
+router.get('/analytics/cost-per-hire', async (req, res) => {
+  try {
+    const joined = await HiringRequisition.find({ hiring_status: 'Joined' })
+      .select('budget')
+      .lean();
+
+    const withBudget = joined.filter((d) => typeof d.budget === 'number' && d.budget > 0);
+    const avgCostPerHire = withBudget.length
+      ? Math.round(withBudget.reduce((s, d) => s + d.budget, 0) / withBudget.length)
+      : null;
+
+    res.json({
+      success: true,
+      avgCostPerHire,
+      count: withBudget.length,
+      totalJoined: joined.length,
+    });
+  } catch (err) {
+    console.error('[hiringrequisitions] cost-per-hire analytics error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to compute cost-per-hire analytics' });
+  }
+});
+
 // GET /api/hiringrequisitions/ — fetch all for dashboard (with optional filters)
 router.get('/', async (req, res) => {
   try {

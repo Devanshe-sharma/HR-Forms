@@ -2005,6 +2005,39 @@ router.get("/analytics/interns", async (req, res) => {
   }
 });
 
+// ─── GET /api/onboarding/analytics/avg-tenure ──────────────────────────────
+// HR Dashboard's "Avg Tenure" card. Current employees only (joiningStatus
+// === "Joined", not exited) — tenure is a fact about how long someone has
+// actually been here so far, not a completed span like Attrition's exit-
+// based math. No quarterly breakdown yet — a single current-state number
+// on the dashboard face, not a full drill-down widget.
+router.get("/analytics/avg-tenure", async (req, res) => {
+  try {
+    const docs = await Onboarding.find(
+      { joiningStatus: "Joined" },
+      "joinedDate exitStatus"
+    ).lean();
+
+    const now = new Date();
+    const tenureYears = docs
+      .filter((d) => d.joinedDate && !EXITED_STATUS_VALUES.has(d.exitStatus || ""))
+      .map((d) => (now.getTime() - new Date(d.joinedDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+
+    const avgTenureYears = tenureYears.length
+      ? Math.round((tenureYears.reduce((s, y) => s + y, 0) / tenureYears.length) * 10) / 10
+      : null;
+
+    res.json({
+      success: true,
+      avgTenureYears,
+      employeeCount: tenureYears.length,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // ─── GET /api/onboarding/analytics/referred ────────────────────────────────
 // Aggregate-only: percentage of everyone who ever actually joined that was
 // a referral. Deliberately projects ONLY joiningStatus/referred — never

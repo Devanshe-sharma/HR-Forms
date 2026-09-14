@@ -149,56 +149,66 @@ function startEmailScheduler() {
     }
   }, { timezone: tz });
 
-  // 9d. Salary Revision — employees due this fiscal quarter, for
-  // Management. Fires on the 1st of each fiscal-quarter start month
-  // (Apr/Jul/Oct/Jan).
-  cron.schedule('0 9 1 4,7,10,1 *', async () => {
-    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending salary revision due-this-quarter digest`);
-    try {
-      const result = await sendSalaryRevisionDue();
-      console.log(`Salary revision due-this-quarter digest sent — ${result.dueCount} employee(s)`);
-    } catch (err) {
-      console.error('Salary revision due-this-quarter digest failed:', err);
-    }
-  }, { timezone: tz });
-
-  // 9e. Salary Revision — auto-create + Mail 1 for anyone whose Reminder
-  // Date (due date minus 1 month) lands in the current calendar month.
-  // Runs before the escalation checks below so a same-day auto-created
-  // revision is never immediately flagged as escalation-worthy.
-  cron.schedule('45 8 * * *', async () => {
-    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Checking for salary revisions due this month`);
-    try {
-      const result = await sendSalaryRevisionAutoTrigger();
-      console.log(`Salary revision auto-trigger — ${result.createdCount} revision(s) created: ${result.createdFor.join(', ') || '(none)'}`);
-      if (result.failures.length) console.error('Salary revision auto-trigger failures:', result.failures);
-    } catch (err) {
-      console.error('Salary revision auto-trigger failed:', err);
-    }
-  }, { timezone: tz });
-
-  // 9f. Salary Revision — manager-recommendation escalation chain. Daily
-  // check for revisions still 'pending_manager' past the response window
-  // (Mail 5), and a further check for the final escalation (Mail 6).
-  cron.schedule('0 9 * * *', async () => {
-    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Checking salary revision manager escalations`);
-    try {
-      const result = await sendSalaryRevisionManagerEscalation();
-      console.log(`Salary revision manager escalation sent — ${result.escalatedCount} revision(s)`);
-    } catch (err) {
-      console.error('Salary revision manager escalation failed:', err);
-    }
-  }, { timezone: tz });
-
-  cron.schedule('20 9 * * *', async () => {
-    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Checking salary revision final escalations`);
-    try {
-      const result = await sendSalaryRevisionFinalEscalation();
-      console.log(`Salary revision final escalation sent — ${result.escalatedCount} revision(s)`);
-    } catch (err) {
-      console.error('Salary revision final escalation failed:', err);
-    }
-  }, { timezone: tz });
+  // 9d-9f. ALL Salary Revision mail-sending jobs are PAUSED, per explicit
+  // request (2026-09-14) — the escalation chain (Mail 5/6) was firing off
+  // stale managerRequestedAt dates from initial system testing, sending
+  // real mail for people who aren't actually due yet (Kunal Patel, Arnab
+  // Bandyopadhyay, Vipul Pandey). Quarterly digest, auto-trigger (Mail 1),
+  // and manager/final escalations (Mail 5/6) are all off until the
+  // underlying stale-data problem is cleaned up and this is re-enabled.
+  // The daily re-score sweep (9g, below) is NOT a mail job and keeps
+  // running. Re-enable by uncommenting.
+  //
+  // // 9d. Salary Revision — employees due this fiscal quarter, for
+  // // Management. Fires on the 1st of each fiscal-quarter start month
+  // // (Apr/Jul/Oct/Jan).
+  // cron.schedule('0 9 1 4,7,10,1 *', async () => {
+  //   console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending salary revision due-this-quarter digest`);
+  //   try {
+  //     const result = await sendSalaryRevisionDue();
+  //     console.log(`Salary revision due-this-quarter digest sent — ${result.dueCount} employee(s)`);
+  //   } catch (err) {
+  //     console.error('Salary revision due-this-quarter digest failed:', err);
+  //   }
+  // }, { timezone: tz });
+  //
+  // // 9e. Salary Revision — auto-create + Mail 1 for anyone whose Reminder
+  // // Date (due date minus 1 month) lands in the current calendar month.
+  // // Runs before the escalation checks below so a same-day auto-created
+  // // revision is never immediately flagged as escalation-worthy.
+  // cron.schedule('45 8 * * *', async () => {
+  //   console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Checking for salary revisions due this month`);
+  //   try {
+  //     const result = await sendSalaryRevisionAutoTrigger();
+  //     console.log(`Salary revision auto-trigger — ${result.createdCount} revision(s) created: ${result.createdFor.join(', ') || '(none)'}`);
+  //     if (result.failures.length) console.error('Salary revision auto-trigger failures:', result.failures);
+  //   } catch (err) {
+  //     console.error('Salary revision auto-trigger failed:', err);
+  //   }
+  // }, { timezone: tz });
+  //
+  // // 9f. Salary Revision — manager-recommendation escalation chain. Daily
+  // // check for revisions still 'pending_manager' past the response window
+  // // (Mail 5), and a further check for the final escalation (Mail 6).
+  // cron.schedule('0 9 * * *', async () => {
+  //   console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Checking salary revision manager escalations`);
+  //   try {
+  //     const result = await sendSalaryRevisionManagerEscalation();
+  //     console.log(`Salary revision manager escalation sent — ${result.escalatedCount} revision(s)`);
+  //   } catch (err) {
+  //     console.error('Salary revision manager escalation failed:', err);
+  //   }
+  // }, { timezone: tz });
+  //
+  // cron.schedule('20 9 * * *', async () => {
+  //   console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Checking salary revision final escalations`);
+  //   try {
+  //     const result = await sendSalaryRevisionFinalEscalation();
+  //     console.log(`Salary revision final escalation sent — ${result.escalatedCount} revision(s)`);
+  //   } catch (err) {
+  //     console.error('Salary revision final escalation failed:', err);
+  //   }
+  // }, { timezone: tz });
 
   // 9g. Salary Revision — daily re-score sweep. A task's score/status can
   // go stale purely from time passing (a plan date slipping into Overdue)

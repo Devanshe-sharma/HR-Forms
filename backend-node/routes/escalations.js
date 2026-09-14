@@ -2,38 +2,60 @@ const express = require('express');
 const router  = express.Router();
 
 const Escalation = require('../models/Escalation');
+const { CATEGORY_CODES } = require('../models/Escalation');
 const Onboarding = require('../models/onboardingModel');
 const { authenticate } = require('../middleware/authenticate');
 const sendEscalationNotification = require('../emails/senders/sendEscalationNotification');
 
-// POST /api/escalations — log a new escalation (General or Department Related).
+function validateEscalationFields(body) {
+  const { escalationFor, targetEmployees, department, reportedBy, category, description, dateOccurred } = body;
+
+  if (!['Employee', 'External', 'BO'].includes(escalationFor)) {
+    return 'Select who this escalation is for.';
+  }
+  if (escalationFor !== 'BO' && (!Array.isArray(targetEmployees) || targetEmployees.length === 0)) {
+    return 'Select the employee this concerns.';
+  }
+  if (escalationFor === 'External' && !reportedBy?.trim()) {
+    return 'Enter who reported this.';
+  }
+  if (!department) {
+    return 'Select a department.';
+  }
+  if (!category || !CATEGORY_CODES.includes(category)) {
+    return 'Select a valid category.';
+  }
+  if (!description?.trim()) {
+    return 'Enter a description.';
+  }
+  if (!dateOccurred) {
+    return 'Missing the date this occurred on.';
+  }
+  return null;
+}
+
+// POST /api/escalations — log a new escalation (Employee, External, or BO).
 router.post('/', authenticate, async (req, res) => {
   try {
-    const { createdBy, escalationFor, targetEmployees, category, description, dateOccurred, cc } = req.body;
+    const { createdBy, escalationFor, targetEmployees, department, reportedBy, company, project, event, category, description, dateOccurred, cc } = req.body;
 
     if (!createdBy?.employeeId || !createdBy?.name) {
       return res.status(400).json({ success: false, message: 'Creator information is missing.' });
     }
-    if (!['Department Related', 'General'].includes(escalationFor)) {
-      return res.status(400).json({ success: false, message: 'Select who this escalation is for.' });
-    }
-    if (!Array.isArray(targetEmployees) || targetEmployees.length === 0) {
-      return res.status(400).json({ success: false, message: 'Select the employee this concerns.' });
-    }
-    if (!category) {
-      return res.status(400).json({ success: false, message: 'Select a category.' });
-    }
-    if (!description?.trim()) {
-      return res.status(400).json({ success: false, message: 'Enter a description.' });
-    }
-    if (!dateOccurred) {
-      return res.status(400).json({ success: false, message: 'Select the date this occurred on.' });
+    const validationError = validateEscalationFields(req.body);
+    if (validationError) {
+      return res.status(400).json({ success: false, message: validationError });
     }
 
     const doc = await Escalation.create({
       createdBy,
       escalationFor,
-      targetEmployees,
+      targetEmployees: escalationFor === 'BO' ? [] : targetEmployees,
+      department,
+      reportedBy: escalationFor === 'External' ? (reportedBy || '') : '',
+      company: escalationFor === 'External' ? (company || '') : '',
+      project: project || '',
+      event: event || '',
       category,
       description,
       dateOccurred,
@@ -41,11 +63,14 @@ router.post('/', authenticate, async (req, res) => {
     });
 
     // Every escalation dings the employee(s) it concerns by 1 point —
-    // a running conduct tally, unrelated to fmsScore's task tracking.
-    await Onboarding.updateMany(
-      { _id: { $in: targetEmployees.map(t => t.employeeId) } },
-      { $inc: { escalationScore: -1 } }
-    );
+    // a running conduct tally, unrelated to fmsScore's task tracking. No-op
+    // for BO mode, where targetEmployees is empty.
+    if (doc.targetEmployees.length) {
+      await Onboarding.updateMany(
+        { _id: { $in: doc.targetEmployees.map(t => t.employeeId) } },
+        { $inc: { escalationScore: -1 } }
+      );
+    }
 
     // Fire-and-forget — a mail failure must never fail the escalation
     // creation itself, same convention as every other email trigger in
@@ -141,35 +166,31 @@ router.put('/:id', authenticate, async (req, res) => {
     const doc = await Escalation.findById(req.params.id);
     if (!doc) return res.status(404).json({ success: false, message: 'Not found' });
 
-    const { escalationFor, targetEmployees, category, description, dateOccurred, cc } = req.body;
+    const { escalationFor, targetEmployees, department, reportedBy, company, project, event, category, description, dateOccurred, cc } = req.body;
 
-    if (!['Department Related', 'General'].includes(escalationFor)) {
-      return res.status(400).json({ success: false, message: 'Select who this escalation is for.' });
+    const validationError = validateEscalationFields(req.body);
+    if (validationError) {
+      return res.status(400).json({ success: false, message: validationError });
     }
-    if (!Array.isArray(targetEmployees) || targetEmployees.length === 0) {
-      return res.status(400).json({ success: false, message: 'Select the employee this concerns.' });
-    }
-    if (!category) {
-      return res.status(400).json({ success: false, message: 'Select a category.' });
-    }
-    if (!description?.trim()) {
-      return res.status(400).json({ success: false, message: 'Enter a description.' });
-    }
-    if (!dateOccurred) {
-      return res.status(400).json({ success: false, message: 'Select the date this occurred on.' });
-    }
+
+    const nextTargetEmployees = escalationFor === 'BO' ? [] : targetEmployees;
 
     // Keep escalationScore honest if who it concerns changes — undo the
     // point for anyone removed, apply it to anyone newly added.
     const oldIds = doc.targetEmployees.map(t => String(t.employeeId));
-    const newIds = targetEmployees.map(t => String(t.employeeId));
+    const newIds = nextTargetEmployees.map(t => String(t.employeeId));
     const removed = oldIds.filter(id => !newIds.includes(id));
     const added = newIds.filter(id => !oldIds.includes(id));
     if (removed.length) await Onboarding.updateMany({ _id: { $in: removed } }, { $inc: { escalationScore: 1 } });
     if (added.length) await Onboarding.updateMany({ _id: { $in: added } }, { $inc: { escalationScore: -1 } });
 
     doc.escalationFor = escalationFor;
-    doc.targetEmployees = targetEmployees;
+    doc.targetEmployees = nextTargetEmployees;
+    doc.department = department;
+    doc.reportedBy = escalationFor === 'External' ? (reportedBy || '') : '';
+    doc.company = escalationFor === 'External' ? (company || '') : '';
+    doc.project = project || '';
+    doc.event = event || '';
     doc.category = category;
     doc.description = description;
     doc.dateOccurred = dateOccurred;

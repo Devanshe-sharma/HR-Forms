@@ -30,6 +30,8 @@ import PersonRemoveIcon from "@mui/icons-material/PersonRemoveOutlined";
 import CancelIcon from "@mui/icons-material/CancelOutlined";
 import TimelineIcon from "@mui/icons-material/TimelineOutlined";
 import TrendingDownIcon from "@mui/icons-material/TrendingDownOutlined";
+import AccessTimeIcon from "@mui/icons-material/AccessTimeOutlined";
+import CurrencyRupeeIcon from "@mui/icons-material/CurrencyRupeeOutlined";
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
@@ -1535,7 +1537,18 @@ const IncrementAnalyticsWidget: React.FC = () => {
 // untouched and this card's own tiny fetch has nothing to do with the
 // filters/state inside them.
 
-interface CardSummary { value: string; sublabel: string; }
+interface CardSummary { value: string; sublabel: string; flag?: string; flagColor?: string; }
+
+// Neutral, monochrome card styling matching the mockup — icons and numbers
+// are dark/gray by default, not colored per-metric; the only color used is
+// red, and only when a card is actually flagged (e.g. "Below Target").
+// `color`/`bg` are kept as props (still used by the in-modal StatCard/
+// PieBreakdownChart widgets each card opens) but no longer drive the tile's
+// own icon or number color.
+const NEUTRAL_ICON_COLOR = "#64748b";
+const NEUTRAL_ICON_BG = "#f1f5f9";
+const NEUTRAL_VALUE_COLOR = "#0f172a";
+const NEW_METRIC_NOTE_COLOR = "#4f46e5";
 
 const SummaryCard: React.FC<{
   title: string;
@@ -1543,8 +1556,11 @@ const SummaryCard: React.FC<{
   color: string;
   bg: string;
   fetchSummary: () => Promise<CardSummary>;
-  onClick: () => void;
-}> = ({ title, icon, color, bg, fetchSummary, onClick }) => {
+  onClick?: () => void;
+  // Shown instead of "Click for full breakdown →" for cards with no detail
+  // widget yet (e.g. "New — suggested addition" for Avg Tenure/Cost per Hire).
+  note?: string;
+}> = ({ title, icon, fetchSummary, onClick, note }) => {
   const [summary, setSummary] = useState<CardSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -1559,37 +1575,51 @@ const SummaryCard: React.FC<{
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const valueColor = summary?.flag ? (summary.flagColor ?? "#dc2626") : NEUTRAL_VALUE_COLOR;
+
   return (
     <Box
       onClick={onClick}
       sx={{
         bgcolor: "#fff", border: "1px solid #e2e8f0", borderRadius: "16px",
-        p: 2.5, cursor: "pointer", display: "flex", flexDirection: "column",
+        p: 2.5, cursor: onClick ? "pointer" : "default", display: "flex", flexDirection: "column",
         justifyContent: "space-between", height: "100%", minHeight: 0,
         boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
         transition: "transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease",
-        "&:hover": { transform: "translateY(-3px)", boxShadow: "0 10px 28px rgba(0,0,0,0.09)", borderColor: color },
+        ...(onClick ? { "&:hover": { transform: "translateY(-3px)", boxShadow: "0 10px 28px rgba(0,0,0,0.09)", borderColor: "#cbd5e1" } } : {}),
       }}
     >
       <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1.5 }}>
         <Box sx={{
-          width: 38, height: 38, borderRadius: "10px", bgcolor: bg,
-          display: "flex", alignItems: "center", justifyContent: "center", color, flexShrink: 0,
+          width: 34, height: 34, borderRadius: "10px", bgcolor: NEUTRAL_ICON_BG,
+          display: "flex", alignItems: "center", justifyContent: "center", color: NEUTRAL_ICON_COLOR, flexShrink: 0,
+          "& svg": { fontSize: "1.15rem" },
         }}>
           {icon}
         </Box>
-        <Typography fontSize="0.9rem" fontWeight={700} color="#0f172a" sx={{ lineHeight: 1.2 }}>
+        <Typography fontSize="0.82rem" fontWeight={600} color="#475569" sx={{ lineHeight: 1.2, flex: 1 }}>
           {title}
         </Typography>
+        {summary?.flag && !loading && (
+          <Typography
+            fontSize="0.62rem" fontWeight={700} color={summary.flagColor ?? "#dc2626"}
+            sx={{
+              bgcolor: `${summary.flagColor ?? "#dc2626"}15`, px: 1, py: 0.4, borderRadius: "999px",
+              flexShrink: 0, whiteSpace: "nowrap",
+            }}
+          >
+            {summary.flag}
+          </Typography>
+        )}
       </Box>
 
       {loading ? (
         <Box sx={{ display: "flex", alignItems: "center", flex: 1 }}>
-          <CircularProgress size={22} sx={{ color }} />
+          <CircularProgress size={22} sx={{ color: NEUTRAL_ICON_COLOR }} />
         </Box>
       ) : (
         <Box sx={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-          <Typography fontSize="clamp(1.5rem, 3vw, 2.2rem)" fontWeight={800} sx={{ color, lineHeight: 1.1 }}>
+          <Typography fontSize="clamp(1.5rem, 3vw, 2.2rem)" fontWeight={800} sx={{ color: valueColor, lineHeight: 1.1 }}>
             {summary?.value}
           </Typography>
           <Typography fontSize="0.72rem" color="#94a3b8" mt={0.5} sx={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
@@ -1598,9 +1628,15 @@ const SummaryCard: React.FC<{
         </Box>
       )}
 
-      <Typography fontSize="0.65rem" color="#cbd5e1" mt={1.5}>
-        Click for full breakdown →
-      </Typography>
+      {onClick ? (
+        <Typography fontSize="0.65rem" color="#cbd5e1" mt={1.5}>
+          Click for full breakdown →
+        </Typography>
+      ) : note ? (
+        <Typography fontSize="0.65rem" fontWeight={600} color={NEW_METRIC_NOTE_COLOR} mt={1.5}>
+          {note}
+        </Typography>
+      ) : null}
     </Box>
   );
 };
@@ -2427,38 +2463,147 @@ async function fetchOfferDropoutSummary(): Promise<CardSummary> {
   return { value: `${latest.dropoutPct}%`, sublabel: `${latest.dropoutCount} of ${latest.total} onboardings — ${latest.quarter} ${fyLabel(fy)}` };
 }
 
-// ─── Root page ──────────────────────────────────────────────────────────────
-// Default view is a fixed 3x2 grid of equal-size summary cards — no
-// scrolling. Clicking a card opens that area's full existing widget
-// (unchanged from before) inside a modal.
+// ─── Merged / new cards for the grouped dashboard layout ───────────────────
 
-type CardKey = "teeth" | "gender" | "interns" | "internConversions" | "increments" | "pip" | "askedToLeave" | "referred" | "offerDropout" | "attrition" | "daysToHireOverall" | "recruitment" | "onboarding" | "exit";
+// Interns (%) + Intern→Employee conversions, combined into one card —
+// "10 of 59 · 3 converted to FTE" — instead of two separate tiles.
+async function fetchInternsCombinedSummary(): Promise<CardSummary> {
+  const [internsRes, conversionsRes] = await Promise.all([
+    axios.get(`${API}/onboarding/analytics/interns`, { params: { _t: Date.now() } }),
+    axios.get(`${API}/onboarding/analytics/intern-conversions`, { params: { _t: Date.now() } }),
+  ]);
+  const total = internsRes.data?.total ?? 0;
+  const internsCount = internsRes.data?.internsCount ?? 0;
+  const internPct = internsRes.data?.internPct ?? 0;
+  const conversions = conversionsRes.data?.total ?? 0;
+  if (total === 0) return { value: "—", sublabel: "No current employees" };
+  return { value: `${internPct}%`, sublabel: `${internsCount} of ${total} · ${conversions} converted to FTE` };
+}
+
+// Offer dropout + referred-hire rate, combined into one "recruitment
+// funnel" card — the mockup's "0 of 11 offers · 0% referred".
+async function fetchRecruitmentFunnelSummary(): Promise<CardSummary> {
+  const now = new Date();
+  const fy = fiscalYearOf(now);
+  const [dropoutRes, referredRes] = await Promise.all([
+    axios.get(`${API}/onboarding/analytics/offer-dropout`, { params: { year: fy, _t: Date.now() } }),
+    axios.get(`${API}/onboarding/analytics/referred`, { params: { year: fy, _t: Date.now() } }),
+  ]);
+  const dropoutQuarters: OfferDropoutQuarterRow[] = dropoutRes.data?.quarters ?? [];
+  const referredQuarters: ReferredQuarterRow[] = referredRes.data?.quarters ?? [];
+  const dropoutLatest = latestStartedQuarter(dropoutQuarters, now, fy);
+  const referredLatest = latestStartedQuarter(referredQuarters, now, fy);
+  if (!dropoutLatest || dropoutLatest.total === 0) {
+    return { value: "—", sublabel: "No onboardings recorded this quarter" };
+  }
+  const referredPct = referredLatest?.referredPct ?? 0;
+  return {
+    value: `${dropoutLatest.dropoutPct}% dropout`,
+    sublabel: `${dropoutLatest.dropoutCount} of ${dropoutLatest.total} offers · ${referredPct}% referred — ${dropoutLatest.quarter} ${fyLabel(fy)}`,
+  };
+}
+
+// Recruitment On-Time (%), same data as fetchKpiSummary("recruitment"),
+// with a "Below Target" flag against a fixed target — no target is tracked
+// anywhere in the app today, so this is a placeholder threshold; tell me
+// the real target if 80% isn't it.
+const RECRUITMENT_ON_TIME_TARGET_PCT = 80;
+
+async function fetchRecruitmentOnTimeSummary(): Promise<CardSummary> {
+  const base = await fetchKpiSummary("recruitment");
+  const pct = parseFloat(base.value);
+  if (!isNaN(pct) && pct < RECRUITMENT_ON_TIME_TARGET_PCT) {
+    return { ...base, flag: "Below Target", flagColor: "#dc2626" };
+  }
+  return base;
+}
+
+// Avg Tenure — genuinely new metric (not tracked anywhere in the app
+// before this), current employees only.
+async function fetchAvgTenureSummary(): Promise<CardSummary> {
+  const res = await axios.get(`${API}/onboarding/analytics/avg-tenure`, { params: { _t: Date.now() } });
+  const avgTenureYears = res.data?.avgTenureYears;
+  const employeeCount = res.data?.employeeCount ?? 0;
+  if (avgTenureYears == null) return { value: "—", sublabel: "No current employees with a joining date" };
+  return { value: `${avgTenureYears} yrs`, sublabel: `Across ${employeeCount} current employee${employeeCount === 1 ? "" : "s"}` };
+}
+
+// Cost per Hire — genuinely new metric (not tracked anywhere in the app
+// before this), based on HiringRequisition's own budget field.
+async function fetchCostPerHireSummary(): Promise<CardSummary> {
+  const res = await axios.get(`${API}/hiringrequisitions/analytics/cost-per-hire`, { params: { _t: Date.now() } });
+  const avgCostPerHire = res.data?.avgCostPerHire;
+  const count = res.data?.count ?? 0;
+  const totalJoined = res.data?.totalJoined ?? 0;
+  if (avgCostPerHire == null) return { value: "—", sublabel: "No closed requisitions with a budget on file" };
+  return {
+    value: `₹${avgCostPerHire.toLocaleString("en-IN")}`,
+    sublabel: `Based on ${count} of ${totalJoined} closed requisitions with budget on file`,
+  };
+}
+
+// ─── Root page ──────────────────────────────────────────────────────────────
+// Grouped into sections (Workforce Composition / Recruitment / Retention &
+// Performance / Process Efficiency), each its own row of equal-size summary
+// cards. Clicking a card (where one has a detail view) opens that area's
+// full existing widget inside a modal, unchanged from before.
+
+type CardKey = "teeth" | "gender" | "interns" | "internConversions" | "increments" | "pip" | "askedToLeave" | "referred" | "offerDropout" | "attrition" | "daysToHireOverall" | "recruitment" | "onboarding" | "exit" | "avgTenure" | "costPerHire";
+
+type CardDef = {
+  key: CardKey;
+  title: string;
+  icon: React.ReactNode;
+  color: string;
+  bg: string;
+  fetchSummary: () => Promise<CardSummary>;
+  // false for cards with no full-breakdown widget yet (Avg Tenure, Cost
+  // per Hire are brand new metrics — nothing to drill into yet).
+  clickable?: boolean;
+  // Shown in place of "Click for full breakdown →" on non-clickable cards.
+  note?: string;
+};
 
 const HRAnalyticsDashboard: React.FC = () => {
   const [activeCard, setActiveCard] = useState<CardKey | null>(null);
 
-  const cards: {
-    key: CardKey;
-    title: string;
-    icon: React.ReactNode;
-    color: string;
-    bg: string;
-    fetchSummary: () => Promise<CardSummary>;
-  }[] = [
-    { key: "teeth", title: "Teeth-to-Tail Ratio", icon: <BalanceIcon />, color: ACCENT, bg: "#eef2ff", fetchSummary: fetchTeethToTailSummary },
-    { key: "gender", title: "Gender Ratio", icon: <WcIcon />, color: "#db2777", bg: "#fdf2f8", fetchSummary: fetchGenderSummary },
-    { key: "interns", title: "Interns (%)", icon: <SchoolIcon />, color: INTERN_COLOR, bg: "#f5f3ff", fetchSummary: fetchInternsSummary },
-    { key: "internConversions", title: "Intern to Employee", icon: <SwapHorizIcon />, color: "#0d9488", bg: "#f0fdfa", fetchSummary: fetchInternConversionsSummary },
-    { key: "increments", title: "Salary Increments (%)", icon: <TrendingUpIcon />, color: "#7c3aed", bg: "#f5f3ff", fetchSummary: fetchIncrementSummary },
-    { key: "pip", title: "PIP (%)", icon: <AssessmentIcon />, color: "#d97706", bg: "#fffbeb", fetchSummary: fetchPipSummary },
-    { key: "askedToLeave", title: "Asked to Leave (%)", icon: <PersonRemoveIcon />, color: "#dc2626", bg: "#fef2f2", fetchSummary: fetchAskedToLeaveSummary },
-    { key: "referred", title: "Referred Employees (%)", icon: <GroupAddIcon />, color: "#0284c7", bg: "#eff6ff", fetchSummary: fetchReferredSummary },
-    { key: "offerDropout", title: "Offer Dropout (%)", icon: <CancelIcon />, color: "#db2777", bg: "#fdf2f8", fetchSummary: fetchOfferDropoutSummary },
-    { key: "attrition", title: "Attrition Rate (%)", icon: <TrendingDownIcon />, color: "#dc2626", bg: "#fef2f2", fetchSummary: fetchAttritionSummary },
-    { key: "daysToHireOverall", title: "Avg Days to Hire", icon: <TimelineIcon />, color: ACCENT, bg: "#eef2ff", fetchSummary: () => fetchDaysToHireSummary("overall") },
-    { key: "recruitment", title: "Recruitment On-Time (%)", icon: <WorkIcon />, color: "#0284c7", bg: "#eff6ff", fetchSummary: () => fetchKpiSummary("recruitment") },
-    { key: "onboarding", title: "Onboarding On-Time (%)", icon: <HowToRegIcon />, color: "#059669", bg: "#f0fdf4", fetchSummary: () => fetchKpiSummary("onboarding") },
-    { key: "exit", title: "Exit On-Time (%)", icon: <ExitToAppIcon />, color: "#d97706", bg: "#fffbeb", fetchSummary: () => fetchKpiSummary("exit") },
+  const sections: { title: string; cards: CardDef[] }[] = [
+    {
+      title: "Workforce Composition",
+      cards: [
+        { key: "teeth", title: "Productive : Support Ratio", icon: <BalanceIcon />, color: ACCENT, bg: "#eef2ff", fetchSummary: fetchTeethToTailSummary },
+        { key: "gender", title: "Gender Ratio (Female)", icon: <WcIcon />, color: "#db2777", bg: "#fdf2f8", fetchSummary: fetchGenderSummary },
+        // Interns (%) + Intern→Employee conversions merged into one card.
+        { key: "interns", title: "Interns (%)", icon: <SchoolIcon />, color: INTERN_COLOR, bg: "#f5f3ff", fetchSummary: fetchInternsCombinedSummary },
+        { key: "avgTenure", title: "Avg Tenure", icon: <AccessTimeIcon />, color: "#0d9488", bg: "#f0fdfa", fetchSummary: fetchAvgTenureSummary, clickable: false, note: "New — suggested addition" },
+      ],
+    },
+    {
+      title: "Recruitment",
+      cards: [
+        { key: "recruitment", title: "Recruitment On-Time (%)", icon: <WorkIcon />, color: "#0284c7", bg: "#eff6ff", fetchSummary: fetchRecruitmentOnTimeSummary },
+        { key: "daysToHireOverall", title: "Avg Days to Hire", icon: <TimelineIcon />, color: ACCENT, bg: "#eef2ff", fetchSummary: () => fetchDaysToHireSummary("overall") },
+        // Offer dropout + referred-hire rate merged into one "funnel" card.
+        { key: "offerDropout", title: "Recruitment Funnel", icon: <CancelIcon />, color: "#db2777", bg: "#fdf2f8", fetchSummary: fetchRecruitmentFunnelSummary },
+        { key: "costPerHire", title: "Cost per Hire", icon: <CurrencyRupeeIcon />, color: "#7c3aed", bg: "#f5f3ff", fetchSummary: fetchCostPerHireSummary, clickable: false, note: "New — suggested addition" },
+      ],
+    },
+    {
+      title: "Retention & Performance",
+      cards: [
+        { key: "attrition", title: "Attrition Rate (%)", icon: <TrendingDownIcon />, color: "#dc2626", bg: "#fef2f2", fetchSummary: fetchAttritionSummary },
+        { key: "askedToLeave", title: "Involuntary Attrition (%)", icon: <PersonRemoveIcon />, color: "#dc2626", bg: "#fef2f2", fetchSummary: fetchAskedToLeaveSummary },
+        { key: "pip", title: "On Performance Plan (%)", icon: <AssessmentIcon />, color: "#d97706", bg: "#fffbeb", fetchSummary: fetchPipSummary },
+        { key: "increments", title: "Salary Increments (%)", icon: <TrendingUpIcon />, color: "#7c3aed", bg: "#f5f3ff", fetchSummary: fetchIncrementSummary },
+      ],
+    },
+    {
+      title: "Process Efficiency",
+      cards: [
+        { key: "onboarding", title: "Onboarding On-Time (%)", icon: <HowToRegIcon />, color: "#059669", bg: "#f0fdf4", fetchSummary: () => fetchKpiSummary("onboarding") },
+        { key: "exit", title: "Exit On-Time (%)", icon: <ExitToAppIcon />, color: "#d97706", bg: "#fffbeb", fetchSummary: () => fetchKpiSummary("exit") },
+      ],
+    },
   ];
 
   const activeModuleLabel = MODULES.find((m) => m.key === activeCard)?.label;
@@ -2478,33 +2623,39 @@ const HRAnalyticsDashboard: React.FC = () => {
             </Typography>
           </Box>
 
-          {/* Live metrics — 4x2 grid */}
-          <Box sx={{
-            flexShrink: 0,
-            display: "grid",
-            gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", md: "repeat(4, 1fr)" },
-            gridAutoRows: "minmax(140px, 1fr)",
-            gap: 2,
-          }}>
-            {cards.map((c) => (
-              <SummaryCard
-                key={c.key}
-                title={c.title}
-                icon={c.icon}
-                color={c.color}
-                bg={c.bg}
-                fetchSummary={c.fetchSummary}
-                onClick={() => setActiveCard(c.key)}
-              />
-            ))}
-          </Box>
+          {sections.map((section) => (
+            <Box key={section.title} sx={{ mb: 3, flexShrink: 0 }}>
+              <Typography fontSize="0.7rem" fontWeight={700} color="#94a3b8" letterSpacing="0.08em" mb={1.25}>
+                {section.title.toUpperCase()}
+              </Typography>
+              <Box sx={{
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", md: `repeat(${section.cards.length}, 1fr)` },
+                gridAutoRows: "minmax(140px, 1fr)",
+                gap: 2,
+              }}>
+                {section.cards.map((c) => (
+                  <SummaryCard
+                    key={c.key}
+                    title={c.title}
+                    icon={c.icon}
+                    color={c.color}
+                    bg={c.bg}
+                    fetchSummary={c.fetchSummary}
+                    onClick={c.clickable === false ? undefined : () => setActiveCard(c.key)}
+                    note={c.note}
+                  />
+                ))}
+              </Box>
+            </Box>
+          ))}
 
           {/* Upcoming metrics — not wired to data yet */}
-          <Box sx={{ mt: 3, mb: 1.5, flexShrink: 0 }}>
-            <Typography fontSize="0.95rem" fontWeight={700} color="#0f172a">
-              Upcoming Metrics
+          <Box sx={{ mb: 1.5, flexShrink: 0 }}>
+            <Typography fontSize="0.7rem" fontWeight={700} color="#94a3b8" letterSpacing="0.08em">
+              UPCOMING METRICS
             </Typography>
-            <Typography fontSize="0.75rem" color="#94a3b8">
+            <Typography fontSize="0.75rem" color="#94a3b8" mt={0.5}>
               Tracked manually for now — will be wired to live data soon
             </Typography>
           </Box>

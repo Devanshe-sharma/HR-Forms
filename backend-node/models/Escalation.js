@@ -1,16 +1,10 @@
 const mongoose = require('mongoose');
 const { nextSequence } = require('./Counter');
 
-// Category choices depend on which type of escalation this is — kept here
-// (not just in the frontend) so the API rejects a category that doesn't
-// belong to the chosen type even if a future caller isn't the current form.
-const GENERAL_CATEGORY_OPTIONS = [
-  'Reminder', 'POSH', 'Misbehaviour', 'Absent from Work', 'Refused Offer',
-  'Refused to Join', 'Blacklisted', 'Good Work', 'Provided a Reference', 'Other',
-];
-const DEPARTMENT_CATEGORY_OPTIONS = [
-  'Employee Files/Data incomplete', 'Payroll incorrect', 'POSH Case', 'Problem Without Solution',
-];
+// Universal category list — same across all three modes (Employee, External,
+// BO). Kept here (not just in the frontend) so the API rejects a code that
+// doesn't exist even if a future caller isn't the current form.
+const CATEGORY_CODES = ['T', 'Q', 'C', 'P', 'H', 'Ext', 'Culture', 'POSH', 'Ext Factors', 'Other'];
 
 const targetPersonSchema = new mongoose.Schema(
   {
@@ -41,36 +35,38 @@ const escalationSchema = new mongoose.Schema(
       designation: { type: String, default: '' },
     },
 
+    // Employee: about a named employee. External: logged on behalf of an
+    // external party, but still against a named employee. BO: about a BO
+    // member/client/vendor/referrer — no named employee at all.
     escalationFor: {
       type: String,
-      enum: ['Department Related', 'General'],
+      enum: ['Employee', 'External', 'BO'],
       required: true,
-    },
-    // Always populated now — every escalation names the employee(s) it
-    // concerns, regardless of type.
-    targetEmployees: {
-      type: [targetPersonSchema],
-      validate: v => Array.isArray(v) && v.length > 0,
     },
 
-    category: {
-      type: String,
-      required: true,
-      validate: {
-        validator: function (v) {
-          const allowed = this.escalationFor === 'General' ? GENERAL_CATEGORY_OPTIONS : DEPARTMENT_CATEGORY_OPTIONS;
-          return allowed.includes(v);
-        },
-        message: props => `"${props.value}" is not a valid category for this escalation type.`,
-      },
-    },
+    // Required for Employee/External, empty for BO — enforced in the route,
+    // not here, since Mongoose validators don't get a clean shot at
+    // cross-field conditionals as readably as an explicit route check.
+    targetEmployees: { type: [targetPersonSchema], default: [] },
+
+    department: { type: String, required: true },
+
+    // External mode only.
+    reportedBy: { type: String, default: '' },
+    company: { type: String, default: '' },
+
+    // Optional, any mode.
+    project: { type: String, default: '' },
+    event: { type: String, default: '' },
+
+    category: { type: String, enum: CATEGORY_CODES, required: true },
 
     description: { type: String, required: true, trim: true },
     dateOccurred: { type: Date, required: true },
 
-    // Email addresses CC'd on the notification mail — the filer picks these
-    // in the Classification step, pre-populated with everyone holding the
-    // 'Management' role.
+    // Email addresses additionally notified on the notification mail — the
+    // hardcoded Management group and the concerned employee always get it
+    // regardless of what's (or isn't) in here.
     cc: { type: [String], default: [] },
   },
   { timestamps: true }
@@ -93,5 +89,4 @@ escalationSchema.pre('save', async function () {
 });
 
 module.exports = mongoose.model('Escalation', escalationSchema);
-module.exports.GENERAL_CATEGORY_OPTIONS = GENERAL_CATEGORY_OPTIONS;
-module.exports.DEPARTMENT_CATEGORY_OPTIONS = DEPARTMENT_CATEGORY_OPTIONS;
+module.exports.CATEGORY_CODES = CATEGORY_CODES;
