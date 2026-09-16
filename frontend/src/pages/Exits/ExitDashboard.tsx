@@ -6,7 +6,7 @@ import Navbar from "../../components/Navbar";
 import Sidebar from "../../components/Sidebar";
 import dayjs from "dayjs";
 import {
-  Box, Typography, Button, TextField,
+  Box, Typography, Button, TextField, IconButton,
   InputAdornment, TablePagination, CircularProgress, Tooltip, Chip,
 } from "@mui/material";
 import {
@@ -132,6 +132,10 @@ const ExitDashboard: React.FC = () => {
   const [search, setSearch]       = useState("");
   const [fmsFilter, setFmsFilter] = useState<"All" | "Open" | "Closed">("All");
   const [statusFilter, setStatusFilter] = useState<"All" | "Exited" | "Serving Notice" | "Not Exiting">("All");
+  // Custom date range — filters on the same date used for sorting
+  // (leftDate if they've already left, else plannedExitDate, else resignationDate).
+  const [dateFrom, setDateFrom]   = useState("");
+  const [dateTo, setDateTo]       = useState("");
   const [page, setPage]           = useState(0);
   const [rpp, setRpp]             = useState(25);
   const [viewModal, setViewModal] = useState<{ row: ExitRow; lists: CheckList[] } | null>(null);
@@ -204,6 +208,13 @@ const ExitDashboard: React.FC = () => {
     if (statusFilter === "Exited" && !isExitedStatus(r)) return false;
     if (statusFilter === "Serving Notice" && !isServingNotice(r)) return false;
     if (statusFilter === "Not Exiting" && !isNotExitingStatus(r)) return false;
+    if (dateFrom || dateTo) {
+      const d = r.leftDate ?? r.plannedExitDate ?? r.resignationDate;
+      if (!d) return false;
+      const dd = dayjs(d);
+      if (dateFrom && dd.isBefore(dayjs(dateFrom), "day")) return false;
+      if (dateTo && dd.isAfter(dayjs(dateTo), "day")) return false;
+    }
     const q = search.toLowerCase();
     return !q || [r.name, r.dept, r.designation, r.persEmail,
                   r.mobile, r.officialEmail, r.exitStatus, r.fmsStatus]
@@ -317,6 +328,36 @@ const ExitDashboard: React.FC = () => {
                   </button>
                 ))}
               </Box>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.6 }}>
+                <TextField size="small" type="date" label="Exit from" InputLabelProps={{ shrink: true }}
+                  value={dateFrom}
+                  onChange={e => { setDateFrom(e.target.value); setPage(0); }}
+                  sx={{ width: 148,
+                    "& .MuiOutlinedInput-root": { borderRadius: "8px", fontSize: "0.72rem",
+                      "& fieldset": { borderColor: "#e2e8f0" },
+                      "&.Mui-focused fieldset": { borderColor: "#dc2626" },
+                    },
+                    "& .MuiInputBase-input": { py: "5px" },
+                  }} />
+                <Typography fontSize="0.7rem" color="#94a3b8">to</Typography>
+                <TextField size="small" type="date" label="Exit to" InputLabelProps={{ shrink: true }}
+                  value={dateTo}
+                  onChange={e => { setDateTo(e.target.value); setPage(0); }}
+                  sx={{ width: 148,
+                    "& .MuiOutlinedInput-root": { borderRadius: "8px", fontSize: "0.72rem",
+                      "& fieldset": { borderColor: "#e2e8f0" },
+                      "&.Mui-focused fieldset": { borderColor: "#dc2626" },
+                    },
+                    "& .MuiInputBase-input": { py: "5px" },
+                  }} />
+                {(dateFrom || dateTo) && (
+                  <Tooltip title="Clear date filter">
+                    <IconButton size="small" onClick={() => { setDateFrom(""); setDateTo(""); setPage(0); }}>
+                      <Close sx={{ fontSize: 14, color: "#94a3b8" }} />
+                    </IconButton>
+                  </Tooltip>
+                )}
+              </Box>
               <TextField size="small" placeholder="Search name, dept, email…"
                 value={search}
                 onChange={e => { setSearch(e.target.value); setPage(0); }}
@@ -346,7 +387,8 @@ const ExitDashboard: React.FC = () => {
               </Box>
             ) : paginated.length === 0 ? (
               <Box sx={{ textAlign: "center", py: 8, color: "#94a3b8", fontSize: "0.85rem" }}>
-                {rows.length === 0 ? "No exits yet." : "No results match your search."}
+                {rows.length === 0 ? "No exits yet."
+                  : (dateFrom || dateTo) ? "No results in this date range." : "No results match your search."}
               </Box>
             ) : (
               <>

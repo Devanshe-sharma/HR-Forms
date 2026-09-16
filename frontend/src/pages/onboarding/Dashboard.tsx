@@ -6,7 +6,7 @@ import Navbar from "../../components/Navbar";
 import Sidebar from "../../components/Sidebar";
 import dayjs from "dayjs";
 import {
-  Box, Typography, Button, TextField,
+  Box, Typography, Button, TextField, IconButton,
   InputAdornment, TablePagination, CircularProgress, Tooltip, Chip,
 } from "@mui/material";
 import {
@@ -158,6 +158,10 @@ const OnboardingDashboard: React.FC = () => {
   const [search, setSearch]       = useState("");
   const [fmsFilter, setFmsFilter] = useState<"All" | "Open" | "Closed">("All");
   const [employmentFilter, setEmploymentFilter] = useState<"All" | "Current" | "Exited">("All");
+  // Custom date range — filters on the same date used for sorting
+  // (joinedDate if they've joined, else plannedJoiningDate).
+  const [dateFrom, setDateFrom]   = useState("");
+  const [dateTo, setDateTo]       = useState("");
   const [page, setPage]           = useState(0);
   const [rpp, setRpp]             = useState(25);
   const [viewModal, setViewModal] = useState<{ row: OnboardingRow; lists: CheckList[] } | null>(null);
@@ -238,6 +242,13 @@ const OnboardingDashboard: React.FC = () => {
     if (fmsFilter !== "All" && r.fmsStatus !== fmsFilter) return false;
     if (employmentFilter === "Current" && !isCurrent(r)) return false;
     if (employmentFilter === "Exited" && !isExited(r)) return false;
+    if (dateFrom || dateTo) {
+      const d = r.joinedDate ?? r.plannedJoiningDate;
+      if (!d) return false;
+      const dd = dayjs(d);
+      if (dateFrom && dd.isBefore(dayjs(dateFrom), "day")) return false;
+      if (dateTo && dd.isAfter(dayjs(dateTo), "day")) return false;
+    }
     const q = search.toLowerCase();
     return !q || [r.name, r.dept, r.designation, r.persEmail,
                   r.mobile, r.officialEmail, r.joiningStatus, r.fmsStatus]
@@ -363,6 +374,36 @@ const OnboardingDashboard: React.FC = () => {
                   </button>
                 ))}
               </Box>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.6 }}>
+                <TextField size="small" type="date" label="Joining from" InputLabelProps={{ shrink: true }}
+                  value={dateFrom}
+                  onChange={e => { setDateFrom(e.target.value); setPage(0); }}
+                  sx={{ width: 148,
+                    "& .MuiOutlinedInput-root": { borderRadius: "8px", fontSize: "0.72rem",
+                      "& fieldset": { borderColor: "#e2e8f0" },
+                      "&.Mui-focused fieldset": { borderColor: "#6366f1" },
+                    },
+                    "& .MuiInputBase-input": { py: "5px" },
+                  }} />
+                <Typography fontSize="0.7rem" color="#94a3b8">to</Typography>
+                <TextField size="small" type="date" label="Joining to" InputLabelProps={{ shrink: true }}
+                  value={dateTo}
+                  onChange={e => { setDateTo(e.target.value); setPage(0); }}
+                  sx={{ width: 148,
+                    "& .MuiOutlinedInput-root": { borderRadius: "8px", fontSize: "0.72rem",
+                      "& fieldset": { borderColor: "#e2e8f0" },
+                      "&.Mui-focused fieldset": { borderColor: "#6366f1" },
+                    },
+                    "& .MuiInputBase-input": { py: "5px" },
+                  }} />
+                {(dateFrom || dateTo) && (
+                  <Tooltip title="Clear date filter">
+                    <IconButton size="small" onClick={() => { setDateFrom(""); setDateTo(""); setPage(0); }}>
+                      <Close sx={{ fontSize: 14, color: "#94a3b8" }} />
+                    </IconButton>
+                  </Tooltip>
+                )}
+              </Box>
               <TextField size="small" placeholder="Search name, dept, email…"
                 value={search}
                 onChange={e => { setSearch(e.target.value); setPage(0); }}
@@ -392,7 +433,8 @@ const OnboardingDashboard: React.FC = () => {
               </Box>
             ) : paginated.length === 0 ? (
               <Box sx={{ textAlign: "center", py: 8, color: "#94a3b8", fontSize: "0.85rem" }}>
-                {rows.length === 0 ? "No onboardings yet. Add one to get started." : "No results match your search."}
+                {rows.length === 0 ? "No onboardings yet. Add one to get started."
+                  : (dateFrom || dateTo) ? "No results in this date range." : "No results match your search."}
               </Box>
             ) : (
               <>
