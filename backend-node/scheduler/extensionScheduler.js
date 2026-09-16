@@ -1,5 +1,9 @@
 const cron = require('node-cron');
 const Confirmations = require('../models/Confirmations');
+// Re-opening reaches 'pending_manager' the same way advanceStageIfDue()
+// does, so it queues the same Mail 1 draft — a manager reopened from an
+// extension needs the same request as anyone else newly entering review.
+const sendConfirmationManagerRequest = require('../emails/senders/sendConfirmationManagerRequest');
 
 // ─── Daily scheduler: Re-evaluate extended probations ─────────────────────────
 // Runs at 00:05 AM every day (5 minutes after midnight)
@@ -56,12 +60,25 @@ function startExtensionScheduler() {
 
       console.log(`[Extension Scheduler] ✅ Successfully reopened ${result.modifiedCount} records for re-evaluation`);
 
-      // Log details of reopened records
-      recordsToReopen.forEach(record => {
+      // Log details of reopened records, and queue a fresh Manager
+      // Request draft for each (does NOT send — see the require comment
+      // above). A mail-queue failure here must never affect the reopen
+      // itself, which already succeeded via the bulk update above.
+      for (const record of recordsToReopen) {
         const reviewStr = record.reviewDate ? record.reviewDate.toISOString().split('T')[0] : 'N/A';
         const tillStr = record.extendedTill ? record.extendedTill.toISOString().split('T')[0] : 'N/A';
         console.log(`  • ${record.employeeName} (${record.employeeCode}) - Review: ${reviewStr}, Till: ${tillStr}`);
-      });
+
+        try {
+          const fresh = await Confirmations.findById(record._id);
+          if (!fresh) continue;
+          fresh.managerRequestedAt = new Date();
+          await fresh.save();
+          await sendConfirmationManagerRequest(fresh);
+        } catch (mailErr) {
+          console.error(`[Extension Scheduler] Manager request mail-queue failed for ${record.employeeName}:`, mailErr.message);
+        }
+      }
     } catch (error) {
       console.error('[Extension Scheduler] ❌ Error:', error.message);
       console.error('[Extension Scheduler] Stack:', error.stack);

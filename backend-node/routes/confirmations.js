@@ -6,6 +6,20 @@ const Confirmations = require('../models/Confirmations');
 const Onboarding    = require('../models/onboardingModel');
 const { triggerReferralBonus } = require('../emails');
 
+// ── Confirmation mail queue (added 2026-09-16) ─────────────────────────────
+// Every one of these QUEUES an editable draft (see
+// utils/confirmationMailQueue.js) — none of them send anything. Actual
+// sending only ever happens from routes/confirmationMailDrafts.js's
+// POST /:id/send, gated behind CONFIRMATION_MAILS_ENABLED.
+const sendConfirmationManagerRequest    = require('../emails/senders/sendConfirmationManagerRequest');
+const sendConfirmationManagementRequest = require('../emails/senders/sendConfirmationManagementRequest');
+const sendConfirmationHrNotify          = require('../emails/senders/sendConfirmationHrNotify');
+const { verifyConfirmationAction }      = require('../utils/confirmationMailSigning');
+const { authenticate } = require('../middleware/authenticate');
+const { requireRole }  = require('../config/roles');
+const multer = require('multer');
+const { uploadFileToDrive } = require('../utils/googleDrive');
+
 const err = (res, code, msg) => res.status(code).json({ success: false, message: msg });
 
 const EXITED_STATUS_VALUES = new Set(['Left', 'Already Left']);
@@ -140,6 +154,7 @@ async function advanceStageIfDue(record) {
   if (months === null || months < 5) return false;
 
   record.stage = 'pending_manager';
+  record.managerRequestedAt = new Date();
   record.history.push({
     status       : record.currentStatus,
     reason       : 'Confirmation review opened automatically — 5 months\' tenure reached',
@@ -148,6 +163,13 @@ async function advanceStageIfDue(record) {
     date         : new Date(),
   });
   await record.save();
+
+  // Fire-and-forget — queues a draft only, never a real send (see the
+  // require comment above). A mail-queue failure must never block the
+  // stage transition itself.
+  sendConfirmationManagerRequest(record).catch((e) =>
+    console.error('[confirmations] manager request mail-queue failed:', e.message));
+
   return true;
 }
 
@@ -527,6 +549,7 @@ router.put('/:id/manager', async (req, res) => {
     record.managerDecision = managerDecisionObj;
     record.currentStatus = status;
     record.stage         = 'pending_management';
+    record.managementRequestedAt = new Date();
     record.history.push({
       status, reason,
       monthsExtended : status === 'extended' ? Number(monthsExtended) : null,
@@ -537,6 +560,9 @@ router.put('/:id/manager', async (req, res) => {
 
     await record.save();
     await syncConfirmationStatusToOnboarding(record);
+
+    sendConfirmationManagementRequest(record).catch((e) =>
+      console.error('[confirmations] management request mail-queue failed:', e.message));
 
     res.json({ success: true, data: record });
   } catch (e) {
@@ -599,8 +625,10 @@ router.put('/:id/management', async (req, res) => {
       record.reviewDate     = reviewDateObj;
       record.stage          = 'on_hold';  // ← Don't complete, put on hold
     } else {
-      // Other statuses (confirmed, not_confirmed) complete process
-      record.stage = 'completed';
+      // Other statuses (confirmed, not_confirmed, probation) still need
+      // HR to upload the confirmation/extension letter before this is
+      // truly done (added 2026-09-16) — was 'completed' directly before.
+      record.stage = 'pending_hr';
     }
 
     record.history.push({
@@ -615,9 +643,203 @@ router.put('/:id/management', async (req, res) => {
     await syncConfirmationStatusToOnboarding(record);
     await maybeTriggerReferralBonus(record);
 
+    if (record.stage === 'pending_hr') {
+      sendConfirmationHrNotify(record).catch((e) =>
+        console.error('[confirmations] HR notify mail-queue failed:', e.message));
+    }
+
     res.json({ success: true, data: record });
   } catch (e) {
     err(res, 500, 'Failed to submit management decision');
+  }
+});
+
+// ─── PUT /api/confirmations/:id/hr ────────────────────────────────────────────
+// HR final action (added 2026-09-16) — uploads the confirmation/extension
+// letter and closes the record out. Same Drive-upload convention as
+// routes/salaryRevisions.js's /:id/upload-document (multer memoryStorage,
+// one file per request, makePublic:false).
+const uploadConfirmationDoc = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png'];
+    const ext = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
+    allowed.includes(ext) ? cb(null, true) : cb(new Error('Invalid file type — use PDF, Word, or an image.'));
+  },
+}).single('file');
+
+router.put('/:id/hr', authenticate, requireRole(['Admin', 'HR']), uploadConfirmationDoc, async (req, res) => {
+  try {
+    if (!req.file) return err(res, 400, 'No file was selected');
+
+    const record = await Confirmations.findById(req.params.id);
+    if (!record) return err(res, 404, 'Confirmation not found');
+    if (record.stage !== 'pending_hr') {
+      return err(res, 400, `Cannot upload a document — current stage is '${record.stage}'`);
+    }
+
+    const parentFolderId = process.env.GOOGLE_DRIVE_CONFIRMATION_FOLDER_ID || process.env.GOOGLE_DRIVE_RESUME_FOLDER_ID;
+    const driveLink = await uploadFileToDrive(
+      req.file.buffer, req.file.originalname, req.file.mimetype,
+      parentFolderId, { makePublic: false }
+    );
+
+    const submittedAt = new Date();
+    record.hrAction = { document: { fileName: req.file.originalname, driveLink }, submittedAt };
+    record.stage = 'completed';
+    record.history.push({
+      status       : record.currentStatus,
+      reason       : 'Confirmation documentation uploaded — record closed',
+      changedBy    : 'hr',
+      changedByName: req.headers['x-user-name'] || 'HR',
+      date         : submittedAt,
+    });
+
+    await record.save();
+    await syncConfirmationStatusToOnboarding(record);
+
+    res.json({ success: true, data: record });
+  } catch (e) {
+    err(res, 500, 'Failed to upload document: ' + e.message);
+  }
+});
+
+// ─── GET/POST /api/confirmations/:id/mail-action ──────────────────────────────
+// Public, unauthenticated — feeds and accepts the manager/management
+// mail-action form (frontend/src/pages/outsider/ConfirmationAction.tsx),
+// mirroring routes/salaryRevisions.js's own /:id/mail-action pair exactly.
+// The decision logic here is intentionally a self-contained duplicate of
+// PUT /:id/manager and /:id/management above rather than a shared
+// extraction — those two routes are already live against 100+ real
+// records, and refactoring them again just to share code with a brand
+// new public endpoint is a needless risk to working, tested logic.
+router.get('/:id/mail-action', async (req, res) => {
+  try {
+    const { role, sig } = req.query;
+    if (!['manager', 'management'].includes(role) || !verifyConfirmationAction(req.params.id, role, sig)) {
+      return err(res, 403, "This link couldn't be verified.");
+    }
+
+    const record = await Confirmations.findById(req.params.id).lean();
+    if (!record) return err(res, 404, 'Confirmation not found');
+
+    const expectedStage = role === 'manager' ? 'pending_manager' : 'pending_management';
+
+    res.json({
+      success: true,
+      data: {
+        employeeName : record.employeeName,
+        department   : record.department,
+        designation  : record.designation,
+        joiningDate  : record.joiningDate,
+        reportingManager: record.reportingManager,
+        stage        : record.stage,
+        actionable   : record.stage === expectedStage,
+        managerDecision: role === 'management' ? record.managerDecision : undefined,
+      },
+    });
+  } catch (e) {
+    err(res, 500, 'Failed to load this link');
+  }
+});
+
+router.post('/:id/mail-action', async (req, res) => {
+  try {
+    const { role, sig, status, reason, monthsExtended } = req.body;
+    if (!['manager', 'management'].includes(role) || !verifyConfirmationAction(req.params.id, role, sig)) {
+      return err(res, 403, "This link couldn't be verified.");
+    }
+    if (!status || !reason) return err(res, 400, 'status and reason are required');
+    if (!['probation', 'confirmed', 'extended', 'not_confirmed'].includes(status)) {
+      return err(res, 400, 'Invalid status value');
+    }
+    if (status === 'extended' && (!monthsExtended || monthsExtended < 1)) {
+      return err(res, 400, 'monthsExtended (min 1) is required when extending');
+    }
+
+    const record = await Confirmations.findById(req.params.id);
+    if (!record) return err(res, 404, 'Confirmation not found');
+
+    const decisionObj = {
+      status, reason,
+      monthsExtended: status === 'extended' ? Number(monthsExtended) : null,
+      submittedAt: new Date(),
+    };
+
+    const applyExtension = () => {
+      const months = Number(monthsExtended);
+      let baseReviewDate = record.reviewDate;
+      if (!baseReviewDate) {
+        const joined = parseJoiningDate(record.joiningDate);
+        baseReviewDate = joined ? new Date(joined) : new Date();
+        if (joined) baseReviewDate.setMonth(baseReviewDate.getMonth() + 6);
+      }
+      const extendedTillDate = addMonths(baseReviewDate, months);
+      const reviewDateObj = addMonths(baseReviewDate, months - 1);
+      if (reviewDateObj >= extendedTillDate) return 'Review date must be before extension end date';
+      record.extendedMonths = months;
+      record.extendedTill   = extendedTillDate;
+      record.reviewDate     = reviewDateObj;
+      return null;
+    };
+
+    if (role === 'manager') {
+      if (record.stage !== 'pending_manager') {
+        return err(res, 400, `This request has already been actioned (current stage: ${record.stage}).`);
+      }
+      if (status === 'extended') {
+        const extErr = applyExtension();
+        if (extErr) return err(res, 400, extErr);
+      }
+      record.managerDecision = decisionObj;
+      record.currentStatus = status;
+      record.stage = 'pending_management';
+      record.managementRequestedAt = new Date();
+      record.history.push({
+        status, reason, monthsExtended: decisionObj.monthsExtended,
+        changedBy: 'manager', changedByName: 'Manager (via email)', date: new Date(),
+      });
+
+      await record.save();
+      await syncConfirmationStatusToOnboarding(record);
+
+      sendConfirmationManagementRequest(record).catch((e) =>
+        console.error('[confirmations] management request mail-queue failed:', e.message));
+
+      return res.json({ success: true, message: 'Manager decision saved' });
+    }
+
+    // role === 'management'
+    if (record.stage !== 'pending_management') {
+      return err(res, 400, `This request has already been actioned (current stage: ${record.stage}).`);
+    }
+    if (status === 'extended') {
+      const extErr = applyExtension();
+      if (extErr) return err(res, 400, extErr);
+      record.stage = 'on_hold';
+    } else {
+      record.stage = 'pending_hr';
+    }
+    record.managementDecision = decisionObj;
+    record.currentStatus = status;
+    record.history.push({
+      status, reason, monthsExtended: decisionObj.monthsExtended,
+      changedBy: 'management', changedByName: 'Management (via email)', date: new Date(),
+    });
+
+    await record.save();
+    await syncConfirmationStatusToOnboarding(record);
+    await maybeTriggerReferralBonus(record);
+
+    if (record.stage === 'pending_hr') {
+      sendConfirmationHrNotify(record).catch((e) =>
+        console.error('[confirmations] HR notify mail-queue failed:', e.message));
+    }
+
+    res.json({ success: true, message: 'Management decision saved' });
+  } catch (e) {
+    err(res, 500, 'Failed to submit decision: ' + e.message);
   }
 });
 

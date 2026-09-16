@@ -9,6 +9,7 @@ import ReferCandidatePage from "./pages/outsider/ReferCandidate";
 import InterviewFeedbackPage from "./pages/outsider/InterviewFeedback";
 import CandidateDocumentUpload from "./pages/outsider/CandidateDocumentUpload";
 import SalaryRevisionAction from "./pages/outsider/SalaryRevisionAction";
+import ConfirmationAction from "./pages/outsider/ConfirmationAction";
 import ForceChangePasswordPage from "./pages/ForceChangePassword";
 import EmployeeLetter from "./pages/EmployeeLetter";
 import Profile from "./pages/Profile";
@@ -70,6 +71,7 @@ export default function App() {
         <Route path="/interview-feedback/:recordId/:roundId" element={<InterviewFeedbackPage />} />
         <Route path="/candidate-upload/:id" element={<CandidateDocumentUpload />} />
         <Route path="/salary-revision-action/:id" element={<SalaryRevisionAction />} />
+        <Route path="/confirmation-action/:id" element={<ConfirmationAction />} />
 
         {/* Protected Routes */}
         <Route element={<ProtectedRoute />}>

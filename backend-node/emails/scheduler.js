@@ -18,6 +18,9 @@ const sendSalaryRevisionAutoTrigger = require('./senders/sendSalaryRevisionAutoT
 const sendSalaryRevisionManagerEscalation = require('./senders/sendSalaryRevisionManagerEscalation');
 const sendSalaryRevisionFinalEscalation   = require('./senders/sendSalaryRevisionFinalEscalation');
 const sendSalaryRevisionMailQueueDigest    = require('./senders/sendSalaryRevisionMailQueueDigest');
+const sendConfirmationManagerReminder     = require('./senders/sendConfirmationManagerReminder');
+const sendConfirmationManagementReminder  = require('./senders/sendConfirmationManagementReminder');
+const sendConfirmationDue                 = require('./senders/sendConfirmationDue');
 
 // Import models for auto-archive/complete
 const Outing = require('../models/Outing');
@@ -250,6 +253,50 @@ function startEmailScheduler() {
   //     console.error('Salary Revision Mail Queue digest failed:', err);
   //   }
   // }, { timezone: tz });
+
+  // ─── Confirmations mail queue (added 2026-09-16) ───────────────────────────
+  // Same convention as Salary Revision above — every one of these QUEUES
+  // an editable draft (utils/confirmationMailQueue.js), none of them
+  // send. Manager Request (Mail 1) itself isn't cron-driven — it fires
+  // directly off advanceStageIfDue() in routes/confirmations.js the
+  // moment a review opens (and off the extension-reopen in
+  // scheduler/extensionScheduler.js), same as Management Request (Mail 2)
+  // and HR Notify (Mail 3) fire directly off their own route transitions.
+
+  // 9i. Confirmation — quarterly due digest, to Management. Same schedule
+  // as Salary Revision's (1st of Apr/Jul/Oct/Jan), offset 15 minutes so
+  // the two quarterly jobs don't run in the same instant.
+  cron.schedule('15 9 1 4,7,10,1 *', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Queuing confirmation due-this-quarter digest`);
+    try {
+      const result = await sendConfirmationDue();
+      console.log(`Confirmation due-this-quarter digest queued — ${result.dueCount} employee(s)`);
+    } catch (err) {
+      console.error('Confirmation due-this-quarter digest failed:', err);
+    }
+  }, { timezone: tz });
+
+  // 9j. Confirmation — manager reminder sweep (Mail 1a).
+  cron.schedule('40 9 * * *', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Checking confirmation manager reminders`);
+    try {
+      const result = await sendConfirmationManagerReminder();
+      console.log(`Confirmation manager reminder queued — ${result.remindedCount} record(s)`);
+    } catch (err) {
+      console.error('Confirmation manager reminder failed:', err);
+    }
+  }, { timezone: tz });
+
+  // 9k. Confirmation — management reminder sweep (Mail 2a).
+  cron.schedule('45 9 * * *', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Checking confirmation management reminders`);
+    try {
+      const result = await sendConfirmationManagementReminder();
+      console.log(`Confirmation management reminder queued — ${result.remindedCount} record(s)`);
+    } catch (err) {
+      console.error('Confirmation management reminder failed:', err);
+    }
+  }, { timezone: tz });
 
   // ─── Outing Auto-Complete & Auto-Archive ───
   cron.schedule('0 0 * * *', async () => {

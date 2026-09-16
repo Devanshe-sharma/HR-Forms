@@ -47,9 +47,15 @@ const ConfirmationSchema = new Schema(
     // manager/management action yet (that only starts once tenure hits 5
     // months — see advanceStageIfDue() in routes/confirmations.js). Once a
     // record leaves 'not_due' it's never sent back to it automatically.
+    // 'pending_hr' (added 2026-09-16) — sits between Management deciding
+    // confirmed/not_confirmed and the record actually closing out: HR
+    // still has to upload the confirmation/extension letter before this
+    // reaches 'completed'. An 'extended' decision skips this entirely and
+    // goes straight to 'on_hold' as before — there's nothing for HR to do
+    // on an extension, it just reopens automatically via the cron.
     stage : {
       type    : String,
-      enum    : ['not_due', 'pending_manager', 'pending_management', 'completed', 'on_hold'],
+      enum    : ['not_due', 'pending_manager', 'pending_management', 'pending_hr', 'completed', 'on_hold'],
       default : 'not_due',
     },
 
@@ -73,6 +79,27 @@ const ConfirmationSchema = new Schema(
       monthsExtended : { type: Number, default: null },
       submittedAt    : { type: Date,   default: null },
     },
+
+    // HR final action (step 3, added 2026-09-16) — HR uploads the
+    // confirmation/extension letter to close the record out. Only ever
+    // set once, at the same moment stage moves 'pending_hr' -> 'completed'.
+    hrAction : {
+      document : {
+        fileName  : { type: String, default: '' },
+        driveLink : { type: String, default: '' },
+      },
+      submittedAt : { type: Date, default: null },
+    },
+
+    // ── Confirmation mail-queue timing (added 2026-09-16) ────────────────────────
+    // Mirrors Salary Revision's managerRequestedAt/managerEscalationSentAt
+    // convention exactly — set once, the moment each mail actually queues
+    // (not retroactively for records already open before this feature
+    // existed, so no legacy backlog suddenly starts generating mail).
+    managerRequestedAt      : { type: Date, default: null }, // when Mail 1 (Manager Request) queued
+    managerReminderSentAt   : { type: Date, default: null }, // gate — Manager Reminder is one-shot
+    managementRequestedAt   : { type: Date, default: null }, // when Mail 2 (Management Request) queued
+    managementReminderSentAt: { type: Date, default: null }, // gate — Management Reminder is one-shot
 
     // Full audit trail
     history : [HistorySchema],

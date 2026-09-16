@@ -1,9 +1,9 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
-  Box, Typography, Chip, CircularProgress, Alert,
+  Box, Typography, Chip, CircularProgress, Alert, Modal,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, Button, TextField, Select, MenuItem, FormControl, InputLabel,
-  Avatar, Stack, IconButton, Tooltip, Dialog, DialogTitle, DialogContent, 
+  Avatar, Stack, IconButton, Tooltip, Dialog, DialogTitle, DialogContent,
   DialogActions, RadioGroup, FormControlLabel, Radio,
 } from '@mui/material';
 import ArrowBackIcon      from '@mui/icons-material/ArrowBack';
@@ -24,7 +24,11 @@ type CurrentStatus   = 'probation' | 'confirmed' | 'extended' | 'not_confirmed';
 // see advanceStageIfDue() in routes/confirmations.js. Matches the actual
 // Mongoose schema enum exactly (this previously had 'hr_pending'/'closed'
 // values that didn't exist in the backend enum at all).
-type Stage           = 'not_due' | 'pending_manager' | 'pending_management' | 'completed' | 'on_hold';
+// 'pending_hr' (added 2026-09-16) — Management decided confirmed/
+// not_confirmed/probation, but HR still has to upload the confirmation/
+// extension letter before this reaches 'completed'. An 'extended'
+// decision skips this and goes straight to 'on_hold' as before.
+type Stage           = 'not_due' | 'pending_manager' | 'pending_management' | 'pending_hr' | 'completed' | 'on_hold';
 type ProbationStatus = 'probation' | 'confirmed' | 'not_applicable' | null;
 type UserRole        = 'hr' | 'manager' | 'management' | 'admin';
 
@@ -59,6 +63,13 @@ interface PIPDetails {
   reason        : string;
 }
 
+// HR final action (added 2026-09-16) — set once, the moment stage moves
+// 'pending_hr' -> 'completed'.
+interface HrAction {
+  document    : { fileName: string; driveLink: string } | null;
+  submittedAt : string | null;
+}
+
 interface Confirmation {
   _id               : string;
   employeeId        : string;
@@ -73,6 +84,7 @@ interface Confirmation {
   currentStatus     : CurrentStatus;
   stage             : Stage;
   hrDecision        : Decision | null;
+  hrAction          : HrAction | null;
   managerDecision   : Decision | null;
   managementDecision: Decision | null;
   history           : HistoryEntry[];
@@ -117,6 +129,7 @@ const STAGE_CFG: Record<Stage, { label: string }> = {
   not_due             : { label: 'Not Yet Due'       },
   pending_manager     : { label: 'Pending Manager'    },
   pending_management  : { label: 'Pending Management' },
+  pending_hr          : { label: 'Pending HR'          },
   completed           : { label: 'Completed'          },
   on_hold             : { label: 'On Hold'            },
 };
@@ -199,6 +212,325 @@ function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error' 
         {msg}
       </Alert>
     </Box>
+  );
+}
+
+// ─── Confirmation Mail Queue ────────────────────────────────────────────────
+// Every Confirmation mail (Manager/Management Request + Reminder, HR
+// Notify, quarterly digest) lands as an editable draft instead of
+// sending itself — mirrors Salary Revision's mail-queue architecture
+// exactly (see SalaryRevisionNew.tsx's RevisionMailButtons for the same
+// pattern). No global queue screen — each mail shows up inline on the
+// exact card it belongs to, via ConfirmationMailButtons below.
+
+const CONFIRMATION_MAIL_TYPE_LABEL: Record<string, string> = {
+  managerRequest: 'Manager Request',
+  managerReminder: 'Manager Reminder',
+  managementRequest: 'Management Request',
+  managementReminder: 'Management Reminder',
+  hrNotify: 'HR Notify',
+  quarterlyDigest: 'Quarterly Due Digest',
+};
+
+interface ConfirmationMailDraft {
+  _id: string;
+  confirmationId: string | null;
+  mailType: string;
+  employeeName: string;
+  to: string;
+  cc: string;
+  bcc: string;
+  subject: string;
+  html: string;
+  status: 'draft' | 'sent' | 'discarded';
+  createdAt: string;
+  sentAt: string | null;
+  sentBy: string;
+}
+
+const CONFIRMATION_DRAFTS_API = `${API_BASE}/confirmation-mail-drafts`;
+
+// Inline "Send Mail" control for one confirmation record's relevant mail
+// types — used on the Manager Decision and Management Decision boxes,
+// each passed only the mail type(s) that belong to that step. A draft
+// shows a "Send Mail" button; once actually sent it flips to a plain
+// "Sent" badge — no re-send path exists from here. Renders nothing for a
+// non-Admin/HR viewer.
+function ConfirmationMailButtons({ confirmationId, mailTypes }: { confirmationId?: string; mailTypes: string[] }) {
+  const role = localStorage.getItem('role') || '';
+  const canSeeMail = role === 'Admin' || role === 'HR';
+  const mailTypesKey = mailTypes.join(',');
+
+  const [drafts, setDrafts] = useState<ConfirmationMailDraft[]>([]);
+  const [editing, setEditing] = useState<ConfirmationMailDraft | null>(null);
+  const [editTo, setEditTo] = useState('');
+  const [editCc, setEditCc] = useState('');
+  const [editBcc, setEditBcc] = useState('');
+  const [editSubject, setEditSubject] = useState('');
+  const [editHtml, setEditHtml] = useState('');
+  const bodyEditorRef = useRef<HTMLDivElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    if (!canSeeMail || !confirmationId) return;
+    try {
+      const { data } = await axios.get(`${CONFIRMATION_DRAFTS_API}?status=all&confirmationId=${confirmationId}`);
+      const all: ConfirmationMailDraft[] = data.data || [];
+      const wanted = mailTypesKey.split(',');
+      setDrafts(all.filter(d => wanted.includes(d.mailType)).sort((a, b) => wanted.indexOf(a.mailType) - wanted.indexOf(b.mailType)));
+    } catch { /* secondary panel — a failed load here shouldn't block the record UI */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmationId, canSeeMail, mailTypesKey]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (!canSeeMail || !confirmationId || !drafts.length) return null;
+
+  const openEdit = (d: ConfirmationMailDraft) => {
+    setEditing(d);
+    setEditTo(d.to); setEditCc(d.cc || ''); setEditBcc(d.bcc || '');
+    setEditSubject(d.subject); setEditHtml(d.html);
+    setError('');
+  };
+
+  const sendMail = async () => {
+    if (!editing) return;
+    setBusy(true);
+    setError('');
+    try {
+      const html = bodyEditorRef.current?.innerHTML ?? editHtml;
+      const saveRes = await axios.put(`${CONFIRMATION_DRAFTS_API}/${editing._id}`, {
+        to: editTo, cc: editCc, bcc: editBcc, subject: editSubject, html,
+      });
+      if (!saveRes.data.success) throw new Error(saveRes.data.message || 'Save failed');
+
+      const sendRes = await axios.post(`${CONFIRMATION_DRAFTS_API}/${editing._id}/send`);
+      if (!sendRes.data.success) throw new Error(sendRes.data.message || 'Send failed');
+
+      setEditing(null);
+      load();
+    } catch (e: any) { setError(e?.response?.data?.message || e?.message || 'Send failed'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px dashed #e2e8f0' }}>
+      <Stack spacing={0.75}>
+        {drafts.map(d => (
+          <Box key={d._id} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+            <Typography fontSize={11} color="text.secondary">{CONFIRMATION_MAIL_TYPE_LABEL[d.mailType] || d.mailType}</Typography>
+            {d.status === 'draft' ? (
+              <Button size="small" variant="outlined" onClick={() => openEdit(d)}
+                sx={{ textTransform: 'none', fontSize: 11, py: 0.2, px: 1, minWidth: 0, borderColor: '#2563EB', color: '#2563EB' }}>
+                Send Mail
+              </Button>
+            ) : d.status === 'sent' ? (
+              <Chip size="small" icon={<CheckCircleIcon sx={{ fontSize: '12px !important' }} />}
+                label={`Sent${d.sentBy ? ` · ${d.sentBy}` : ''}`}
+                sx={{ fontSize: 10, height: 20, bgcolor: '#ECFDF5', color: '#059669', '& .MuiChip-icon': { color: 'inherit' } }} />
+            ) : (
+              <Chip size="small" label="Discarded" sx={{ fontSize: 10, height: 20, bgcolor: '#F9FAFB', color: '#9CA3AF' }} />
+            )}
+          </Box>
+        ))}
+      </Stack>
+
+      <Modal open={!!editing} onClose={() => { if (!busy) setEditing(null); }}>
+        <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+          width: { xs: '95vw', md: 640 }, maxHeight: '85vh', overflow: 'auto',
+          bgcolor: 'white', borderRadius: 2, border: '1px solid #e2e8f0', outline: 'none', p: 2.5 }}>
+          <Typography fontSize={14} fontWeight={700} mb={2}>
+            {editing ? (CONFIRMATION_MAIL_TYPE_LABEL[editing.mailType] || editing.mailType) : ''}
+          </Typography>
+          {editing && (
+            <Stack spacing={2}>
+              {error && <Alert severity="error" sx={{ fontSize: 12 }} onClose={() => setError('')}>{error}</Alert>}
+              <TextField label="To" size="small" fullWidth value={editTo} onChange={e => setEditTo(e.target.value)} disabled={busy} />
+              <TextField label="Cc" size="small" fullWidth value={editCc} onChange={e => setEditCc(e.target.value)} disabled={busy} />
+              <TextField label="Bcc" size="small" fullWidth value={editBcc} onChange={e => setEditBcc(e.target.value)} disabled={busy} />
+              <TextField label="Subject" size="small" fullWidth value={editSubject} onChange={e => setEditSubject(e.target.value)} disabled={busy} />
+              <Box>
+                <Typography fontSize={12} color="text.secondary" mb={0.5}>Body</Typography>
+                <Box
+                  key={editing._id}
+                  ref={bodyEditorRef}
+                  contentEditable={!busy}
+                  suppressContentEditableWarning
+                  dangerouslySetInnerHTML={{ __html: editHtml }}
+                  sx={{
+                    border: '1px solid #cbd5e1', borderRadius: 1, p: 1.5, minHeight: 200, maxHeight: 380,
+                    overflow: 'auto', fontSize: 13, lineHeight: 1.6, bgcolor: busy ? '#f8fafc' : '#fff',
+                    '&:focus': { outline: '2px solid #2563EB', outlineOffset: -1 },
+                  }}
+                />
+              </Box>
+              <Box sx={{ display: 'flex', gap: 1.5 }}>
+                <Button variant="contained" onClick={sendMail} disabled={busy}
+                  sx={{ bgcolor: '#059669', '&:hover': { bgcolor: '#047857' }, textTransform: 'none', fontWeight: 600 }}>
+                  {busy ? <CircularProgress size={18} sx={{ color: 'white' }} /> : 'Send Mail'}
+                </Button>
+                <Button variant="outlined" onClick={() => setEditing(null)} disabled={busy} sx={{ textTransform: 'none' }}>Cancel</Button>
+              </Box>
+            </Stack>
+          )}
+        </Box>
+      </Modal>
+    </Box>
+  );
+}
+
+// Company-wide Confirmation mail (currently just the quarterly digest,
+// confirmationId: null) has nowhere to show up on a per-record card —
+// mirrors Salary Revision's CompanyMailButton exactly, including showing
+// the next scheduled fire date even before a draft exists.
+const CONFIRMATION_COMPANY_MAIL_SCHEDULE: { mailType: string; label: string; computeNext: (from: Date) => Date }[] = [
+  {
+    mailType: 'quarterlyDigest',
+    label: 'Quarterly Due Digest',
+    computeNext: (from) => {
+      const fireMonths = [3, 6, 9, 0]; // Apr, Jul, Oct, Jan (0-indexed)
+      const candidates: Date[] = [];
+      for (const yr of [from.getFullYear(), from.getFullYear() + 1]) {
+        for (const m of fireMonths) candidates.push(new Date(yr, m, 1, 9, 15, 0));
+      }
+      candidates.sort((a, b) => a.getTime() - b.getTime());
+      return candidates.find(d => d > from)!;
+    },
+  },
+];
+
+function ConfirmationCompanyMailButton() {
+  const role = localStorage.getItem('role') || '';
+  const canSeeMail = role === 'Admin' || role === 'HR';
+
+  const [drafts, setDrafts] = useState<ConfirmationMailDraft[]>([]);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<ConfirmationMailDraft | null>(null);
+  const [editTo, setEditTo] = useState('');
+  const [editCc, setEditCc] = useState('');
+  const [editBcc, setEditBcc] = useState('');
+  const [editSubject, setEditSubject] = useState('');
+  const [editHtml, setEditHtml] = useState('');
+  const bodyEditorRef = useRef<HTMLDivElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    if (!canSeeMail) return;
+    try {
+      const { data } = await axios.get(`${CONFIRMATION_DRAFTS_API}?unassigned=true&status=draft`);
+      setDrafts(data.data || []);
+    } catch { /* quiet — falls back to schedule-only rows */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canSeeMail]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (!canSeeMail) return null;
+
+  const openEdit = (d: ConfirmationMailDraft) => {
+    setEditing(d);
+    setEditTo(d.to); setEditCc(d.cc || ''); setEditBcc(d.bcc || '');
+    setEditSubject(d.subject); setEditHtml(d.html);
+    setError('');
+  };
+
+  const sendMail = async () => {
+    if (!editing) return;
+    setBusy(true);
+    setError('');
+    try {
+      const html = bodyEditorRef.current?.innerHTML ?? editHtml;
+      const saveRes = await axios.put(`${CONFIRMATION_DRAFTS_API}/${editing._id}`, {
+        to: editTo, cc: editCc, bcc: editBcc, subject: editSubject, html,
+      });
+      if (!saveRes.data.success) throw new Error(saveRes.data.message || 'Save failed');
+      const sendRes = await axios.post(`${CONFIRMATION_DRAFTS_API}/${editing._id}/send`);
+      if (!sendRes.data.success) throw new Error(sendRes.data.message || 'Send failed');
+      setEditing(null);
+      load();
+    } catch (e: any) { setError(e?.response?.data?.message || e?.message || 'Send failed'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      <Button size="small" variant="outlined" onClick={() => setOpen(true)}
+        sx={{ textTransform: 'none', fontWeight: 600, fontSize: 12, borderRadius: 1.5 }}>
+        Company Mail{drafts.length > 0 ? ` (${drafts.length})` : ''}
+      </Button>
+
+      <Modal open={open} onClose={() => { if (!busy) { setOpen(false); setEditing(null); } }}>
+        <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+          width: { xs: '95vw', md: 640 }, maxHeight: '85vh', overflow: 'auto',
+          bgcolor: 'white', borderRadius: 2, border: '1px solid #e2e8f0', outline: 'none', p: 2.5 }}>
+          {!editing ? (
+            <>
+              <Typography fontSize={14} fontWeight={700} mb={2}>Company-Wide Mail</Typography>
+              <Stack spacing={1}>
+                {CONFIRMATION_COMPANY_MAIL_SCHEDULE.map(sched => {
+                  const draft = drafts.find(d => d.mailType === sched.mailType);
+                  return (
+                    <Box key={sched.mailType} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1,
+                      p: 1.25, border: '1px solid #e2e8f0', borderRadius: 1.5 }}>
+                      <Box>
+                        <Typography fontSize={12} fontWeight={600}>{CONFIRMATION_MAIL_TYPE_LABEL[sched.mailType] || sched.label}</Typography>
+                        <Typography fontSize={11} color="text.secondary">
+                          {draft ? draft.subject : `Not queued yet — next fires ${fmtDate(sched.computeNext(new Date()).toISOString())}`}
+                        </Typography>
+                      </Box>
+                      {draft ? (
+                        <Button size="small" variant="outlined" onClick={() => openEdit(draft)}
+                          sx={{ textTransform: 'none', fontSize: 11, py: 0.2, px: 1, minWidth: 0, borderColor: '#2563EB', color: '#2563EB' }}>
+                          Send Mail
+                        </Button>
+                      ) : (
+                        <Chip size="small" label="Scheduled" sx={{ fontSize: 10, height: 20, bgcolor: '#F9FAFB', color: '#9CA3AF' }} />
+                      )}
+                    </Box>
+                  );
+                })}
+              </Stack>
+            </>
+          ) : (
+            <Stack spacing={2}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <IconButton size="small" onClick={() => setEditing(null)} disabled={busy}><ArrowBackIcon fontSize="small" /></IconButton>
+                <Typography fontSize={14} fontWeight={700}>{CONFIRMATION_MAIL_TYPE_LABEL[editing.mailType] || editing.mailType}</Typography>
+              </Box>
+              {error && <Alert severity="error" sx={{ fontSize: 12 }} onClose={() => setError('')}>{error}</Alert>}
+              <TextField label="To" size="small" fullWidth value={editTo} onChange={e => setEditTo(e.target.value)} disabled={busy} />
+              <TextField label="Cc" size="small" fullWidth value={editCc} onChange={e => setEditCc(e.target.value)} disabled={busy} />
+              <TextField label="Bcc" size="small" fullWidth value={editBcc} onChange={e => setEditBcc(e.target.value)} disabled={busy} />
+              <TextField label="Subject" size="small" fullWidth value={editSubject} onChange={e => setEditSubject(e.target.value)} disabled={busy} />
+              <Box>
+                <Typography fontSize={12} color="text.secondary" mb={0.5}>Body</Typography>
+                <Box
+                  key={editing._id}
+                  ref={bodyEditorRef}
+                  contentEditable={!busy}
+                  suppressContentEditableWarning
+                  dangerouslySetInnerHTML={{ __html: editHtml }}
+                  sx={{
+                    border: '1px solid #cbd5e1', borderRadius: 1, p: 1.5, minHeight: 200, maxHeight: 380,
+                    overflow: 'auto', fontSize: 13, lineHeight: 1.6, bgcolor: busy ? '#f8fafc' : '#fff',
+                    '&:focus': { outline: '2px solid #2563EB', outlineOffset: -1 },
+                  }}
+                />
+              </Box>
+              <Box sx={{ display: 'flex', gap: 1.5 }}>
+                <Button variant="contained" onClick={sendMail} disabled={busy}
+                  sx={{ bgcolor: '#059669', '&:hover': { bgcolor: '#047857' }, textTransform: 'none', fontWeight: 600 }}>
+                  {busy ? <CircularProgress size={18} sx={{ color: 'white' }} /> : 'Send Mail'}
+                </Button>
+                <Button variant="outlined" onClick={() => setEditing(null)} disabled={busy} sx={{ textTransform: 'none' }}>Cancel</Button>
+              </Box>
+            </Stack>
+          )}
+        </Box>
+      </Modal>
+    </>
   );
 }
 
@@ -384,13 +716,16 @@ function DashboardView({
     <Box sx={{ p: 3, maxWidth: 1400, mx: 'auto' }}>
 
       {/* ── Header ── */}
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h5" fontWeight={700} color="#1F2937">Probation Confirmations</Typography>
-        <Typography fontSize={13} color="text.secondary" mt={0.5}>
-          {quarterFilter === 'current' 
-            ? 'Employees who joined in the last 6 months' 
-            : 'All employees'}
-        </Typography>
+      <Box sx={{ mb: 3, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap' }}>
+        <Box>
+          <Typography variant="h5" fontWeight={700} color="#1F2937">Probation Confirmations</Typography>
+          <Typography fontSize={13} color="text.secondary" mt={0.5}>
+            {quarterFilter === 'current'
+              ? 'Employees who joined in the last 6 months'
+              : 'All employees'}
+          </Typography>
+        </Box>
+        <ConfirmationCompanyMailButton />
       </Box>
 
       {/* ── Stats ── */}
@@ -494,29 +829,26 @@ function DashboardView({
                           '&:hover': { bgcolor: isDue ? '#FEF08A' : '#F0F9FF' },
                         }}
                       >
-                        {/* Employee name + ID */}
+                        {/* Employee name */}
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                             <Avatar sx={{ width: 30, height: 30, bgcolor: '#E0E7FF', color: '#4338CA', fontSize: 11, fontWeight: 700 }}>
                               {initials(emp.full_name)}
                             </Avatar>
-                            <Box>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
-                                <Typography sx={{ fontWeight: 600, fontSize: 13, color: '#111827' }}>
-                                  {emp.full_name}
-                                </Typography>
-                                {isConfirmed && (
-                                  <Chip size="small" label="Confirmed"
-                                    sx={{ bgcolor: '#059669', color: '#fff', fontWeight: 700, fontSize: 10,
-                                          height: 18, '& .MuiChip-label': { px: 0.8 } }} />
-                                )}
-                                {isDue && (
-                                  <Chip size="small" label="Due"
-                                    sx={{ bgcolor: '#F59E0B', color: '#fff', fontWeight: 700, fontSize: 10,
-                                          height: 18, '& .MuiChip-label': { px: 0.8 } }} />
-                                )}
-                              </Box>
-                              <Typography sx={{ fontSize: 11, color: '#9CA3AF' }}>{emp.employee_id}</Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                              <Typography sx={{ fontWeight: 600, fontSize: 13, color: '#111827' }}>
+                                {emp.full_name}
+                              </Typography>
+                              {isConfirmed && (
+                                <Chip size="small" label="Confirmed"
+                                  sx={{ bgcolor: '#059669', color: '#fff', fontWeight: 700, fontSize: 10,
+                                        height: 18, '& .MuiChip-label': { px: 0.8 } }} />
+                              )}
+                              {isDue && (
+                                <Chip size="small" label="Due"
+                                  sx={{ bgcolor: '#F59E0B', color: '#fff', fontWeight: 700, fontSize: 10,
+                                        height: 18, '& .MuiChip-label': { px: 0.8 } }} />
+                              )}
                             </Box>
                           </Box>
                         </TableCell>
@@ -587,11 +919,34 @@ function DashboardView({
 
 // ─── Detail View ───────────────────────────────────────────────────────────────
 
-function DetailView({ record, onBack, onChangeStatus }: {
+function DetailView({ record, onBack, onChangeStatus, onRecordChange, showToast }: {
   record        : Confirmation;
   onBack        : () => void;
   onChangeStatus: () => void;
+  onRecordChange: (updated: Confirmation) => void;
+  showToast     : (msg: string, type: 'success' | 'error') => void;
 }) {
+  const [hrFile, setHrFile] = useState<File | null>(null);
+  const [hrUploading, setHrUploading] = useState(false);
+
+  const uploadHrDocument = async () => {
+    if (!hrFile) return;
+    setHrUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', hrFile);
+      const { data } = await axios.put(`${API}/${record._id}/hr`, formData);
+      if (!data.success) throw new Error(data.message || 'Upload failed');
+      showToast('Document uploaded — confirmation completed', 'success');
+      onRecordChange(data.data);
+      setHrFile(null);
+    } catch (e: any) {
+      showToast(e?.response?.data?.message || e?.message || 'Upload failed', 'error');
+    } finally {
+      setHrUploading(false);
+    }
+  };
+
   const INFO = [
     ['Employee Code',     record.employeeCode      || '—'],
     ['Email',             record.email             || '—'],
@@ -620,7 +975,7 @@ function DetailView({ record, onBack, onChangeStatus }: {
         </Box>
         <StatusChip status={record.currentStatus} />
         <StageChip  stage={record.stage} />
-        {record.stage !== 'completed' && record.stage !== 'on_hold' && record.stage !== 'not_due' && (
+        {record.stage !== 'completed' && record.stage !== 'on_hold' && record.stage !== 'not_due' && record.stage !== 'pending_hr' && (
           <Button variant="contained" size="small" onClick={onChangeStatus}
             sx={{ bgcolor: '#2563EB', textTransform: 'none', fontWeight: 600, px: 3 }}>
             Update Status
@@ -660,6 +1015,7 @@ function DetailView({ record, onBack, onChangeStatus }: {
                   {record.stage === 'not_due' ? 'Review not open yet' : 'Pending'}
                 </Typography>
               )}
+              <ConfirmationMailButtons confirmationId={record._id} mailTypes={['managerRequest', 'managerReminder']} />
             </Box>
 
             <Box sx={{ p: 2, bgcolor: '#F9FAFB', borderRadius: 1.5, border: '1px solid #E5E7EB' }}>
@@ -679,6 +1035,7 @@ function DetailView({ record, onBack, onChangeStatus }: {
                     : record.stage === 'pending_manager' ? 'Waiting for manager' : 'Pending'}
                 </Typography>
               )}
+              <ConfirmationMailButtons confirmationId={record._id} mailTypes={['managementRequest', 'managementReminder']} />
             </Box>
           </Stack>
 
@@ -692,6 +1049,50 @@ function DetailView({ record, onBack, onChangeStatus }: {
             </Box>
           )}
         </Paper>
+
+        {(record.stage === 'pending_hr' || (record.stage === 'completed' && record.hrAction?.document)) && (
+          <Paper variant="outlined" sx={{ flex: '1 1 260px', borderRadius: 2, p: 3 }}>
+            <Typography fontWeight={700} mb={2}>HR Final Action</Typography>
+            <Stack spacing={2}>
+              <Box sx={{ p: 2, bgcolor: '#F9FAFB', borderRadius: 1.5, border: '1px solid #E5E7EB' }}>
+                <Typography fontSize={11} fontWeight={700} color="text.secondary" mb={1}>Management Decision</Typography>
+                {record.managementDecision?.status && <StatusChip status={record.managementDecision.status} />}
+              </Box>
+
+              {record.stage === 'pending_hr' ? (
+                <Box>
+                  <Typography fontSize={12} fontWeight={600} mb={1}>Upload Confirmation/Extension Letter</Typography>
+                  <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
+                    <Button size="small" variant="outlined" component="label" sx={{ textTransform: 'none' }}>
+                      Choose File
+                      <input type="file" hidden accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                        onChange={e => setHrFile(e.target.files?.[0] || null)} />
+                    </Button>
+                    {hrFile && <Typography fontSize={12} color="text.secondary">{hrFile.name}</Typography>}
+                    <Button size="small" variant="contained" disabled={!hrFile || hrUploading} onClick={uploadHrDocument}
+                      sx={{ bgcolor: '#2563EB', textTransform: 'none', fontWeight: 600 }}>
+                      {hrUploading ? <CircularProgress size={16} sx={{ color: 'white' }} /> : 'Upload & Complete'}
+                    </Button>
+                  </Stack>
+                  <ConfirmationMailButtons confirmationId={record._id} mailTypes={['hrNotify']} />
+                </Box>
+              ) : record.hrAction?.document && (
+                <Box>
+                  <Typography fontSize={12} fontWeight={600} mb={0.5}>Uploaded Document</Typography>
+                  <Typography component="a" href={record.hrAction.document.driveLink} target="_blank" rel="noopener"
+                    sx={{ fontSize: 12, color: '#2563EB', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
+                    📄 {record.hrAction.document.fileName}
+                  </Typography>
+                  {record.hrAction.submittedAt && (
+                    <Typography fontSize={11} color="text.secondary" mt={0.5}>
+                      Uploaded {fmtDate(record.hrAction.submittedAt)}
+                    </Typography>
+                  )}
+                </Box>
+              )}
+            </Stack>
+          </Paper>
+        )}
 
         <Paper variant="outlined" sx={{ flex: '2 1 380px', borderRadius: 2, p: 3 }}>
           <Typography fontWeight={700} mb={2}>Change History</Typography>
@@ -1085,7 +1486,8 @@ export default function ConfirmationsPage() {
             )}
 
             {view === 'detail' && selected && (
-              <DetailView record={selected} onBack={handleBack} onChangeStatus={() => setView('status-change')} />
+              <DetailView record={selected} onBack={handleBack} onChangeStatus={() => setView('status-change')}
+                onRecordChange={handleStatusUpdate} showToast={showToast} />
             )}
 
             {view === 'status-change' && selected && (
