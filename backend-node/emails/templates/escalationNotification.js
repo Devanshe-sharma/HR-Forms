@@ -31,11 +31,8 @@ function escalationNotificationTemplate({
       ${row('Concerning', targetNames)}
       ${row('Category', category)}
       ${row('Date Occurred', formatDateIST(dateOccurred) || '-')}
+      ${row('Description', (description || '').replace(/\n/g, '<br>'))}
     </table>
-
-    <p style="font-family:Arial,sans-serif; font-size:14px; color:#0f172a; line-height:1.6;">
-      <b>Description:</b><br>${(description || '').replace(/\n/g, '<br>')}
-    </p>
 
     <p style="font-family:Arial,sans-serif; font-size:14px; color:#0f172a; line-height:1.6;">
       Please review the complete record and take any necessary action from the Escalations dashboard.

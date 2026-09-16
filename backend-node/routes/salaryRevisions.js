@@ -364,6 +364,58 @@ router.get('/analytics/pip', authenticate, requireRole(FULL_ACCESS_ROLES), async
   });
 }));
 
+// ─── GET /api/salary-revisions/analytics/timeliness ───────────────────────────
+// "Salary Revision Timeliness Rate (%)" for the HR Dashboard — % of
+// completed revisions that closed on or before their true Due Date.
+// Reuses cycleStatus/cycleScore, already computed by scoreOverallCycle
+// (utils/salaryRevisionScoring.js) at every stage transition — 'done' =
+// on time, 'done_delayed' = late (cycleScore is then -(days late)) —
+// rather than re-deriving lateness here. Same year/quarter shape as
+// /analytics/increments above.
+router.get('/analytics/timeliness', authenticate, requireRole(FULL_ACCESS_ROLES), asyncHandler(async (req, res) => {
+  const raw = await SalaryRevision.find({
+    stage: 'completed',
+    cycleStatus: { $in: ['done', 'done_delayed'] },
+  }, 'applicableDate createdAt cycleStatus cycleScore').lean();
+
+  const yearOf = (r) => fiscalYearOf(r.applicableDate || r.createdAt);
+  const availableYears = Array.from(new Set(raw.map(yearOf))).sort((a, b) => b - a);
+  const year = parseInt(req.query.year, 10) || fiscalYearOf(new Date());
+
+  const inYear = raw.filter((r) => yearOf(r) === year);
+  const onTime = inYear.filter((r) => r.cycleStatus === 'done');
+  const delayed = inYear.filter((r) => r.cycleStatus === 'done_delayed');
+  const total = inYear.length;
+  const onTimeRate = total > 0 ? Math.round((onTime.length / total) * 1000) / 10 : null;
+  const avgDelayDays = delayed.length
+    ? Math.round(delayed.reduce((s, r) => s + Math.abs(r.cycleScore || 0), 0) / delayed.length)
+    : null;
+
+  const quarters = [1, 2, 3, 4].map((q) => {
+    const inQuarter = inYear.filter((r) => fiscalQuarterOf(r.applicableDate || r.createdAt) === q);
+    const qOnTime = inQuarter.filter((r) => r.cycleStatus === 'done').length;
+    return {
+      quarter: `Q${q}`,
+      total: inQuarter.length,
+      onTime: qOnTime,
+      delayed: inQuarter.length - qOnTime,
+      onTimeRate: inQuarter.length > 0 ? Math.round((qOnTime / inQuarter.length) * 1000) / 10 : null,
+    };
+  });
+
+  res.status(200).json({
+    success: true,
+    year,
+    availableYears: availableYears.length ? availableYears : [year],
+    total,
+    onTimeCount: onTime.length,
+    delayedCount: delayed.length,
+    onTimeRate,
+    avgDelayDays,
+    quarters,
+  });
+}));
+
 // ─── GET /api/salary-revisions/history/:employeeCode ─────────────────────────
 // All revisions for one employee, newest first — used to show past history
 // separately from whichever one is currently driving the dashboard.

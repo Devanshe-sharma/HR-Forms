@@ -21,6 +21,7 @@ const sendSalaryRevisionMailQueueDigest    = require('./senders/sendSalaryRevisi
 const sendConfirmationManagerReminder     = require('./senders/sendConfirmationManagerReminder');
 const sendConfirmationManagementReminder  = require('./senders/sendConfirmationManagementReminder');
 const sendConfirmationDue                 = require('./senders/sendConfirmationDue');
+const sendConfirmationMailQueueDigest      = require('./senders/sendConfirmationMailQueueDigest');
 
 // Import models for auto-archive/complete
 const Outing = require('../models/Outing');
@@ -297,6 +298,25 @@ function startEmailScheduler() {
       console.error('Confirmation management reminder failed:', err);
     }
   }, { timezone: tz });
+
+  // 9l. Confirmation Mail Queue digest — the ONE Confirmation mail that
+  // still sends itself automatically, mirroring Salary Revision's own
+  // paused digest (9h above) exactly. Everything else in this feature is
+  // queued as an editable draft, sent only when HR clicks Send in the
+  // dashboard's Mail Queue (routes/confirmationMailDrafts.js). This job
+  // just tells HR — and only HR — that drafts are waiting for review.
+  // PAUSED for now, per the standing "no auto email" instruction —
+  // re-enable by uncommenting once ready.
+  //
+  // cron.schedule('50 9 * * *', async () => {
+  //   console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending Confirmation Mail Queue digest to HR`);
+  //   try {
+  //     const result = await sendConfirmationMailQueueDigest();
+  //     console.log(`Confirmation Mail Queue digest — ${result.queuedCount} draft(s) pending`);
+  //   } catch (err) {
+  //     console.error('Confirmation Mail Queue digest failed:', err);
+  //   }
+  // }, { timezone: tz });
 
   // ─── Outing Auto-Complete & Auto-Archive ───
   cron.schedule('0 0 * * *', async () => {

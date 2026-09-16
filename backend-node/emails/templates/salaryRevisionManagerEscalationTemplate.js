@@ -16,7 +16,7 @@ function detailRow(label, value) {
 function salaryRevisionManagerEscalationTemplate({
   managerName, employeeName, department, designation, joiningDate, currentCtc, dueDate, actionLink,
 }) {
-  const subject = `Escalation: Pending Increment Review – ${employeeName}`;
+  const subject = `Reminder: Salary Increment Review – ${employeeName}`;
 
   const html = `
     <p>Dear ${managerName || 'Manager'},</p>

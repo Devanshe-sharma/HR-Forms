@@ -155,18 +155,6 @@ function deptColor(n: string) {
   if (!colorCache[n]) colorCache[n] = COLOR_POOL[Object.keys(colorCache).length % COLOR_POOL.length];
   return colorCache[n];
 }
-const NOTION_STYLES = [
-  {bg:'#EEF2FF',color:'#4F46E5',border:'#C7D2FE'},{bg:'#F0FDF4',color:'#16A34A',border:'#BBF7D0'},
-  {bg:'#FFF7ED',color:'#EA580C',border:'#FED7AA'},{bg:'#FDF4FF',color:'#9333EA',border:'#E9D5FF'},
-  {bg:'#FFF1F2',color:'#E11D48',border:'#FECDD3'},{bg:'#F0F9FF',color:'#0284C7',border:'#BAE6FD'},
-  {bg:'#FFFBEB',color:'#D97706',border:'#FDE68A'},{bg:'#F0FDFA',color:'#0D9488',border:'#99F6E4'},
-];
-const notionCache: Record<string,typeof NOTION_STYLES[0]> = {};
-function notionStyle(n: string) {
-  if (!notionCache[n]) notionCache[n] = NOTION_STYLES[Object.keys(notionCache).length % NOTION_STYLES.length];
-  return notionCache[n];
-}
- 
 // ══════════════════════════════════════════════════════════════════════════════
 // Shared components
 // ══════════════════════════════════════════════════════════════════════════════
@@ -983,29 +971,21 @@ function DeptTests({dept,c,dd,onUpdate}:{dept:string;c:string;dd:DeptData|undefi
 // ══════════════════════════════════════════════════════════════════════════════
 function DeptPicker({departments,value,onChange}:{departments:string[];value:string;onChange:(d:string)=>void}) {
   const [open,setOpen]=useState(false);
-  const s=value?notionStyle(value):{bg:'#F1F5F9',color:'#64748B',border:'#E2E8F0'};
   return(
     <Box sx={{position:'relative'}}>
-      <Box onClick={()=>setOpen(o=>!o)} sx={{display:'inline-flex',alignItems:'center',gap:1,px:1.4,py:0.55,bgcolor:s.bg,border:`1.5px solid ${s.border}`,borderRadius:'8px',cursor:'pointer',userSelect:'none','&:hover':{filter:'brightness(0.96)'}}}>
-        <Box sx={{width:8,height:8,borderRadius:'50%',bgcolor:s.color}}/>
-        <Typography sx={{fontSize:'0.85rem',fontWeight:700,color:s.color}}>{value||'Select Department'}</Typography>
-        <ArrowDownIcon sx={{fontSize:16,color:s.color,opacity:0.7,transform:open?'rotate(180deg)':'none',transition:'transform 0.2s'}}/>
+      <Box onClick={()=>setOpen(o=>!o)} sx={{display:'inline-flex',alignItems:'center',gap:1,px:1.4,py:0.55,bgcolor:'#F8FAFC',border:'1.5px solid #E2E8F0',borderRadius:'8px',cursor:'pointer',userSelect:'none','&:hover':{filter:'brightness(0.96)'}}}>
+        <Typography sx={{fontSize:'0.85rem',fontWeight:700,color:'#334155'}}>{value||'Select Department'}</Typography>
+        <ArrowDownIcon sx={{fontSize:16,color:'#334155',opacity:0.7,transform:open?'rotate(180deg)':'none',transition:'transform 0.2s'}}/>
       </Box>
       <Collapse in={open} timeout={160}>
         <Box sx={{position:'absolute',top:'calc(100% + 6px)',left:0,zIndex:1200,minWidth:220,maxHeight:280,overflowY:'auto',bgcolor:'white',border:'1px solid #E2E8F0',borderRadius:'12px',boxShadow:'0 8px 32px rgba(0,0,0,0.12)',py:0.6}}>
-          {departments.map(d=>{
-            const ds=notionStyle(d);
-            return(
-              <Box key={d} onClick={()=>{onChange(d);setOpen(false);}}
-                sx={{display:'flex',alignItems:'center',gap:1.2,px:1.5,py:0.9,cursor:'pointer',bgcolor:d===value?'#F8FAFC':'transparent','&:hover':{bgcolor:'#F8FAFC'}}}>
-                <Box sx={{display:'inline-flex',alignItems:'center',gap:0.7,px:1,py:0.25,bgcolor:ds.bg,border:`1px solid ${ds.border}`,borderRadius:'6px'}}>
-                  <Box sx={{width:7,height:7,borderRadius:'50%',bgcolor:ds.color}}/>
-                  <Typography sx={{fontSize:'0.8rem',fontWeight:600,color:ds.color}}>{d}</Typography>
-                </Box>
-                {d===value&&<CheckIcon sx={{fontSize:14,color:'#64748B',ml:'auto'}}/>}
-              </Box>
-            );
-          })}
+          {departments.map(d=>(
+            <Box key={d} onClick={()=>{onChange(d);setOpen(false);}}
+              sx={{display:'flex',alignItems:'center',gap:1.2,px:1.5,py:0.9,cursor:'pointer',bgcolor:d===value?'#F8FAFC':'transparent','&:hover':{bgcolor:'#F8FAFC'}}}>
+              <Typography sx={{fontSize:'0.8rem',fontWeight:600,color:'#334155'}}>{d}</Typography>
+              {d===value&&<CheckIcon sx={{fontSize:14,color:'#64748B',ml:'auto'}}/>}
+            </Box>
+          ))}
         </Box>
       </Collapse>
       {open&&<Box onClick={()=>setOpen(false)} sx={{position:'fixed',inset:0,zIndex:1199}}/>}

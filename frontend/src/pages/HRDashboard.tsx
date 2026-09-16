@@ -203,6 +203,26 @@ interface IncrementsResponse {
   quarters: IncrementQuarterRow[];
 }
 
+interface TimelinessQuarterRow {
+  quarter: string;
+  total: number;
+  onTime: number;
+  delayed: number;
+  onTimeRate: number | null;
+}
+
+interface TimelinessResponse {
+  success: boolean;
+  year: number;
+  availableYears: number[];
+  total: number;
+  onTimeCount: number;
+  delayedCount: number;
+  onTimeRate: number | null;
+  avgDelayDays: number | null;
+  quarters: TimelinessQuarterRow[];
+}
+
 interface InternConversionRow {
   name: string;
   department: string;
@@ -1531,6 +1551,109 @@ const IncrementAnalyticsWidget: React.FC = () => {
   );
 };
 
+const SalaryRevisionTimelinessWidget: React.FC = () => {
+  const [data, setData] = useState<TimelinessResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [year, setYear] = useState<number>(new Date().getFullYear());
+
+  useEffect(() => {
+    setLoading(true);
+    axios.get(`${API}/salary-revisions/analytics/timeliness`, { params: { year, _t: Date.now() } })
+      .then((res) => setData(res.data))
+      .catch(() => toast.error("Failed to load salary revision timeliness data"))
+      .finally(() => setLoading(false));
+  }, [year]);
+
+  useEffect(() => {
+    if (!data?.availableYears?.length) return;
+    if (!data.availableYears.includes(year)) {
+      setYear(data.availableYears[0]);
+    }
+  }, [data, year]);
+
+  const yearOptions = useMemo(() => {
+    const years = data?.availableYears?.length ? data.availableYears : [year];
+    return years.map((y) => ({ key: String(y), label: fyLabel(y) }));
+  }, [data, year]);
+
+  return (
+    <Box sx={{ bgcolor: "#fff", borderRadius: "16px", border: "1px solid #e2e8f0", p: 3, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 2, mb: 2.5 }}>
+        <Box>
+          <Typography fontSize="1.05rem" fontWeight={700} color="#0f172a">
+            Salary Revision Timeliness
+          </Typography>
+          <Typography fontSize="0.75rem" color="#94a3b8" mt={0.3}>
+            Completed Salary Revisions closed on or before their Due Date, by the year they became applicable
+          </Typography>
+        </Box>
+        <FilterPillRow options={yearOptions} active={String(year)} onChange={(k) => setYear(Number(k))} color={ACCENT} />
+      </Box>
+
+      {loading || !data ? (
+        <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
+          <CircularProgress size={26} sx={{ color: ACCENT }} />
+        </Box>
+      ) : (
+        <>
+          <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexWrap: "wrap" }}>
+            <StatCard
+              label="On-Time Rate"
+              value={data.onTimeRate != null ? `${data.onTimeRate}%` : "—"}
+              color={ACCENT}
+              bg="#eef2ff"
+              hint={`Across ${data.total} completed revision${data.total === 1 ? "" : "s"}`}
+            />
+            <StatCard
+              label="On Time"
+              value={data.onTimeCount}
+              color="#059669"
+              bg="#f0fdf4"
+            />
+            <StatCard
+              label="Delayed"
+              value={data.delayedCount}
+              color="#dc2626"
+              bg="#fef2f2"
+              hint={data.avgDelayDays != null ? `Avg ${data.avgDelayDays} day(s) late` : undefined}
+            />
+          </Box>
+
+          <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap", mt: 2 }}>
+            <Box sx={{ flex: "1 1 260px", minWidth: 240 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                Split — {year}
+              </Typography>
+              <PieBreakdownChart
+                data={[
+                  { name: "On Time", value: data.onTimeCount, color: "#059669" },
+                  { name: "Delayed", value: data.delayedCount, color: "#dc2626" },
+                ]}
+              />
+            </Box>
+            <Box sx={{ flex: "2 1 420px", minWidth: 320, height: 280 }}>
+              <Typography fontSize="0.72rem" fontWeight={700} color="#64748b" mb={1} textTransform="uppercase" letterSpacing="0.05em">
+                On-Time Rate by Quarter — {year}
+              </Typography>
+              <ResponsiveContainer width="100%" height="90%">
+                <BarChart data={data.quarters ?? []} barGap={4} margin={{ top: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="quarter" tick={{ fontSize: 12, fill: "#64748b" }} />
+                  <YAxis tick={{ fontSize: 12, fill: "#64748b" }} unit="%" />
+                  <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }} />
+                  <Bar dataKey="onTimeRate" name="On-Time Rate %" fill={ACCENT} radius={[4, 4, 0, 0]} barSize={28}>
+                    <LabelList dataKey="onTimeRate" position="top" formatter={(v: any) => (v != null ? `${v}%` : "")} style={{ fontSize: 11, fontWeight: 700, fill: "#0f172a" }} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </Box>
+          </Box>
+        </>
+      )}
+    </Box>
+  );
+};
+
 // ─── Landing summary card ────────────────────────────────────────────────────
 // Fetches just enough to show one headline number — independent of whatever
 // full widget opens when clicked, so the widgets above stay completely
@@ -2262,13 +2385,19 @@ const DaysToHireWidget: React.FC = () => {
 // business wants tracked, ahead of the backend work to populate them. ─────
 
 const PlaceholderCard: React.FC<{
-  title: string; icon: React.ReactNode; color: string; bg: string;
-}> = ({ title, icon, color, bg }) => (
+  title: string; icon: React.ReactNode; color: string; bg: string; onClick?: () => void;
+}> = ({ title, icon, color, bg, onClick }) => (
   <Box
+    onClick={onClick}
     sx={{
       bgcolor: "#fff", border: "1px dashed #cbd5e1", borderRadius: "16px",
       p: 2.5, display: "flex", flexDirection: "column",
       justifyContent: "space-between", height: "100%", minHeight: 0,
+      ...(onClick ? {
+        cursor: "pointer",
+        transition: "border-color 0.15s, box-shadow 0.15s",
+        "&:hover": { borderColor: "#94a3b8", boxShadow: "0 2px 8px rgba(15,23,42,0.06)" },
+      } : {}),
     }}
   >
     <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1.5 }}>
@@ -2367,6 +2496,18 @@ async function fetchIncrementSummary(): Promise<CardSummary> {
   const high = res.data?.highPerformerCount ?? 0;
   if (total === 0) return { value: "—", sublabel: "No completed revisions this year" };
   return { value: `${avg}%`, sublabel: `${low} low (<9%), ${high} high performers (≥20%)` };
+}
+
+async function fetchSalaryRevisionTimelinessSummary(): Promise<CardSummary> {
+  const now = new Date();
+  const res = await axios.get(`${API}/salary-revisions/analytics/timeliness`, {
+    params: { year: fiscalYearOf(now), _t: Date.now() },
+  });
+  const total = res.data?.total ?? 0;
+  const onTimeRate = res.data?.onTimeRate;
+  const onTimeCount = res.data?.onTimeCount ?? 0;
+  if (total === 0) return { value: "—", sublabel: "No completed revisions this year" };
+  return { value: `${onTimeRate}%`, sublabel: `${onTimeCount} of ${total} completed on time` };
 }
 
 async function fetchPipSummary(): Promise<CardSummary> {
@@ -2591,10 +2732,13 @@ const HRAnalyticsDashboard: React.FC = () => {
       cards: [
         { key: "onboarding", title: "Onboarding On-Time (%)", icon: <HowToRegIcon />, color: "#059669", bg: "#f0fdf4", fetchSummary: () => fetchKpiSummary("onboarding") },
         { key: "exit", title: "Exit On-Time (%)", icon: <ExitToAppIcon />, color: "#d97706", bg: "#fffbeb", fetchSummary: () => fetchKpiSummary("exit") },
-        // Not wired to data yet — rendered as a "coming soon" placeholder.
-        { key: "salaryRevisionTimeliness", title: "Salary Revision Timeliness Rate (%)", icon: <PaidIcon />, color: ACCENT, bg: "#eef2ff", clickable: false },
-        { key: "trainingsConducted", title: "Trainings Conducted vs Planned", icon: <MenuBookIcon />, color: "#0d9488", bg: "#f0fdfa", clickable: false },
-        { key: "employeeConfirmationTimeliness", title: "Employee Confirmation Timeliness Rate (%)", icon: <AssignmentTurnedInIcon />, color: "#2563eb", bg: "#eff6ff", clickable: false },
+        { key: "salaryRevisionTimeliness", title: "Salary Revision Timeliness Rate (%)", icon: <PaidIcon />, color: ACCENT, bg: "#eef2ff", fetchSummary: fetchSalaryRevisionTimelinessSummary },
+        // Not wired to data yet — rendered as a "coming soon" placeholder,
+        // but still clickable: opens the same detail dialog as any other
+        // card, just with nothing inside it yet (no case for these keys
+        // below), rather than being a dead, unclickable box.
+        { key: "trainingsConducted", title: "Trainings Conducted vs Planned", icon: <MenuBookIcon />, color: "#0d9488", bg: "#f0fdfa" },
+        { key: "employeeConfirmationTimeliness", title: "Employee Confirmation Timeliness Rate (%)", icon: <AssignmentTurnedInIcon />, color: "#2563eb", bg: "#eff6ff" },
       ],
     },
   ];
@@ -2640,7 +2784,14 @@ const HRAnalyticsDashboard: React.FC = () => {
                       note={c.note}
                     />
                   ) : (
-                    <PlaceholderCard key={c.key} title={c.title} icon={c.icon} color={c.color} bg={c.bg} />
+                    <PlaceholderCard
+                      key={c.key}
+                      title={c.title}
+                      icon={c.icon}
+                      color={c.color}
+                      bg={c.bg}
+                      onClick={c.clickable === false ? undefined : () => setActiveCard(c.key)}
+                    />
                   )
                 ))}
               </Box>
@@ -2656,7 +2807,7 @@ const HRAnalyticsDashboard: React.FC = () => {
         onClose={() => setActiveCard(null)}
         maxWidth="lg"
         fullWidth
-        PaperProps={{ sx: { borderRadius: "16px", maxHeight: "88vh" } }}
+        PaperProps={{ sx: { borderRadius: "16px", maxHeight: "88vh", minHeight: "70vh" } }}
       >
         <DialogContent sx={{ p: 3, position: "relative", bgcolor: "#f8fafc" }}>
           <IconButton
@@ -2671,6 +2822,7 @@ const HRAnalyticsDashboard: React.FC = () => {
           {activeCard === "interns" && <InternsWidget />}
           {activeCard === "internConversions" && <InternConversionsWidget />}
           {activeCard === "increments" && <IncrementAnalyticsWidget />}
+          {activeCard === "salaryRevisionTimeliness" && <SalaryRevisionTimelinessWidget />}
           {activeCard === "pip" && <PipAnalyticsWidget />}
           {activeCard === "askedToLeave" && <AskedToLeaveWidget />}
           {activeCard === "referred" && <ReferredWidget />}
