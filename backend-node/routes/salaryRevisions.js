@@ -16,6 +16,8 @@ const isPpoConversion = require('../utils/isPpoConversion');
 const { scoreSalaryRevision } = require('../utils/salaryRevisionScoring');
 const { authenticate } = require('../middleware/authenticate');
 const { requireRole } = require('../config/roles');
+const multer = require('multer');
+const { uploadFileToDrive } = require('../utils/googleDrive');
 
 // Salary data (CTC, remarks, PIP details) is sensitive — every route below
 // requires login, except the two public /mail-action routes (signed-link
@@ -486,6 +488,14 @@ router.put('/:id', authenticate, requireRole(FULL_ACCESS_ROLES), asyncHandler(as
       newContractEndDate  : safeDate(hrDecision.newContractEndDate) ?? revision.hrDecision.newContractEndDate,
       notes              : hrDecision.notes ?? revision.hrDecision.notes,
       submittedAt        : hrDecision.submittedAt ? safeDate(hrDecision.submittedAt) : revision.hrDecision.submittedAt,
+      // Saved incrementally while HR works through the pre-finalisation
+      // checklist/salary-structure review (see PUT /:id/hr for the
+      // finalise-time write) — each request sends the FULL current value
+      // of whichever of these it's updating, so no partial merge is
+      // needed here beyond the usual "keep existing if omitted" fallback.
+      salaryComponents   : hrDecision.salaryComponents ?? revision.hrDecision.salaryComponents,
+      subSteps           : hrDecision.subSteps ?? revision.hrDecision.subSteps,
+      document           : hrDecision.document ?? revision.hrDecision.document,
     };
   }
 
@@ -597,8 +607,7 @@ router.post('/', authenticate, requireRole(['Admin', 'HR']), asyncHandler(async 
     // Fire-and-forget — a mail failure must never fail the revision
     // creation itself, same convention as every other email trigger in
     // this codebase (e.g. rescoreAndSave's callers in hiringRequisitions.js).
-    sendSalaryRevisionManagerRequest(revision).catch((e) =>
-      console.error('[salary-revisions] manager request mail failed:', e.message));
+    sendSalaryRevisionManagerRequest(revision).catch((e) => console.error('[salary-revisions] manager request mail-queue failed:', e.message));
 
     return res.status(201).json({ success: true, data: revision });
   } catch (saveErr) {
@@ -694,8 +703,7 @@ router.put('/:id/manager', authenticate, requireRole([...FULL_ACCESS_ROLES, 'Man
   applyScore(revision);
   await revision.save();
 
-  sendSalaryRevisionManagementApproval(revision).catch((e) =>
-    console.error('[salary-revisions] management approval mail failed:', e.message));
+  sendSalaryRevisionManagementApproval(revision).catch((e) => console.error('[salary-revisions] management approval mail-queue failed:', e.message));
 
   res.status(200).json({ success: true, data: revision, message: 'Manager decision saved' });
 }));
@@ -725,18 +733,14 @@ router.put('/:id/management', authenticate, requireRole(FULL_ACCESS_ROLES), asyn
   await revision.save();
 
   if (revision.stage === 'on_hold') {
-    sendSalaryRevisionPipHold(revision).catch((e) =>
-      console.error('[salary-revisions] PIP hold mail failed:', e.message));
-    sendSalaryRevisionHrNotify(revision).catch((e) =>
-      console.error('[salary-revisions] HR notify mail failed:', e.message));
+    sendSalaryRevisionPipHold(revision).catch((e) => console.error('[salary-revisions] PIP hold mail-queue failed:', e.message));
+    sendSalaryRevisionHrNotify(revision).catch((e) => console.error('[salary-revisions] HR notify mail-queue failed:', e.message));
   } else if (revision.stage === 'pending_hr') {
     // Both manager and management have now decided — HR's turn.
-    sendSalaryRevisionHrNotify(revision).catch((e) =>
-      console.error('[salary-revisions] HR notify mail failed:', e.message));
+    sendSalaryRevisionHrNotify(revision).catch((e) => console.error('[salary-revisions] HR notify mail-queue failed:', e.message));
   } else if (revision.stage === 'pending_manager') {
     // PIP rejected — reopened back to the manager for a fresh recommendation.
-    sendSalaryRevisionManagerRequest(revision).catch((e) =>
-      console.error('[salary-revisions] manager re-request mail failed:', e.message));
+    sendSalaryRevisionManagerRequest(revision).catch((e) => console.error('[salary-revisions] manager re-request mail-queue failed:', e.message));
   }
 
   res.status(200).json({ success: true, data: revision, message: 'Management decision saved' });
@@ -806,8 +810,7 @@ router.post('/:id/mail-action', asyncHandler(async (req, res) => {
     applyScore(revision);
     await revision.save();
 
-    sendSalaryRevisionManagementApproval(revision).catch((e) =>
-      console.error('[salary-revisions] management approval mail failed:', e.message));
+    sendSalaryRevisionManagementApproval(revision).catch((e) => console.error('[salary-revisions] management approval mail-queue failed:', e.message));
 
     return res.json({ success: true, message: 'Manager decision saved' });
   }
@@ -824,16 +827,12 @@ router.post('/:id/mail-action', asyncHandler(async (req, res) => {
   await revision.save();
 
   if (revision.stage === 'on_hold') {
-    sendSalaryRevisionPipHold(revision).catch((e) =>
-      console.error('[salary-revisions] PIP hold mail failed:', e.message));
-    sendSalaryRevisionHrNotify(revision).catch((e) =>
-      console.error('[salary-revisions] HR notify mail failed:', e.message));
+    sendSalaryRevisionPipHold(revision).catch((e) => console.error('[salary-revisions] PIP hold mail-queue failed:', e.message));
+    sendSalaryRevisionHrNotify(revision).catch((e) => console.error('[salary-revisions] HR notify mail-queue failed:', e.message));
   } else if (revision.stage === 'pending_hr') {
-    sendSalaryRevisionHrNotify(revision).catch((e) =>
-      console.error('[salary-revisions] HR notify mail failed:', e.message));
+    sendSalaryRevisionHrNotify(revision).catch((e) => console.error('[salary-revisions] HR notify mail-queue failed:', e.message));
   } else if (revision.stage === 'pending_manager') {
-    sendSalaryRevisionManagerRequest(revision).catch((e) =>
-      console.error('[salary-revisions] manager re-request mail failed:', e.message));
+    sendSalaryRevisionManagerRequest(revision).catch((e) => console.error('[salary-revisions] manager re-request mail-queue failed:', e.message));
   }
 
   res.json({ success: true, message: 'Management decision saved' });
@@ -886,7 +885,7 @@ router.put('/:id/pip-outcome', authenticate, requireRole(FULL_ACCESS_ROLES), asy
 // now has categoryChanged too, but Onboarding still gets the current
 // value unconditionally, same as CTC/applicable date).
 router.put('/:id/hr', authenticate, requireRole(['Admin', 'HR']), asyncHandler(async (req, res) => {
-  const { notes, applicableDate, newCtc, newContractStartDate, newContractEndDate, fullTimeSince } = req.body;
+  const { notes, applicableDate, newCtc, newContractStartDate, newContractEndDate, fullTimeSince, salaryComponents } = req.body;
 
   const revision = await SalaryRevision.findById(req.params.id);
   if (!revision) {
@@ -897,6 +896,21 @@ router.put('/:id/hr', authenticate, requireRole(['Admin', 'HR']), asyncHandler(a
     return res.status(400).json({
       success: false,
       message: `Cannot submit HR decision — current stage is '${revision.stage}'`,
+    });
+  }
+
+  // The 4 checklist sub-steps (Letter Prepared / Employee Informed /
+  // Revision Letter Shared / Document Uploaded) are saved incrementally
+  // via PUT /:id as HR works through them — enforced here too, not just
+  // client-side, so finalising can't be forced through some other path
+  // before they're actually done.
+  const steps = revision.hrDecision?.subSteps || {};
+  const stepsDone = ['letterPrepared', 'employeeInformed', 'revisionLetterShared', 'documentUploaded']
+    .every((k) => steps[k]?.completed);
+  if (!stepsDone) {
+    return res.status(400).json({
+      success: false,
+      message: 'Complete all HR checklist steps (including the document upload) before finalising.',
     });
   }
 
@@ -914,6 +928,14 @@ router.put('/:id/hr', authenticate, requireRole(['Admin', 'HR']), asyncHandler(a
     fullTimeSince : fullTime,
     notes         : (notes || '').trim(),
     submittedAt   : new Date(),
+    // salaryComponents is the one thing this route itself sets (HR's
+    // final confirmed breakdown) — subSteps/document were already saved
+    // incrementally via PUT /:id and are carried forward unchanged here.
+    salaryComponents: salaryComponents && typeof salaryComponents === 'object'
+      ? salaryComponents
+      : revision.hrDecision?.salaryComponents,
+    subSteps: revision.hrDecision?.subSteps,
+    document: revision.hrDecision?.document,
   };
 
   revision.newCtc           = finalCtc;
@@ -972,10 +994,60 @@ router.put('/:id/hr', authenticate, requireRole(['Admin', 'HR']), asyncHandler(a
   // route only sets on the increment path (PIP goes management -> on_hold
   // -> pip-outcome -> completed, never through here) — so every successful
   // finalisation here is an increment being confirmed to the employee.
-  sendSalaryRevisionEmployeeConfirmation(revision).catch((e) =>
-    console.error('[salary-revisions] employee confirmation mail failed:', e.message));
+  sendSalaryRevisionEmployeeConfirmation(revision).catch((e) => console.error('[salary-revisions] employee confirmation mail-queue failed:', e.message));
 
   res.status(200).json({ success: true, data: revision, message: 'Revision finalised successfully' });
+}));
+
+// ─── POST /api/salary-revisions/:id/upload-document ──────────────────────────
+// HR checklist step 5 (Document Uploaded) — same Drive-upload convention as
+// routes/employees.js's /upload-documents (multer memoryStorage, no local
+// disk, one file per request). A revision only ever needs ONE document (the
+// revision/offer letter), so this uploads straight into one shared parent
+// Drive folder rather than a per-record subfolder. makePublic: false — kept
+// restricted to the Shared Drive's members, same reasoning as employee docs.
+const uploadSalaryRevisionDoc = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png'];
+    const ext = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
+    allowed.includes(ext) ? cb(null, true) : cb(new Error('Invalid file type — use PDF, Word, or an image.'));
+  },
+}).single('file');
+
+router.post('/:id/upload-document', authenticate, requireRole(['Admin', 'HR']), uploadSalaryRevisionDoc, asyncHandler(async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: 'No file was selected' });
+  }
+
+  const revision = await SalaryRevision.findById(req.params.id);
+  if (!revision) {
+    return res.status(404).json({ success: false, message: 'Salary revision not found' });
+  }
+  if (revision.stage !== 'pending_hr') {
+    return res.status(400).json({
+      success: false,
+      message: `Cannot upload a document — current stage is '${revision.stage}'`,
+    });
+  }
+
+  const parentFolderId = process.env.GOOGLE_DRIVE_SALARY_REVISION_FOLDER_ID || process.env.GOOGLE_DRIVE_RESUME_FOLDER_ID;
+  const driveLink = await uploadFileToDrive(
+    req.file.buffer, req.file.originalname, req.file.mimetype,
+    parentFolderId, { makePublic: false }
+  );
+
+  const uploadedAt = new Date();
+  revision.hrDecision.document = { fileName: req.file.originalname, driveLink, uploadedAt };
+  revision.hrDecision.subSteps = {
+    ...revision.hrDecision.subSteps,
+    documentUploaded: { completed: true, completedAt: uploadedAt },
+  };
+  revision.updatedBy = caller(req);
+  await revision.save();
+
+  res.status(200).json({ success: true, data: revision });
 }));
 
 // ─── DELETE /api/salary-revisions/:id ────────────────────────────────────────

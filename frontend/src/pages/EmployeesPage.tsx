@@ -26,6 +26,7 @@ import {
   Close as CloseIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
 import { hasAnyRole } from '../config/rbac';
@@ -82,7 +83,97 @@ interface EmployeeFullRecord {
   familySiblings?: string;
   familySpouse?: string;
   familyChildren?: string;
+
+  // ── Contract & CTC — headline figures only, not the full salary
+  // breakdown (basic/HRA/allowances etc. live elsewhere, e.g. CTC
+  // Components). contractHistory is every past renewal, oldest first.
+  annualCtc?: number;
+  contractAmount?: number;
+  contractPeriod?: number;
+  contractStartDate?: string | null;
+  contractEndDate?: string | null;
+  contractHistory?: {
+    contractPeriod?: string;
+    contractAmount?: string;
+    contractStartDate?: string | null;
+    contractEndDate?: string | null;
+  }[];
 }
+
+// One past Salary Revision cycle for this employee — see
+// backend-node/models/SalaryRevision.js. Fetched by employeeCode, which is
+// kept as the Onboarding _id (same as EmployeeEntry._id here).
+interface SalaryRevisionHistoryItem {
+  _id: string;
+  previousCtc: number;
+  newCtc: number | null;
+  applicableDate: string | null;
+  stage: string;
+  createdAt: string;
+}
+
+// One self-uploaded document (Employee model's `documents` array — see
+// backend-node/models/Employee.js and utils/employeeDocumentTypes.js).
+// Fetched separately from the onboarding record below since it lives on
+// the Employee collection, keyed by email rather than the onboarding _id.
+interface EmployeeDocument {
+  docType: string;
+  fileName: string;
+  driveLink: string;
+  uploadedAt: string | null;
+}
+
+// The employee's self-uploaded digital signature — a single current image
+// (see backend-node/models/Employee.js's dedicated `signature` field, not
+// part of the `documents` array above). driveFileId builds a directly
+// embeddable thumbnail rather than a "View" link-out.
+interface EmployeeSignature {
+  fileName: string;
+  driveLink: string;
+  driveFileId: string;
+  uploadedAt: string | null;
+}
+
+function buildSignatureThumbnailUrl(driveFileId: string) {
+  return `https://drive.google.com/thumbnail?id=${driveFileId}&sz=w320`;
+}
+
+const PERSONAL_DOCUMENT_TYPES: { key: string; label: string }[] = [
+  { key: 'tenthMarksheet', label: '10th Marksheet' },
+  { key: 'twelfthMarksheet', label: '12th Marksheet' },
+  { key: 'graduationMarksheet', label: 'Graduation Marksheet' },
+  { key: 'pgMarksheet', label: 'Postgraduate Marksheet' },
+  { key: 'aadhaarPan', label: 'Aadhaar / PAN Card' },
+];
+
+const PROFESSIONAL_DOCUMENT_TYPES: { key: string; label: string }[] = [
+  { key: 'experienceLetter', label: 'Experience Letter' },
+];
+
+// Every letter template the generator (pages/EmployeeLetter.tsx →
+// pages/LetterTemplate.tsx, route "/letter") can produce — kept in sync
+// with that file's own `letterItems` list. All but Exit Clearance render
+// live from Onboarding data keyed by `type` + `empId`; Exit Clearance is a
+// static external form instead (`directLink`), same as in that generator.
+const GENERATED_LETTER_TYPES: { type: string; label: string; directLink?: string }[] = [
+  { type: 'offer-letter', label: 'Offer Letter' },
+  { type: 'Appointment-letter', label: 'Appointment Letter' },
+  { type: 'salary-revision', label: 'Increment Letter' },
+  { type: 'confirmation', label: 'Confirmation Letter' },
+  { type: 'consultant-contract', label: 'Consultant Contract' },
+  { type: 'salary-breakdown', label: 'Salary Breakdown' },
+  { type: 'non-compete-agreement', label: 'Non-Compete Agreement' },
+  { type: 'non-disclosure-agreement', label: 'Non-Disclosure Agreement' },
+  { type: 'code-of-ethics', label: 'Code of Ethics' },
+  { type: 'internship-certificate', label: 'Internship Certificate' },
+  { type: 'experience-certificate', label: 'Experience Certificate' },
+  { type: 'exit-clearance', label: 'Exit Clearance Form', directLink: 'https://docs.google.com/document/d/1d8MFqQAISbuOwP0SGM3IWBWf2J2V9s1O/edit' },
+];
+
+const latestDocFor = (documents: EmployeeDocument[] | undefined, docType: string) =>
+  (documents || [])
+    .filter(d => d.docType === docType)
+    .sort((a, b) => new Date(b.uploadedAt || 0).getTime() - new Date(a.uploadedAt || 0).getTime())[0];
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL;
 
@@ -177,6 +268,7 @@ const P: Record<string, Preset> = {
   green: { light: { bg: '#F0FDF4', text: '#15803D', border: '#BBF7D0' }, dark: { bg: '#14532D', text: '#86EFAC', border: '#166534' } },
   teal:  { light: { bg: '#F0FDFA', text: '#0F766E', border: '#99F6E4' }, dark: { bg: '#134E4A', text: '#5EEAD4', border: '#0F766E' } },
   rose:  { light: { bg: '#FFF1F2', text: '#BE123C', border: '#FECDD3' }, dark: { bg: '#4C0519', text: '#FDA4AF', border: '#9F1239' } },
+  gray:  { light: { bg: '#F1F5F9', text: '#475569', border: '#E2E8F0' }, dark: { bg: 'rgba(255,255,255,0.06)', text: '#CBD5E1', border: 'rgba(255,255,255,0.14)' } },
 };
 
 const chipSx = (preset: Preset, isLight: boolean) => ({
@@ -210,6 +302,24 @@ const ContactRow: React.FC<{ icon: React.ReactNode; label: string; value?: strin
 
 const formatDateOnly = (value?: string | null) =>
   value ? new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+
+const formatCtc = (value?: number | null) =>
+  typeof value === 'number' ? `₹${value.toLocaleString('en-IN')}` : undefined;
+
+const formatStage = (stage?: string) =>
+  (stage || '').split('_').filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join(' ') || '—';
+
+// One row in Contract History / Salary Revision History — a compact
+// date-range-or-date + amount(s) + optional status tag.
+const HistoryRow: React.FC<{ primary: string; secondary?: string; tag?: string }> = ({ primary, secondary, tag }) => (
+  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, py: 0.75 }}>
+    <Typography sx={{ fontSize: '0.78rem', color: 'text.primary' }}>{primary}</Typography>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+      {secondary && <Typography sx={{ fontSize: '0.78rem', fontWeight: 600, color: 'text.secondary' }}>{secondary}</Typography>}
+      {tag && <Chip label={tag} size="small" sx={{ fontSize: '0.62rem', height: 18, bgcolor: 'action.selected' }} />}
+    </Box>
+  </Box>
+);
 
 const InfoField: React.FC<{ label: string; value?: string; link?: boolean }> = ({ label, value, link }) => {
   const trimmed = value?.trim();
@@ -247,8 +357,86 @@ const SectionLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   </Typography>
 );
 
-const TabPanel: React.FC<{ active: boolean; children: React.ReactNode }> = ({ active, children }) =>
-  active ? <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 2.5 }}>{children}</Box> : null;
+// Read-only row for the Documents tab — HR/Admin/Management can view and
+// open what the employee has self-uploaded from their own Profile page,
+// not upload on their behalf.
+const DocumentRow: React.FC<{ label: string; doc?: EmployeeDocument; emptyLabel?: string }> = ({ label, doc, emptyLabel = 'Not uploaded' }) => (
+  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, py: 0.9 }}>
+    <Box sx={{ minWidth: 0 }}>
+      <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: 'text.primary' }}>{label}</Typography>
+      {doc?.uploadedAt && (
+        <Typography sx={{ fontSize: '0.65rem', color: 'text.disabled' }}>
+          Uploaded {formatDateOnly(doc.uploadedAt)}
+        </Typography>
+      )}
+    </Box>
+    {doc?.driveLink ? (
+      <Button size="small" component="a" href={doc.driveLink} target="_blank" rel="noreferrer"
+        startIcon={<DownloadIcon sx={{ fontSize: 14 }} />}
+        sx={{ textTransform: 'none', fontSize: '0.72rem', flexShrink: 0 }}>
+        View
+      </Button>
+    ) : (
+      <Chip label={emptyLabel} size="small" sx={{ fontSize: '0.65rem', height: 20, bgcolor: 'action.disabledBackground', color: 'text.disabled' }} />
+    )}
+  </Box>
+);
+
+// Digital Signature — shown as an actual inline thumbnail rather than a
+// "View" link-out, unlike every other DocumentRow above: the whole point
+// of surfacing it here is being visually inspectable at a glance.
+const SignatureThumbnailRow: React.FC<{ signature?: EmployeeSignature | null }> = ({ signature }) => (
+  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, py: 0.9 }}>
+    <Box sx={{ minWidth: 0 }}>
+      <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: 'text.primary' }}>Digital Signature</Typography>
+      {signature?.uploadedAt && (
+        <Typography sx={{ fontSize: '0.65rem', color: 'text.disabled' }}>
+          Uploaded {formatDateOnly(signature.uploadedAt)}
+        </Typography>
+      )}
+    </Box>
+    {signature?.driveFileId ? (
+      <Box
+        component="a" href={signature.driveLink} target="_blank" rel="noreferrer"
+        sx={{
+          width: 120, height: 48, borderRadius: '6px', border: '1px solid', borderColor: 'divider',
+          bgcolor: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0,
+        }}
+      >
+        <img src={buildSignatureThumbnailUrl(signature.driveFileId)} alt="Signature" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+      </Box>
+    ) : (
+      <Chip label="Not uploaded" size="small" sx={{ fontSize: '0.65rem', height: 20, bgcolor: 'action.disabledBackground', color: 'text.disabled' }} />
+    )}
+  </Box>
+);
+
+// Offer/Appointment/Increment Letters aren't stored anywhere — they're
+// rendered live from Onboarding data by LetterTemplate.tsx (route
+// "/letter") whenever opened, keyed only by empId (= this employee's
+// onboarding _id, same as EmployeeEntry._id) and a letter `type`. So this
+// links straight into that generator instead of a stored-document link.
+const GeneratedLetterRow: React.FC<{ label: string; href: string }> = ({ label, href }) => (
+  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, py: 0.9 }}>
+    <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: 'text.primary' }}>{label}</Typography>
+    <Button size="small" component="a" href={href} target="_blank" rel="noreferrer"
+      startIcon={<DownloadIcon sx={{ fontSize: 14 }} />}
+      sx={{ textTransform: 'none', fontSize: '0.72rem', flexShrink: 0 }}>
+      View
+    </Button>
+  </Box>
+);
+
+// `fill` stretches the panel to the dialog's full available height (instead
+// of hugging its content) so a flex child inside it can scroll internally —
+// used by the Documents tab so its long letter list scrolls on its own
+// without the outer DialogContent also growing a scrollbar (double scroll).
+const TabPanel: React.FC<{ active: boolean; children: React.ReactNode; fill?: boolean }> = ({ active, children, fill }) =>
+  active ? (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 2.5, ...(fill ? { height: '100%', minHeight: 0 } : {}) }}>
+      {children}
+    </Box>
+  ) : null;
 
 const EmployeeDetailDialog: React.FC<{
   open: boolean;
@@ -257,6 +445,9 @@ const EmployeeDetailDialog: React.FC<{
 }> = ({ open, employee, onClose }) => {
   const [tab, setTab] = useState(0);
   const [full, setFull] = useState<EmployeeFullRecord | null>(null);
+  const [documents, setDocuments] = useState<EmployeeDocument[]>([]);
+  const [signature, setSignature] = useState<EmployeeSignature | null>(null);
+  const [salaryHistory, setSalaryHistory] = useState<SalaryRevisionHistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Admin/Management/HR only — everyone else never sees these tabs exist.
@@ -264,13 +455,30 @@ const EmployeeDetailDialog: React.FC<{
   const canViewClientView = hasAnyRole(['Admin', 'Management', 'HR']);
 
   useEffect(() => {
-    if (!open || !employee) { setFull(null); setTab(0); return; }
+    if (!open || !employee) { setFull(null); setDocuments([]); setSignature(null); setSalaryHistory([]); setTab(0); return; }
     setTab(0);
     setLoading(true);
-    fetch(`${API_BASE}/onboarding/${employee._id}`)
-      .then(res => res.json())
-      .then(json => setFull(json?.data || null))
-      .catch(() => setFull(null))
+    const docsEmail = employee.official_email || employee.personal_email || '';
+    Promise.all([
+      fetch(`${API_BASE}/onboarding/${employee._id}`).then(res => res.json()).catch(() => null),
+      // Self-uploaded documents live on the Employee collection (keyed by
+      // email, not the onboarding _id above) — see EmployeeDocument comment.
+      docsEmail
+        ? fetch(`${API_BASE}/employees?email=${encodeURIComponent(docsEmail)}`).then(res => res.json()).catch(() => null)
+        : Promise.resolve(null),
+      // Salary Revision history is keyed by employeeCode = this onboarding
+      // _id (see SalaryRevision.js comment). Needs axios, not fetch — this
+      // route is auth-gated and only axios carries the login's Authorization
+      // header (set globally in AuthContext).
+      axios.get(`${API_BASE}/salary-revisions/history/${employee._id}`).then(res => res.data).catch(() => null),
+    ])
+      .then(([onboardingJson, employeeJson, revisionJson]) => {
+        setFull(onboardingJson?.data || null);
+        setDocuments(employeeJson?.data?.[0]?.documents || []);
+        setSignature(employeeJson?.data?.[0]?.signature || null);
+        setSalaryHistory(revisionJson?.data || []);
+      })
+      .catch(() => { setFull(null); setDocuments([]); setSalaryHistory([]); })
       .finally(() => setLoading(false));
   }, [open, employee]);
 
@@ -299,6 +507,7 @@ const EmployeeDetailDialog: React.FC<{
         sx={{ minHeight: 40, '& .MuiTab-root': { minHeight: 40, textTransform: 'none', fontSize: '0.8rem', fontWeight: 600 } }}>
         <Tab label="Public Info" />
         {canViewPersonal   && <Tab label="Personal Info" />}
+        {canViewPersonal   && <Tab label="Documents" />}
         {canViewClientView && <Tab label="Client View" />}
       </Tabs>
 
@@ -379,11 +588,97 @@ const EmployeeDetailDialog: React.FC<{
                   <InfoField label="Spouse" value={full?.familySpouse} />
                   <InfoField label="Children" value={full?.familyChildren} />
                 </Box>
+
+                <Divider />
+
+                {/* Headline contract/CTC figures only — the full salary
+                    breakdown (basic/HRA/allowances etc.) lives elsewhere
+                    (CTC Components), not repeated here. */}
+                <SectionLabel>Contract &amp; CTC</SectionLabel>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 2 }}>
+                  <InfoField label="Annual CTC" value={formatCtc(full?.annualCtc)} />
+                  <InfoField label="Contract Period" value={full?.contractPeriod ? `${full.contractPeriod} months` : undefined} />
+                  <InfoField label="Contract Start" value={formatDateOnly(full?.contractStartDate)} />
+                  <InfoField label="Contract End" value={formatDateOnly(full?.contractEndDate)} />
+                </Box>
+
+                {!!full?.contractHistory?.length && (
+                  <Box>
+                    <Typography sx={{ fontSize: '0.65rem', color: 'text.disabled', textTransform: 'uppercase', letterSpacing: 0.4, mb: 0.5 }}>
+                      Contract History
+                    </Typography>
+                    <Stack divider={<Divider />}>
+                      {full.contractHistory.map((c, i) => (
+                        <HistoryRow key={i}
+                          primary={`${formatDateOnly(c.contractStartDate) || '—'} → ${c.contractEndDate ? formatDateOnly(c.contractEndDate) : 'Ongoing'}`}
+                          secondary={c.contractAmount ? formatCtc(Number(c.contractAmount)) : undefined}
+                          tag={c.contractPeriod ? `${c.contractPeriod} mo` : undefined}
+                        />
+                      ))}
+                    </Stack>
+                  </Box>
+                )}
+
+                <Divider />
+
+                <SectionLabel>Salary Revision History</SectionLabel>
+                {salaryHistory.length === 0 ? (
+                  <Typography sx={{ fontSize: '0.8rem', color: 'text.disabled' }}>No salary revisions recorded</Typography>
+                ) : (
+                  <Stack divider={<Divider />}>
+                    {salaryHistory.map(r => (
+                      <HistoryRow key={r._id}
+                        primary={formatDateOnly(r.applicableDate) || formatDateOnly(r.createdAt) || '—'}
+                        secondary={`${formatCtc(r.previousCtc) ?? '—'} → ${r.newCtc != null ? formatCtc(r.newCtc) : '—'}`}
+                        tag={formatStage(r.stage)}
+                      />
+                    ))}
+                  </Stack>
+                )}
+              </TabPanel>
+            )}
+
+            {canViewPersonal && (
+              <TabPanel active={tab === 2} fill>
+                <Box sx={{
+                  display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gridAutoRows: '1fr',
+                  gap: 3, height: '100%', minHeight: 0,
+                }}>
+                  <Box sx={{ minHeight: 0, overflowY: 'auto' }}>
+                    <SectionLabel>Personal Documents</SectionLabel>
+                    <Stack divider={<Divider />} sx={{ mt: 0.5 }}>
+                      <SignatureThumbnailRow signature={signature} />
+                      {PERSONAL_DOCUMENT_TYPES.map(({ key, label }) => (
+                        <DocumentRow key={key} label={label} doc={latestDocFor(documents, key)} />
+                      ))}
+                    </Stack>
+                  </Box>
+
+                  <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                    <SectionLabel>Professional Documents</SectionLabel>
+                    <Stack divider={<Divider />} sx={{ mt: 0.5, flex: 1, minHeight: 0, overflowY: 'auto', pr: 0.5 }}>
+                      {GENERATED_LETTER_TYPES.map(({ type, label, directLink }) => (
+                        <GeneratedLetterRow
+                          key={type}
+                          label={label}
+                          href={directLink || `/letter?type=${encodeURIComponent(type)}&empId=${encodeURIComponent(employee._id)}`}
+                        />
+                      ))}
+                      {PROFESSIONAL_DOCUMENT_TYPES.map(({ key, label }) => (
+                        <DocumentRow key={key} label={label} doc={latestDocFor(documents, key)} />
+                      ))}
+                      <DocumentRow label="Payslips" emptyLabel="Not available" />
+                    </Stack>
+                    <Typography sx={{ fontSize: '0.72rem', color: 'text.disabled', mt: 1, flexShrink: 0 }}>
+                      Letters are generated live from records, not stored files. Payslips aren't set up yet.
+                    </Typography>
+                  </Box>
+                </Box>
               </TabPanel>
             )}
 
             {canViewClientView && (
-              <TabPanel active={tab === 2}>
+              <TabPanel active={tab === 3}>
                 <Box sx={{ textAlign: 'center', py: 5 }}>
                   <Typography color="text.secondary" fontWeight={600} mb={0.5}>Coming soon</Typography>
                   <Typography variant="body2" color="text.disabled">
@@ -766,7 +1061,6 @@ const EmployeesPage: React.FC = () => {
               gap: 2,
             }}>
               {filtered.map(emp => {
-                const [bg, fg] = avatarColors(emp.full_name || 'A');
                 return (
                   <Card key={emp._id} onClick={() => openDetail(emp)} sx={{
                     height: '100%', borderRadius: '14px', cursor: 'pointer',
@@ -775,8 +1069,8 @@ const EmployeesPage: React.FC = () => {
                     boxShadow: isLight ? '0 1px 4px rgba(0,0,0,0.04)' : 'none',
                     transition: 'border-color 0.18s, box-shadow 0.18s, transform 0.18s',
                     '&:hover': {
-                      borderColor: theme.palette.primary.main,
-                      boxShadow: `0 6px 24px ${theme.palette.primary.main}20`,
+                      borderColor: isLight ? '#94A3B8' : '#64748B',
+                      boxShadow: '0 6px 24px rgba(0,0,0,0.08)',
                       transform: 'translateY(-2px)',
                     },
                   }}>
@@ -784,7 +1078,9 @@ const EmployeesPage: React.FC = () => {
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.75 }}>
                         <Avatar sx={{
                           width: 48, height: 48, flexShrink: 0,
-                          bgcolor: bg, color: fg, fontSize: '1rem', fontWeight: 700,
+                          bgcolor: isLight ? '#F1F5F9' : 'rgba(255,255,255,0.08)',
+                          color: isLight ? '#475569' : '#CBD5E1',
+                          fontSize: '1rem', fontWeight: 700,
                           border: `2px solid ${border}`,
                         }}>
                           {initials(emp.full_name)}
@@ -808,22 +1104,22 @@ const EmployeesPage: React.FC = () => {
                       <Stack direction="row" flexWrap="wrap" sx={{ gap: '5px', mb: 1.75 }}>
                         {emp.designation && (
                           <Tooltip title={`Designation: ${emp.designation}`} arrow>
-                            <Chip icon={<RoleIcon />} label={emp.designation} size="small" sx={chipSx(P.blue, isLight)} />
+                            <Chip icon={<RoleIcon />} label={emp.designation} size="small" sx={chipSx(P.gray, isLight)} />
                           </Tooltip>
                         )}
                         {emp.department && (
                           <Tooltip title={`Department: ${emp.department}`} arrow>
-                            <Chip icon={<DeptIcon />} label={emp.department} size="small" sx={chipSx(P.green, isLight)} />
+                            <Chip icon={<DeptIcon />} label={emp.department} size="small" sx={chipSx(P.gray, isLight)} />
                           </Tooltip>
                         )}
                         {emp.management_level && (
                           <Tooltip title={`Management Level: ${emp.management_level}`} arrow>
-                            <Chip icon={<LevelIcon />} label={emp.management_level} size="small" sx={chipSx(P.teal, isLight)} />
+                            <Chip icon={<LevelIcon />} label={emp.management_level} size="small" sx={chipSx(P.gray, isLight)} />
                           </Tooltip>
                         )}
                         {emp.reporting_head && (
                           <Tooltip title={`Reports to: ${emp.reporting_head}`} arrow>
-                            <Chip icon={<ManagerIcon />} label={emp.reporting_head} size="small" sx={chipSx(P.rose, isLight)} />
+                            <Chip icon={<ManagerIcon />} label={emp.reporting_head} size="small" sx={chipSx(P.gray, isLight)} />
                           </Tooltip>
                         )}
                       </Stack>
@@ -832,13 +1128,13 @@ const EmployeesPage: React.FC = () => {
 
                       <Stack spacing={1.1}>
                         <ContactRow
-                          icon={<DesigEmailIcon sx={{ fontSize: 13, color: theme.palette.primary.main }} />}
+                          icon={<DesigEmailIcon sx={{ fontSize: 13, color: 'text.disabled' }} />}
                           label="Official email" value={emp.official_email} />
                         <ContactRow
-                          icon={<EmailIcon sx={{ fontSize: 13, color: theme.palette.success.main }} />}
+                          icon={<EmailIcon sx={{ fontSize: 13, color: 'text.disabled' }} />}
                           label="Personal email" value={emp.personal_email} />
                         <ContactRow
-                          icon={<PhoneIcon sx={{ fontSize: 13, color: theme.palette.warning.main }} />}
+                          icon={<PhoneIcon sx={{ fontSize: 13, color: 'text.disabled' }} />}
                           label="Phone" value={emp.mobile} />
                       </Stack>
                     </CardContent>

@@ -110,12 +110,23 @@ interface UserProfile {
   // successful upload, keyed by docType. Re-uploading the same docType
   // appends rather than replaces, so latestDocFor() below picks the newest.
   documents?: EmployeeDocument[];
+
+  // ── Digital signature — a single current image, replaced (not
+  // appended) on re-upload. See POST /employees/:id/upload-signature.
+  signature?: EmployeeSignature | null;
 }
 
 interface EmployeeDocument {
   docType: string;
   fileName: string;
   driveLink: string;
+  uploadedAt: string | null;
+}
+
+interface EmployeeSignature {
+  fileName: string;
+  driveLink: string;
+  driveFileId: string;
   uploadedAt: string | null;
 }
 
@@ -477,6 +488,86 @@ function DocumentItem({ docType, title, subtitle, requiredTag, requiredTagColor 
   );
 }
 
+// Digital signature — a single current image (re-upload replaces it,
+// unlike DocumentItem's append-and-keep-latest), shown as an inline
+// thumbnail rather than a "View" link-out since the whole point is being
+// visually inspectable at a glance (this Profile page + the Employee List).
+function buildSignatureThumbnailUrl(driveFileId: string) {
+  return `https://drive.google.com/thumbnail?id=${driveFileId}&sz=w320`;
+}
+
+function SignatureCard({ signature, employeeId, onUploaded }: {
+  signature?: EmployeeSignature | null;
+  employeeId?: string;
+  onUploaded?: (signature: EmployeeSignature) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !employeeId) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await axios.post(`${API_URL}/employees/${employeeId}/upload-signature`, formData);
+      if (res.data?.success) onUploaded?.(res.data.data);
+      else setError('Upload failed.');
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Upload failed.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <Paper elevation={0} sx={{ border: '1px solid #E5E9F0', borderRadius: '14px', overflow: 'hidden' }}>
+      <Box sx={{ px: 3, py: 2, borderBottom: '1px solid #F0F2F5', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+        <Box sx={{ width: 36, height: 36, borderRadius: '8px', bgcolor: '#F0F4FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <EditIcon sx={{ color: '#3F6FE8', fontSize: 18 }} />
+        </Box>
+        <Typography fontWeight="700" fontSize="0.9rem" color="#1A1F36">Digital Signature</Typography>
+        <Chip label="Visible on Employee List" size="small" sx={{ ml: 'auto', bgcolor: '#F0F4FF', color: '#3F6FE8', fontWeight: 600, fontSize: '0.68rem', height: 20, borderRadius: '4px' }} />
+      </Box>
+      <Box sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
+        <Box sx={{
+          width: 220, height: 100, borderRadius: '10px', border: '1px dashed #D0D5DD',
+          bgcolor: '#FAFBFC', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0,
+        }}>
+          {signature?.driveFileId ? (
+            <img src={buildSignatureThumbnailUrl(signature.driveFileId)} alt="Your signature" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+          ) : (
+            <Typography fontSize="0.75rem" color="#9CA3AF">No signature uploaded</Typography>
+          )}
+        </Box>
+        <Box sx={{ flex: 1, minWidth: 200 }}>
+          <Typography variant="caption" color={error ? '#DC2626' : '#6B7280'} display="block" mb={1.5}>
+            {error || (signature
+              ? `${signature.fileName}${formatDateDisplay(signature.uploadedAt) ? ` • ${formatDateDisplay(signature.uploadedAt)}` : ''}`
+              : 'Upload a clear image of your signature (JPG or PNG). HR will see it on the Employee List.')}
+          </Typography>
+          {!employeeId && (
+            <Alert severity="info" sx={{ mb: 1.5, fontSize: '0.76rem' }}>
+              No employee master record is linked to this account yet — uploads can't be saved until one exists.
+            </Alert>
+          )}
+          <input ref={inputRef} type="file" hidden accept=".jpg,.jpeg,.png" onChange={handleFile} />
+          <Button
+            size="small" variant="outlined" disabled={uploading || !employeeId} onClick={() => inputRef.current?.click()}
+            startIcon={uploading ? <CircularProgress size={12} color="inherit" /> : <UploadIcon sx={{ fontSize: 14 }} />}
+            sx={{ borderRadius: '8px', textTransform: 'none', fontSize: '0.75rem', fontWeight: 700, borderColor: '#3F6FE8', color: '#3F6FE8' }}>
+            {uploading ? 'Uploading…' : signature ? 'Replace Signature' : 'Upload Signature'}
+          </Button>
+        </Box>
+      </Box>
+    </Paper>
+  );
+}
+
 function AssetItem({ name, type, assignedDate, status }: { name: string; type: string; assignedDate: string; status: 'Active' | 'Returned' }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', py: 2, px: 3, borderBottom: '1px solid #F0F2F5', '&:last-child': { borderBottom: 'none' } }}>
@@ -618,6 +709,9 @@ export default function Profile() {
 
   const handleDocumentsUploaded = (documents: EmployeeDocument[]) =>
     setUserProfile((prev) => prev ? { ...prev, documents } : prev);
+
+  const handleSignatureUploaded = (signature: EmployeeSignature) =>
+    setUserProfile((prev) => prev ? { ...prev, signature } : prev);
 
   if (loading) return (
     <div className="flex min-h-screen bg-gray-50">
@@ -878,6 +972,14 @@ export default function Profile() {
                     </List>
                   </SectionCard>
                 </Box>
+              </Box>
+
+              <Box sx={{ mt: 2.5 }}>
+                <SignatureCard
+                  signature={userProfile?.signature}
+                  employeeId={userProfile?._id}
+                  onUploaded={handleSignatureUploaded}
+                />
               </Box>
             </TabPanel>
 

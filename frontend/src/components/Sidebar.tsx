@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import briskOliveLogo from '../assets/Brisk-Olive-Logo.png';
 import {
   Drawer, List, ListItemButton, ListItemIcon, ListItemText,
-  Box, Collapse, Avatar, Typography,
+  Box, Collapse, Typography,
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -326,24 +327,20 @@ export default function Sidebar() {
           transition: 'all 0.3s ease',
         }}
       >
-        <Avatar
+        <Box
+          component="img"
+          src={briskOliveLogo}
+          alt="Brisk Olive"
           sx={{
-            bgcolor: 'rgba(255,255,255,0.2)',
-            width: 50,
-            height: 50,
+            height: 36,
             mx: 'auto',
             mb: 1.5,
-            transition: 'transform 0.3s ease, box-shadow 0.3s ease',
-            '&:hover': {
-              transform: 'scale(1.05)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-            },
+            display: 'block',
+            borderRadius: '6px',
           }}
-        >
-          <DashboardIcon sx={{ fontSize: 30 }} />
-        </Avatar>
-        <Typography 
-          variant="h6" 
+        />
+        <Typography
+          variant="h6"
           fontWeight={700}
           sx={{
             fontSize: '1.1rem',

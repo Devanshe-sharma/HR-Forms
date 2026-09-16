@@ -34,6 +34,49 @@ const checklistTaskSchema = new mongoose.Schema({
   daysLeft: { type: Number, default: null },
 }, { _id: false });
 
+// HR's editable override of the auto-calculated salary breakdown
+// (calcSalaryStructure on the frontend) — HR can adjust any component
+// before finalising; editing one does NOT recompute the others (this is
+// a review/override step, not a live formula). Null/absent means HR
+// hasn't touched it yet, so the frontend still shows the auto-calculated
+// breakdown until this is actually saved.
+const salaryComponentsSchema = new mongoose.Schema({
+  basic   : { type: Number, default: null },
+  hra     : { type: Number, default: null },
+  convey  : { type: Number, default: null },
+  medical : { type: Number, default: null },
+  special : { type: Number, default: null },
+  pf      : { type: Number, default: null },
+  gratuity: { type: Number, default: null },
+}, { _id: false });
+
+const hrSubStepSchema = new mongoose.Schema({
+  completed  : { type: Boolean, default: false },
+  completedAt: { type: Date,    default: null },
+}, { _id: false });
+
+// The HR completion checklist — 4 of the 5 steps shown in the UI. The
+// 1st step (Appraisal Decision) is deliberately NOT tracked here: it's
+// derived from managementDecision.submittedAt already existing (that's
+// literally what moves stage to 'pending_hr' in the first place), so
+// there's nothing for HR to separately mark complete there.
+const hrSubStepsSchema = new mongoose.Schema({
+  letterPrepared       : { type: hrSubStepSchema, default: () => ({}) },
+  employeeInformed     : { type: hrSubStepSchema, default: () => ({}) },
+  revisionLetterShared : { type: hrSubStepSchema, default: () => ({}) },
+  documentUploaded     : { type: hrSubStepSchema, default: () => ({}) },
+}, { _id: false });
+
+// Mirrors Employee.js's employeeDocumentSchema shape (same Drive-upload
+// convention — see routes/employees.js's /upload-documents route and
+// utils/googleDrive.js's uploadFileToDrive) for consistency across the
+// app's document-upload features.
+const salaryRevisionDocumentSchema = new mongoose.Schema({
+  fileName  : { type: String, default: '' },
+  driveLink : { type: String, default: '' },
+  uploadedAt: { type: Date,   default: null },
+}, { _id: false });
+
 const hrDecisionSchema = new mongoose.Schema({
   newCtc        : { type: Number, default: null },
   applicableDate: { type: Date,   default: null },
@@ -46,6 +89,9 @@ const hrDecisionSchema = new mongoose.Schema({
   fullTimeSince : { type: Date,   default: null },
   notes         : { type: String, default: '' },
   submittedAt   : { type: Date,   default: null },
+  salaryComponents: { type: salaryComponentsSchema, default: () => ({}) },
+  subSteps        : { type: hrSubStepsSchema,       default: () => ({}) },
+  document        : { type: salaryRevisionDocumentSchema, default: () => ({}) },
 }, { _id: false });
 
 const salaryRevisionSchema = new mongoose.Schema({

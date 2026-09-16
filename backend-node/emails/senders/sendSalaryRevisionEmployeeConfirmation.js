@@ -1,12 +1,12 @@
-const sendEmail = require('../sendEmail');
+const { queueSalaryRevisionMail } = require('../../utils/salaryRevisionMailQueue');
 const salaryRevisionEmployeeConfirmationTemplate = require('../templates/salaryRevisionEmployeeConfirmationTemplate');
 
 // Mail 3 — call right after PUT /:id/hr succeeds (stage -> 'completed'),
-// increment path only (mgrDecision.decision === 'increment'). Live as of
-// 2026-09-02 — sends to the employee's own email on file.
+// increment path only (mgrDecision.decision === 'increment'). Queues a
+// draft addressed to the employee's own email on file — does NOT send.
 async function sendSalaryRevisionEmployeeConfirmation(revision) {
   if (!revision.email) {
-    console.error(`[sendSalaryRevisionEmployeeConfirmation] No email on file for revision ${revision._id} (employee: ${revision.employeeName}) — mail not sent.`);
+    console.error(`[sendSalaryRevisionEmployeeConfirmation] No email on file for revision ${revision._id} (employee: ${revision.employeeName}) — no draft queued.`);
     return;
   }
 
@@ -21,7 +21,10 @@ async function sendSalaryRevisionEmployeeConfirmation(revision) {
     effectiveFrom: revision.applicableDate,
   });
 
-  await sendEmail({ to: revision.email, subject, html });
+  await queueSalaryRevisionMail({
+    revisionId: revision._id, mailType: 'employeeConfirmation', employeeName: revision.employeeName,
+    to: revision.email, subject, html,
+  });
 }
 
 module.exports = sendSalaryRevisionEmployeeConfirmation;

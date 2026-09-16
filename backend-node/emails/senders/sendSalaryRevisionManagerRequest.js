@@ -1,4 +1,4 @@
-const sendEmail = require('../sendEmail');
+const { queueSalaryRevisionMail } = require('../../utils/salaryRevisionMailQueue');
 const SalaryRevision = require('../../models/SalaryRevision');
 const Onboarding = require('../../models/onboardingModel');
 const resolveManagerContact = require('../../utils/resolveManagerContact');
@@ -18,14 +18,16 @@ const CC_LIST = [process.env.EMAIL_MANAGEMENT, HR_FALLBACK].filter(Boolean).join
 
 // Mail 1 — call right after a revision enters 'pending_manager' (fresh
 // creation in POST /, or reopened after Management rejects a PIP in
-// PUT /:id/management).
+// PUT /:id/management). Queues a draft (see queueSalaryRevisionMail) —
+// does NOT send; HR reviews/edits/sends it from the dashboard's Mail
+// Queue.
 async function sendSalaryRevisionManagerRequest(revision) {
-  // Hard stop for plain Interns — no mail goes out for them, regardless
+  // Hard stop for plain Interns — no draft is queued for them, regardless
   // of how this revision got created (auto-trigger, manual "Add
   // Revision", or a reopened PIP). Exact match only: "Intern with PPO"
   // is treated like any other employee and is NOT excluded.
   if (revision.category === 'Intern') {
-    console.log(`[sendSalaryRevisionManagerRequest] Skipped — ${revision.employeeName} is a plain Intern, no mail sent.`);
+    console.log(`[sendSalaryRevisionManagerRequest] Skipped — ${revision.employeeName} is a plain Intern, no draft queued.`);
     return;
   }
 
@@ -90,7 +92,10 @@ async function sendSalaryRevisionManagerRequest(revision) {
     actionLink: buildSalaryRevisionActionLink(revision._id, 'manager'),
   });
 
-  await sendEmail({ to, cc: CC_LIST, subject, html });
+  await queueSalaryRevisionMail({
+    revisionId: revision._id, mailType: 'managerRequest', employeeName: revision.employeeName,
+    to, cc: CC_LIST, subject, html,
+  });
 }
 
 module.exports = sendSalaryRevisionManagerRequest;

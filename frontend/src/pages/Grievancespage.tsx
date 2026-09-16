@@ -424,7 +424,7 @@ function GrievanceForm({ employees, onDone, onBack, showToast }: {
     if (!filer) { setError("Your account isn't linked to an employee record — contact HR before filing a grievance."); return; }
     if (concerning.length === 0) { setError('Select one or more employees this concerns.'); return; }
     if (!category) { setError('Select a category.'); return; }
-    if (!description.trim()) { setError('Describe what happened.'); return; }
+    if (!description.trim()) { setError('Grievences Deatils.'); return; }
 
     setBusy(true);
     try {
@@ -528,9 +528,9 @@ function GrievanceForm({ employees, onDone, onBack, showToast }: {
 
       {/* Description */}
       <Box sx={{ mb: 2.5 }}>
-        <Typography fontSize={13} fontWeight={700} mb={0.5}>Describe what happened</Typography>
+        <Typography fontSize={13} fontWeight={700} mb={0.5}>Grievences Deatils</Typography>
         <Typography fontSize={11.5} color="text.secondary" mb={1}>Include dates, specific incidents, and any prior steps you've taken.</Typography>
-        <TextField fullWidth multiline minRows={5} placeholder="Describe the situation in as much detail as you can…"
+        <TextField fullWidth multiline minRows={5} placeholder="Add detailed description…"
           value={description} onChange={e => setDescription(e.target.value)} />
       </Box>
 

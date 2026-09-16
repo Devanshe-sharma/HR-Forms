@@ -1,10 +1,10 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   Box, Typography, Chip, CircularProgress, Alert, Modal, Tabs, Tab,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, Button, TextField, Select, MenuItem, FormControl, InputLabel,
   Avatar, Stack, IconButton, Divider, Slider, Autocomplete, Switch, FormControlLabel,
-  Checkbox, InputAdornment, Popover, Collapse,
+  Checkbox, InputAdornment, Popover, Dialog, DialogContent, Tooltip, Badge,
 } from '@mui/material';
 import {
   ArrowBack      as ArrowBackIcon,
@@ -18,8 +18,9 @@ import {
   Edit           as EditIcon,
   Delete         as DeleteIcon,
   Save           as SaveIcon,
-  KeyboardArrowRight as ChevronIcon,
   ExpandMore     as ExpandMoreIcon,
+  Visibility     as VisibilityIcon,
+  MailOutline    as MailIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import Sidebar from '../components/Sidebar';
@@ -64,6 +65,34 @@ interface ManagementDecision {
   submittedAt : string | null;
 }
 
+interface HrSalaryComponents {
+  basic   : number | null;
+  hra     : number | null;
+  convey  : number | null;
+  medical : number | null;
+  special : number | null;
+  pf      : number | null;
+  gratuity: number | null;
+}
+
+interface HrSubStep {
+  completed  : boolean;
+  completedAt: string | null;
+}
+
+interface HrSubSteps {
+  letterPrepared      : HrSubStep;
+  employeeInformed    : HrSubStep;
+  revisionLetterShared: HrSubStep;
+  documentUploaded    : HrSubStep;
+}
+
+interface HrDocument {
+  fileName  : string;
+  driveLink : string;
+  uploadedAt: string | null;
+}
+
 interface HrDecision {
   newCtc      : number | null;
   applicableDate: string | null;
@@ -74,6 +103,16 @@ interface HrDecision {
   fullTimeSince: string | null;
   notes       : string;
   submittedAt : string | null;
+  // HR's editable override of the auto-calculated salary breakdown —
+  // only present once HR has actually saved it (at finalisation); null/
+  // absent means still auto-calculated. See salaryComponentsSchema in
+  // backend-node/models/SalaryRevision.js.
+  salaryComponents?: HrSalaryComponents | null;
+  // The 4-step HR completion checklist (a 5th "Appraisal Decision" step
+  // is derived client-side from managementDecision.submittedAt, not
+  // stored here — see hrDecisionSchema's comment on the backend).
+  subSteps?: HrSubSteps;
+  document?: HrDocument;
 }
 
 interface SalaryRevision {
@@ -821,9 +860,9 @@ function CtcComponentsView({ onBack, showToast }: {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
-function DashboardView({ records, employees, loading, onSelect, onAdd }: {
+function DashboardView({ records, employees, loading, onSelect, onAdd, onRefresh }: {
   records:SalaryRevision[]; employees:Employee[]; loading:boolean;
-  onSelect:(emp:Employee,rec?:SalaryRevision)=>void; onAdd:()=>void;
+  onSelect:(emp:Employee,rec?:SalaryRevision)=>void; onAdd:()=>void; onRefresh:()=>void;
 }) {
   const now=new Date();
   // Three tabs: 'action' (who's due/pending right now, by some date
@@ -855,9 +894,18 @@ function DashboardView({ records, employees, loading, onSelect, onAdd }: {
   const [status,   setStatus]   = useState('All');
   const [stageFilter, setStageFilter] = useState<'All'|RevisionStage|'no_revision'>('All');
   const [historyAnchor, setHistoryAnchor] = useState<{ el:HTMLElement; emp:Employee }|null>(null);
-  // Which row's secondary panel (Designation/Decision/Stage/CTC/Contract) is
-  // expanded — at most one at a time, per the expandable-row spec.
-  const [expandedRow, setExpandedRow] = useState<string|null>(null);
+  // Row shown in the read-only "View" popup (Designation/Decision/Stage/CTC/
+  // Contract) — replaces the old inline expand-row toggle.
+  const [viewRow, setViewRow] = useState<{ emp:Employee; rec?:SalaryRevision }|null>(null);
+  // TEMPORARY direct Stage editor, inside the View popup — hits the plain
+  // PUT /:id route with only { stage }, which never calls any mail
+  // sender (unlike /manager, /management, /hr). For quick data fixes
+  // only; remove once the underlying stale-managerRequestedAt cleanup is
+  // done and this is no longer needed.
+  const [stageEditOpen, setStageEditOpen] = useState(false);
+  const [stageEditValue, setStageEditValue] = useState<RevisionStage>('pending_manager');
+  const [stageEditBusy, setStageEditBusy] = useState(false);
+  const [stageEditError, setStageEditError] = useState('');
   // Period/Year/Quarter (or the custom range) live inside a popover behind
   // one compound "Period" button instead of three separate selects.
   const [periodAnchorEl, setPeriodAnchorEl] = useState<HTMLElement|null>(null);
@@ -877,6 +925,26 @@ function DashboardView({ records, employees, loading, onSelect, onAdd }: {
     return m;
   },[records]);
 
+  // A "completed" revision that never actually went through the real
+  // Manager -> Management -> HR workflow (no managerRequestedAt) is a
+  // historical/imported placeholder — onboarding backfill, an old CTC
+  // sheet import, a backfilled Intern-to-Employee conversion, etc. — not
+  // an actual increment cycle the employee went through. Someone whose
+  // only "revision" is one of these has never had a real Stage/Decision,
+  // so it must never stand in for the current cycle's record (that would
+  // show a real employee as "Completed" before their very first review is
+  // even due). The real audit history (History tab) still shows it —
+  // only the live Stage/Status lookup skips it.
+  //
+  // Separately, a handful of revisions turned out to have been auto-
+  // created with a stale/incorrect anchor date (before this session's
+  // due-date fixes) and were never real — hand-marked VOIDED in
+  // hrDecision.notes (2026-09-15) rather than deleted, so the audit trail
+  // stays intact. These are excluded the same way regardless of stage.
+  const isBackfillBaseline = (r: SalaryRevision) =>
+    (r.stage === 'completed' && !r.managerRequestedAt) ||
+    !!r.hrDecision?.notes?.startsWith('VOIDED');
+
   // The revision (if any) that belongs to a given due-cycle year, identified
   // by when it was created. If an employee's only revision is from an
   // earlier year than the cycle being viewed, this returns undefined —
@@ -884,7 +952,7 @@ function DashboardView({ records, employees, loading, onSelect, onAdd }: {
   // prompting a fresh revision instead of showing the stale old one.
   const revisionForYear = useCallback((employeeId:string, year:number): SalaryRevision|undefined => {
     const list = revisionMap.get(employeeId) || [];
-    return list.find(r => new Date(r.createdAt).getFullYear() === year);
+    return list.find(r => !isBackfillBaseline(r) && new Date(r.createdAt).getFullYear() === year);
   }, [revisionMap]);
 
   // Per-employee "cycle anchor" — normally the joining date, but reset by
@@ -898,6 +966,29 @@ function DashboardView({ records, employees, loading, onSelect, onAdd }: {
       if (!e.joining_date) return;
       const revs = revisionMap.get(e.employee_id) || [];
       map.set(e.employee_id, computeAnchorDate(e.joining_date, revs));
+    });
+    return map;
+  }, [employees, revisionMap]);
+
+  // An employee's REAL, currently-live cycle (if one exists) — an open,
+  // non-voided revision with a real managerRequestedAt. That field is
+  // self-healed by sendSalaryRevisionManagerRequest.js to the actual
+  // annual-cycle date the moment the cycle really starts, so once it
+  // exists it's strictly more trustworthy than re-deriving a due date
+  // from computeAnchorDate. The two normally agree, but can diverge for
+  // anyone whose "completed" history is an import/backfill with no real
+  // historical applicableDate (e.g. a bulk "Imported from CTC revision
+  // sheet" migration) — computeAnchorDate then has nothing valid to reset
+  // from and falls back to the raw joining date, computing a stale/wrong
+  // Due Date even though the live cycle itself is running correctly
+  // (found 2026-09-15: Adesh Kumar Gupta, Shivharsh Dubey, Sumit Kumar).
+  const realOpenRevisionMap = useMemo(() => {
+    const map = new Map<string, SalaryRevision>();
+    employees.forEach(e => {
+      const revs = revisionMap.get(e.employee_id) || [];
+      const openReal = revs.find(r =>
+        r.stage !== 'completed' && !!r.managerRequestedAt && !r.hrDecision?.notes?.startsWith('VOIDED'));
+      if (openReal) map.set(e.employee_id, openReal);
     });
     return map;
   }, [employees, revisionMap]);
@@ -1010,6 +1101,10 @@ function DashboardView({ records, employees, loading, onSelect, onAdd }: {
 
     if (period === 'all') {
       return allEmps.map(e => {
+        // A real live cycle (see realOpenRevisionMap) always wins over the
+        // anchor-derived guess — it's ground truth, not a re-derivation.
+        const realRev = realOpenRevisionMap.get(e.employee_id);
+        if (realRev) return { emp: e, rec: realRev, dueDate: new Date(realRev.managerRequestedAt!) };
         const dueDate = anchorDateMap.get(e.employee_id)
           ? anniversaryDateForYear(anchorDateMap.get(e.employee_id)!.toISOString(), now.getFullYear())
           : null;
@@ -1034,13 +1129,23 @@ function DashboardView({ records, employees, loading, onSelect, onAdd }: {
     if (!rangeStart || !rangeEnd) return [];
 
     return allEmps.flatMap(e => {
+      // Same "real cycle wins" rule as the 'all' branch above — if a real
+      // live cycle exists, its actual date decides whether this employee
+      // belongs in the selected window, full stop; the anchor-derived
+      // guess never overrides it.
+      const realRev = realOpenRevisionMap.get(e.employee_id);
+      if (realRev) {
+        const realReminder = new Date(realRev.managerRequestedAt!);
+        if (realReminder < rangeStart || realReminder > rangeEnd) return [];
+        return [{ emp: e, rec: realRev, dueDate: realReminder }];
+      }
       const anchor = anchorDateMap.get(e.employee_id);
       if (!anchor) return [];
       const due = isDueInRange(anchor, rangeStart, rangeEnd);
       if (!due) return [];
       return [{ emp: e, rec: revisionForYear(e.employee_id, due.getFullYear()), dueDate: due }];
     });
-  }, [mainTab, period, ppoOnly, completedRows, ppoRows, allEmps, internRows, selFY, selQ, customFrom, customTo, anchorDateMap, revisionForYear]);
+  }, [mainTab, period, ppoOnly, completedRows, ppoRows, allEmps, internRows, selFY, selQ, customFrom, customTo, anchorDateMap, realOpenRevisionMap, revisionForYear]);
 
   // Status is purely date-driven now — whether someone has any PRIOR
   // history (a real past review, or a backfilled onboarding baseline)
@@ -1139,7 +1244,8 @@ function DashboardView({ records, employees, loading, onSelect, onAdd }: {
              `Due in Q${selQ} ${fiscalYearLabel(selFY)} (${fmtDate(fiscalQuarterStart(selFY,selQ))} – ${fmtDate(fiscalQuarterEnd(selFY,selQ))})`}
           </Typography>
         </Box>
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <CompanyMailButton/>
           <Button variant="contained" startIcon={<AddIcon/>} onClick={onAdd} size="small"
             sx={{ bgcolor:ACCENT, textTransform:'none', fontWeight:600, borderRadius: 1.5, '&:hover':{ bgcolor:'#4338ca' } }}>
             Add Revision
@@ -1318,15 +1424,15 @@ function DashboardView({ records, employees, loading, onSelect, onAdd }: {
             <Table size="small" stickyHeader>
               <TableHead>
                 <TableRow sx={{ '& th':TH }}>
-                  <TableCell sx={{ width:34, px:1 }}/>
                   <TableCell>Employee</TableCell>
                   <TableCell>Department</TableCell>
+                  <TableCell>DOJ</TableCell>
                   {mainTab==='history'&&<TableCell>Completed On</TableCell>}
                   {mainTab!=='history'&&<TableCell>Due Date</TableCell>}
                   <TableCell>Status</TableCell>
                   {mainTab!=='history'&&<TableCell>Stage</TableCell>}
                   {mainTab!=='history'&&<TableCell>Score</TableCell>}
-                  <TableCell>New CTC</TableCell>
+                  <TableCell align="center">Action</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -1357,22 +1463,11 @@ function DashboardView({ records, employees, loading, onSelect, onAdd }: {
                     : null;
                   const st = mainTab==='history' ? ('done' as Status) : rowStatus(rec,dueDate);
                   const isDoneStatus = st==='done' || st==='done_delayed';
-                  const isExpanded = expandedRow===emp._id;
-                  const toggleExpand = (e: React.MouseEvent) => {
-                    e.stopPropagation();
-                    setExpandedRow(isExpanded ? null : emp._id);
-                  };
                   return (
                     <React.Fragment key={emp._id}>
                       <TableRow onClick={()=>onSelect(emp,rec)}
                         sx={{ cursor:'pointer', '&:hover':{ bgcolor:'var(--surface-1)' },
-                          borderBottom: isExpanded ? 'none' : '0.5px solid var(--border)' }}>
-                        <TableCell sx={{ ...TD, width:34, px:1 }}>
-                          <IconButton size="small" onClick={toggleExpand} sx={{ p:0.4 }}>
-                            <ChevronIcon sx={{ fontSize:16, color:'var(--text-secondary)',
-                              transform: isExpanded?'rotate(90deg)':'none', transition:'transform .15s' }}/>
-                          </IconButton>
-                        </TableCell>
+                          borderBottom: '0.5px solid var(--border)' }}>
                         <TableCell sx={TD}>
                           <Box sx={{ display:'flex', alignItems:'center', gap:1 }}>
                             <Avatar sx={{ width:26, height:26, bgcolor:'var(--text-accent)', fontSize:10, fontWeight:700 }}>{initials(emp.full_name)}</Avatar>
@@ -1380,6 +1475,7 @@ function DashboardView({ records, employees, loading, onSelect, onAdd }: {
                           </Box>
                         </TableCell>
                         <TableCell sx={{ ...TD, color:'var(--text-secondary)' }}>{emp.department||'—'}</TableCell>
+                        <TableCell sx={{ ...TD, color:'var(--text-secondary)' }}>{fmtDate(emp.joining_date)}</TableCell>
                         {mainTab==='history'&&(
                           <TableCell sx={TD}>
                             <Box>
@@ -1418,69 +1514,21 @@ function DashboardView({ records, employees, loading, onSelect, onAdd }: {
                             ) : <Typography fontSize={12} color="var(--text-secondary)">—</Typography>}
                           </TableCell>
                         )}
-                        <TableCell sx={{ ...TD, fontWeight:700, color: isDoneStatus?'#059669':'var(--text-primary)' }}>
-                          {rec?fmtCurrency(rec.newCtc):'—'}
-                        </TableCell>
-                      </TableRow>
-
-                      <TableRow>
-                        <TableCell colSpan={mainTab==='history'?6:8} sx={{ p:0, border:'none' }}>
-                          <Collapse in={isExpanded} timeout={150} unmountOnExit>
-                            <Box sx={{ bgcolor:'var(--surface-1)', borderBottom:'0.5px solid var(--border)',
-                              px:3, py:2, display:'flex', gap:3, flexWrap:'wrap' }}>
-                              <Box sx={{ minWidth:150 }}>
-                                <Typography fontSize={10} fontWeight={700} color="var(--text-secondary)" mb={0.6}>DESIGNATION</Typography>
-                                <Box sx={{ display:'flex', alignItems:'center', gap:0.7, flexWrap:'wrap' }}>
-                                  <Typography fontSize={12} fontWeight={600} color="var(--text-secondary)">{emp.designation||'—'}</Typography>
-                                  {rec?.designationChanged && <OutlineBadge label="changed" color={ACCENT}/>}
-                                </Box>
-                              </Box>
-
-                              <Divider orientation="vertical" flexItem sx={{ borderColor:'var(--border)' }}/>
-
-                              <Box sx={{ minWidth:170 }}>
-                                <Typography fontSize={10} fontWeight={700} color="var(--text-secondary)" mb={0.6}>DECISION &amp; STAGE</Typography>
-                                {rec ? (
-                                  <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
-                                    <DecisionChip decision={rec.managerDecision?.decision} isPpo={isPpoRevision(rec)}/>
-                                    <StageChip stage={rec.stage}/>
-                                  </Stack>
-                                ) : <Typography fontSize={12} color="var(--text-secondary)">No revision record</Typography>}
-                              </Box>
-
-                              <Divider orientation="vertical" flexItem sx={{ borderColor:'var(--border)' }}/>
-
-                              <Box sx={{ minWidth:190 }}>
-                                <Typography fontSize={10} fontWeight={700} color="var(--text-secondary)" mb={0.6}>PREV. CTC → NEW CTC</Typography>
-                                <Box sx={{ display:'flex', alignItems:'center', gap:1 }}>
-                                  <Typography fontSize={12} color="var(--text-secondary)">{fmtCurrency(rec?.previousCtc ?? emp.annual_ctc)}</Typography>
-                                  <Typography fontSize={11} color="var(--text-secondary)">→</Typography>
-                                  <Typography fontSize={13} fontWeight={700} color={isDoneStatus?'#059669':'var(--text-primary)'}>
-                                    {rec?fmtCurrency(rec.newCtc):'—'}
-                                  </Typography>
-                                </Box>
-                              </Box>
-
-                              <Divider orientation="vertical" flexItem sx={{ borderColor:'var(--border)' }}/>
-
-                              <Box sx={{ minWidth:210 }}>
-                                <Typography fontSize={10} fontWeight={700} color="var(--text-secondary)" mb={0.6}>CONTRACT</Typography>
-                                {emp.contract_start_date ? (
-                                  <>
-                                    <Typography fontSize={12} color="var(--text-secondary)">
-                                      {fmtDate(emp.contract_start_date)} → {emp.contract_end_date?fmtDate(emp.contract_end_date):'Ongoing'}
-                                    </Typography>
-                                    {(emp.contract_history?.length||0)>1 && (
-                                      <Typography component="span" onClick={(e)=>{ e.stopPropagation(); setHistoryAnchor({ el:e.currentTarget, emp }); }}
-                                        sx={{ display:'block', fontSize:11, color:'var(--text-accent)', cursor:'pointer', fontWeight:600, mt:0.3, '&:hover':{ textDecoration:'underline' } }}>
-                                        Previous Contract
-                                      </Typography>
-                                    )}
-                                  </>
-                                ) : <Typography fontSize={12} color="var(--text-secondary)">—</Typography>}
-                              </Box>
-                            </Box>
-                          </Collapse>
+                        <TableCell sx={{ ...TD, textAlign:'center' }}>
+                          <Box sx={{ display:'flex', alignItems:'center', justifyContent:'center', gap:0.5 }}>
+                            <Tooltip title="View">
+                              <IconButton size="small" onClick={e=>{ e.stopPropagation(); setViewRow({ emp, rec }); }}
+                                sx={{ p:0.5, bgcolor:'#eef2ff', color:'#4f46e5', '&:hover':{ bgcolor:'#e0e7ff' } }}>
+                                <VisibilityIcon sx={{ fontSize:14 }}/>
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Update">
+                              <IconButton size="small" onClick={e=>{ e.stopPropagation(); onSelect(emp,rec); }}
+                                sx={{ p:0.5, bgcolor:'#f8fafc', color:'#64748b', border:'1px solid #e2e8f0', '&:hover':{ bgcolor:'#f1f5f9' } }}>
+                                <EditIcon sx={{ fontSize:14 }}/>
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
                         </TableCell>
                       </TableRow>
                     </React.Fragment>
@@ -1521,6 +1569,494 @@ function DashboardView({ records, employees, loading, onSelect, onAdd }: {
           </Stack>
         </Box>
       </Popover>
+
+      {/* Read-only "View" popup — replaces the old inline expand-row toggle,
+          same fields (Designation/Decision/Stage/CTC/Contract) as before. */}
+      <Modal open={!!viewRow} onClose={()=>{ setViewRow(null); setStageEditOpen(false); setStageEditError(''); }}>
+        <Box sx={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)',
+          width:{ xs:'95vw', md:560 }, maxHeight:'85vh', overflow:'auto',
+          bgcolor:'white', borderRadius:2, border:'1px solid #e2e8f0', outline:'none' }}>
+          {viewRow && (()=>{
+            const { emp, rec } = viewRow;
+            const isDoneStatus = rec ? ['completed'].includes(rec.stage) : false;
+            return (
+              <>
+                <Box sx={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                  p:2, borderBottom:'1px solid #e2e8f0', position:'sticky', top:0, bgcolor:'white', zIndex:1 }}>
+                  <Box sx={{ display:'flex', alignItems:'center', gap:1.25 }}>
+                    <Avatar sx={{ width:30, height:30, bgcolor:'var(--text-accent)', fontSize:12, fontWeight:700 }}>{initials(emp.full_name)}</Avatar>
+                    <Box>
+                      <Typography fontSize={13} fontWeight={700}>{emp.full_name}</Typography>
+                      <Typography fontSize={11} color="text.secondary">{emp.designation} · {emp.department}</Typography>
+                    </Box>
+                  </Box>
+                  <IconButton size="small" onClick={()=>{ setViewRow(null); setStageEditOpen(false); setStageEditError(''); }}><CloseIcon fontSize="small"/></IconButton>
+                </Box>
+                <Box sx={{ p:2.5, display:'flex', flexDirection:'column', gap:2 }}>
+                  <Box>
+                    <Typography fontSize={10} fontWeight={700} color="var(--text-secondary)" mb={0.6}>DESIGNATION</Typography>
+                    <Box sx={{ display:'flex', alignItems:'center', gap:0.7, flexWrap:'wrap' }}>
+                      <Typography fontSize={12} fontWeight={600} color="var(--text-secondary)">{emp.designation||'—'}</Typography>
+                      {rec?.designationChanged && <OutlineBadge label="changed" color={ACCENT}/>}
+                    </Box>
+                  </Box>
+
+                  <Divider sx={{ borderColor:'var(--border)' }}/>
+
+                  <Box>
+                    <Typography fontSize={10} fontWeight={700} color="var(--text-secondary)" mb={0.6}>DECISION &amp; STAGE</Typography>
+                    {rec ? (
+                      <>
+                        <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
+                          <DecisionChip decision={rec.managerDecision?.decision} isPpo={isPpoRevision(rec)}/>
+                          {stageEditOpen ? (
+                            <>
+                              <FormControl size="small" sx={{ minWidth:170 }}>
+                                <Select value={stageEditValue} onChange={e=>setStageEditValue(e.target.value as RevisionStage)}
+                                  sx={{ fontSize:12, height:30 }}>
+                                  <MenuItem value="pending_manager" sx={{ fontSize:12 }}>Pending Manager</MenuItem>
+                                  <MenuItem value="pending_management" sx={{ fontSize:12 }}>Pending Management</MenuItem>
+                                  <MenuItem value="pending_hr" sx={{ fontSize:12 }}>Pending HR</MenuItem>
+                                  <MenuItem value="on_hold" sx={{ fontSize:12 }}>On Hold</MenuItem>
+                                  <MenuItem value="completed" sx={{ fontSize:12 }}>Completed</MenuItem>
+                                </Select>
+                              </FormControl>
+                              <IconButton size="small" disabled={stageEditBusy} onClick={async ()=>{
+                                setStageEditBusy(true); setStageEditError('');
+                                try {
+                                  const { data } = await axios.put(`${API}/${rec._id}`, { stage: stageEditValue });
+                                  if (!data.success) throw new Error(data.message || 'Save failed');
+                                  setViewRow({ emp, rec: { ...rec, ...data.data } });
+                                  setStageEditOpen(false);
+                                  onRefresh();
+                                } catch (err: any) {
+                                  setStageEditError(err?.response?.data?.message || err?.message || 'Save failed');
+                                } finally {
+                                  setStageEditBusy(false);
+                                }
+                              }}>
+                                {stageEditBusy ? <CircularProgress size={14}/> : <CheckCircleIcon sx={{ fontSize:16, color:'#059669' }}/>}
+                              </IconButton>
+                              <IconButton size="small" disabled={stageEditBusy}
+                                onClick={()=>{ setStageEditOpen(false); setStageEditError(''); }}>
+                                <CloseIcon sx={{ fontSize:16 }}/>
+                              </IconButton>
+                            </>
+                          ) : (
+                            <>
+                              <StageChip stage={rec.stage}/>
+                              <IconButton size="small" sx={{ p:0.3 }}
+                                onClick={()=>{ setStageEditValue(rec.stage); setStageEditOpen(true); setStageEditError(''); }}>
+                                <EditIcon sx={{ fontSize:14, color:'var(--text-secondary)' }}/>
+                              </IconButton>
+                            </>
+                          )}
+                        </Stack>
+                        {stageEditOpen && (
+                          <Typography fontSize={10} color="var(--text-secondary)" mt={0.5}>
+                            Temporary direct edit — updates the stage only, no mail is sent.
+                          </Typography>
+                        )}
+                        {stageEditError && (
+                          <Typography fontSize={11} color="#dc2626" mt={0.5}>{stageEditError}</Typography>
+                        )}
+                      </>
+                    ) : <Typography fontSize={12} color="var(--text-secondary)">No revision record</Typography>}
+                  </Box>
+
+                  <Divider sx={{ borderColor:'var(--border)' }}/>
+
+                  <Box>
+                    <Typography fontSize={10} fontWeight={700} color="var(--text-secondary)" mb={0.6}>PREV. CTC → NEW CTC</Typography>
+                    <Box sx={{ display:'flex', alignItems:'center', gap:1 }}>
+                      <Typography fontSize={12} color="var(--text-secondary)">{fmtCurrency(rec?.previousCtc ?? emp.annual_ctc)}</Typography>
+                      <Typography fontSize={11} color="var(--text-secondary)">→</Typography>
+                      <Typography fontSize={13} fontWeight={700} color={isDoneStatus?'#059669':'var(--text-primary)'}>
+                        {rec?fmtCurrency(rec.newCtc):'—'}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  <Divider sx={{ borderColor:'var(--border)' }}/>
+
+                  <Box>
+                    <Typography fontSize={10} fontWeight={700} color="var(--text-secondary)" mb={0.6}>CONTRACT</Typography>
+                    {emp.contract_start_date ? (
+                      <>
+                        <Typography fontSize={12} color="var(--text-secondary)">
+                          {fmtDate(emp.contract_start_date)} → {emp.contract_end_date?fmtDate(emp.contract_end_date):'Ongoing'}
+                        </Typography>
+                        {(emp.contract_history?.length||0)>1 && (
+                          <Typography component="span" onClick={(e)=>{ e.stopPropagation(); setHistoryAnchor({ el:e.currentTarget, emp }); }}
+                            sx={{ display:'block', fontSize:11, color:'var(--text-accent)', cursor:'pointer', fontWeight:600, mt:0.3, '&:hover':{ textDecoration:'underline' } }}>
+                            Previous Contract
+                          </Typography>
+                        )}
+                      </>
+                    ) : <Typography fontSize={12} color="var(--text-secondary)">—</Typography>}
+                  </Box>
+                </Box>
+              </>
+            );
+          })()}
+        </Box>
+      </Modal>
+    </Box>
+  );
+}
+
+// ─── Mail Queue ───────────────────────────────────────────────────────────────
+// Every Salary Revision mail (Mail 1-6, HR notify, the quarterly digest)
+// lands as an editable draft instead of sending itself — see
+// utils/salaryRevisionMailQueue.js and each sender in emails/senders/ on
+// the backend. There's no separate queue screen — each mail shows up
+// inline on the exact step of the revision detail view it belongs to
+// (RevisionMailButtons below, embedded in the Manager/Management/HR
+// cards in RevisionDetailView). A "Send Mail" button appears there once a
+// draft exists, and disappears for good the moment it's actually sent —
+// drafts are one-shot, never resendable from here. Only Admin/HR ever
+// see this at all, per "only HR can send them via dashboard" (2026-09-15).
+
+const MAIL_TYPE_LABEL: Record<string,string> = {
+  managerRequest: 'Request Manager',
+  managementApproval: 'Management Approval',
+  pipHold: 'PIP Hold Notice',
+  hrNotify: 'HR Notify',
+  managerEscalation: 'Reminder to Manager',
+  finalEscalation: 'Escalate Delay to Management',
+  employeeConfirmation: 'Employee Confirmation',
+  quarterlyDigest: 'Quarterly Due Digest',
+};
+
+interface MailDraft {
+  _id: string;
+  revisionId: string | null;
+  mailType: string;
+  employeeName: string;
+  to: string;
+  cc: string;
+  bcc: string;
+  subject: string;
+  html: string;
+  status: 'draft'|'sent'|'discarded';
+  createdAt: string;
+  sentAt: string | null;
+  sentBy: string;
+}
+
+const DRAFTS_API = `${API_URL}/salary-revision-mail-drafts`;
+
+// Every recurring mail that isn't about any single employee's revision —
+// currently just the quarterly "due this quarter" digest to Management
+// (revisionId: null). Mirrors the cron schedule in emails/scheduler.js
+// exactly ('0 9 1 4,7,10,1 *' — 9am on the 1st of Apr/Jul/Oct/Jan) so the
+// "next fires" date shown here can never drift from what the backend
+// actually does. A future monthly mail would just add a second entry
+// here with its own computeNext.
+const COMPANY_MAIL_SCHEDULE: { mailType: string; label: string; computeNext: (from: Date) => Date }[] = [
+  {
+    mailType: 'quarterlyDigest',
+    label: 'Quarterly Due Digest',
+    computeNext: (from) => {
+      const fireMonths = [3, 6, 9, 0]; // Apr, Jul, Oct, Jan (0-indexed)
+      const candidates: Date[] = [];
+      for (const yr of [from.getFullYear(), from.getFullYear() + 1]) {
+        for (const m of fireMonths) candidates.push(new Date(yr, m, 1, 9, 0, 0));
+      }
+      candidates.sort((a, b) => a.getTime() - b.getTime());
+      return candidates.find(d => d > from)!;
+    },
+  },
+];
+
+// Button for company-wide mail — mail that isn't tied to any single
+// employee's revision, so it has nowhere to show up on a per-revision
+// card. Always visible for Admin/HR (never for anyone else), even with
+// nothing queued yet — it lists every known recurring mail type and its
+// next scheduled fire date, not just what's already a draft, so it
+// doubles as "what's coming up" rather than only "what's actionable now".
+function CompanyMailButton() {
+  const role = localStorage.getItem('role') || '';
+  const canSeeMail = role === 'Admin' || role === 'HR';
+
+  const [drafts, setDrafts] = useState<MailDraft[]>([]);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<MailDraft|null>(null);
+  const [editTo, setEditTo] = useState('');
+  const [editCc, setEditCc] = useState('');
+  const [editBcc, setEditBcc] = useState('');
+  const [editSubject, setEditSubject] = useState('');
+  const [editHtml, setEditHtml] = useState('');
+  const bodyEditorRef = useRef<HTMLDivElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    if (!canSeeMail) return;
+    try {
+      const { data } = await axios.get(`${DRAFTS_API}?unassigned=true&status=draft`);
+      setDrafts(data.data || []);
+    } catch { /* quiet — a failed fetch just means the list falls back to schedule-only rows */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canSeeMail]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (!canSeeMail) return null;
+
+  const openEdit = (d: MailDraft) => {
+    setEditing(d);
+    setEditTo(d.to); setEditCc(d.cc || ''); setEditBcc(d.bcc || '');
+    setEditSubject(d.subject); setEditHtml(d.html);
+    setError('');
+  };
+
+  const sendMail = async () => {
+    if (!editing) return;
+    setBusy(true);
+    setError('');
+    try {
+      const html = bodyEditorRef.current?.innerHTML ?? editHtml;
+      const saveRes = await axios.put(`${DRAFTS_API}/${editing._id}`, {
+        to: editTo, cc: editCc, bcc: editBcc, subject: editSubject, html,
+      });
+      if (!saveRes.data.success) throw new Error(saveRes.data.message || 'Save failed');
+
+      const sendRes = await axios.post(`${DRAFTS_API}/${editing._id}/send`);
+      if (!sendRes.data.success) throw new Error(sendRes.data.message || 'Send failed');
+
+      setEditing(null);
+      load();
+    } catch (e:any) { setError(e?.response?.data?.message || e?.message || 'Send failed'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      <Badge badgeContent={drafts.length} color="error">
+        <Button size="small" variant="outlined" startIcon={<MailIcon sx={{ fontSize:16 }}/>}
+          onClick={()=>setOpen(true)}
+          sx={{ textTransform:'none', fontWeight:600, fontSize:12, borderRadius:1.5,
+            borderColor:'var(--border)', color:'var(--text-primary)', bgcolor:'white' }}>
+          Company Mail
+        </Button>
+      </Badge>
+
+      <Modal open={open} onClose={()=>{ if (!busy) { setOpen(false); setEditing(null); } }}>
+        <Box sx={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)',
+          width:{ xs:'95vw', md:640 }, maxHeight:'85vh', overflow:'auto',
+          bgcolor:'white', borderRadius:2, border:'1px solid #e2e8f0', outline:'none', p:2.5 }}>
+          {!editing ? (
+            <>
+              <Typography fontSize={14} fontWeight={700} mb={2}>Company-Wide Mail</Typography>
+              <Stack spacing={1}>
+                {COMPANY_MAIL_SCHEDULE.map(sched => {
+                  const draft = drafts.find(d => d.mailType === sched.mailType);
+                  return (
+                    <Box key={sched.mailType} sx={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:1,
+                      p:1.25, border:'1px solid #e2e8f0', borderRadius:1.5 }}>
+                      <Box>
+                        <Typography fontSize={12} fontWeight={600}>{MAIL_TYPE_LABEL[sched.mailType] || sched.label}</Typography>
+                        <Typography fontSize={11} color="text.secondary">
+                          {draft ? draft.subject : `Not queued yet — next fires ${fmtDate(sched.computeNext(new Date()).toISOString())}`}
+                        </Typography>
+                      </Box>
+                      {draft ? (
+                        <Button size="small" variant="outlined" onClick={()=>openEdit(draft)}
+                          sx={{ textTransform:'none', fontSize:11, py:0.2, px:1, minWidth:0, borderColor:ACCENT, color:ACCENT }}>
+                          Send Mail
+                        </Button>
+                      ) : (
+                        <Chip size="small" label="Scheduled" sx={{ fontSize:10, height:20, bgcolor:'#f8fafc', color:'#94a3b8' }}/>
+                      )}
+                    </Box>
+                  );
+                })}
+              </Stack>
+            </>
+          ) : (
+            <Stack spacing={2}>
+              <Box sx={{ display:'flex', alignItems:'center', gap:1 }}>
+                <IconButton size="small" onClick={()=>setEditing(null)} disabled={busy}><ArrowBackIcon fontSize="small"/></IconButton>
+                <Typography fontSize={14} fontWeight={700}>{MAIL_TYPE_LABEL[editing.mailType] || editing.mailType}</Typography>
+              </Box>
+              {error && <Alert severity="error" sx={{ fontSize:12 }} onClose={()=>setError('')}>{error}</Alert>}
+              <TextField label="To" size="small" fullWidth value={editTo} onChange={e=>setEditTo(e.target.value)} disabled={busy}/>
+              <TextField label="Cc" size="small" fullWidth value={editCc} onChange={e=>setEditCc(e.target.value)} disabled={busy}/>
+              <TextField label="Bcc" size="small" fullWidth value={editBcc} onChange={e=>setEditBcc(e.target.value)} disabled={busy}/>
+              <TextField label="Subject" size="small" fullWidth value={editSubject} onChange={e=>setEditSubject(e.target.value)} disabled={busy}/>
+              <Box>
+                <Typography fontSize={12} color="text.secondary" mb={0.5}>Body</Typography>
+                <Box
+                  key={editing._id}
+                  ref={bodyEditorRef}
+                  contentEditable={!busy}
+                  suppressContentEditableWarning
+                  dangerouslySetInnerHTML={{ __html: editHtml }}
+                  sx={{
+                    border:'1px solid #cbd5e1', borderRadius:1, p:1.5, minHeight:200, maxHeight:380,
+                    overflow:'auto', fontSize:13, lineHeight:1.6, bgcolor: busy?'#f8fafc':'#fff',
+                    '&:focus':{ outline:`2px solid ${ACCENT}`, outlineOffset:-1 },
+                  }}
+                />
+              </Box>
+              <Box sx={{ display:'flex', gap:1.5 }}>
+                <Button variant="contained" onClick={sendMail} disabled={busy}
+                  sx={{ bgcolor:'#059669', '&:hover':{ bgcolor:'#047857' }, textTransform:'none', fontWeight:600 }}>
+                  {busy?<CircularProgress size={18} sx={{ color:'white' }}/>:'Send Mail'}
+                </Button>
+                <Button variant="outlined" onClick={()=>setEditing(null)} disabled={busy} sx={{ textTransform:'none' }}>Cancel</Button>
+              </Box>
+            </Stack>
+          )}
+        </Box>
+      </Modal>
+    </>
+  );
+}
+
+// Inline "Send Mail" control for one revision's relevant mail types — used
+// three times in RevisionDetailView's Decision tab (Manager/Management/HR
+// cards), each passed only the mail type(s) that belong to that step. A
+// draft shows a "Send Mail" button; once actually sent it flips to a
+// plain "Sent" badge and the button is gone for good — no re-send path
+// exists from here. Renders nothing at all for a non-Admin/HR viewer (a
+// Manager looking at their own revision sees no mail UI whatsoever), and
+// the backend's requireRole on every one of these routes enforces the
+// exact same restriction independently.
+function RevisionMailButtons({ revisionId, mailTypes }: { revisionId?: string; mailTypes: string[] }) {
+  const role = localStorage.getItem('role') || '';
+  const canSeeMail = role === 'Admin' || role === 'HR';
+  const mailTypesKey = mailTypes.join(',');
+
+  const [drafts, setDrafts] = useState<MailDraft[]>([]);
+  const [editing, setEditing] = useState<MailDraft|null>(null);
+  const [editTo, setEditTo] = useState('');
+  const [editCc, setEditCc] = useState('');
+  const [editBcc, setEditBcc] = useState('');
+  const [editSubject, setEditSubject] = useState('');
+  // Same convention as the old Mail Queue's editor — the visible body is
+  // the RENDERED contentEditable div, editHtml only a fallback.
+  const [editHtml, setEditHtml] = useState('');
+  const bodyEditorRef = useRef<HTMLDivElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    if (!canSeeMail || !revisionId) return;
+    try {
+      const { data } = await axios.get(`${DRAFTS_API}?status=all&revisionId=${revisionId}`);
+      const all: MailDraft[] = data.data || [];
+      // Fixed sequence order (Request Manager -> Reminder to Manager ->
+      // Escalate Delay to Management), not creation-time order — the
+      // `wanted` array's own order IS that sequence, since callers always
+      // pass mailTypes in the order the step actually happens.
+      const wanted = mailTypesKey.split(',');
+      setDrafts(
+        all
+          .filter(d => wanted.includes(d.mailType))
+          .sort((a, b) => wanted.indexOf(a.mailType) - wanted.indexOf(b.mailType))
+      );
+    } catch { /* secondary panel — a failed load here shouldn't block the revision UI */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revisionId, canSeeMail, mailTypesKey]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (!canSeeMail || !revisionId || !drafts.length) return null;
+
+  const openEdit = (d: MailDraft) => {
+    setEditing(d);
+    setEditTo(d.to); setEditCc(d.cc || ''); setEditBcc(d.bcc || '');
+    setEditSubject(d.subject); setEditHtml(d.html);
+    setError('');
+  };
+
+  // One action, not two — edits are saved and the mail is dispatched in
+  // the same click, under the same loader, rather than a separate
+  // Save-then-Send flow.
+  const sendMail = async () => {
+    if (!editing) return;
+    setBusy(true);
+    setError('');
+    try {
+      const html = bodyEditorRef.current?.innerHTML ?? editHtml;
+      const saveRes = await axios.put(`${DRAFTS_API}/${editing._id}`, {
+        to: editTo, cc: editCc, bcc: editBcc, subject: editSubject, html,
+      });
+      if (!saveRes.data.success) throw new Error(saveRes.data.message || 'Save failed');
+
+      const sendRes = await axios.post(`${DRAFTS_API}/${editing._id}/send`);
+      if (!sendRes.data.success) throw new Error(sendRes.data.message || 'Send failed');
+
+      setEditing(null);
+      load();
+    } catch (e:any) { setError(e?.response?.data?.message || e?.message || 'Send failed'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Box sx={{ mt:1.5, pt:1.5, borderTop:'1px dashed #e2e8f0' }}>
+      <Stack spacing={0.75}>
+        {drafts.map(d=>(
+          <Box key={d._id} sx={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:1 }}>
+            <Typography fontSize={11} color="text.secondary">{MAIL_TYPE_LABEL[d.mailType] || d.mailType}</Typography>
+            {d.status==='draft' ? (
+              <Button size="small" variant="outlined" onClick={()=>openEdit(d)}
+                sx={{ textTransform:'none', fontSize:11, py:0.2, px:1, minWidth:0, borderColor:ACCENT, color:ACCENT }}>
+                Send Mail
+              </Button>
+            ) : d.status==='sent' ? (
+              <Chip size="small" icon={<CheckCircleIcon sx={{ fontSize:'12px !important' }}/>}
+                label={`Sent${d.sentBy?` · ${d.sentBy}`:''}`}
+                sx={{ fontSize:10, height:20, bgcolor:'#f0fdf4', color:'#059669', '& .MuiChip-icon':{ color:'inherit' } }}/>
+            ) : (
+              <Chip size="small" label="Discarded" sx={{ fontSize:10, height:20, bgcolor:'#f8fafc', color:'#94a3b8' }}/>
+            )}
+          </Box>
+        ))}
+      </Stack>
+
+      <Modal open={!!editing} onClose={()=>{ if (!busy) setEditing(null); }}>
+        <Box sx={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)',
+          width:{ xs:'95vw', md:640 }, maxHeight:'85vh', overflow:'auto',
+          bgcolor:'white', borderRadius:2, border:'1px solid #e2e8f0', outline:'none', p:2.5 }}>
+          <Typography fontSize={14} fontWeight={700} mb={2}>
+            {editing ? (MAIL_TYPE_LABEL[editing.mailType] || editing.mailType) : ''}
+          </Typography>
+          {editing && (
+            <Stack spacing={2}>
+              {error && <Alert severity="error" sx={{ fontSize:12 }} onClose={()=>setError('')}>{error}</Alert>}
+              <TextField label="To" size="small" fullWidth value={editTo} onChange={e=>setEditTo(e.target.value)} disabled={busy}/>
+              <TextField label="Cc" size="small" fullWidth value={editCc} onChange={e=>setEditCc(e.target.value)} disabled={busy}/>
+              <TextField label="Bcc" size="small" fullWidth value={editBcc} onChange={e=>setEditBcc(e.target.value)} disabled={busy}/>
+              <TextField label="Subject" size="small" fullWidth value={editSubject} onChange={e=>setEditSubject(e.target.value)} disabled={busy}/>
+              <Box>
+                <Typography fontSize={12} color="text.secondary" mb={0.5}>Body</Typography>
+                <Box
+                  key={editing._id}
+                  ref={bodyEditorRef}
+                  contentEditable={!busy}
+                  suppressContentEditableWarning
+                  dangerouslySetInnerHTML={{ __html: editHtml }}
+                  sx={{
+                    border:'1px solid #cbd5e1', borderRadius:1, p:1.5, minHeight:200, maxHeight:380,
+                    overflow:'auto', fontSize:13, lineHeight:1.6, bgcolor: busy?'#f8fafc':'#fff',
+                    '&:focus':{ outline:`2px solid ${ACCENT}`, outlineOffset:-1 },
+                  }}
+                />
+              </Box>
+              <Box sx={{ display:'flex', gap:1.5 }}>
+                <Button variant="contained" onClick={sendMail} disabled={busy}
+                  sx={{ bgcolor:'#059669', '&:hover':{ bgcolor:'#047857' }, textTransform:'none', fontWeight:600 }}>
+                  {busy?<CircularProgress size={18} sx={{ color:'white' }}/>:'Send Mail'}
+                </Button>
+                <Button variant="outlined" onClick={()=>setEditing(null)} disabled={busy} sx={{ textTransform:'none' }}>Cancel</Button>
+              </Box>
+            </Stack>
+          )}
+        </Box>
+      </Modal>
     </Box>
   );
 }
@@ -2133,11 +2669,119 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
   const isCompleted = stage==='completed';
   const isOnHold    = stage==='on_hold';
 
+  // The single "currently effective" percentage for each decision, computed
+  // once so the same number can't ever show inconsistently in two spots:
+  // while still being edited (isMgr/isMgmt) this is the live slider value;
+  // once submitted, it's the actually-recorded value (falling back to the
+  // live value only as a defensive default).
+  const displayMgrPct  = rec?.managerDecision?.recommendedPct ?? mgrPct;
+  const displayMgmtPct = rec?.managementDecision?.finalPct ?? mgmtPct;
+  const effectivePct   = isMgr ? displayMgrPct : displayMgmtPct;
+
   const newCtc      = mgrDecision==='increment'
-    ? Math.round(prevCtc*(1+(isHr||isCompleted?(rec?.managementDecision?.finalPct??mgmtPct):isMgmt?mgmtPct:mgrPct)/100))
+    ? Math.round(prevCtc*(1+effectivePct/100))
     : prevCtc;
-  const salStruct   = calcSalaryStructure(newCtc);
+
+  // Once HR has actually saved a salary-component override (only happens
+  // at finalisation — see postHr below), the read-only Salary Structure
+  // TAB shows exactly those HR-adjusted numbers instead of the raw
+  // auto-calculated ones, per component. Gross/Monthly/Annual are always
+  // just the sum of the components — a plain total, not a re-applied
+  // formula — so they stay correct whichever source is active.
+  const savedSalaryComponents = rec?.hrDecision?.salaryComponents;
+  const salStruct = savedSalaryComponents?.basic != null
+    ? (() => {
+        const c = savedSalaryComponents;
+        const gross = (c.basic||0)+(c.hra||0)+(c.convey||0)+(c.medical||0)+(c.special||0);
+        return { basic:c.basic||0, hra:c.hra||0, convey:c.convey||0, medical:c.medical||0, special:c.special||0,
+          pf:c.pf||0, gratuity:c.gratuity||0, gross, monthly:gross, annual:gross*12 };
+      })()
+    : calcSalaryStructure(newCtc);
   const avg         = avgPms(pmsRows.filter(r=>r.period.trim()));
+
+  // ─── HR card: editable salary-structure override ───────────────────────
+  // Local only — HR can freely adjust any component before finalising;
+  // it's sent to the backend as part of the postHr payload below, not
+  // saved incrementally (there's nothing to "save as you go" here, unlike
+  // the checklist steps, which genuinely happen at different times).
+  const [hrSalaryComponents, setHrSalaryComponents] = useState<HrSalaryComponents>(() => {
+    const saved = rec?.hrDecision?.salaryComponents;
+    if (saved?.basic != null) {
+      return { basic:saved.basic??0, hra:saved.hra??0, convey:saved.convey??0, medical:saved.medical??0,
+        special:saved.special??0, pf:saved.pf??0, gratuity:saved.gratuity??0 };
+    }
+    const auto = calcSalaryStructure(newCtc);
+    return { basic:auto.basic, hra:auto.hra, convey:auto.convey, medical:auto.medical, special:auto.special, pf:auto.pf, gratuity:auto.gratuity };
+  });
+  const hrGross = (hrSalaryComponents.basic||0)+(hrSalaryComponents.hra||0)+(hrSalaryComponents.convey||0)
+    +(hrSalaryComponents.medical||0)+(hrSalaryComponents.special||0);
+
+  // ─── HR card: 5-step completion checklist ───────────────────────────────
+  // Step 1 (Appraisal Decision) is derived, not stored — it's just
+  // "has Management already decided," which is exactly what put this
+  // revision into 'pending_hr' in the first place.
+  const appraisalStepDone = !!rec?.managementDecision?.submittedAt;
+  const emptyHrStep: HrSubStep = { completed:false, completedAt:null };
+  // Steps 2-4 are saved incrementally (PUT /:id) the moment each is
+  // marked complete — a multi-day HR process shouldn't lose progress
+  // just because the dialog was closed and reopened. Step 5's completion
+  // comes from the upload route itself (see uploadHrDocument below).
+  const [hrSubSteps, setHrSubSteps] = useState<HrSubSteps>(() => ({
+    letterPrepared      : rec?.hrDecision?.subSteps?.letterPrepared       ?? emptyHrStep,
+    employeeInformed    : rec?.hrDecision?.subSteps?.employeeInformed     ?? emptyHrStep,
+    revisionLetterShared: rec?.hrDecision?.subSteps?.revisionLetterShared ?? emptyHrStep,
+    documentUploaded    : rec?.hrDecision?.subSteps?.documentUploaded     ?? emptyHrStep,
+  }));
+  const [hrDocument, setHrDocument] = useState<HrDocument | null>(rec?.hrDecision?.document?.driveLink ? rec.hrDecision.document : null);
+  const [hrStepBusy, setHrStepBusy] = useState<keyof HrSubSteps | null>(null);
+  const [hrDocUploading, setHrDocUploading] = useState(false);
+  const [hrChecklistError, setHrChecklistError] = useState('');
+
+  const HR_STEP_ORDER: (keyof HrSubSteps)[] = ['letterPrepared', 'employeeInformed', 'revisionLetterShared', 'documentUploaded'];
+  const HR_STEP_LABELS: Record<keyof HrSubSteps, string> = {
+    letterPrepared: 'Letter Prepared/Shared',
+    employeeInformed: 'Employee Informed',
+    revisionLetterShared: 'Revision Letter Shared',
+    documentUploaded: 'Document Uploaded',
+  };
+  const allHrStepsDone = appraisalStepDone && HR_STEP_ORDER.every(k => hrSubSteps[k].completed);
+
+  const markHrStepComplete = async (key: Exclude<keyof HrSubSteps, 'documentUploaded'>) => {
+    if (!rec) return;
+    setHrStepBusy(key);
+    setHrChecklistError('');
+    try {
+      const nextSubSteps = { ...hrSubSteps, [key]: { completed:true, completedAt:new Date().toISOString() } };
+      const { data } = await axios.put(`${API}/${rec._id}`, { hrDecision: { subSteps: nextSubSteps } });
+      if (!data.success) throw new Error(data.message || 'Save failed');
+      setHrSubSteps(nextSubSteps);
+      onRecordChange(data.data);
+    } catch (err: any) {
+      setHrChecklistError(err?.response?.data?.message || err?.message || 'Failed to save — try again.');
+    } finally {
+      setHrStepBusy(null);
+    }
+  };
+
+  const uploadHrDocument = async (file: File) => {
+    if (!rec) return;
+    setHrDocUploading(true);
+    setHrChecklistError('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const { data } = await axios.post(`${API}/${rec._id}/upload-document`, formData);
+      if (!data.success) throw new Error(data.message || 'Upload failed');
+      const updated: SalaryRevision = data.data;
+      setHrDocument(updated.hrDecision?.document || null);
+      setHrSubSteps(s => ({ ...s, documentUploaded: updated.hrDecision?.subSteps?.documentUploaded || { completed:true, completedAt:new Date().toISOString() } }));
+      onRecordChange(updated);
+    } catch (err: any) {
+      setHrChecklistError(err?.response?.data?.message || err?.message || 'Upload failed — try again.');
+    } finally {
+      setHrDocUploading(false);
+    }
+  };
 
   const postManager = async () => {
     if (!mgrReason.trim()) return showToast('Provide a reason', 'error');
@@ -2205,12 +2849,14 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
 
   const postHr=async()=>{
     if (!rec) return;
+    if (!allHrStepsDone) return showToast('Complete all checklist steps above first', 'error');
     setBusy(true);
     try {
       const payload={
         notes:hrNotes, applicableDate:hrAppDate||null, newCtc,
         newContractStartDate:hrNewContractStart||null, newContractEndDate:hrNewContractEnd||null,
         fullTimeSince: isPpoConversion ? (hrFullTimeSince||null) : null,
+        salaryComponents: hrSalaryComponents,
       };
       const { data }=await axios.put(`${API}/${rec._id}/hr`,payload);
       if (data.success){ showToast('HR decision saved — revision completed, Onboarding updated','success'); onRecordChange(data.data); }
@@ -2295,18 +2941,18 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
           <Typography fontWeight={700} fontSize="0.95rem">{emp.full_name}</Typography>
           <Typography fontSize={12} color="text.secondary">{emp.designation} · {emp.department}</Typography>
         </Box>
-        {rec&&<DecisionChip decision={rec.managerDecision?.decision} isPpo={isPpoRevision(rec)}/>}
-        {rec&&<StageChip stage={rec.stage}/>}
-        {!rec&&<Chip label="No revision record" size="small" sx={{ bgcolor:'#fef2f2', color:'#dc2626' }}/>}
-        {isCompleted&&(
-          <Button size="small" variant="outlined" onClick={startNewRevision} disabled={busy}
-            sx={{ textTransform:'none', fontWeight:600, borderColor: ACCENT, color: ACCENT }}>
-            {busy?<CircularProgress size={16}/>:'Start New Revision'}
-          </Button>
-        )}
+        {!rec&&<Typography fontSize={12} color="text.secondary">No revision record</Typography>}
       </Box>
 
       <FlowBanner/>
+
+      {isCompleted&&(
+        <Button size="small" onClick={startNewRevision} disabled={busy}
+          sx={{ display:'block', mb:2, p:0, minWidth:0, textTransform:'none', fontSize:12, fontWeight:600,
+            color: ACCENT, '&:hover':{ textDecoration:'underline', bgcolor:'transparent' } }}>
+          {busy?'Starting…':'Start New Revision'}
+        </Button>
+      )}
 
       {isOnHold && (
         <Paper variant="outlined" sx={{ borderRadius:2, p:2.5, mb:2.5, borderColor:'#fde68a', bgcolor:'#fffbeb' }}>
@@ -2334,23 +2980,31 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
         </Paper>
       )}
 
-      <Box sx={{ display:'flex', mb:2.5, bgcolor:'white', borderRadius:1.5, border:'1px solid #e2e8f0', overflow:'hidden' }}>
+      <Box sx={{ display:'flex', alignItems:'center', mb:2.5, px:0.5 }}>
         {[
-          { label:'1. Manager', stage:'pending_manager', done:!isMgr },
-          { label:'2. Management', stage:'pending_management', done:isHr||isCompleted },
-          { label:'3. HR Final', stage:'pending_hr', done:isCompleted },
-        ].map((step,i)=>{
+          { label:'Manager', stage:'pending_manager', done:!isMgr },
+          { label:'Management', stage:'pending_management', done:isHr||isCompleted },
+          { label:'HR Final', stage:'pending_hr', done:isCompleted },
+        ].map((step,i,arr)=>{
           const isActive = stage===step.stage;
           const isDone   = step.done&&!isActive;
+          const circleColor = isActive?ACCENT:isDone?'#059669':'#cbd5e1';
           return (
-            <Box key={i} sx={{ flex:1, p:1.25, textAlign:'center',
-              bgcolor:isActive?ACCENT:isDone?'#f0fdf4':'#f8fafc',
-              borderRight:i<2?'1px solid #e2e8f0':'none' }}>
-              <Typography fontSize={12} fontWeight={600}
-                color={isActive?'white':isDone?'#059669':'#94a3b8'}>
-                {isDone?'✓ ':''}{step.label}
-              </Typography>
-            </Box>
+            <React.Fragment key={i}>
+              <Box sx={{ display:'flex', alignItems:'center', gap:0.75 }}>
+                <Box sx={{ width:18, height:18, borderRadius:'50%', bgcolor:circleColor, flexShrink:0,
+                  display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  {isDone
+                    ? <CheckCircleIcon sx={{ fontSize:13, color:'white' }}/>
+                    : <Typography fontSize={10} fontWeight={700} color="white">{i+1}</Typography>}
+                </Box>
+                <Typography fontSize={12} fontWeight={isActive?700:600}
+                  color={isActive?ACCENT:isDone?'#059669':'#94a3b8'}>
+                  {step.label}
+                </Typography>
+              </Box>
+              {i<arr.length-1 && <Box sx={{ flex:1, height:'1px', bgcolor:'#e2e8f0', mx:1.5 }}/>}
+            </React.Fragment>
           );
         })}
       </Box>
@@ -2370,9 +3024,9 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
 
       {tab===0&&(
         <Box sx={{ display:'flex', gap:2.5, flexWrap:'wrap' }}>
-          <Paper variant="outlined" sx={{ flex:'1 1 260px', borderRadius:2, p:2.5 }}>
+          <Paper variant="outlined" sx={{ flex:'1 1 300px', borderRadius:2, p:2.5 }}>
             <Typography fontWeight={700} fontSize={13} mb={1.5}>Auto-Fetched Info</Typography>
-            <Stack spacing={1.2}>
+            <Box sx={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:1.2 }}>
               {[
                 ['Employee Code', emp.employee_id],
                 ['Full Name',     emp.full_name],
@@ -2385,12 +3039,12 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                 ['Contract Start', fmtDate(emp.contract_start_date||rec?.contractStartDate)],
                 ['Contract End',   fmtDate(emp.contract_end_date||rec?.contractEndDate)],
               ].map(([l,v])=>(
-                <Box key={l} sx={{ display:'flex', justifyContent:'space-between', gap:2 }}>
+                <Box key={l}>
                   <Typography fontSize={12} color="text.secondary">{l}</Typography>
-                  <Typography fontSize={12} fontWeight={500} textAlign="right">{v}</Typography>
+                  <Typography fontSize={12} fontWeight={500}>{v}</Typography>
                 </Box>
               ))}
-            </Stack>
+            </Box>
           </Paper>
 
           <Paper variant="outlined" sx={{ flex:'1 1 260px', borderRadius:2, p:2.5 }}>
@@ -2417,7 +3071,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
             )}
           </Paper>
 
-          <Paper variant="outlined" sx={{ flex:'1 1 280px', borderRadius:2, p:2.5 }}>
+          <Paper variant="outlined" sx={{ flex:'1 1 260px', borderRadius:2, p:2.5 }}>
             <Typography fontWeight={700} fontSize={13} mb={1.5}>Designation & Reporting Head</Typography>
             <Stack spacing={2}>
               <Box>
@@ -2457,9 +3111,12 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                   </Typography>
                 )}
               </Box>
+            </Stack>
+          </Paper>
 
-              <Divider/>
-
+          <Paper variant="outlined" sx={{ flex:'1 1 260px', borderRadius:2, p:2.5 }}>
+            <Typography fontWeight={700} fontSize={13} mb={1.5}>Review Inputs</Typography>
+            <Stack spacing={2}>
               <Box>
                 <Box sx={{ display:'flex', alignItems:'center', justifyContent:'space-between', mb:1 }}>
                   <Typography fontSize={12} fontWeight={700} color="text.secondary">PMS SCORES</Typography>
@@ -2517,6 +3174,8 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
               <Typography fontWeight={700} fontSize={13}>Manager Decision</Typography>
             </Box>
 
+            <RevisionMailButtons revisionId={rec?._id} mailTypes={['managerRequest','managerEscalation','finalEscalation']}/>
+
             <Stack spacing={2}>
               <Box>
                 <Typography fontSize={11} fontWeight={700} color="text.secondary" mb={1}>DECISION</Typography>
@@ -2539,7 +3198,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
               {mgrDecision==='increment'&&(
                 <Box>
                   <Typography fontSize={12} fontWeight={600} mb={1}>
-                    Manager Recommendation: <strong style={{ color:'#059669' }}>{isMgr?mgrPct:(rec?.managerDecision?.recommendedPct??mgrPct)}%</strong>
+                    Manager Recommendation: <strong style={{ color:'#059669' }}>{displayMgrPct}%</strong>
                   </Typography>
                   {isMgr?(
                     <>
@@ -2560,8 +3219,8 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                   ):(
                     <Box sx={{ p:1.5, bgcolor:'#f8fafc', borderRadius:1.5, border:'1px solid #e2e8f0' }}>
                       <Typography fontSize={12} color="#059669" fontWeight={600}>
-                        {rec?.managerDecision?.recommendedPct??mgrPct}% increment recommended
-                        {' '}({fmtCurrency(amountFromPct(rec?.managerDecision?.recommendedPct??mgrPct, prevCtc))})
+                        {displayMgrPct}% increment recommended
+                        {' '}({fmtCurrency(amountFromPct(displayMgrPct, prevCtc))})
                       </Typography>
                       <Typography fontSize={11} color="text.secondary" mt={0.5}>{rec?.managerDecision?.reason}</Typography>
                     </Box>
@@ -2594,7 +3253,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
           </Paper>
 
           <Paper variant="outlined" sx={{ flex:'1 1 300px', borderRadius:2, p:2.5,
-            opacity:isMgr?0.5:1, outline:isMgmt?`2px solid ${ACCENT}`:'none' }}>
+            outline:isMgmt?`2px solid ${ACCENT}`:'none' }}>
             <Box sx={{ display:'flex', alignItems:'center', gap:1, mb:2 }}>
               <Box sx={{ width:22, height:22, borderRadius:'50%',
                 bgcolor:isMgmt?ACCENT:(isHr||isCompleted)?'#059669':'#e2e8f0',
@@ -2604,6 +3263,8 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
               <Typography fontWeight={700} fontSize={13}>Management Decision</Typography>
             </Box>
 
+            <RevisionMailButtons revisionId={rec?._id} mailTypes={['managementApproval']}/>
+
             {isMgr&&<Alert severity="warning" sx={{ fontSize:11, mb:2 }}>Waiting for manager to submit first.</Alert>}
 
             {!isMgr&&(
@@ -2611,7 +3272,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                 {rec?.managerDecision?.decision==='increment'?(
                   <Box>
                     <Typography fontSize={12} fontWeight={600} mb={1}>
-                      Management Final: <strong style={{ color:ACCENT }}>{isMgmt?mgmtPct:(rec?.managementDecision?.finalPct??mgmtPct)}%</strong>
+                      Management Final: <strong style={{ color:ACCENT }}>{displayMgmtPct}%</strong>
                       {rec?.managerDecision?.recommendedPct!=null&&(
                         <span style={{ fontSize:11, color:'#94a3b8', marginLeft:8 }}>(Mgr: {rec.managerDecision.recommendedPct}%)</span>
                       )}
@@ -2635,8 +3296,8 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                     ):(
                       <Box sx={{ p:1.5, bgcolor:'#f8fafc', borderRadius:1.5, border:'1px solid #e2e8f0' }}>
                         <Typography fontSize={12} color={ACCENT} fontWeight={600}>
-                          {rec?.managementDecision?.finalPct??mgmtPct}% — final management decision
-                          {' '}({fmtCurrency(amountFromPct(rec?.managementDecision?.finalPct??mgmtPct, prevCtc))})
+                          {displayMgmtPct}% — final management decision
+                          {' '}({fmtCurrency(amountFromPct(displayMgmtPct, prevCtc))})
                         </Typography>
                       </Box>
                     )}
@@ -2681,7 +3342,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
           </Paper>
 
           <Paper variant="outlined" sx={{ flex:'1 1 260px', borderRadius:2, p:2.5,
-            opacity:(isMgr||isMgmt)?0.5:1, outline:isHr?`2px solid ${ACCENT}`:'none' }}>
+            outline:isHr?`2px solid ${ACCENT}`:'none' }}>
             <Box sx={{ display:'flex', alignItems:'center', gap:1, mb:2 }}>
               <Box sx={{ width:22, height:22, borderRadius:'50%',
                 bgcolor:isHr?ACCENT:isCompleted?'#059669':'#e2e8f0',
@@ -2690,6 +3351,8 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
               </Box>
               <Typography fontWeight={700} fontSize={13}>HR Final Action</Typography>
             </Box>
+
+            <RevisionMailButtons revisionId={rec?._id} mailTypes={['hrNotify','pipHold','employeeConfirmation']}/>
 
             {(isMgr||isMgmt)&&<Alert severity="warning" sx={{ fontSize:11, mb:2 }}>Waiting for manager & management first.</Alert>}
 
@@ -2705,6 +3368,38 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                     <Typography fontSize={13} fontWeight={700} color="#dc2626">PIP approved</Typography>
                   )}
                 </Box>
+
+                {rec?.managerDecision?.decision==='increment' && (
+                  <Box>
+                    <Typography fontSize={11} fontWeight={700} color="text.secondary" mb={1}>
+                      SALARY STRUCTURE{isHr?' (EDITABLE)':''}
+                    </Typography>
+                    <Stack spacing={0.75}>
+                      {([
+                        ['basic','Basic Salary'], ['hra','HRA'], ['convey','Conveyance'],
+                        ['medical','Medical Allowance'], ['special','Special Allowance'],
+                        ['pf','PF (Employer)'], ['gratuity','Gratuity'],
+                      ] as const).map(([key,label])=>(
+                        <Box key={key} sx={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:1 }}>
+                          <Typography fontSize={12} color="text.secondary">{label}</Typography>
+                          <TextField size="small" type="number" value={hrSalaryComponents[key] ?? 0}
+                            onChange={e=>setHrSalaryComponents(s=>({ ...s, [key]: Number(e.target.value)||0 }))}
+                            disabled={!isHr} sx={{ width:130 }}
+                            InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}/>
+                        </Box>
+                      ))}
+                      <Divider/>
+                      <Box sx={{ display:'flex', justifyContent:'space-between' }}>
+                        <Typography fontSize={12} fontWeight={700}>Gross Monthly</Typography>
+                        <Typography fontSize={12} fontWeight={700} color={ACCENT}>{fmtCurrency(hrGross)}</Typography>
+                      </Box>
+                      <Box sx={{ display:'flex', justifyContent:'space-between' }}>
+                        <Typography fontSize={12} fontWeight={700}>Annual CTC</Typography>
+                        <Typography fontSize={12} fontWeight={700} color="#059669">{fmtCurrency(hrGross*12)}</Typography>
+                      </Box>
+                    </Stack>
+                  </Box>
+                )}
 
                 <TextField label="Applicable Date" type="date" size="small"
                   value={hrAppDate} onChange={e=>setHrAppDate(e.target.value)}
@@ -2729,11 +3424,102 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                   value={hrNotes} onChange={e=>setHrNotes(e.target.value)}
                   disabled={!isHr} fullWidth/>
 
+                <Box>
+                  <Typography fontSize={11} fontWeight={700} color="text.secondary" mb={1}>
+                    HR COMPLETION CHECKLIST
+                  </Typography>
+                  <Stack spacing={1}>
+                    {/* Step 1 — derived from Management having already decided; no action here. */}
+                    <Box sx={{ display:'flex', alignItems:'center', gap:1 }}>
+                      <Box sx={{ width:18, height:18, borderRadius:'50%', flexShrink:0,
+                        bgcolor: appraisalStepDone?'#059669':'#cbd5e1',
+                        display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        {appraisalStepDone && <CheckCircleIcon sx={{ fontSize:13, color:'white' }}/>}
+                      </Box>
+                      <Typography fontSize={12} fontWeight={600} sx={{ flex:1 }}>1. Appraisal Decision</Typography>
+                      {rec?.managementDecision?.submittedAt && (
+                        <Typography fontSize={10} color="text.secondary">{fmtDate(rec.managementDecision.submittedAt)}</Typography>
+                      )}
+                    </Box>
+
+                    {/* Steps 2-4 — simple sequential "Mark complete" buttons. */}
+                    {HR_STEP_ORDER.filter(k=>k!=='documentUploaded').map((key,idx)=>{
+                      const step = hrSubSteps[key];
+                      const prevDone = idx===0 ? appraisalStepDone : hrSubSteps[HR_STEP_ORDER[idx-1]].completed;
+                      return (
+                        <Box key={key} sx={{ display:'flex', alignItems:'center', gap:1 }}>
+                          <Box sx={{ width:18, height:18, borderRadius:'50%', flexShrink:0,
+                            bgcolor: step.completed?'#059669':'#cbd5e1',
+                            display:'flex', alignItems:'center', justifyContent:'center' }}>
+                            {step.completed && <CheckCircleIcon sx={{ fontSize:13, color:'white' }}/>}
+                          </Box>
+                          <Typography fontSize={12} fontWeight={600} sx={{ flex:1 }}>{idx+2}. {HR_STEP_LABELS[key]}</Typography>
+                          {step.completed ? (
+                            <Typography fontSize={10} color="text.secondary">{fmtDate(step.completedAt)}</Typography>
+                          ) : isHr && (
+                            <Tooltip title={!prevDone?'Complete the previous step first':''} arrow disableHoverListener={prevDone}>
+                              <span>
+                                <Button size="small" variant="outlined" disabled={!prevDone||hrStepBusy===key}
+                                  onClick={()=>markHrStepComplete(key)}
+                                  sx={{ textTransform:'none', fontSize:11, py:0.2, minWidth:0 }}>
+                                  {hrStepBusy===key?<CircularProgress size={12}/>:'Mark complete'}
+                                </Button>
+                              </span>
+                            </Tooltip>
+                          )}
+                        </Box>
+                      );
+                    })}
+
+                    {/* Step 5 — document upload instead of a plain button. */}
+                    <Box sx={{ display:'flex', alignItems:'center', gap:1 }}>
+                      <Box sx={{ width:18, height:18, borderRadius:'50%', flexShrink:0,
+                        bgcolor: hrSubSteps.documentUploaded.completed?'#059669':'#cbd5e1',
+                        display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        {hrSubSteps.documentUploaded.completed && <CheckCircleIcon sx={{ fontSize:13, color:'white' }}/>}
+                      </Box>
+                      <Typography fontSize={12} fontWeight={600} sx={{ flex:1 }}>5. Document Uploaded</Typography>
+                      {hrSubSteps.documentUploaded.completed && (
+                        <Typography fontSize={10} color="text.secondary">{fmtDate(hrSubSteps.documentUploaded.completedAt)}</Typography>
+                      )}
+                    </Box>
+                    <Box sx={{ ml:3.25 }}>
+                      {hrDocument?.driveLink ? (
+                        <Typography component="a" href={hrDocument.driveLink} target="_blank" rel="noopener"
+                          sx={{ fontSize:11, color:ACCENT, textDecoration:'none', '&:hover':{ textDecoration:'underline' } }}>
+                          📄 {hrDocument.fileName}
+                        </Typography>
+                      ) : isHr && (
+                        <Tooltip title={!hrSubSteps.revisionLetterShared.completed?'Complete the previous step first':''} arrow
+                          disableHoverListener={hrSubSteps.revisionLetterShared.completed}>
+                          <span>
+                            <Button size="small" variant="outlined" component="label"
+                              disabled={!hrSubSteps.revisionLetterShared.completed||hrDocUploading}
+                              sx={{ textTransform:'none', fontSize:11, py:0.2 }}>
+                              {hrDocUploading?<CircularProgress size={12}/>:'Upload document'}
+                              <input type="file" hidden accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                                onChange={e=>{ const f=e.target.files?.[0]; e.target.value=''; if (f) uploadHrDocument(f); }}/>
+                            </Button>
+                          </span>
+                        </Tooltip>
+                      )}
+                    </Box>
+                    {hrChecklistError && <Typography fontSize={11} color="#dc2626">{hrChecklistError}</Typography>}
+                  </Stack>
+                </Box>
+
                 {isHr&&(
-                  <Button variant="contained" onClick={postHr} disabled={busy}
-                    sx={{ bgcolor:'#2563eb', '&:hover':{ bgcolor:'#1d4ed8' }, textTransform:'none', fontWeight:600 }}>
-                    {busy?<CircularProgress size={20} sx={{ color:'white' }}/>:'Finalise & Complete Revision'}
-                  </Button>
+                  <Box>
+                    <Button variant="contained" onClick={postHr} disabled={busy||!allHrStepsDone} fullWidth
+                      sx={{ bgcolor:'#2563eb', '&:hover':{ bgcolor:'#1d4ed8' }, textTransform:'none', fontWeight:600 }}>
+                      {busy?<CircularProgress size={20} sx={{ color:'white' }}/>:'Finalise & Complete Revision'}
+                    </Button>
+                    {!allHrStepsDone && (
+                      <Typography fontSize={11} color="text.secondary" mt={0.5} textAlign="center">
+                        Complete all steps above to finalise
+                      </Typography>
+                    )}
+                  </Box>
                 )}
 
                 {isCompleted&&(
@@ -2765,7 +3551,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
           <Box sx={{ display:'flex', gap:2, mb:3, flexWrap:'wrap' }}>
             {[
               ['Previous CTC', fmtCurrency(prevCtc), '#64748b'],
-              ['Increment %',  `+${isMgmt||isHr||isCompleted?(rec?.managementDecision?.finalPct??mgmtPct):mgrPct}%`, '#d97706'],
+              ['Increment %',  `+${effectivePct}%`, '#d97706'],
               ['New Annual CTC', fmtCurrency(newCtc), '#059669'],
               ['Monthly CTC',   fmtCurrency(salStruct.monthly), ACCENT],
             ].map(([l,v,c])=>(
@@ -2837,6 +3623,13 @@ export default function SalaryRevisionPage() {
   const [selRec,    setSelRec]    = useState<SalaryRevision|undefined>(undefined);
   const [view,      setView]      = useState<View>('dashboard');
   const [loading,   setLoading]   = useState(true);
+  // Distinct from `loading` — only true before the very first fetch has
+  // ever resolved. Every later refresh (e.g. closing the "Update" dialog
+  // calls loadData again) also flips `loading` briefly, but must NOT
+  // trigger the full-page spinner below: that swap unmounts DashboardView
+  // entirely, which was wiping out every filter (search/dept/status/
+  // stage/period) the user had set, the moment they closed the dialog.
+  const [initialLoad, setInitialLoad] = useState(true);
   const [showAdd,   setShowAdd]   = useState(false);
   const [toast,     setToast]     = useState<{ msg:string; type:'success'|'error' }|null>(null);
 
@@ -2860,7 +3653,7 @@ export default function SalaryRevisionPage() {
       setRecords(rData);
       setEmployees(eData);
     } catch { showToast('Failed to load data','error'); }
-    finally { setLoading(false); }
+    finally { setLoading(false); setInitialLoad(false); }
   },[]);
 
   useEffect(()=>{ loadData(); },[loadData]);
@@ -2881,7 +3674,7 @@ export default function SalaryRevisionPage() {
     if (matchedEmp){ setSelEmp(matchedEmp); setSelRec(newRec); setView('detail'); }
   };
 
-  if (loading&&view==='dashboard') return (
+  if (loading&&initialLoad) return (
     <div className="flex min-h-screen bg-gray-50/70">
       <Sidebar/><div className="flex-1 flex flex-col"><Navbar/>
         <main className="flex-1 flex items-center justify-center  ">
@@ -2900,23 +3693,30 @@ export default function SalaryRevisionPage() {
           <Box sx={{ maxWidth:1300, mx:'auto', width:'100%', height:'100%', overflow:'auto' }}>
             {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
 
-            {view==='dashboard'&&(
-              <DashboardView records={records} employees={employees} loading={loading}
-                onSelect={handleSelect} onAdd={()=>setShowAdd(true)}/>
-            )}
-
-            {view==='detail'&&selEmp&&(
-              <RevisionDetailView
-                key={`${selEmp._id}_${selRec?._id||'new'}`}
-                emp={selEmp}
-                rec={selRec}
-                onBack={()=>{ setView('dashboard'); setSelEmp(null); setSelRec(undefined); loadData(); }}
-                onRecordChange={handleRecordChange}
-                showToast={showToast}/>
-            )}
+            <DashboardView records={records} employees={employees} loading={loading}
+              onSelect={handleSelect} onAdd={()=>setShowAdd(true)} onRefresh={loadData}/>
           </Box>
         </main>
       </div>
+
+      {/* "Update" popup — was previously a full-page view swap; now overlays
+          the dashboard instead so the list stays put behind it. */}
+      <Dialog open={view==='detail' && !!selEmp}
+        onClose={()=>{ setView('dashboard'); setSelEmp(null); setSelRec(undefined); loadData(); }}
+        maxWidth="lg" fullWidth
+        PaperProps={{ sx:{ height:'92vh', maxHeight:'92vh', borderRadius:2 } }}>
+        <DialogContent sx={{ p:0, overflow:'auto' }}>
+          {selEmp && (
+            <RevisionDetailView
+              key={`${selEmp._id}_${selRec?._id||'new'}`}
+              emp={selEmp}
+              rec={selRec}
+              onBack={()=>{ setView('dashboard'); setSelEmp(null); setSelRec(undefined); loadData(); }}
+              onRecordChange={handleRecordChange}
+              showToast={showToast}/>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <AddRevisionModal open={showAdd} onClose={()=>setShowAdd(false)}
         onAdded={handleAdded} showToast={showToast} employees={employees} records={records}/>

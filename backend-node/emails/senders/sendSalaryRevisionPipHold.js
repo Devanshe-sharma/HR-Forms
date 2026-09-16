@@ -1,12 +1,12 @@
-const sendEmail = require('../sendEmail');
+const { queueSalaryRevisionMail } = require('../../utils/salaryRevisionMailQueue');
 const salaryRevisionPipHoldTemplate = require('../templates/salaryRevisionPipHoldTemplate');
 
 // Mail 4 — call right after PUT /:id/management succeeds with
-// managementDecision.pipApproved === true (stage -> 'on_hold'). Live as of
-// 2026-09-02 — sends to the employee's own email on file.
+// managementDecision.pipApproved === true (stage -> 'on_hold'). Queues a
+// draft addressed to the employee's own email on file — does NOT send.
 async function sendSalaryRevisionPipHold(revision) {
   if (!revision.email) {
-    console.error(`[sendSalaryRevisionPipHold] No email on file for revision ${revision._id} (employee: ${revision.employeeName}) — mail not sent.`);
+    console.error(`[sendSalaryRevisionPipHold] No email on file for revision ${revision._id} (employee: ${revision.employeeName}) — no draft queued.`);
     return;
   }
 
@@ -20,7 +20,10 @@ async function sendSalaryRevisionPipHold(revision) {
     pipReviewDate: revision.reviewDate,
   });
 
-  await sendEmail({ to: revision.email, subject, html });
+  await queueSalaryRevisionMail({
+    revisionId: revision._id, mailType: 'pipHold', employeeName: revision.employeeName,
+    to: revision.email, subject, html,
+  });
 }
 
 module.exports = sendSalaryRevisionPipHold;

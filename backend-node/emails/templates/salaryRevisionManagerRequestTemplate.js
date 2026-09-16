@@ -21,7 +21,7 @@ function salaryRevisionManagerRequestTemplate({
   ppoOfferedDate, ppoPreviousCtc, ppoNewCtc,
   fiscalYearLabel, dueDate, actionLink,
 }) {
-  const subject = `Salary Revision Recommendation – ${employeeName} | ${fiscalYearLabel}`;
+  const subject = `Action Required: Salary Increment Review – ${employeeName}`;
 
   const ppoRows = ppoOfferedDate ? (
     detailRow('PPO Offered On', dateToDD_MMM_YY(ppoOfferedDate))

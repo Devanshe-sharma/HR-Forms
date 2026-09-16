@@ -1619,7 +1619,7 @@ const SummaryCard: React.FC<{
         </Box>
       ) : (
         <Box sx={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-          <Typography fontSize="clamp(1.5rem, 3vw, 2.2rem)" fontWeight={800} sx={{ color: valueColor, lineHeight: 1.1 }}>
+          <Typography fontSize="clamp(1.2rem, 2.4vw, 1.7rem)" fontWeight={600} sx={{ color: valueColor, lineHeight: 1.1 }}>
             {summary?.value}
           </Typography>
           <Typography fontSize="0.72rem" color="#94a3b8" mt={0.5} sx={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
@@ -2284,8 +2284,8 @@ const PlaceholderCard: React.FC<{
     </Box>
 
     <Box sx={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-      <Typography fontSize="clamp(1.5rem, 3vw, 2.2rem)" fontWeight={800} sx={{ color: "#e2e8f0", lineHeight: 1.1 }}>
-        —
+      <Typography fontSize="clamp(1.2rem, 2.4vw, 1.7rem)" fontWeight={600} sx={{ color: "#e2e8f0", lineHeight: 1.1 }}>
+        0
       </Typography>
       <Typography fontSize="0.72rem" color="#94a3b8" mt={0.5}>
         Data coming soon
@@ -2293,19 +2293,6 @@ const PlaceholderCard: React.FC<{
     </Box>
   </Box>
 );
-
-interface UpcomingMetric {
-  title: string;
-  icon: React.ReactNode;
-  color: string;
-  bg: string;
-}
-
-const UPCOMING_METRICS: UpcomingMetric[] = [
-  { title: "Salary Revision Timeliness Rate (%)", icon: <PaidIcon />, color: ACCENT, bg: "#eef2ff" },
-  { title: "Trainings Conducted vs Planned", icon: <MenuBookIcon />, color: "#0d9488", bg: "#f0fdfa" },
-  { title: "Employee Confirmation Timeliness Rate (%)", icon: <AssignmentTurnedInIcon />, color: "#2563eb", bg: "#eff6ff" },
-];
 
 // ─── Summary fetchers — each mirrors the "All Quarters, most recent" logic
 // already used inside the corresponding full widget, just extracting one
@@ -2548,7 +2535,7 @@ async function fetchCostPerHireSummary(): Promise<CardSummary> {
 // cards. Clicking a card (where one has a detail view) opens that area's
 // full existing widget inside a modal, unchanged from before.
 
-type CardKey = "teeth" | "gender" | "interns" | "internConversions" | "increments" | "pip" | "askedToLeave" | "referred" | "offerDropout" | "attrition" | "daysToHireOverall" | "recruitment" | "onboarding" | "exit" | "avgTenure" | "costPerHire";
+type CardKey = "teeth" | "gender" | "interns" | "internConversions" | "increments" | "pip" | "askedToLeave" | "referred" | "offerDropout" | "attrition" | "daysToHireOverall" | "recruitment" | "onboarding" | "exit" | "avgTenure" | "costPerHire" | "salaryRevisionTimeliness" | "trainingsConducted" | "employeeConfirmationTimeliness";
 
 type CardDef = {
   key: CardKey;
@@ -2556,7 +2543,9 @@ type CardDef = {
   icon: React.ReactNode;
   color: string;
   bg: string;
-  fetchSummary: () => Promise<CardSummary>;
+  // Omitted for metrics not wired to data yet — rendered as a dashed
+  // "coming soon" PlaceholderCard instead of a live SummaryCard.
+  fetchSummary?: () => Promise<CardSummary>;
   // false for cards with no full-breakdown widget yet (Avg Tenure, Cost
   // per Hire are brand new metrics — nothing to drill into yet).
   clickable?: boolean;
@@ -2602,6 +2591,10 @@ const HRAnalyticsDashboard: React.FC = () => {
       cards: [
         { key: "onboarding", title: "Onboarding On-Time (%)", icon: <HowToRegIcon />, color: "#059669", bg: "#f0fdf4", fetchSummary: () => fetchKpiSummary("onboarding") },
         { key: "exit", title: "Exit On-Time (%)", icon: <ExitToAppIcon />, color: "#d97706", bg: "#fffbeb", fetchSummary: () => fetchKpiSummary("exit") },
+        // Not wired to data yet — rendered as a "coming soon" placeholder.
+        { key: "salaryRevisionTimeliness", title: "Salary Revision Timeliness Rate (%)", icon: <PaidIcon />, color: ACCENT, bg: "#eef2ff", clickable: false },
+        { key: "trainingsConducted", title: "Trainings Conducted vs Planned", icon: <MenuBookIcon />, color: "#0d9488", bg: "#f0fdfa", clickable: false },
+        { key: "employeeConfirmationTimeliness", title: "Employee Confirmation Timeliness Rate (%)", icon: <AssignmentTurnedInIcon />, color: "#2563eb", bg: "#eff6ff", clickable: false },
       ],
     },
   ];
@@ -2618,59 +2611,41 @@ const HRAnalyticsDashboard: React.FC = () => {
             <Typography variant="h5" fontWeight={700} color="#0f172a" lineHeight={1.2}>
               HR Analytics Dashboard
             </Typography>
-            <Typography variant="caption" color="#94a3b8">
+            {/* <Typography variant="caption" color="#94a3b8">
               Workforce composition and structural metrics — click any card for the full breakdown
-            </Typography>
+            </Typography> */}
           </Box>
 
           {sections.map((section) => (
             <Box key={section.title} sx={{ mb: 3, flexShrink: 0 }}>
-              <Typography fontSize="0.7rem" fontWeight={700} color="#94a3b8" letterSpacing="0.08em" mb={1.25}>
+              <Typography fontSize="0.75rem" fontWeight={800} color="#334155" letterSpacing="0.08em" mb={1.25}>
                 {section.title.toUpperCase()}
               </Typography>
               <Box sx={{
                 display: "grid",
-                gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", md: `repeat(${section.cards.length}, 1fr)` },
+                gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", md: "repeat(auto-fit, minmax(220px, 1fr))" },
                 gridAutoRows: "minmax(140px, 1fr)",
                 gap: 2,
               }}>
                 {section.cards.map((c) => (
-                  <SummaryCard
-                    key={c.key}
-                    title={c.title}
-                    icon={c.icon}
-                    color={c.color}
-                    bg={c.bg}
-                    fetchSummary={c.fetchSummary}
-                    onClick={c.clickable === false ? undefined : () => setActiveCard(c.key)}
-                    note={c.note}
-                  />
+                  c.fetchSummary ? (
+                    <SummaryCard
+                      key={c.key}
+                      title={c.title}
+                      icon={c.icon}
+                      color={c.color}
+                      bg={c.bg}
+                      fetchSummary={c.fetchSummary}
+                      onClick={c.clickable === false ? undefined : () => setActiveCard(c.key)}
+                      note={c.note}
+                    />
+                  ) : (
+                    <PlaceholderCard key={c.key} title={c.title} icon={c.icon} color={c.color} bg={c.bg} />
+                  )
                 ))}
               </Box>
             </Box>
           ))}
-
-          {/* Upcoming metrics — not wired to data yet */}
-          <Box sx={{ mb: 1.5, flexShrink: 0 }}>
-            <Typography fontSize="0.7rem" fontWeight={700} color="#94a3b8" letterSpacing="0.08em">
-              UPCOMING METRICS
-            </Typography>
-            <Typography fontSize="0.75rem" color="#94a3b8" mt={0.5}>
-              Tracked manually for now — will be wired to live data soon
-            </Typography>
-          </Box>
-          <Box sx={{
-            flexShrink: 0,
-            display: "grid",
-            gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", md: "repeat(3, 1fr)" },
-            gridAutoRows: "minmax(130px, 1fr)",
-            gap: 2,
-            mb: 2,
-          }}>
-            {UPCOMING_METRICS.map((m) => (
-              <PlaceholderCard key={m.title} title={m.title} icon={m.icon} color={m.color} bg={m.bg} />
-            ))}
-          </Box>
         </Box>
       </Box>
 

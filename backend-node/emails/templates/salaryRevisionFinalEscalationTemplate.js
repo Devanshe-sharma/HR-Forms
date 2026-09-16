@@ -12,15 +12,15 @@ function detailRow(label, value) {
 // Mail 6 — final escalation once a manager reminder (Mail 5) has already
 // gone out and the revision is STILL sitting in 'pending_manager' after an
 // even longer threshold (see SALARY_REVISION_FINAL_ESCALATION_DAYS in the
-// sender). Goes up a level, to a senior manager / department head — not
-// the same reporting manager who's already been reminded once.
+// sender). Goes up a level, to Management — not the same reporting
+// manager who's already been reminded once.
 function salaryRevisionFinalEscalationTemplate({
   employeeName, department, managerName, dueDate, pendingDays,
 }) {
-  const subject = `Escalation: Pending Increment Review – ${employeeName} (Overdue)`;
+  const subject = `Salary Increment Review – ${employeeName} | Overdue – 10 Days`;
 
   const html = `
-    <p>Dear Senior Manager / Department Head,</p>
+    <p>Dear Management,</p>
     <p>The salary revision recommendation for the following employee remains pending despite a reminder sent to the Reporting Manager.</p>
 
     <p style="font-weight:bold; margin-bottom:4px;">Employee Details</p>

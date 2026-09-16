@@ -1,4 +1,4 @@
-const sendEmail = require('../sendEmail');
+const { queueSalaryRevisionMail } = require('../../utils/salaryRevisionMailQueue');
 const salaryRevisionHrNotifyTemplate = require('../templates/salaryRevisionHrNotifyTemplate');
 
 // Live as of 2026-09-02.
@@ -20,7 +20,10 @@ async function sendSalaryRevisionHrNotify(revision) {
     reviewDate: revision.reviewDate,
   });
 
-  await sendEmail({ to: RECIPIENT, subject, html });
+  await queueSalaryRevisionMail({
+    revisionId: revision._id, mailType: 'hrNotify', employeeName: revision.employeeName,
+    to: RECIPIENT, subject, html,
+  });
 }
 
 module.exports = sendSalaryRevisionHrNotify;

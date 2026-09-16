@@ -1,4 +1,4 @@
-const sendEmail = require('../sendEmail');
+const { queueSalaryRevisionMail } = require('../../utils/salaryRevisionMailQueue');
 const SalaryRevision = require('../../models/SalaryRevision');
 const resolveManagerContact = require('../../utils/resolveManagerContact');
 const {
@@ -14,7 +14,7 @@ const salaryRevisionManagerEscalationTemplate = require('../templates/salaryRevi
 const HR_FALLBACK = process.env.HR_EMAIL || 'hr.manager@briskolive.com';
 const CC_LIST = [HR_FALLBACK, process.env.EMAIL_MANAGEMENT].filter(Boolean).join(',');
 
-// Mail 5 — daily cron. A pre-deadline nudge: fires once a revision has been
+// Mail 5 — daily cron. Queues a draft (does NOT send) once a revision has been
 // sitting in 'pending_manager' with no manager decision for
 // (MANAGER_WINDOW_DAYS - MANAGER_ESCALATION_LEAD_DAYS) days — i.e. 2 days
 // BEFORE the manager's own 10-day deadline, not after it. Only considers
@@ -52,8 +52,15 @@ async function sendSalaryRevisionManagerEscalation(now = new Date()) {
       actionLink: buildSalaryRevisionActionLink(revision._id, 'manager'),
     });
 
-    await sendEmail({ to, cc: manager.email ? CC_LIST : undefined, subject, html });
+    await queueSalaryRevisionMail({
+      revisionId: revision._id, mailType: 'managerEscalation', employeeName: revision.employeeName,
+      to, cc: manager.email ? CC_LIST : '', subject, html,
+    });
 
+    // Still set at QUEUE time, not send time — this gate exists so the
+    // cron doesn't re-queue the same escalation every day; whether HR has
+    // actually sent the draft yet is a separate question the queue's own
+    // status field answers.
     revision.managerEscalationSentAt = now;
     await revision.save();
   }

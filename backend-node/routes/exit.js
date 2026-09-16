@@ -816,6 +816,7 @@ router.post("/", async (req, res) => {
     // meaningful plan date until approval happens.
 
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
     let doneInTime = 0, doneButDelayed = 0, tasksOverdue = 0,
         tasksDue = 0, notYetDue = 0, fmsScore = 0, tasksNotDone = 0;
 
@@ -890,6 +891,7 @@ router.patch("/:id/approve", async (req, res) => {
     assignExitPlanDates(checkLists, now, doc.leftDate, doc.plannedExitDate, doc.resignationDate);
 
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
     let doneInTime = 0, doneButDelayed = 0, tasksOverdue = 0,
         tasksDue = 0, notYetDue = 0, fmsScore = 0, tasksNotDone = 0;
 
@@ -959,6 +961,7 @@ router.post("/reconcile-checklist-template", async (req, res) => {
       const isApproved = !!existing.hr_approved_at;
 
       const today = new Date();
+      today.setHours(0, 0, 0, 0);
       let doneInTime = 0, doneButDelayed = 0, tasksOverdue = 0,
           tasksDue = 0, notYetDue = 0, fmsScore = 0, tasksNotDone = 0;
 
@@ -1231,6 +1234,7 @@ router.put("/:id", async (req, res) => {
     }
 
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
     let doneInTime = 0, doneButDelayed = 0, tasksOverdue = 0,
         tasksDue = 0, notYetDue = 0, fmsScore = 0, tasksNotDone = 0;
 
@@ -1490,6 +1494,7 @@ router.post("/migrate/import-legacy-csv", async (req, res) => {
 
       if (hasAnyTaskData) {
         const today = new Date();
+        today.setHours(0, 0, 0, 0);
         let tasksNotDone = 0;
         for (const list of checkLists) {
           const r = scoreChecklist(list, today, true); // legacy — treated as already approved
@@ -1601,6 +1606,7 @@ router.post("/migrate/legacy-import", async (req, res) => {
 
       if (hasAnyTaskData) {
         const today = new Date();
+        today.setHours(0, 0, 0, 0);
         for (const list of checkLists) {
           const r = scoreChecklist(list, today, true); // legacy — treated as already approved
           doneInTime += r.doneInTime;

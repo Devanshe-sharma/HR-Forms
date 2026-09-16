@@ -9,6 +9,19 @@ const employeeDocumentSchema = new mongoose.Schema({
     uploadedAt: { type: Date,   default: null },
 }, { _id: false });
 
+// The employee's own uploaded signature image — see routes/employees.js
+// POST /:id/upload-signature. Kept as its own dedicated field rather than
+// another entry in `documents` — it's a single current image meant to be
+// displayed inline (Employee List, generated letters), not a downloadable
+// proof-of-identity file, so driveFileId is stored alongside driveLink to
+// build a directly embeddable thumbnail URL on the frontend.
+const employeeSignatureSchema = new mongoose.Schema({
+    fileName:    { type: String, default: '' },
+    driveLink:   { type: String, default: '' },
+    driveFileId: { type: String, default: '' },
+    uploadedAt:  { type: Date,   default: null },
+}, { _id: false });
+
 const EmployeeSchema = new mongoose.Schema(
     {
         employee_id: String,
@@ -116,6 +129,10 @@ const EmployeeSchema = new mongoose.Schema(
         documents: { type: [employeeDocumentSchema], default: [] },
         documentsUploadFolderId: { type: String, default: null },
         documentsUploadFolderLink: { type: String, default: null },
+
+        // ── Digital signature (Profile page) — see
+        // routes/employees.js POST /:id/upload-signature.
+        signature: { type: employeeSignatureSchema, default: null },
     },
     {
         collection: 'Employee'

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Edit2, Plus, RefreshCw } from 'lucide-react';
+import { Search, Edit2, Eye, Plus, RefreshCw } from 'lucide-react';
 import dayjs from 'dayjs';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
@@ -251,14 +251,13 @@ export default function RequisitionDashboard() {
                       <th className="px-3 py-2.5 font-semibold w-32">Planned Joining</th>
                       <th className="px-3 py-2.5 font-semibold w-52">Hiring Status</th>
                       <th className="px-3 py-2.5 font-semibold w-24">FMS Status</th>
-                      <th className="px-3 py-2.5 font-semibold w-20 text-right">FMS Score</th>
-                      <th className="px-3 py-2.5 font-semibold w-20 text-center">Update</th>
+                      <th className="px-3 py-2.5 font-semibold w-36 text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {filteredRows.length === 0 && (
                       <tr>
-                        <td colSpan={10} className="py-12 text-center text-gray-400">No requisitions match the current filters</td>
+                        <td colSpan={9} className="py-12 text-center text-gray-400">No requisitions match the current filters</td>
                       </tr>
                     )}
                     {filteredRows.map(row => {
@@ -304,20 +303,23 @@ export default function RequisitionDashboard() {
                             </span>
                           </td>
 
-                          <td className={`px-3 py-2.5 text-right font-medium ${
-                            (row.fms_score ?? 0) < 0 ? 'text-red-600' : 'text-gray-700'
-                          }`}>
-                            {row.fms_score ?? 0}
-                          </td>
-
                           <td className="px-3 py-2.5 text-center">
-                            <button
-                              title="Update this requisition"
-                              onClick={e => { e.stopPropagation(); openEdit(row._id); }}
-                              className="p-1.5 rounded-md text-blue-600 hover:bg-blue-50 transition"
-                            >
-                              <Edit2 size={15} />
-                            </button>
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                title="View this requisition"
+                                onClick={e => { e.stopPropagation(); openView(row._id); }}
+                                className="flex items-center gap-1 px-2 py-1 rounded-md text-[0.7rem] font-semibold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition"
+                              >
+                                <Eye size={11} /> View
+                              </button>
+                              <button
+                                title="Update this requisition"
+                                onClick={e => { e.stopPropagation(); openEdit(row._id); }}
+                                className="flex items-center gap-1 px-2 py-1 rounded-md text-[0.7rem] font-semibold bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-100 transition"
+                              >
+                                <Edit2 size={11} /> Update
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );

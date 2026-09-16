@@ -216,6 +216,73 @@ router.post('/:id/upload-documents', authenticate, uploadEmployeeDoc, async (req
   }
 });
 
+// POST /api/employees/:id/upload-signature - Self-service digital signature
+// upload from the Profile page. Single image file, replaces any previous
+// signature (unlike upload-documents above, which appends). Shares the
+// same lazily-created Drive subfolder as the other document uploads.
+function extractDriveFileId(webViewLink) {
+  const match = /\/d\/([^/]+)/.exec(webViewLink || '');
+  return match ? match[1] : '';
+}
+
+const uploadEmployeeSignature = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 3 * 1024 * 1024 }, // 3MB — a signature image is small
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.jpg', '.jpeg', '.png'];
+    const ext = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
+    allowed.includes(ext) ? cb(null, true) : cb(new Error('Signature must be a JPG or PNG image.'));
+  },
+}).single('file');
+
+router.post('/:id/upload-signature', authenticate, uploadEmployeeSignature, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No file was selected' });
+    }
+
+    const employee = await Employee.findById(req.params.id);
+    if (!employee) {
+      return res.status(404).json({ success: false, error: 'Employee not found' });
+    }
+    if (!canManageEmployeeRecord(req.user, employee)) {
+      return res.status(403).json({ success: false, error: 'You can only upload a signature for your own profile' });
+    }
+
+    if (!employee.documentsUploadFolderId) {
+      const parentFolderId = process.env.GOOGLE_DRIVE_EMPLOYEE_DOCS_PARENT_FOLDER_ID || process.env.GOOGLE_DRIVE_RESUME_FOLDER_ID;
+      const folder = await createDriveFolder(`${employee.full_name || 'Employee'} - ${employee._id}`, parentFolderId);
+      employee.documentsUploadFolderId = folder.id;
+      employee.documentsUploadFolderLink = folder.webViewLink;
+    }
+
+    // makePublic: true — unlike the ID/education documents above, a
+    // signature's whole purpose is being visually inspectable at a glance
+    // (Employee List, generated letters). A signature image alone, with no
+    // other identifying context attached, is low-sensitivity compared to
+    // Aadhaar/PAN/bank details — this is the one employee upload that's
+    // deliberately public-by-link, specifically so it can render as an
+    // inline thumbnail rather than a "View" link-out.
+    const driveLink = await uploadFileToDrive(
+      req.file.buffer, req.file.originalname, req.file.mimetype,
+      employee.documentsUploadFolderId, { makePublic: true }
+    );
+
+    employee.signature = {
+      fileName: req.file.originalname,
+      driveLink,
+      driveFileId: extractDriveFileId(driveLink),
+      uploadedAt: new Date(),
+    };
+
+    await employee.save();
+    return res.json({ success: true, data: employee.signature });
+  } catch (err) {
+    console.error('Error uploading employee signature:', err);
+    return res.status(400).json({ success: false, error: err.message });
+  }
+});
+
 // PUT /api/employees/:id/archive - Archive an employee
 router.put('/:id/archive', async (req, res) => {
   try {

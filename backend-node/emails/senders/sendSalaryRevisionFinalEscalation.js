@@ -1,16 +1,14 @@
-const sendEmail = require('../sendEmail');
+const { queueSalaryRevisionMail } = require('../../utils/salaryRevisionMailQueue');
 const SalaryRevision = require('../../models/SalaryRevision');
 const resolveManagerContact = require('../../utils/resolveManagerContact');
 const { FINAL_ESCALATION_DAYS, ESCALATION_ELIGIBLE_FROM, addDays } = require('../../utils/salaryRevisionEscalation');
 const salaryRevisionFinalEscalationTemplate = require('../templates/salaryRevisionFinalEscalationTemplate');
 
-// Live as of 2026-09-02 — no dedicated "senior manager/dept head" field
-// exists anywhere in the data model, so this goes to the HR Head, who is
-// the actual senior escalation contact used elsewhere in this codebase
-// (see sendWeeklyExitSummary.js).
-const RECIPIENT = process.env.HR_HEAD_EMAIL || 'hr.head@briskolive.com';
+// Changed 2026-09-15 per explicit instruction — goes to Management
+// (the actual decision-makers above the reporting manager), not HR Head.
+const RECIPIENT = process.env.EMAIL_MANAGEMENT;
 
-// Mail 6 — daily cron. Fires once the manager's own window has fully
+// Mail 6 — daily cron. Queues a draft (does NOT send) once the manager's own window has fully
 // expired (FINAL_ESCALATION_DAYS, same anchor/value as MANAGER_WINDOW_DAYS)
 // with still no decision, and not yet finally escalated
 // (finalEscalationSentAt gate). Independent of whether Mail 5 already fired
@@ -43,8 +41,13 @@ async function sendSalaryRevisionFinalEscalation(now = new Date()) {
       pendingDays,
     });
 
-    await sendEmail({ to: RECIPIENT, subject, html });
+    await queueSalaryRevisionMail({
+      revisionId: revision._id, mailType: 'finalEscalation', employeeName: revision.employeeName,
+      to: RECIPIENT, subject, html,
+    });
 
+    // Still set at QUEUE time — see sendSalaryRevisionManagerEscalation.js's
+    // comment on the same pattern.
     revision.finalEscalationSentAt = now;
     await revision.save();
   }

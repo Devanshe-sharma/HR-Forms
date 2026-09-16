@@ -1138,12 +1138,12 @@ export default function DeptOrientationPage() {
               <Box sx={{width:52,height:52,borderRadius:'14px',bgcolor:'rgba(255,255,255,0.1)',display:'flex',alignItems:'center',justifyContent:'center'}}><ApartmentIcon sx={{fontSize:28}}/></Box>
               <Box flex={1}>
                 <Typography fontWeight={800} fontSize="1.5rem" lineHeight={1.2}>Department Orientation</Typography>
-                <Typography fontSize="0.85rem" sx={{opacity:0.6,mt:0.3}}>PPTs · JDs · Notes · Tests — organised by department</Typography>
+                {/* <Typography fontSize="0.85rem" sx={{opacity:0.6,mt:0.3}}>PPTs · JDs · Notes · Tests — organised by department</Typography> */}
               </Box>
               <Stack direction="row" spacing={1.5} alignItems="center">
                 {loading&&<CircularProgress size={18} sx={{color:'rgba(255,255,255,0.6)'}}/>}
                 <Chip label={`${departments.length} Departments`} size="small" sx={{bgcolor:'rgba(255,255,255,0.12)',color:'white',fontWeight:700,border:'1px solid rgba(255,255,255,0.2)',fontSize:'0.75rem'}}/>
-                {isHR&&<Chip label="HR · Edit Mode" size="small" sx={{bgcolor:'rgba(134,239,172,0.15)',color:'#86EFAC',fontWeight:700,border:'1px solid rgba(134,239,172,0.3)',fontSize:'0.75rem'}}/>}
+                {/* {isHR&&<Chip label="HR · Edit Mode" size="small" sx={{bgcolor:'rgba(134,239,172,0.15)',color:'#86EFAC',fontWeight:700,border:'1px solid rgba(134,239,172,0.3)',fontSize:'0.75rem'}}/>} */}
               </Stack>
             </Box>
           </Box>

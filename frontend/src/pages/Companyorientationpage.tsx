@@ -33,7 +33,6 @@ import {
   Link as LinkIcon,
   Delete as DeleteIcon,
   PictureAsPdf as PdfIcon,
-  CheckCircle as CheckCircleIcon,
   UploadFile as UploadFileIcon,
   TableChart as TableChartIcon,
 } from '@mui/icons-material';
@@ -1279,16 +1278,10 @@ const CompanyOrientationPage: React.FC = () => {
               </Box>
               <Box flex={1}>
                 <Typography fontWeight={800} fontSize="1.5rem" lineHeight={1.2}>Company Orientation</Typography>
-                <Typography fontSize="0.85rem" sx={{ opacity: 0.75, mt: 0.3 }}>All resources, policies and guides in one place</Typography>
+                {/* <Typography fontSize="0.85rem" sx={{ opacity: 0.75, mt: 0.3 }}>All resources, policies and guides in one place</Typography> */}
               </Box>
               <Stack direction="row" spacing={1.5} alignItems="center">
                 {loading && <CircularProgress size={18} sx={{ color: 'rgba(255,255,255,0.7)' }} />}
-                <Chip label={`Role: ${currentUserRole.toUpperCase()}`} size="small"
-                  sx={{ bgcolor: 'rgba(255,255,255,0.18)', color: 'white', fontWeight: 700, fontSize: '0.75rem', border: '1px solid rgba(255,255,255,0.3)' }} />
-                {isHR && (
-                  <Chip label="Edit Mode" size="small" icon={<CheckCircleIcon sx={{ fontSize: 14, color: '#86EFAC !important' }} />}
-                    sx={{ bgcolor: 'rgba(134,239,172,0.15)', color: '#86EFAC', fontWeight: 600, fontSize: '0.75rem', border: '1px solid rgba(134,239,172,0.3)' }} />
-                )}
               </Stack>
             </Box>
           </Box>

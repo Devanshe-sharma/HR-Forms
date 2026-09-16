@@ -1,6 +1,6 @@
 const Onboarding = require('../../models/onboardingModel');
 const SalaryRevision = require('../../models/SalaryRevision');
-const sendEmail = require('../sendEmail');
+const { queueSalaryRevisionMail } = require('../../utils/salaryRevisionMailQueue');
 const salaryRevisionDueTemplate = require('../templates/salaryRevisionDueTemplate');
 const { dueDateInRange, doneDateFor } = require('../../utils/salaryRevisionDueDate');
 const {
@@ -65,7 +65,10 @@ async function sendSalaryRevisionDue(now = new Date()) {
 
   const { subject, html } = salaryRevisionDueTemplate(rows, quarterLabel);
 
-  await sendEmail({ to: RECIPIENT, subject, html, cc: HR_HEAD_CC });
+  await queueSalaryRevisionMail({
+    mailType: 'quarterlyDigest', employeeName: `${rows.length} employees — ${quarterLabel}`,
+    to: RECIPIENT, cc: HR_HEAD_CC, subject, html,
+  });
 
   return { dueCount: rows.length };
 }

@@ -1,4 +1,4 @@
-const sendEmail = require('../sendEmail');
+const { queueSalaryRevisionMail } = require('../../utils/salaryRevisionMailQueue');
 const resolveManagerContact = require('../../utils/resolveManagerContact');
 const { buildSalaryRevisionActionLink } = require('../../utils/salaryRevisionMailSigning');
 const salaryRevisionManagementApprovalTemplate = require('../templates/salaryRevisionManagementApprovalTemplate');
@@ -7,7 +7,7 @@ const salaryRevisionManagementApprovalTemplate = require('../templates/salaryRev
 const RECIPIENT = process.env.EMAIL_MANAGEMENT;
 
 // Mail 2 — call right after PUT /:id/manager succeeds (stage ->
-// 'pending_management').
+// 'pending_management'). Queues a draft — does NOT send.
 async function sendSalaryRevisionManagementApproval(revision) {
   const manager = await resolveManagerContact(revision);
 
@@ -22,7 +22,10 @@ async function sendSalaryRevisionManagementApproval(revision) {
     actionLink: buildSalaryRevisionActionLink(revision._id, 'management'),
   });
 
-  await sendEmail({ to: RECIPIENT, subject, html });
+  await queueSalaryRevisionMail({
+    revisionId: revision._id, mailType: 'managementApproval', employeeName: revision.employeeName,
+    to: RECIPIENT, subject, html,
+  });
 }
 
 module.exports = sendSalaryRevisionManagementApproval;
