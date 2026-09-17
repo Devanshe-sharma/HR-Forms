@@ -13,6 +13,7 @@ const sendWeeklyExitSummary = require('./senders/sendWeeklyExitSummary');
 const sendDailyApplicantSummary = require('./senders/sendDailyApplicantSummary');
 const sendWeeklyRecruitmentSummary = require('./senders/sendWeeklyRecruitmentSummary');
 const sendWeeklyOnboardingSummary = require('./senders/sendWeeklyOnboardingSummary');
+const sendOnboardingRemindersDueTomorrow = require('./senders/sendOnboardingRemindersDueTomorrow');
 const sendSalaryRevisionDue = require('./senders/sendSalaryRevisionDue');
 const sendSalaryRevisionAutoTrigger = require('./senders/sendSalaryRevisionAutoTrigger');
 const sendSalaryRevisionManagerEscalation = require('./senders/sendSalaryRevisionManagerEscalation');
@@ -254,6 +255,21 @@ function startEmailScheduler() {
   //     console.error('Salary Revision Mail Queue digest failed:', err);
   //   }
   // }, { timezone: tz });
+
+  // 9l2. Onboarding — Reminder email, sent automatically 1 day before
+  // plannedJoiningDate (previously fired immediately the moment HR ticked
+  // "Auto Reminder Email" — see resolveOneTimeEmails in
+  // routes/onboardingroutes.js; the checkbox now only opts a record in,
+  // this job is what actually sends it).
+  cron.schedule('0 8 * * *', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Checking onboarding reminders due tomorrow`);
+    try {
+      const result = await sendOnboardingRemindersDueTomorrow();
+      console.log(`Onboarding reminder emails sent — ${result.sentCount} joinee(s)`);
+    } catch (err) {
+      console.error('Onboarding reminder sweep failed:', err);
+    }
+  }, { timezone: tz });
 
   // ─── Confirmations mail queue (added 2026-09-16) ───────────────────────────
   // Same convention as Salary Revision above — every one of these QUEUES

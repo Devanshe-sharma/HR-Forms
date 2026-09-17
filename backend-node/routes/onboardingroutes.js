@@ -73,6 +73,16 @@ function resolveOneTimeEmails(existing, body) {
     if (alreadySent) {
       resolved[flagField] = true;
       resolved[sentAtField] = existing[sentAtField];
+    } else if (flagField === "autoReminderEmail") {
+      // Reminder no longer sends the moment this box is ticked — it now
+      // sends automatically 1 day before plannedJoiningDate (see the
+      // "Onboarding reminder" cron job in emails/scheduler.js, and
+      // sendOnboardingRemindersDueTomorrow.js), which is also what
+      // stamps sentAtField once it actually goes out. Ticking the
+      // checkbox here only opts the record in — it must NOT set
+      // sentAtField early, or the scheduler would think it already sent.
+      resolved[flagField] = !!body[flagField];
+      resolved[sentAtField] = null;
     } else if (body[flagField]) {
       resolved[flagField] = true;
       resolved[sentAtField] = new Date();

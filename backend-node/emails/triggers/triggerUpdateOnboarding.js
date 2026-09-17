@@ -2,7 +2,6 @@ const sendNotJoining                     = require("../senders/sendNotJoining");
 const sendOnboardingUpdate               = require("../senders/sendOnboardingUpdate");
 const sendWelcomeEmail                   = require("../senders/sendWelcomeEmail");
 const sendWelcomeEmailAlreadyJoined      = require("../senders/sendWelcomeEmailAlreadyJoined");
-const sendReminderEmail                  = require("../senders/sendReminderEmail");
 const sendInstructionsToAll              = require("../senders/sendInstructionsToAll");
 const sendInstructionsToAllAlreadyJoined = require("../senders/sendInstructionsToAllAlreadyJoined");
 const sendEmployeeFeedback               = require("../senders/sendEmployeeFeedback");
@@ -49,10 +48,10 @@ async function triggerUpdateOnboarding(doc, previousDoc) {
       }
     }
 
-    // Reminder email
-    if (doc.autoReminderEmail && isNewlySent("autoReminderEmailSentAt")) {
-      await sendReminderEmail(doc);
-    }
+    // Reminder email — no longer sent from here (see triggerNewOnboarding
+    // for why); autoReminderEmailSentAt is now only ever stamped by the
+    // scheduler sweep once it actually sends, so isNewlySent would never
+    // fire on a route-driven save anyway.
 
     // Instructions to all
     if (doc.autoInstructionsToAllEmail && isNewlySent("autoInstructionsToAllEmailSentAt")) {

@@ -2,7 +2,6 @@ const sendNotJoining                   = require("../senders/sendNotJoining");
 const sendNewOnboardingStarted         = require("../senders/sendNewOnboardingStarted");
 const sendWelcomeEmail                 = require("../senders/sendWelcomeEmail");
 const sendWelcomeEmailAlreadyJoined    = require("../senders/sendWelcomeEmailAlreadyJoined");
-const sendReminderEmail                = require("../senders/sendReminderEmail");
 const sendInstructionsToAll            = require("../senders/sendInstructionsToAll");
 const sendInstructionsToAllAlreadyJoined = require("../senders/sendInstructionsToAllAlreadyJoined");
 const sendEmployeeFeedback             = require("../senders/sendEmployeeFeedback");
@@ -25,10 +24,11 @@ async function triggerNewOnboarding(doc) {
       await sendWelcomeEmailAlreadyJoined(doc);
     }
 
-    // 5. Reminder email — if checkbox ticked
-    if (doc.autoReminderEmail) {
-      await sendReminderEmail(doc);
-    }
+    // 5. Reminder email — no longer sent immediately here even if the
+    // checkbox is ticked. It now sends automatically 1 day before
+    // plannedJoiningDate, via the "Onboarding reminder" cron job in
+    // emails/scheduler.js (sendOnboardingRemindersDueTomorrow.js). The
+    // checkbox just opts the record in.
 
     // 6 & 7. Instructions to all
     if (doc.autoInstructionsToAllEmail) {
