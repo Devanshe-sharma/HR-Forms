@@ -85,39 +85,8 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
-// Management and Admin see everything; everyone else only ever sees
-// escalations they raised or that were raised against them — matched by
-// email, not name (name isn't reliable for this: see onboardingroutes.js's
-// eligible-employees scope=mine, where a Manager's login name didn't match
-// their own full name as it appears elsewhere).
-const FULL_VISIBILITY_ROLES = ['Management', 'Admin'];
-
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function scopeToOwnEscalations(req) {
-  const email = (req.user?.email || '').trim();
-  const escaped = escapeRegex(email);
-  return {
-    $or: [
-      { 'createdBy.email': { $regex: `^${escaped}$`, $options: 'i' } },
-      { 'targetEmployees.email': { $regex: `^${escaped}$`, $options: 'i' } },
-    ],
-  };
-}
-
-function canViewEscalation(req, doc) {
-  if (FULL_VISIBILITY_ROLES.includes(req.user?.role)) return true;
-  const email = (req.user?.email || '').trim().toLowerCase();
-  if (!email) return false;
-  if ((doc.createdBy?.email || '').trim().toLowerCase() === email) return true;
-  return (doc.targetEmployees || []).some(
-    (t) => (t.email || '').trim().toLowerCase() === email
-  );
-}
-
-// Editing is narrower than viewing: only whoever raised the escalation can
+// Editing is locked down (below) even though every authenticated user can
+// fetch and view every escalation — no per-role or per-person scoping on read.
 // edit it — not the person it's raised against, and not even
 // Management/Admin (they can view and act via updates elsewhere, but not
 // rewrite the original record).
@@ -145,9 +114,6 @@ router.get('/', authenticate, async (req, res) => {
         ],
       });
     }
-    if (!FULL_VISIBILITY_ROLES.includes(req.user?.role)) {
-      clauses.push(scopeToOwnEscalations(req));
-    }
 
     const filter = clauses.length ? { $and: clauses } : {};
     const data = await Escalation.find(filter).sort({ createdAt: -1 });
@@ -161,9 +127,6 @@ router.get('/:id', authenticate, async (req, res) => {
   try {
     const doc = await Escalation.findById(req.params.id);
     if (!doc) return res.status(404).json({ success: false, message: 'Not found' });
-    if (!canViewEscalation(req, doc)) {
-      return res.status(403).json({ success: false, message: 'You do not have access to this escalation.' });
-    }
     res.json({ success: true, data: doc });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
