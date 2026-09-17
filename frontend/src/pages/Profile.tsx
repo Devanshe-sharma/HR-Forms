@@ -57,7 +57,6 @@ interface UserProfile {
   reporting_manager?: string;
   employment_type?: string;
   work_location?: string;
-  date_of_birth?: string;
   gender?: string;
 
   // ── Onboarding-sourced enrichment — Onboarding has a record for every
@@ -593,7 +592,7 @@ function ProfileCompletion({ profile }: { profile: UserProfile | null }) {
     { label: 'Phone', filled: !!(profile?.phone || profile?.mobile) },
     { label: 'Department', filled: !!profile?.department },
     { label: 'Designation', filled: !!profile?.designation },
-    { label: 'Date of Birth', filled: !!profile?.date_of_birth },
+    { label: 'Date of Birth', filled: !!profile?.birthday },
     { label: 'Gender', filled: !!profile?.gender },
   ];
   const filled = fields.filter(f => f.filled).length;

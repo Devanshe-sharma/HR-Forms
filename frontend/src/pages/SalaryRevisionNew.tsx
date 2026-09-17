@@ -21,6 +21,7 @@ import {
   ExpandMore     as ExpandMoreIcon,
   Visibility     as VisibilityIcon,
   MailOutline    as MailIcon,
+  Settings       as SettingsIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import Sidebar from '../components/Sidebar';
@@ -65,16 +66,6 @@ interface ManagementDecision {
   submittedAt : string | null;
 }
 
-interface HrSalaryComponents {
-  basic   : number | null;
-  hra     : number | null;
-  convey  : number | null;
-  medical : number | null;
-  special : number | null;
-  pf      : number | null;
-  gratuity: number | null;
-}
-
 interface HrSubStep {
   completed  : boolean;
   completedAt: string | null;
@@ -103,11 +94,15 @@ interface HrDecision {
   fullTimeSince: string | null;
   notes       : string;
   submittedAt : string | null;
-  // HR's editable override of the auto-calculated salary breakdown —
-  // only present once HR has actually saved it (at finalisation); null/
-  // absent means still auto-calculated. See salaryComponentsSchema in
-  // backend-node/models/SalaryRevision.js.
-  salaryComponents?: HrSalaryComponents | null;
+  // HR's editable override of the auto-calculated salary breakdown — a
+  // { componentCode: amount } map covering every active CTC Component
+  // (see CTCComponentType below), computed by the formula engine
+  // (evaluateCtcComponents) from whatever HR has typed into the
+  // no-formula "input" components. Only present once HR has actually
+  // saved it (at finalisation); null/absent means still auto-calculated.
+  // See salaryComponents on hrDecisionSchema in
+  // backend-node/models/SalaryRevision.js (Mixed type, same reason).
+  salaryComponents?: Record<string, number> | null;
   // The 4-step HR completion checklist (a 5th "Appraisal Decision" step
   // is derived client-side from managementDecision.submittedAt, not
   // stored here — see hrDecisionSchema's comment on the backend).
@@ -392,6 +387,155 @@ const calcSalaryStructure = (annualCtc: number) => {
   const gross    = basic + hra + convey + medical + Math.max(special, 0);
   return { basic, hra, convey, medical, special:Math.max(special,0), pf, gratuity, gross, monthly, annual:annualCtc };
 };
+
+// ─── CTC Formula Engine ─────────────────────────────────────────────────────
+// Small recursive-descent evaluator for the Excel-style formulas HR
+// writes into CtcComponent.formula on the CTC Components admin screen
+// (e.g. "BASIC * 0.4", "IF(BASIC < 21000, 13580 * 0.0833, 0)",
+// "GROSS_MONTHLY + ESIC + PF"). A component with a blank formula is a
+// manual INPUT (its value comes from `inputs`, i.e. what HR typed); a
+// component with a formula is COMPUTED and read-only. A formula
+// referencing a deleted/unknown component code resolves to 0 rather than
+// throwing, so one stale reference never breaks the whole sheet — same
+// reasoning as a circular reference (also resolves to 0, guarded via the
+// `evaluating` set below, rather than infinite-looping).
+type FormulaToken = { type:'num'|'id'|'op'|'lparen'|'rparen'|'comma'; value:string };
+
+function tokenizeFormula(src: string): FormulaToken[] {
+  const tokens: FormulaToken[] = [];
+  let i = 0;
+  while (i < src.length) {
+    const ch = src[i];
+    if (/\s/.test(ch)) { i++; continue; }
+    if (ch === '(') { tokens.push({ type:'lparen', value:ch }); i++; continue; }
+    if (ch === ')') { tokens.push({ type:'rparen', value:ch }); i++; continue; }
+    if (ch === ',') { tokens.push({ type:'comma', value:ch }); i++; continue; }
+    if ('<>=!'.includes(ch)) {
+      if (src[i+1] === '=') { tokens.push({ type:'op', value:ch+'=' }); i+=2; }
+      else { tokens.push({ type:'op', value:ch }); i++; }
+      continue;
+    }
+    if ('+-*/'.includes(ch)) { tokens.push({ type:'op', value:ch }); i++; continue; }
+    if (/[0-9.]/.test(ch)) {
+      let j=i; while (j<src.length && /[0-9.]/.test(src[j])) j++;
+      tokens.push({ type:'num', value:src.slice(i,j) }); i=j; continue;
+    }
+    if (/[A-Za-z_]/.test(ch)) {
+      let j=i; while (j<src.length && /[A-Za-z0-9_]/.test(src[j])) j++;
+      tokens.push({ type:'id', value:src.slice(i,j) }); i=j; continue;
+    }
+    i++; // skip any other stray character rather than throwing
+  }
+  return tokens;
+}
+
+type FormulaNode =
+  | { kind:'num'; value:number }
+  | { kind:'ref'; code:string }
+  | { kind:'bin'; op:string; left:FormulaNode; right:FormulaNode }
+  | { kind:'neg'; value:FormulaNode }
+  | { kind:'if'; cond:FormulaNode; then:FormulaNode; else:FormulaNode };
+
+function parseFormula(src: string): FormulaNode {
+  const tokens = tokenizeFormula(src);
+  let pos = 0;
+  const peek = () => tokens[pos];
+  const eat = (type?: string) => { const t = tokens[pos]; if (type && t?.type !== type) throw new Error(`Expected ${type}`); pos++; return t; };
+
+  function parseAdd(): FormulaNode {
+    let node = parseMul();
+    while (peek() && peek().type==='op' && (peek().value==='+'||peek().value==='-')) {
+      const op = eat().value; node = { kind:'bin', op, left:node, right:parseMul() };
+    }
+    return node;
+  }
+  function parseMul(): FormulaNode {
+    let node = parseUnary();
+    while (peek() && peek().type==='op' && (peek().value==='*'||peek().value==='/')) {
+      const op = eat().value; node = { kind:'bin', op, left:node, right:parseUnary() };
+    }
+    return node;
+  }
+  function parseUnary(): FormulaNode {
+    if (peek() && peek().type==='op' && peek().value==='-') { eat(); return { kind:'neg', value:parseUnary() }; }
+    return parsePrimary();
+  }
+  function parseCompare(): FormulaNode {
+    const left = parseAdd();
+    if (peek() && peek().type==='op' && ['<','>','<=','>=','==','!='].includes(peek().value)) {
+      const op = eat().value; const right = parseAdd();
+      return { kind:'bin', op, left, right };
+    }
+    return left;
+  }
+  function parsePrimary(): FormulaNode {
+    const t = peek();
+    if (!t) return { kind:'num', value:0 };
+    if (t.type==='num') { eat(); return { kind:'num', value:Number(t.value) }; }
+    if (t.type==='lparen') { eat(); const n=parseAdd(); eat('rparen'); return n; }
+    if (t.type==='id') {
+      if (t.value.toUpperCase()==='IF') {
+        eat(); eat('lparen');
+        const cond = parseCompare(); eat('comma');
+        const thenExpr = parseAdd(); eat('comma');
+        const elseExpr = parseAdd(); eat('rparen');
+        return { kind:'if', cond, then:thenExpr, else:elseExpr };
+      }
+      eat(); return { kind:'ref', code:t.value.toUpperCase() };
+    }
+    eat(); return { kind:'num', value:0 };
+  }
+
+  return parseAdd();
+}
+
+function evalFormulaNode(node: FormulaNode, resolve: (code:string)=>number): number {
+  switch (node.kind) {
+    case 'num': return node.value;
+    case 'ref': return resolve(node.code);
+    case 'neg': return -evalFormulaNode(node.value, resolve);
+    case 'if':
+      return evalFormulaNode(node.cond, resolve) ? evalFormulaNode(node.then, resolve) : evalFormulaNode(node.else, resolve);
+    case 'bin': {
+      const l = evalFormulaNode(node.left, resolve), r = evalFormulaNode(node.right, resolve);
+      switch (node.op) {
+        case '+': return l+r; case '-': return l-r; case '*': return l*r;
+        case '/': return r!==0 ? l/r : 0;
+        case '<': return l<r?1:0; case '>': return l>r?1:0;
+        case '<=': return l<=r?1:0; case '>=': return l>=r?1:0;
+        case '==': return l===r?1:0; case '!=': return l!==r?1:0;
+        default: return 0;
+      }
+    }
+  }
+}
+
+// components: every ACTIVE CtcComponent (any order). inputs: what HR has
+// typed into the no-formula fields, keyed by component code. Returns
+// EVERY component's resolved value, keyed by code — inputs verbatim for
+// no-formula components, formula results for the rest.
+function evaluateCtcComponents(components: CTCComponentType[], inputs: Record<string, number>): Record<string, number> {
+  const byCode = new Map(components.map(c => [c.code, c]));
+  const cache: Record<string, number> = {};
+  const evaluating = new Set<string>();
+
+  function resolve(code: string): number {
+    if (cache[code] !== undefined) return cache[code];
+    const comp = byCode.get(code);
+    const hasFormula = !!comp?.formula?.trim();
+    if (!hasFormula) return cache[code] = inputs[code] ?? 0;
+    if (evaluating.has(code)) return cache[code] = 0;
+    evaluating.add(code);
+    let value = 0;
+    try { value = evalFormulaNode(parseFormula(comp!.formula), resolve); }
+    catch { value = 0; }
+    evaluating.delete(code);
+    return cache[code] = Math.round(value * 100) / 100;
+  }
+
+  components.forEach(c => resolve(c.code));
+  return cache;
+}
 
 // Bidirectional %-to-amount conversion for the increment inputs — editing
 // either the percentage slider or the target CTC amount field keeps the
@@ -860,9 +1004,9 @@ function CtcComponentsView({ onBack, showToast }: {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
-function DashboardView({ records, employees, loading, onSelect, onAdd, onRefresh }: {
+function DashboardView({ records, employees, loading, onSelect, onAdd, onOpenCtc, onRefresh }: {
   records:SalaryRevision[]; employees:Employee[]; loading:boolean;
-  onSelect:(emp:Employee,rec?:SalaryRevision)=>void; onAdd:()=>void; onRefresh:()=>void;
+  onSelect:(emp:Employee,rec?:SalaryRevision)=>void; onAdd:()=>void; onOpenCtc:()=>void; onRefresh:()=>void;
 }) {
   const now=new Date();
   // Three tabs: 'action' (who's due/pending right now, by some date
@@ -1246,6 +1390,11 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onRefresh
         </Box>
         <Stack direction="row" spacing={1} alignItems="center">
           <CompanyMailButton/>
+          <Button variant="outlined" startIcon={<SettingsIcon/>} onClick={onOpenCtc} size="small"
+            sx={{ textTransform:'none', fontWeight:600, borderRadius:1.5,
+              borderColor:'var(--border)', color:'var(--text-primary)', bgcolor:'white' }}>
+            CTC Components
+          </Button>
           <Button variant="contained" startIcon={<AddIcon/>} onClick={onAdd} size="small"
             sx={{ bgcolor:ACCENT, textTransform:'none', fontWeight:600, borderRadius: 1.5, '&:hover':{ bgcolor:'#4338ca' } }}>
             Add Revision
@@ -2682,39 +2831,41 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
     ? Math.round(prevCtc*(1+effectivePct/100))
     : prevCtc;
 
-  // Once HR has actually saved a salary-component override (only happens
-  // at finalisation — see postHr below), the read-only Salary Structure
-  // TAB shows exactly those HR-adjusted numbers instead of the raw
-  // auto-calculated ones, per component. Gross/Monthly/Annual are always
-  // just the sum of the components — a plain total, not a re-applied
-  // formula — so they stay correct whichever source is active.
-  const savedSalaryComponents = rec?.hrDecision?.salaryComponents;
-  const salStruct = savedSalaryComponents?.basic != null
-    ? (() => {
-        const c = savedSalaryComponents;
-        const gross = (c.basic||0)+(c.hra||0)+(c.convey||0)+(c.medical||0)+(c.special||0);
-        return { basic:c.basic||0, hra:c.hra||0, convey:c.convey||0, medical:c.medical||0, special:c.special||0,
-          pf:c.pf||0, gratuity:c.gratuity||0, gross, monthly:gross, annual:gross*12 };
-      })()
-    : calcSalaryStructure(newCtc);
-  const avg         = avgPms(pmsRows.filter(r=>r.period.trim()));
+  const avg = avgPms(pmsRows.filter(r=>r.period.trim()));
+
+  // Every ACTIVE CTC Component (admin-configured on the CTC Components
+  // screen) — fetched once so both the editable HR card and the
+  // read-only Salary Structure tab share the exact same list/order.
+  const [ctcComponents, setCtcComponents] = useState<CTCComponentType[]>([]);
+  useEffect(() => {
+    axios.get(CTC_API).then(res => {
+      const data: CTCComponentType[] = Array.isArray(res.data) ? res.data : res.data?.data || [];
+      setCtcComponents(data.filter(c=>c.is_active).sort((a,b)=>a.order-b.order));
+    }).catch(()=>{});
+  }, []);
 
   // ─── HR card: editable salary-structure override ───────────────────────
-  // Local only — HR can freely adjust any component before finalising;
-  // it's sent to the backend as part of the postHr payload below, not
-  // saved incrementally (there's nothing to "save as you go" here, unlike
-  // the checklist steps, which genuinely happen at different times).
-  const [hrSalaryComponents, setHrSalaryComponents] = useState<HrSalaryComponents>(() => {
+  // `hrSalaryComponents` holds only what HR actually TYPES — the
+  // no-formula "input" components (Basic Salary, Telephone Allowance,
+  // etc.). Every component's real value — inputs verbatim, formula
+  // results for the rest — comes from evaluateCtcComponents below, which
+  // re-runs live as the inputs or the component list change, the same
+  // instant recalculation a spreadsheet gives you. A saved HR override
+  // (rec?.hrDecision?.salaryComponents) seeds the inputs when reopening
+  // an already-worked-on revision; otherwise Basic Salary starts from the
+  // same 40%-of-monthly estimate the old fixed-field calculator used,
+  // purely as a helpful starting point — HR can freely overwrite it, and
+  // everything downstream (HRA, Bonus, ESIC, Monthly/Annual CTC, ...)
+  // recalculates from whatever it's actually set to.
+  const [hrSalaryComponents, setHrSalaryComponents] = useState<Record<string, number>>(() => {
     const saved = rec?.hrDecision?.salaryComponents;
-    if (saved?.basic != null) {
-      return { basic:saved.basic??0, hra:saved.hra??0, convey:saved.convey??0, medical:saved.medical??0,
-        special:saved.special??0, pf:saved.pf??0, gratuity:saved.gratuity??0 };
-    }
-    const auto = calcSalaryStructure(newCtc);
-    return { basic:auto.basic, hra:auto.hra, convey:auto.convey, medical:auto.medical, special:auto.special, pf:auto.pf, gratuity:auto.gratuity };
+    if (saved && Object.keys(saved).length) return { ...saved };
+    return { BASIC: calcSalaryStructure(newCtc).basic };
   });
-  const hrGross = (hrSalaryComponents.basic||0)+(hrSalaryComponents.hra||0)+(hrSalaryComponents.convey||0)
-    +(hrSalaryComponents.medical||0)+(hrSalaryComponents.special||0);
+  const computedComponents = useMemo(
+    () => evaluateCtcComponents(ctcComponents, hrSalaryComponents),
+    [ctcComponents, hrSalaryComponents]
+  );
 
   // ─── HR card: 5-step completion checklist ───────────────────────────────
   // Step 1 (Appraisal Decision) is derived, not stored — it's just
@@ -2856,7 +3007,12 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
         notes:hrNotes, applicableDate:hrAppDate||null, newCtc,
         newContractStartDate:hrNewContractStart||null, newContractEndDate:hrNewContractEnd||null,
         fullTimeSince: isPpoConversion ? (hrFullTimeSince||null) : null,
-        salaryComponents: hrSalaryComponents,
+        // The full resolved snapshot (inputs + formula results for every
+        // component), not just what HR typed — a completed revision's
+        // record should be self-contained, not require re-running the
+        // formula engine later to know what GROSS_MONTHLY/ANNUAL_CTC etc.
+        // actually were at finalisation time.
+        salaryComponents: computedComponents,
       };
       const { data }=await axios.put(`${API}/${rec._id}/hr`,payload);
       if (data.success){ showToast('HR decision saved — revision completed, Onboarding updated','success'); onRecordChange(data.data); }
@@ -3375,28 +3531,29 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                       SALARY STRUCTURE{isHr?' (EDITABLE)':''}
                     </Typography>
                     <Stack spacing={0.75}>
-                      {([
-                        ['basic','Basic Salary'], ['hra','HRA'], ['convey','Conveyance'],
-                        ['medical','Medical Allowance'], ['special','Special Allowance'],
-                        ['pf','PF (Employer)'], ['gratuity','Gratuity'],
-                      ] as const).map(([key,label])=>(
-                        <Box key={key} sx={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:1 }}>
-                          <Typography fontSize={12} color="text.secondary">{label}</Typography>
-                          <TextField size="small" type="number" value={hrSalaryComponents[key] ?? 0}
-                            onChange={e=>setHrSalaryComponents(s=>({ ...s, [key]: Number(e.target.value)||0 }))}
-                            disabled={!isHr} sx={{ width:130 }}
-                            InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}/>
-                        </Box>
-                      ))}
-                      <Divider/>
-                      <Box sx={{ display:'flex', justifyContent:'space-between' }}>
-                        <Typography fontSize={12} fontWeight={700}>Gross Monthly</Typography>
-                        <Typography fontSize={12} fontWeight={700} color={ACCENT}>{fmtCurrency(hrGross)}</Typography>
-                      </Box>
-                      <Box sx={{ display:'flex', justifyContent:'space-between' }}>
-                        <Typography fontSize={12} fontWeight={700}>Annual CTC</Typography>
-                        <Typography fontSize={12} fontWeight={700} color="#059669">{fmtCurrency(hrGross*12)}</Typography>
-                      </Box>
+                      {ctcComponents.map(comp=>{
+                        const hasFormula = !!comp.formula?.trim();
+                        const isTotal = comp.code==='GROSS_MONTHLY' || comp.code==='MONTHLY_CTC' || comp.code==='ANNUAL_CTC';
+                        return (
+                          <Box key={comp.code} sx={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:1 }}>
+                            <Typography fontSize={12} color={isTotal?'text.primary':'text.secondary'} fontWeight={isTotal?700:400}>
+                              {comp.name}
+                            </Typography>
+                            {hasFormula ? (
+                              <Tooltip title={comp.formula} arrow>
+                                <Typography fontSize={12} fontWeight={isTotal?700:600} color={isTotal?ACCENT:'text.primary'}>
+                                  {fmtCurrency(computedComponents[comp.code] ?? 0)}
+                                </Typography>
+                              </Tooltip>
+                            ) : (
+                              <TextField size="small" type="number" value={hrSalaryComponents[comp.code] ?? 0}
+                                onChange={e=>setHrSalaryComponents(s=>({ ...s, [comp.code]: Number(e.target.value)||0 }))}
+                                disabled={!isHr} sx={{ width:130 }}
+                                InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}/>
+                            )}
+                          </Box>
+                        );
+                      })}
                     </Stack>
                   </Box>
                 )}
@@ -3553,7 +3710,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
               ['Previous CTC', fmtCurrency(prevCtc), '#64748b'],
               ['Increment %',  `+${effectivePct}%`, '#d97706'],
               ['New Annual CTC', fmtCurrency(newCtc), '#059669'],
-              ['Monthly CTC',   fmtCurrency(salStruct.monthly), ACCENT],
+              ['Monthly CTC',   fmtCurrency(computedComponents['MONTHLY_CTC'] ?? 0), ACCENT],
             ].map(([l,v,c])=>(
               <Box key={l} sx={{ flex:'1 1 150px', p:2, bgcolor:'white', borderRadius:2, border:'1px solid #e2e8f0' }}>
                 <Typography fontSize={11} color="text.secondary">{l}</Typography>
@@ -3564,7 +3721,11 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
 
           <Paper variant="outlined" sx={{ borderRadius:2, overflow:'hidden' }}>
             <Box sx={{ p:2, bgcolor:'#f8fafc', borderBottom:'1px solid #e2e8f0' }}>
-              <Typography fontWeight={700} fontSize={13}>Salary Structure (Auto-generated)</Typography>
+              <Typography fontWeight={700} fontSize={13}>Salary Structure</Typography>
+              <Typography fontSize={11} color="text.secondary" mt={0.3}>
+                {rec?.hrDecision?.salaryComponents && Object.keys(rec.hrDecision.salaryComponents).length
+                  ? 'As finalised by HR' : 'Live preview — HR can still adjust this at finalisation'}
+              </Typography>
             </Box>
             <TableContainer>
               <Table size="small">
@@ -3572,33 +3733,22 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                   <TableRow sx={{ '& th':TH }}>
                     <TableCell>Component</TableCell>
                     <TableCell>Formula</TableCell>
-                    <TableCell align="right">Monthly (₹)</TableCell>
-                    <TableCell align="right">Annual (₹)</TableCell>
+                    <TableCell align="right">Amount (₹)</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {[
-                    ['Basic Salary',          '40% of Monthly CTC',     salStruct.basic,    salStruct.basic*12],
-                    ['HRA',                   '40% of Basic',           salStruct.hra,      salStruct.hra*12],
-                    ['Conveyance',            'Fixed ₹1,600',           salStruct.convey,   salStruct.convey*12],
-                    ['Medical Allowance',     '3% of Monthly CTC',      salStruct.medical,  salStruct.medical*12],
-                    ['Special Allowance',     'Balance',                salStruct.special,  salStruct.special*12],
-                    ['Gross Monthly',         'Sum of above',           salStruct.gross,    salStruct.gross*12],
-                    ['PF (Employer)',          '12% of Basic',           salStruct.pf,       salStruct.pf*12],
-                    ['Gratuity',              '4.81% of Basic',         salStruct.gratuity, salStruct.gratuity*12],
-                  ].map(([comp,formula,monthly,annual])=>(
-                    <TableRow key={comp}>
-                      <TableCell sx={{ fontSize:12, fontWeight:500 }}>{comp}</TableCell>
-                      <TableCell sx={{ fontSize:11, color:'text.secondary' }}>{formula}</TableCell>
-                      <TableCell sx={{ fontSize:12, fontWeight:600, textAlign:'right' }}>{fmtCurrency(Number(monthly))}</TableCell>
-                      <TableCell sx={{ fontSize:12, textAlign:'right', color:'text.secondary' }}>{fmtCurrency(Number(annual))}</TableCell>
-                    </TableRow>
-                  ))}
-                  <TableRow sx={{ bgcolor:'#f8fafc' }}>
-                    <TableCell sx={{ fontSize:12, fontWeight:700 }} colSpan={2}>Total CTC</TableCell>
-                    <TableCell sx={{ fontSize:12, fontWeight:700, textAlign:'right', color:ACCENT }}>{fmtCurrency(salStruct.monthly)}</TableCell>
-                    <TableCell sx={{ fontSize:12, fontWeight:700, textAlign:'right', color:ACCENT }}>{fmtCurrency(newCtc)}</TableCell>
-                  </TableRow>
+                  {ctcComponents.map(comp=>{
+                    const isTotal = comp.code==='GROSS_MONTHLY' || comp.code==='MONTHLY_CTC' || comp.code==='ANNUAL_CTC';
+                    return (
+                      <TableRow key={comp.code} sx={isTotal?{ bgcolor:'#f8fafc' }:undefined}>
+                        <TableCell sx={{ fontSize:12, fontWeight:isTotal?700:500 }}>{comp.name}</TableCell>
+                        <TableCell sx={{ fontSize:11, color:'text.secondary', fontFamily:'monospace' }}>{comp.formula || '— (manual entry)'}</TableCell>
+                        <TableCell sx={{ fontSize:12, fontWeight:isTotal?700:600, textAlign:'right', color:isTotal?ACCENT:undefined }}>
+                          {fmtCurrency(computedComponents[comp.code] ?? 0)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </TableContainer>
@@ -3613,7 +3763,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
-type View = 'dashboard' | 'detail';
+type View = 'dashboard' | 'detail' | 'ctc';
 
 
 export default function SalaryRevisionPage() {
@@ -3693,8 +3843,12 @@ export default function SalaryRevisionPage() {
           <Box sx={{ maxWidth:1300, mx:'auto', width:'100%', height:'100%', overflow:'auto' }}>
             {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
 
-            <DashboardView records={records} employees={employees} loading={loading}
-              onSelect={handleSelect} onAdd={()=>setShowAdd(true)} onRefresh={loadData}/>
+            {view==='ctc' ? (
+              <CtcComponentsView onBack={()=>setView('dashboard')} showToast={showToast}/>
+            ) : (
+              <DashboardView records={records} employees={employees} loading={loading}
+                onSelect={handleSelect} onAdd={()=>setShowAdd(true)} onOpenCtc={()=>setView('ctc')} onRefresh={loadData}/>
+            )}
           </Box>
         </main>
       </div>

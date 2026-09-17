@@ -34,22 +34,6 @@ const checklistTaskSchema = new mongoose.Schema({
   daysLeft: { type: Number, default: null },
 }, { _id: false });
 
-// HR's editable override of the auto-calculated salary breakdown
-// (calcSalaryStructure on the frontend) — HR can adjust any component
-// before finalising; editing one does NOT recompute the others (this is
-// a review/override step, not a live formula). Null/absent means HR
-// hasn't touched it yet, so the frontend still shows the auto-calculated
-// breakdown until this is actually saved.
-const salaryComponentsSchema = new mongoose.Schema({
-  basic   : { type: Number, default: null },
-  hra     : { type: Number, default: null },
-  convey  : { type: Number, default: null },
-  medical : { type: Number, default: null },
-  special : { type: Number, default: null },
-  pf      : { type: Number, default: null },
-  gratuity: { type: Number, default: null },
-}, { _id: false });
-
 const hrSubStepSchema = new mongoose.Schema({
   completed  : { type: Boolean, default: false },
   completedAt: { type: Date,    default: null },
@@ -89,7 +73,17 @@ const hrDecisionSchema = new mongoose.Schema({
   fullTimeSince : { type: Date,   default: null },
   notes         : { type: String, default: '' },
   submittedAt   : { type: Date,   default: null },
-  salaryComponents: { type: salaryComponentsSchema, default: () => ({}) },
+  // HR's editable override of the auto-calculated salary breakdown — a
+  // free-form { componentCode: amount } map covering EVERY active
+  // CtcComponent (models/CtcComponent.js), not a fixed field list, since
+  // HR can add/remove components on that admin screen at any time. Mixed
+  // rather than a typed sub-schema for exactly that reason. HR can adjust
+  // any component before finalising; editing one does NOT recompute the
+  // others (this is a review/override step, not a live formula — see
+  // CtcComponent.formula's own comment: no calculation engine exists for
+  // it yet). Null/absent means HR hasn't touched it yet, so the frontend
+  // still shows the auto-calculated breakdown until this is saved.
+  salaryComponents: { type: mongoose.Schema.Types.Mixed, default: null },
   subSteps        : { type: hrSubStepsSchema,       default: () => ({}) },
   document        : { type: salaryRevisionDocumentSchema, default: () => ({}) },
 }, { _id: false });

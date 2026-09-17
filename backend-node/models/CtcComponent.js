@@ -75,10 +75,13 @@ const CtcComponentSchema = new mongoose.Schema(
   }
 );
 
-// Optional: auto-update updated_at on save
-CtcComponentSchema.pre('save', function (next) {
+// Optional: auto-update updated_at on save. Mongoose 9 dropped the old
+// callback-style middleware signature (function(next){...;next();}) —
+// `next` is undefined now, so calling it threw "next is not a function"
+// on every .save() (blocking POST/create; PATCH used findByIdAndUpdate,
+// which never runs this hook, so editing was unaffected).
+CtcComponentSchema.pre('save', function () {
   this.updated_at = Date.now();
-  next();
 });
 
 module.exports = mongoose.model('CtcComponent', CtcComponentSchema);
