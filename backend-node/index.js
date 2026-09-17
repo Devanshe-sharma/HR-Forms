@@ -147,13 +147,6 @@ mongoose.connect(process.env.MONGO_URI)
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
-
-    // ✅ safe: DB is ready
-    console.log('🧪 Testing upcoming outing reminder...');
-    const result = await require('./emails/emailUpcomingOutingReminder')
-      .sendUpcomingOutingReminder();
-    console.log('Test result:', result);
-
   })
   .catch(err => {
     console.error('❌ MongoDB connection error:', err.message);

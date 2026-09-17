@@ -114,15 +114,18 @@ function startEmailScheduler() {
   // Script's sendWeeklyEmail(), which had no explicit cron trigger visible
   // in the source — adjust the schedule below if you know the original
   // actually ran on a different day/time).
-  cron.schedule('0 9 * * 1', async () => {
-    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending weekly exit summary`);
-    try {
-      const result = await sendWeeklyExitSummary();
-      console.log(`Weekly exit summary sent — ${result.openCount} open exit(s)`);
-    } catch (err) {
-      console.error('Weekly exit summary failed:', err);
-    }
-  }, { timezone: tz });
+  // PAUSED 2026-09-17 per "stop all onboarding, exit, salary revision,
+  // confirmation mails" — re-enable by uncommenting once ready.
+  //
+  // cron.schedule('0 9 * * 1', async () => {
+  //   console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending weekly exit summary`);
+  //   try {
+  //     const result = await sendWeeklyExitSummary();
+  //     console.log(`Weekly exit summary sent — ${result.openCount} open exit(s)`);
+  //   } catch (err) {
+  //     console.error('Weekly exit summary failed:', err);
+  //   }
+  // }, { timezone: tz });
 
   // 9a. Weekly Recruitment (open hiring requisitions) FMS summary —
   // every Monday at 9am, alongside the weekly exit/onboarding summaries.
@@ -137,15 +140,18 @@ function startEmailScheduler() {
   }, { timezone: tz });
 
   // 9b. Weekly Onboarding FMS summary — every Monday at 9am.
-  cron.schedule('0 9 * * 1', async () => {
-    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending weekly onboarding summary`);
-    try {
-      const result = await sendWeeklyOnboardingSummary();
-      console.log(`Weekly onboarding summary sent — ${result.openCount} open FMS(s)`);
-    } catch (err) {
-      console.error('Weekly onboarding summary failed:', err);
-    }
-  }, { timezone: tz });
+  // PAUSED 2026-09-17 per "stop all onboarding, exit, salary revision,
+  // confirmation mails" — re-enable by uncommenting once ready.
+  //
+  // cron.schedule('0 9 * * 1', async () => {
+  //   console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending weekly onboarding summary`);
+  //   try {
+  //     const result = await sendWeeklyOnboardingSummary();
+  //     console.log(`Weekly onboarding summary sent — ${result.openCount} open FMS(s)`);
+  //   } catch (err) {
+  //     console.error('Weekly onboarding summary failed:', err);
+  //   }
+  // }, { timezone: tz });
 
   // 9c. Daily candidate applicant summary — 9am, covering the full
   // previous calendar day's applications. Replaces the old immediate
@@ -261,15 +267,18 @@ function startEmailScheduler() {
   // "Auto Reminder Email" — see resolveOneTimeEmails in
   // routes/onboardingroutes.js; the checkbox now only opts a record in,
   // this job is what actually sends it).
-  cron.schedule('0 8 * * *', async () => {
-    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Checking onboarding reminders due tomorrow`);
-    try {
-      const result = await sendOnboardingRemindersDueTomorrow();
-      console.log(`Onboarding reminder emails sent — ${result.sentCount} joinee(s)`);
-    } catch (err) {
-      console.error('Onboarding reminder sweep failed:', err);
-    }
-  }, { timezone: tz });
+  // PAUSED 2026-09-17 per "stop all onboarding, exit, salary revision,
+  // confirmation mails" — re-enable by uncommenting once ready.
+  //
+  // cron.schedule('0 8 * * *', async () => {
+  //   console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Checking onboarding reminders due tomorrow`);
+  //   try {
+  //     const result = await sendOnboardingRemindersDueTomorrow();
+  //     console.log(`Onboarding reminder emails sent — ${result.sentCount} joinee(s)`);
+  //   } catch (err) {
+  //     console.error('Onboarding reminder sweep failed:', err);
+  //   }
+  // }, { timezone: tz });
 
   // ─── Confirmations mail queue (added 2026-09-16) ───────────────────────────
   // Same convention as Salary Revision above — every one of these QUEUES

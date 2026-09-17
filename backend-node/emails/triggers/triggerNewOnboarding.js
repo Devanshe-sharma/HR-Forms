@@ -5,9 +5,15 @@ const sendWelcomeEmailAlreadyJoined    = require("../senders/sendWelcomeEmailAlr
 const sendInstructionsToAll            = require("../senders/sendInstructionsToAll");
 const sendInstructionsToAllAlreadyJoined = require("../senders/sendInstructionsToAllAlreadyJoined");
 const sendEmployeeFeedback             = require("../senders/sendEmployeeFeedback");
+const { ONBOARDING_EMAILS_TEMPORARILY_DISABLED } = require("../onboardingMailGate");
 
 async function triggerNewOnboarding(doc) {
   try {
+    if (ONBOARDING_EMAILS_TEMPORARILY_DISABLED) {
+      console.log("[triggerNewOnboarding] Onboarding emails temporarily disabled; skipping send.");
+      return;
+    }
+
     // 1. Not Joining — send closure email and stop
     if (doc.joiningStatus === "Not Joining") {
       await sendNotJoining(doc);

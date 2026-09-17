@@ -9,6 +9,7 @@ const { fiscalYearOf, fiscalQuarterOf, fiscalQuarterStartUTC, fiscalQuarterEndUT
 const Exit = require('../models/exitModel');
 const { triggerNewOnboarding, triggerUpdateOnboarding } = require("../emails");
 const sendContractExtension = require('../emails/senders/sendContractExtension');
+const { ONBOARDING_EMAILS_TEMPORARILY_DISABLED } = require('../emails/onboardingMailGate');
 const Employee = require('../models/Employee');
 const { syncUserEmailOnChange, syncEmployeeEmailOnChange } = require('../utils/syncUserEmail');
 const { getEmployeeMasterList } = require('../utils/employeeMaster');
@@ -1877,7 +1878,7 @@ router.put('/:id/contract', async (req, res) => {
     // was added — only for the categories that actually have one, and only
     // when this save is the one adding/renewing it (not every PATCH-like
     // field tweak against this endpoint).
-    if (notifyEmployee && CONTRACT_EMAIL_CATEGORIES.includes(updated.employeeCategory)) {
+    if (!ONBOARDING_EMAILS_TEMPORARILY_DISABLED && notifyEmployee && CONTRACT_EMAIL_CATEGORIES.includes(updated.employeeCategory)) {
       sendContractExtension(updated).catch((err) =>
         console.error('[contract PUT] Failed to send contract extension email:', err.message)
       );
@@ -2650,6 +2651,10 @@ const sendEmployeeFeedbackTest = require('../emails/senders/sendEmployeeFeedback
  
 router.post('/test-reminder-and-feedback-email', async (req, res) => {
   try {
+    if (ONBOARDING_EMAILS_TEMPORARILY_DISABLED) {
+      return res.status(403).json({ success: false, message: 'Onboarding emails are temporarily disabled.' });
+    }
+
     const persEmail = (req.query.persEmail || '').trim().toLowerCase();
     if (!persEmail) {
       return res.status(400).json({ success: false, message: 'Provide ?persEmail=<email> as a query parameter' });

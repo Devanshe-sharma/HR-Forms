@@ -4,7 +4,10 @@ const sendExitReminder                  = require("../senders/sendExitReminder")
 const sendExitInstructionsToAll         = require("../senders/sendExitInstructionsToAll");
 const sendExitInstructionsToAllAlready  = require("../senders/sendExitInstructionsToAllAlready");
 
-const EXIT_EMAILS_TEMPORARILY_DISABLED = false;
+// Paused 2026-09-17 per "stop all onboarding, exit, salary revision,
+// confirmation mails" — gates BOTH the create and update triggers below
+// (triggerUpdateExit just calls this same function).
+const EXIT_EMAILS_TEMPORARILY_DISABLED = true;
 
 // NOTE on doc's auto-email fields (autoExitEmail, autoReminderEmail,
 // autoInstructionsToAllEmail): the route handler is responsible for only
