@@ -1,6 +1,5 @@
 ﻿const sendExitProgress                  = require("../senders/sendExitProgress");
-const sendExitAcceptance                = require("../senders/sendExitAcceptance");
-const sendExitAcceptanceAlready         = require("../senders/sendExitAcceptanceAlready");
+const sendExitAcceptanceByType          = require("../senders/sendExitAcceptanceByType");
 const sendExitReminder                  = require("../senders/sendExitReminder");
 const sendExitInstructionsToAll         = require("../senders/sendExitInstructionsToAll");
 const sendExitInstructionsToAllAlready  = require("../senders/sendExitInstructionsToAllAlready");
@@ -32,12 +31,16 @@ async function triggerNewExit(doc) {
     // Main status email - always sent on create/update.
     await sendExitProgress(doc);
 
-    // Acceptance email to the employee themselves.
+    // Acceptance email to the employee themselves — content is chosen by
+    // exitType (Resignation/Completion of Tenure/Retirement/Demise/
+    // Termination/Asked to Leave/Absconded) where recognized, falling
+    // back to the original exitStatus-only emails otherwise. Still gated
+    // on exitStatus here the same as before — an exit still "Serving
+    // Notice Period"/"Already Left"/"Left" is what actually means an
+    // acceptance email is due at all.
     if (doc.autoExitEmail) {
-      if (doc.exitStatus === "Serving Notice Period") {
-        await sendExitAcceptance(doc);
-      } else if (doc.exitStatus === "Already Left" || doc.exitStatus === "Left") {
-        await sendExitAcceptanceAlready(doc);
+      if (["Serving Notice Period", "Already Left", "Left"].includes(doc.exitStatus)) {
+        await sendExitAcceptanceByType(doc);
       }
     }
 
