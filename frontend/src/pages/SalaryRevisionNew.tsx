@@ -2804,6 +2804,108 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
 
   const [busy, setBusy] = useState(false);
 
+  // TEMPORARY direct edit of an ALREADY-SUBMITTED manager/management
+  // decision — same convention as the Stage editor in DashboardView's
+  // View popup: hits the plain PUT /:id route with only the one field
+  // being corrected, which never calls any mail sender (unlike the
+  // /manager and /management routes' PUT handlers, which both submit a
+  // fresh decision AND queue the next mail in the chain). For fixing a
+  // typo'd percentage or reason after the fact without reopening the
+  // whole workflow or generating mail. Remove once no longer needed.
+  const [mgrDecisionEditOpen, setMgrDecisionEditOpen] = useState(false);
+  const [mgrEditDecision, setMgrEditDecision] = useState<'increment'|'pip'>('increment');
+  const [mgrEditPct, setMgrEditPct] = useState(0);
+  const [mgrEditAmount, setMgrEditAmount] = useState(0);
+  const [mgrEditPipMonths, setMgrEditPipMonths] = useState(3);
+  const [mgrEditPipDueDate, setMgrEditPipDueDate] = useState('');
+  const [mgrEditReason, setMgrEditReason] = useState('');
+  const [mgrEditBusy, setMgrEditBusy] = useState(false);
+  const [mgrEditError, setMgrEditError] = useState('');
+
+  const handleMgrEditPctChange = (pct: number) => {
+    setMgrEditPct(pct);
+    setMgrEditAmount(amountFromPct(pct, prevCtc));
+  };
+  const handleMgrEditAmountChange = (amount: number) => {
+    setMgrEditAmount(amount);
+    setMgrEditPct(pctFromAmount(amount, prevCtc));
+  };
+
+  const openMgrDecisionEdit = () => {
+    setMgrEditDecision(rec?.managerDecision?.decision || 'increment');
+    const pct = rec?.managerDecision?.recommendedPct ?? 0;
+    setMgrEditPct(pct);
+    setMgrEditAmount(amountFromPct(pct, prevCtc));
+    setMgrEditPipMonths(rec?.managerDecision?.pipDurationMonths ?? 3);
+    setMgrEditPipDueDate(rec?.managerDecision?.pipNewDueDate ? new Date(rec.managerDecision.pipNewDueDate).toISOString().split('T')[0] : '');
+    setMgrEditReason(rec?.managerDecision?.reason || '');
+    setMgrEditError('');
+    setMgrDecisionEditOpen(true);
+  };
+  const saveMgrDecisionEdit = async () => {
+    if (!rec) return;
+    setMgrEditBusy(true); setMgrEditError('');
+    try {
+      const { data } = await axios.put(`${API}/${rec._id}`, {
+        managerDecision: {
+          decision: mgrEditDecision,
+          recommendedPct: mgrEditDecision==='increment' ? mgrEditPct : null,
+          pipDurationMonths: mgrEditDecision==='pip' ? mgrEditPipMonths : null,
+          pipNewDueDate: mgrEditDecision==='pip' ? (mgrEditPipDueDate||null) : null,
+          reason: mgrEditReason,
+        },
+      });
+      if (!data.success) throw new Error(data.message || 'Save failed');
+      onRecordChange(data.data);
+      setMgrDecisionEditOpen(false);
+    } catch (e:any) { setMgrEditError(e?.response?.data?.message || e?.message || 'Save failed'); }
+    finally { setMgrEditBusy(false); }
+  };
+
+  const [mgmtDecisionEditOpen, setMgmtDecisionEditOpen] = useState(false);
+  const [mgmtEditPct, setMgmtEditPct] = useState(0);
+  const [mgmtEditAmount, setMgmtEditAmount] = useState(0);
+  const [mgmtEditPipApproved, setMgmtEditPipApproved] = useState(true);
+  const [mgmtEditReason, setMgmtEditReason] = useState('');
+  const [mgmtEditBusy, setMgmtEditBusy] = useState(false);
+  const [mgmtEditError, setMgmtEditError] = useState('');
+
+  const handleMgmtEditPctChange = (pct: number) => {
+    setMgmtEditPct(pct);
+    setMgmtEditAmount(amountFromPct(pct, prevCtc));
+  };
+  const handleMgmtEditAmountChange = (amount: number) => {
+    setMgmtEditAmount(amount);
+    setMgmtEditPct(pctFromAmount(amount, prevCtc));
+  };
+
+  const openMgmtDecisionEdit = () => {
+    const pct = rec?.managementDecision?.finalPct ?? 0;
+    setMgmtEditPct(pct);
+    setMgmtEditAmount(amountFromPct(pct, prevCtc));
+    setMgmtEditPipApproved(rec?.managementDecision?.pipApproved ?? true);
+    setMgmtEditReason(rec?.managementDecision?.reason || '');
+    setMgmtEditError('');
+    setMgmtDecisionEditOpen(true);
+  };
+  const saveMgmtDecisionEdit = async () => {
+    if (!rec) return;
+    setMgmtEditBusy(true); setMgmtEditError('');
+    try {
+      const { data } = await axios.put(`${API}/${rec._id}`, {
+        managementDecision: {
+          finalPct: rec?.managerDecision?.decision==='increment' ? mgmtEditPct : null,
+          pipApproved: rec?.managerDecision?.decision==='pip' ? mgmtEditPipApproved : null,
+          reason: mgmtEditReason,
+        },
+      });
+      if (!data.success) throw new Error(data.message || 'Save failed');
+      onRecordChange(data.data);
+      setMgmtDecisionEditOpen(false);
+    } catch (e:any) { setMgmtEditError(e?.response?.data?.message || e?.message || 'Save failed'); }
+    finally { setMgmtEditBusy(false); }
+  };
+
   useEffect(()=>{
     if (mgrDecision==='pip') {
       const d=new Date(); d.setMonth(d.getMonth()+pipMonths);
@@ -3334,7 +3436,16 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
 
             <Stack spacing={2}>
               <Box>
-                <Typography fontSize={11} fontWeight={700} color="text.secondary" mb={1}>DECISION</Typography>
+                <Box sx={{ display:'flex', alignItems:'center', justifyContent:'space-between', mb:1 }}>
+                  <Typography fontSize={11} fontWeight={700} color="text.secondary">DECISION</Typography>
+                  {!isMgr && !mgrDecisionEditOpen && (
+                    <Tooltip title="Temporary direct edit — no mail is sent">
+                      <IconButton size="small" onClick={openMgrDecisionEdit} sx={{ p:0.3 }}>
+                        <EditIcon sx={{ fontSize:14, color:'var(--text-secondary)' }}/>
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                </Box>
                 <Box sx={{ display:'flex', gap:1.5 }}>
                   {(['increment','pip'] as const).map(opt=>(
                     <Button key={opt} variant={mgrDecision===opt?'contained':'outlined'}
@@ -3351,53 +3462,105 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                 </Box>
               </Box>
 
-              {mgrDecision==='increment'&&(
-                <Box>
-                  <Typography fontSize={12} fontWeight={600} mb={1}>
-                    Manager Recommendation: <strong style={{ color:'#059669' }}>{displayMgrPct}%</strong>
-                  </Typography>
-                  {isMgr?(
-                    <>
-                      <Slider value={mgrPct} onChange={(_,v)=>handleMgrPctChange(v as number)}
-                        min={0} max={50} step={0.5} valueLabelDisplay="auto"
-                        valueLabelFormat={v=>`${v}%`} sx={{ color:'#059669', maxWidth:340 }}/>
-                      <TextField
-                        size="small" label="Or enter New CTC Amount" type="number"
-                        value={mgrAmount}
-                        onChange={e=>handleMgrAmountChange(Number(e.target.value)||0)}
-                        sx={{ mt: 1.5, maxWidth: 220 }}
-                        InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
-                      />
-                      <Typography fontSize={11} color="text.secondary" mt={0.5}>
-                        From {fmtCurrency(prevCtc)} to {fmtCurrency(mgrAmount)}
+              {!isMgr && mgrDecisionEditOpen ? (
+                <Box sx={{ p:1.5, bgcolor:'#fffbeb', borderRadius:1.5, border:'1px solid #fde68a' }}>
+                  <Stack spacing={1.5}>
+                    <Box sx={{ display:'flex', gap:1 }}>
+                      {(['increment','pip'] as const).map(opt=>(
+                        <Button key={opt} size="small" variant={mgrEditDecision===opt?'contained':'outlined'}
+                          onClick={()=>setMgrEditDecision(opt)}
+                          sx={{ textTransform:'none', fontSize:11,
+                            bgcolor:mgrEditDecision===opt?(opt==='increment'?'#059669':'#dc2626'):'transparent',
+                            borderColor:opt==='increment'?'#059669':'#dc2626',
+                            color:mgrEditDecision===opt?'white':(opt==='increment'?'#059669':'#dc2626') }}>
+                          {opt==='increment'?'Increment':'PIP'}
+                        </Button>
+                      ))}
+                    </Box>
+                    {mgrEditDecision==='increment' ? (
+                      <Box sx={{ display:'flex', gap:1.5, flexWrap:'wrap' }}>
+                        <TextField size="small" label="Recommended %" type="number" value={mgrEditPct}
+                          onChange={e=>handleMgrEditPctChange(Number(e.target.value)||0)} sx={{ width:140 }}/>
+                        <TextField size="small" label="New CTC Amount" type="number" value={mgrEditAmount}
+                          onChange={e=>handleMgrEditAmountChange(Number(e.target.value)||0)} sx={{ width:180 }}
+                          InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}/>
+                      </Box>
+                    ) : (
+                      <Box sx={{ display:'flex', gap:1.5, flexWrap:'wrap' }}>
+                        <TextField size="small" label="PIP Months" type="number" value={mgrEditPipMonths}
+                          onChange={e=>setMgrEditPipMonths(Number(e.target.value)||1)} sx={{ width:120 }}/>
+                        <TextField size="small" label="New Due Date" type="date" value={mgrEditPipDueDate}
+                          onChange={e=>setMgrEditPipDueDate(e.target.value)} InputLabelProps={{ shrink:true }} sx={{ width:170 }}/>
+                      </Box>
+                    )}
+                    <TextField size="small" label="Reason" multiline rows={2} value={mgrEditReason}
+                      onChange={e=>setMgrEditReason(e.target.value)}/>
+                    {mgrEditError && <Typography fontSize={11} color="#dc2626">{mgrEditError}</Typography>}
+                    <Typography fontSize={10} color="text.secondary">
+                      Temporary direct edit — updates the manager's decision only, no mail is sent.
+                    </Typography>
+                    <Box sx={{ display:'flex', gap:1 }}>
+                      <Button size="small" variant="contained" onClick={saveMgrDecisionEdit} disabled={mgrEditBusy}
+                        sx={{ bgcolor:'#059669', '&:hover':{ bgcolor:'#047857' }, textTransform:'none' }}>
+                        {mgrEditBusy?<CircularProgress size={14} sx={{ color:'white' }}/>:'Save'}
+                      </Button>
+                      <Button size="small" variant="outlined" disabled={mgrEditBusy}
+                        onClick={()=>{ setMgrDecisionEditOpen(false); setMgrEditError(''); }}
+                        sx={{ textTransform:'none' }}>Cancel</Button>
+                    </Box>
+                  </Stack>
+                </Box>
+              ) : (
+                <>
+                  {mgrDecision==='increment'&&(
+                    <Box>
+                      <Typography fontSize={12} fontWeight={600} mb={1}>
+                        Manager Recommendation: <strong style={{ color:'#059669' }}>{displayMgrPct}%</strong>
                       </Typography>
-                    </>
-                  ):(
-                    <Box sx={{ p:1.5, bgcolor:'#f8fafc', borderRadius:1.5, border:'1px solid #e2e8f0' }}>
-                      <Typography fontSize={12} color="#059669" fontWeight={600}>
-                        {displayMgrPct}% increment recommended
-                        {' '}({fmtCurrency(amountFromPct(displayMgrPct, prevCtc))})
-                      </Typography>
-                      <Typography fontSize={11} color="text.secondary" mt={0.5}>{rec?.managerDecision?.reason}</Typography>
+                      {isMgr?(
+                        <>
+                          <Slider value={mgrPct} onChange={(_,v)=>handleMgrPctChange(v as number)}
+                            min={0} max={50} step={0.5} valueLabelDisplay="auto"
+                            valueLabelFormat={v=>`${v}%`} sx={{ color:'#059669', maxWidth:340 }}/>
+                          <TextField
+                            size="small" label="Or enter New CTC Amount" type="number"
+                            value={mgrAmount}
+                            onChange={e=>handleMgrAmountChange(Number(e.target.value)||0)}
+                            sx={{ mt: 1.5, maxWidth: 220 }}
+                            InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
+                          />
+                          <Typography fontSize={11} color="text.secondary" mt={0.5}>
+                            From {fmtCurrency(prevCtc)} to {fmtCurrency(mgrAmount)}
+                          </Typography>
+                        </>
+                      ):(
+                        <Box sx={{ p:1.5, bgcolor:'#f8fafc', borderRadius:1.5, border:'1px solid #e2e8f0' }}>
+                          <Typography fontSize={12} color="#059669" fontWeight={600}>
+                            {displayMgrPct}% increment recommended
+                            {' '}({fmtCurrency(amountFromPct(displayMgrPct, prevCtc))})
+                          </Typography>
+                          <Typography fontSize={11} color="text.secondary" mt={0.5}>{rec?.managerDecision?.reason}</Typography>
+                        </Box>
+                      )}
                     </Box>
                   )}
-                </Box>
-              )}
 
-              {mgrDecision==='pip'&&(
-                <Box sx={{ display:'flex', gap:2, flexWrap:'wrap' }}>
-                  <TextField label="Duration (months)" type="number" size="small"
-                    value={pipMonths} onChange={e=>setPipMonths(Math.max(1,Math.min(12,Number(e.target.value)||1)))}
-                    inputProps={{ min:1, max:12 }} disabled={!isMgr} sx={{ width:160 }}/>
-                  <TextField label="New Due Date" type="date" size="small"
-                    value={pipDueDate} onChange={e=>setPipDueDate(e.target.value)}
-                    InputLabelProps={{ shrink:true }} disabled={!isMgr} sx={{ width:180 }}/>
-                </Box>
-              )}
+                  {mgrDecision==='pip'&&(
+                    <Box sx={{ display:'flex', gap:2, flexWrap:'wrap' }}>
+                      <TextField label="Duration (months)" type="number" size="small"
+                        value={pipMonths} onChange={e=>setPipMonths(Math.max(1,Math.min(12,Number(e.target.value)||1)))}
+                        inputProps={{ min:1, max:12 }} disabled={!isMgr} sx={{ width:160 }}/>
+                      <TextField label="New Due Date" type="date" size="small"
+                        value={pipDueDate} onChange={e=>setPipDueDate(e.target.value)}
+                        InputLabelProps={{ shrink:true }} disabled={!isMgr} sx={{ width:180 }}/>
+                    </Box>
+                  )}
 
-              <TextField label="Reason / Comments *" multiline rows={3} size="small"
-                value={mgrReason} onChange={e=>setMgrReason(e.target.value)}
-                placeholder="Manager's reasoning…" disabled={!isMgr} fullWidth/>
+                  <TextField label="Reason / Comments *" multiline rows={3} size="small"
+                    value={mgrReason} onChange={e=>setMgrReason(e.target.value)}
+                    placeholder="Manager's reasoning…" disabled={!isMgr} fullWidth/>
+                </>
+              )}
 
               {isMgr&&(
                 <Button variant="contained" onClick={postManager} disabled={busy||!mgrReason.trim()}
@@ -3425,67 +3588,121 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
 
             {!isMgr&&(
               <Stack spacing={2}>
-                {rec?.managerDecision?.decision==='increment'?(
-                  <Box>
-                    <Typography fontSize={12} fontWeight={600} mb={1}>
-                      Management Final: <strong style={{ color:ACCENT }}>{displayMgmtPct}%</strong>
-                      {rec?.managerDecision?.recommendedPct!=null&&(
-                        <span style={{ fontSize:11, color:'#94a3b8', marginLeft:8 }}>(Mgr: {rec.managerDecision.recommendedPct}%)</span>
-                      )}
-                    </Typography>
-                    {isMgmt?(
-                      <>
-                        <Slider value={mgmtPct} onChange={(_,v)=>handleMgmtPctChange(v as number)}
-                          min={0} max={50} step={0.5} valueLabelDisplay="auto"
-                          valueLabelFormat={v=>`${v}%`} sx={{ color:ACCENT, maxWidth:340 }}/>
-                        <TextField
-                          size="small" label="Or enter New CTC Amount" type="number"
-                          value={mgmtAmount}
-                          onChange={e=>handleMgmtAmountChange(Number(e.target.value)||0)}
-                          sx={{ mt: 1.5, maxWidth: 220 }}
-                          InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
-                        />
-                        <Typography fontSize={11} color="text.secondary" mt={0.5}>
-                          From {fmtCurrency(prevCtc)} to {fmtCurrency(mgmtAmount)}
-                        </Typography>
-                      </>
-                    ):(
-                      <Box sx={{ p:1.5, bgcolor:'#f8fafc', borderRadius:1.5, border:'1px solid #e2e8f0' }}>
-                        <Typography fontSize={12} color={ACCENT} fontWeight={600}>
-                          {displayMgmtPct}% — final management decision
-                          {' '}({fmtCurrency(amountFromPct(displayMgmtPct, prevCtc))})
-                        </Typography>
-                      </Box>
-                    )}
-                    {mgrDecision==='increment'&&(
-                      <Box sx={{ mt:1.5, p:1.5, bgcolor:'#f0fdf4', borderRadius:1.5, border:'1px solid #bbf7d0' }}>
-                        <Box sx={{ display:'flex', gap:2, alignItems:'center', flexWrap:'wrap' }}>
-                          <Typography fontSize={12}>{fmtCurrency(prevCtc)}</Typography>
-                          <Typography fontSize={11} color="text.secondary">→</Typography>
-                          <Typography fontSize={14} fontWeight={700} color="#059669">{fmtCurrency(newCtc)}</Typography>
-                        </Box>
-                      </Box>
-                    )}
-                  </Box>
-                ):(
-                  <Box>
-                    <Typography fontSize={12} fontWeight={600} mb={1}>Approve PIP?</Typography>
-                    <Box sx={{ display:'flex', gap:1.5 }}>
-                      <Button variant={pipApproved?'contained':'outlined'} size="small"
-                        onClick={()=>isMgmt&&setPipApproved(true)} disabled={!isMgmt}
-                        sx={{ textTransform:'none', bgcolor:pipApproved?'#dc2626':'transparent',
-                          color:pipApproved?'white':'#dc2626', borderColor:'#dc2626' }}>Approve PIP</Button>
-                      <Button variant={!pipApproved?'contained':'outlined'} size="small"
-                        onClick={()=>isMgmt&&setPipApproved(false)} disabled={!isMgmt}
-                        sx={{ textTransform:'none', bgcolor:!pipApproved?'#059669':'transparent',
-                          color:!pipApproved?'white':'#059669', borderColor:'#059669' }}>Re-evaluate</Button>
-                    </Box>
+                {!isMgmt && !mgmtDecisionEditOpen && (
+                  <Box sx={{ display:'flex', justifyContent:'flex-end' }}>
+                    <Tooltip title="Temporary direct edit — no mail is sent">
+                      <IconButton size="small" onClick={openMgmtDecisionEdit} sx={{ p:0.3 }}>
+                        <EditIcon sx={{ fontSize:14, color:'var(--text-secondary)' }}/>
+                      </IconButton>
+                    </Tooltip>
                   </Box>
                 )}
 
-                <TextField label="Reason / Comments *" multiline rows={3} size="small"
-                  value={mgmtReason} onChange={e=>setMgmtReason(e.target.value)}
-                  disabled={!isMgmt} fullWidth/>
+                {!isMgmt && mgmtDecisionEditOpen ? (
+                  <Box sx={{ p:1.5, bgcolor:'#fffbeb', borderRadius:1.5, border:'1px solid #fde68a' }}>
+                    <Stack spacing={1.5}>
+                      {rec?.managerDecision?.decision==='increment' ? (
+                        <Box sx={{ display:'flex', gap:1.5, flexWrap:'wrap' }}>
+                          <TextField size="small" label="Final %" type="number" value={mgmtEditPct}
+                            onChange={e=>handleMgmtEditPctChange(Number(e.target.value)||0)} sx={{ width:140 }}/>
+                          <TextField size="small" label="New CTC Amount" type="number" value={mgmtEditAmount}
+                            onChange={e=>handleMgmtEditAmountChange(Number(e.target.value)||0)} sx={{ width:180 }}
+                            InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}/>
+                        </Box>
+                      ) : (
+                        <Box sx={{ display:'flex', gap:1.5 }}>
+                          <Button size="small" variant={mgmtEditPipApproved?'contained':'outlined'}
+                            onClick={()=>setMgmtEditPipApproved(true)}
+                            sx={{ textTransform:'none', bgcolor:mgmtEditPipApproved?'#dc2626':'transparent',
+                              color:mgmtEditPipApproved?'white':'#dc2626', borderColor:'#dc2626' }}>Approve PIP</Button>
+                          <Button size="small" variant={!mgmtEditPipApproved?'contained':'outlined'}
+                            onClick={()=>setMgmtEditPipApproved(false)}
+                            sx={{ textTransform:'none', bgcolor:!mgmtEditPipApproved?'#059669':'transparent',
+                              color:!mgmtEditPipApproved?'white':'#059669', borderColor:'#059669' }}>Re-evaluate</Button>
+                        </Box>
+                      )}
+                      <TextField size="small" label="Reason" multiline rows={2} value={mgmtEditReason}
+                        onChange={e=>setMgmtEditReason(e.target.value)}/>
+                      {mgmtEditError && <Typography fontSize={11} color="#dc2626">{mgmtEditError}</Typography>}
+                      <Typography fontSize={10} color="text.secondary">
+                        Temporary direct edit — updates the management decision only, no mail is sent.
+                      </Typography>
+                      <Box sx={{ display:'flex', gap:1 }}>
+                        <Button size="small" variant="contained" onClick={saveMgmtDecisionEdit} disabled={mgmtEditBusy}
+                          sx={{ bgcolor:ACCENT, '&:hover':{ bgcolor:'#4338ca' }, textTransform:'none' }}>
+                          {mgmtEditBusy?<CircularProgress size={14} sx={{ color:'white' }}/>:'Save'}
+                        </Button>
+                        <Button size="small" variant="outlined" disabled={mgmtEditBusy}
+                          onClick={()=>{ setMgmtDecisionEditOpen(false); setMgmtEditError(''); }}
+                          sx={{ textTransform:'none' }}>Cancel</Button>
+                      </Box>
+                    </Stack>
+                  </Box>
+                ) : (
+                  <>
+                    {rec?.managerDecision?.decision==='increment'?(
+                      <Box>
+                        <Typography fontSize={12} fontWeight={600} mb={1}>
+                          Management Final: <strong style={{ color:ACCENT }}>{displayMgmtPct}%</strong>
+                          {rec?.managerDecision?.recommendedPct!=null&&(
+                            <span style={{ fontSize:11, color:'#94a3b8', marginLeft:8 }}>(Mgr: {rec.managerDecision.recommendedPct}%)</span>
+                          )}
+                        </Typography>
+                        {isMgmt?(
+                          <>
+                            <Slider value={mgmtPct} onChange={(_,v)=>handleMgmtPctChange(v as number)}
+                              min={0} max={50} step={0.5} valueLabelDisplay="auto"
+                              valueLabelFormat={v=>`${v}%`} sx={{ color:ACCENT, maxWidth:340 }}/>
+                            <TextField
+                              size="small" label="Or enter New CTC Amount" type="number"
+                              value={mgmtAmount}
+                              onChange={e=>handleMgmtAmountChange(Number(e.target.value)||0)}
+                              sx={{ mt: 1.5, maxWidth: 220 }}
+                              InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
+                            />
+                            <Typography fontSize={11} color="text.secondary" mt={0.5}>
+                              From {fmtCurrency(prevCtc)} to {fmtCurrency(mgmtAmount)}
+                            </Typography>
+                          </>
+                        ):(
+                          <Box sx={{ p:1.5, bgcolor:'#f8fafc', borderRadius:1.5, border:'1px solid #e2e8f0' }}>
+                            <Typography fontSize={12} color={ACCENT} fontWeight={600}>
+                              {displayMgmtPct}% — final management decision
+                              {' '}({fmtCurrency(amountFromPct(displayMgmtPct, prevCtc))})
+                            </Typography>
+                          </Box>
+                        )}
+                        {mgrDecision==='increment'&&(
+                          <Box sx={{ mt:1.5, p:1.5, bgcolor:'#f0fdf4', borderRadius:1.5, border:'1px solid #bbf7d0' }}>
+                            <Box sx={{ display:'flex', gap:2, alignItems:'center', flexWrap:'wrap' }}>
+                              <Typography fontSize={12}>{fmtCurrency(prevCtc)}</Typography>
+                              <Typography fontSize={11} color="text.secondary">→</Typography>
+                              <Typography fontSize={14} fontWeight={700} color="#059669">{fmtCurrency(newCtc)}</Typography>
+                            </Box>
+                          </Box>
+                        )}
+                      </Box>
+                    ):(
+                      <Box>
+                        <Typography fontSize={12} fontWeight={600} mb={1}>Approve PIP?</Typography>
+                        <Box sx={{ display:'flex', gap:1.5 }}>
+                          <Button variant={pipApproved?'contained':'outlined'} size="small"
+                            onClick={()=>isMgmt&&setPipApproved(true)} disabled={!isMgmt}
+                            sx={{ textTransform:'none', bgcolor:pipApproved?'#dc2626':'transparent',
+                              color:pipApproved?'white':'#dc2626', borderColor:'#dc2626' }}>Approve PIP</Button>
+                          <Button variant={!pipApproved?'contained':'outlined'} size="small"
+                            onClick={()=>isMgmt&&setPipApproved(false)} disabled={!isMgmt}
+                            sx={{ textTransform:'none', bgcolor:!pipApproved?'#059669':'transparent',
+                              color:!pipApproved?'white':'#059669', borderColor:'#059669' }}>Re-evaluate</Button>
+                        </Box>
+                      </Box>
+                    )}
+
+                    <TextField label="Reason / Comments *" multiline rows={3} size="small"
+                      value={mgmtReason} onChange={e=>setMgmtReason(e.target.value)}
+                      disabled={!isMgmt} fullWidth/>
+                  </>
+                )}
 
                 {isMgmt&&(
                   <Button variant="contained" onClick={postManagement} disabled={busy||!mgmtReason.trim()}
