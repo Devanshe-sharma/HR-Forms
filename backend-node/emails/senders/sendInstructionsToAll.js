@@ -2,6 +2,7 @@
 const { sendMail } = require("../mailer");
 const template     = require("../templates/instructionsToAll");
 const resolveEmployeeEmailByName = require("../../utils/resolveEmployeeEmailByName");
+const resolveDeptContactEmail = require("../../utils/resolveDeptContactEmail");
 
 async function sendInstructionsToAll(doc) {
   const { subject, html } = template(doc);
@@ -12,8 +13,10 @@ async function sendInstructionsToAll(doc) {
   // manager-escalation emails do — see resolveEmployeeEmailByName.js),
   // and Accounts. Management is CC-only, per HR's requested recipient
   // split for this email — plus any ad hoc names HR added to the record's
-  // own CC list.
+  // own CC list, plus the joinee's own department group email (Role
+  // Master), which may not be the same inbox as the reporting manager.
   const reportingManagerEmail = await resolveEmployeeEmailByName(doc.reportingHead, { preferDept: doc.dept });
+  const deptEmail = await resolveDeptContactEmail(doc.dept);
 
   const to = [
     process.env.HR_HEAD_EMAIL,
@@ -23,7 +26,7 @@ async function sendInstructionsToAll(doc) {
     process.env.ACCOUNTS_EMAIL,
   ].filter(Boolean).join(",");
 
-  const cc = [process.env.EMAIL_MANAGEMENT, ...(doc.employeesInCc || [])]
+  const cc = [process.env.EMAIL_MANAGEMENT, deptEmail, ...(doc.employeesInCc || [])]
     .filter(Boolean)
     .join(",");
 

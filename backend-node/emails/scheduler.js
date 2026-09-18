@@ -244,23 +244,21 @@ function startEmailScheduler() {
   }, { timezone: tz });
 
   // 9h. Salary Revision Mail Queue digest — the ONE Salary Revision mail
-  // that still sends itself automatically, per explicit instruction
-  // (2026-09-15): everything else (Mail 1-6, HR notify, quarterly digest)
-  // is now queued as an editable draft, sent only when HR clicks Send in
-  // the dashboard's Mail Queue (routes/salaryRevisionMailDrafts.js). This
-  // job just tells HR — and only HR — that drafts are waiting for review.
-  // PAUSED for now, per "do not start mails" — re-enable by uncommenting
-  // once ready.
-  //
-  // cron.schedule('0 9 * * *', async () => {
-  //   console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending Salary Revision Mail Queue digest to HR`);
-  //   try {
-  //     const result = await sendSalaryRevisionMailQueueDigest();
-  //     console.log(`Salary Revision Mail Queue digest — ${result.queuedCount} draft(s) pending`);
-  //   } catch (err) {
-  //     console.error('Salary Revision Mail Queue digest failed:', err);
-  //   }
-  // }, { timezone: tz });
+  // that still sends itself automatically: everything else (Mail 1-6, HR
+  // notify, quarterly digest) is queued as an editable draft, sent only
+  // when HR clicks Send in the dashboard's Mail Queue
+  // (routes/salaryRevisionMailDrafts.js). This job just tells HR — and
+  // only HR — that drafts are waiting for review. Re-enabled 2026-09-18
+  // per explicit instruction, weekly (Monday 9 AM IST) instead of daily.
+  cron.schedule('0 9 * * 1', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending Salary Revision Mail Queue digest to HR`);
+    try {
+      const result = await sendSalaryRevisionMailQueueDigest();
+      console.log(`Salary Revision Mail Queue digest — ${result.queuedCount} draft(s) pending`);
+    } catch (err) {
+      console.error('Salary Revision Mail Queue digest failed:', err);
+    }
+  }, { timezone: tz });
 
   // 9l2. Onboarding — Reminder email, sent automatically 1 day before
   // plannedJoiningDate (previously fired immediately the moment HR ticked
