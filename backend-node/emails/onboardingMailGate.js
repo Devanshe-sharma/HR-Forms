@@ -4,8 +4,8 @@
 // routes/onboardingroutes.js all check this same flag, so there's exactly
 // one place to flip Onboarding mail back on.
 //
-// Paused 2026-09-17 per "stop all onboarding, exit, salary revision,
-// confirmation mails".
-const ONBOARDING_EMAILS_TEMPORARILY_DISABLED = true;
+// Re-enabled 2026-09-18 per explicit "start onboarding, exit and
+// confirmation mails" instruction (paused 2026-09-17 alongside those).
+const ONBOARDING_EMAILS_TEMPORARILY_DISABLED = false;
 
 module.exports = { ONBOARDING_EMAILS_TEMPORARILY_DISABLED };

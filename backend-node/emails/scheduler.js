@@ -114,18 +114,17 @@ function startEmailScheduler() {
   // Script's sendWeeklyEmail(), which had no explicit cron trigger visible
   // in the source — adjust the schedule below if you know the original
   // actually ran on a different day/time).
-  // PAUSED 2026-09-17 per "stop all onboarding, exit, salary revision,
-  // confirmation mails" — re-enable by uncommenting once ready.
-  //
-  // cron.schedule('0 9 * * 1', async () => {
-  //   console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending weekly exit summary`);
-  //   try {
-  //     const result = await sendWeeklyExitSummary();
-  //     console.log(`Weekly exit summary sent — ${result.openCount} open exit(s)`);
-  //   } catch (err) {
-  //     console.error('Weekly exit summary failed:', err);
-  //   }
-  // }, { timezone: tz });
+  // Re-enabled 2026-09-18 per explicit "start onboarding, exit and
+  // confirmation mails" instruction (paused 2026-09-17).
+  cron.schedule('0 9 * * 1', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending weekly exit summary`);
+    try {
+      const result = await sendWeeklyExitSummary();
+      console.log(`Weekly exit summary sent — ${result.openCount} open exit(s)`);
+    } catch (err) {
+      console.error('Weekly exit summary failed:', err);
+    }
+  }, { timezone: tz });
 
   // 9a. Weekly Recruitment (open hiring requisitions) FMS summary —
   // every Monday at 9am, alongside the weekly exit/onboarding summaries.
@@ -140,18 +139,17 @@ function startEmailScheduler() {
   }, { timezone: tz });
 
   // 9b. Weekly Onboarding FMS summary — every Monday at 9am.
-  // PAUSED 2026-09-17 per "stop all onboarding, exit, salary revision,
-  // confirmation mails" — re-enable by uncommenting once ready.
-  //
-  // cron.schedule('0 9 * * 1', async () => {
-  //   console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending weekly onboarding summary`);
-  //   try {
-  //     const result = await sendWeeklyOnboardingSummary();
-  //     console.log(`Weekly onboarding summary sent — ${result.openCount} open FMS(s)`);
-  //   } catch (err) {
-  //     console.error('Weekly onboarding summary failed:', err);
-  //   }
-  // }, { timezone: tz });
+  // Re-enabled 2026-09-18 per explicit "start onboarding, exit and
+  // confirmation mails" instruction (paused 2026-09-17).
+  cron.schedule('0 9 * * 1', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending weekly onboarding summary`);
+    try {
+      const result = await sendWeeklyOnboardingSummary();
+      console.log(`Weekly onboarding summary sent — ${result.openCount} open FMS(s)`);
+    } catch (err) {
+      console.error('Weekly onboarding summary failed:', err);
+    }
+  }, { timezone: tz });
 
   // 9c. Daily candidate applicant summary — 9am, covering the full
   // previous calendar day's applications. Replaces the old immediate
@@ -265,18 +263,17 @@ function startEmailScheduler() {
   // "Auto Reminder Email" — see resolveOneTimeEmails in
   // routes/onboardingroutes.js; the checkbox now only opts a record in,
   // this job is what actually sends it).
-  // PAUSED 2026-09-17 per "stop all onboarding, exit, salary revision,
-  // confirmation mails" — re-enable by uncommenting once ready.
-  //
-  // cron.schedule('0 8 * * *', async () => {
-  //   console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Checking onboarding reminders due tomorrow`);
-  //   try {
-  //     const result = await sendOnboardingRemindersDueTomorrow();
-  //     console.log(`Onboarding reminder emails sent — ${result.sentCount} joinee(s)`);
-  //   } catch (err) {
-  //     console.error('Onboarding reminder sweep failed:', err);
-  //   }
-  // }, { timezone: tz });
+  // Re-enabled 2026-09-18 per explicit "start onboarding, exit and
+  // confirmation mails" instruction (paused 2026-09-17).
+  cron.schedule('0 8 * * *', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Checking onboarding reminders due tomorrow`);
+    try {
+      const result = await sendOnboardingRemindersDueTomorrow();
+      console.log(`Onboarding reminder emails sent — ${result.sentCount} joinee(s)`);
+    } catch (err) {
+      console.error('Onboarding reminder sweep failed:', err);
+    }
+  }, { timezone: tz });
 
   // ─── Confirmations mail queue (added 2026-09-16) ───────────────────────────
   // Same convention as Salary Revision above — every one of these QUEUES
@@ -324,22 +321,21 @@ function startEmailScheduler() {
 
   // 9l. Confirmation Mail Queue digest — the ONE Confirmation mail that
   // still sends itself automatically, mirroring Salary Revision's own
-  // paused digest (9h above) exactly. Everything else in this feature is
-  // queued as an editable draft, sent only when HR clicks Send in the
-  // dashboard's Mail Queue (routes/confirmationMailDrafts.js). This job
-  // just tells HR — and only HR — that drafts are waiting for review.
-  // PAUSED for now, per the standing "no auto email" instruction —
-  // re-enable by uncommenting once ready.
-  //
-  // cron.schedule('50 9 * * *', async () => {
-  //   console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending Confirmation Mail Queue digest to HR`);
-  //   try {
-  //     const result = await sendConfirmationMailQueueDigest();
-  //     console.log(`Confirmation Mail Queue digest — ${result.queuedCount} draft(s) pending`);
-  //   } catch (err) {
-  //     console.error('Confirmation Mail Queue digest failed:', err);
-  //   }
-  // }, { timezone: tz });
+  // digest (9h above). Everything else in this feature is queued as an
+  // editable draft, sent only when HR clicks Send in the dashboard's Mail
+  // Queue (routes/confirmationMailDrafts.js). This job just tells HR —
+  // and only HR — that drafts are waiting for review.
+  // Re-enabled 2026-09-18 per explicit "start onboarding, exit and
+  // confirmation mails" instruction.
+  cron.schedule('50 9 * * *', async () => {
+    console.log(`[${moment().tz(tz).format('YYYY-MM-DD HH:mm:ss z')}] Sending Confirmation Mail Queue digest to HR`);
+    try {
+      const result = await sendConfirmationMailQueueDigest();
+      console.log(`Confirmation Mail Queue digest — ${result.queuedCount} draft(s) pending`);
+    } catch (err) {
+      console.error('Confirmation Mail Queue digest failed:', err);
+    }
+  }, { timezone: tz });
 
   // ─── Outing Auto-Complete & Auto-Archive ───
   cron.schedule('0 0 * * *', async () => {
