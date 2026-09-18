@@ -14,7 +14,8 @@ async function sendInstructionsToAll(doc) {
   // and Accounts. Management is CC-only, per HR's requested recipient
   // split for this email — plus any ad hoc names HR added to the record's
   // own CC list, plus the joinee's own department group email (Role
-  // Master), which may not be the same inbox as the reporting manager.
+  // Master), which may not be the same inbox as the reporting manager,
+  // plus the requesting user (HR itself is already a direct "to" above).
   const reportingManagerEmail = await resolveEmployeeEmailByName(doc.reportingHead, { preferDept: doc.dept });
   const deptEmail = await resolveDeptContactEmail(doc.dept);
 
@@ -26,7 +27,12 @@ async function sendInstructionsToAll(doc) {
     process.env.ACCOUNTS_EMAIL,
   ].filter(Boolean).join(",");
 
-  const cc = [process.env.EMAIL_MANAGEMENT, deptEmail, ...(doc.employeesInCc || [])]
+  const cc = [
+    process.env.EMAIL_MANAGEMENT,
+    deptEmail,
+    "software.developer@briskolive.com",
+    ...(doc.employeesInCc || []),
+  ]
     .filter(Boolean)
     .join(",");
 

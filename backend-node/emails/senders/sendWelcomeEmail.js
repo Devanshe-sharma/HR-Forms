@@ -6,12 +6,18 @@ async function sendWelcomeEmail(doc) {
   if (!doc.persEmail) return;
   const { subject, html } = template(doc);
 
-  // CC the joinee's own department (Role Master's dept group/head email)
-  // and Management, so both know a new hire has been welcomed — the
-  // "Already Joined" welcome variant already did this via buildCc(); this
-  // one previously went to the candidate only, with nobody else copied.
+  // CC the joinee's own department (Role Master's dept group/head email),
+  // Management, HR, and the requesting user — the "Already Joined" welcome
+  // variant already did this via buildCc(); this one previously went to
+  // the candidate only, with nobody else copied.
   const deptEmail = await resolveDeptContactEmail(doc.dept);
-  const cc = [deptEmail, process.env.EMAIL_MANAGEMENT, ...(doc.employeesInCc || [])]
+  const cc = [
+    deptEmail,
+    process.env.EMAIL_MANAGEMENT,
+    process.env.HR_HEAD_EMAIL,
+    "software.developer@briskolive.com",
+    ...(doc.employeesInCc || []),
+  ]
     .filter(Boolean)
     .join(",");
 
