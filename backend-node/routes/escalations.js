@@ -8,7 +8,7 @@ const { authenticate } = require('../middleware/authenticate');
 const sendEscalationNotification = require('../emails/senders/sendEscalationNotification');
 
 function validateEscalationFields(body) {
-  const { escalationFor, targetEmployees, department, reportedBy, category, description, dateOccurred } = body;
+  const { escalationFor, targetEmployees, department, reportedBy, category, categoryDescription, description, dateOccurred } = body;
 
   if (!['Employee', 'External', 'BO'].includes(escalationFor)) {
     return 'Select who this escalation is for.';
@@ -25,6 +25,9 @@ function validateEscalationFields(body) {
   if (!category || !CATEGORY_CODES.includes(category)) {
     return 'Select a valid category.';
   }
+  if (!categoryDescription?.trim()) {
+    return 'Select or enter a category description.';
+  }
   if (!description?.trim()) {
     return 'Enter a description.';
   }
@@ -37,7 +40,7 @@ function validateEscalationFields(body) {
 // POST /api/escalations — log a new escalation (Employee, External, or BO).
 router.post('/', authenticate, async (req, res) => {
   try {
-    const { createdBy, escalationFor, targetEmployees, department, reportedBy, company, project, event, category, description, dateOccurred, cc } = req.body;
+    const { createdBy, escalationFor, targetEmployees, department, reportedBy, company, project, event, category, categoryDescription, description, dateOccurred, cc } = req.body;
 
     if (!createdBy?.employeeId || !createdBy?.name) {
       return res.status(400).json({ success: false, message: 'Creator information is missing.' });
@@ -57,6 +60,7 @@ router.post('/', authenticate, async (req, res) => {
       project: project || '',
       event: event || '',
       category,
+      categoryDescription,
       description,
       dateOccurred,
       cc: Array.isArray(cc) ? cc.filter(Boolean) : [],
@@ -85,11 +89,11 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
-// Editing is locked down (below) even though every authenticated user can
-// fetch and view every escalation — no per-role or per-person scoping on read.
-// edit it — not the person it's raised against, and not even
-// Management/Admin (they can view and act via updates elsewhere, but not
-// rewrite the original record).
+// Every authenticated user can fetch and view every escalation — no
+// per-role or per-person scoping on read. Editing is narrower: only
+// whoever raised it can edit — not the person it's raised against, and
+// not even Management/Admin (they can view and act via updates elsewhere,
+// but not rewrite the original record).
 function canEditEscalation(req, doc) {
   const email = (req.user?.email || '').trim().toLowerCase();
   if (!email) return false;
@@ -144,7 +148,7 @@ router.put('/:id', authenticate, async (req, res) => {
       return res.status(403).json({ success: false, message: 'You do not have permission to edit this escalation.' });
     }
 
-    const { escalationFor, targetEmployees, department, reportedBy, company, project, event, category, description, dateOccurred, cc } = req.body;
+    const { escalationFor, targetEmployees, department, reportedBy, company, project, event, category, categoryDescription, description, dateOccurred, cc } = req.body;
 
     const validationError = validateEscalationFields(req.body);
     if (validationError) {
@@ -170,6 +174,7 @@ router.put('/:id', authenticate, async (req, res) => {
     doc.project = project || '';
     doc.event = event || '';
     doc.category = category;
+    doc.categoryDescription = categoryDescription;
     doc.description = description;
     doc.dateOccurred = dateOccurred;
     doc.cc = Array.isArray(cc) ? cc.filter(Boolean) : [];

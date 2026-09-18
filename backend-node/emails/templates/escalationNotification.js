@@ -9,7 +9,7 @@ const signature = require('../utils/signature');
 // expected pre-formatted as "CODE — Full Name" by the caller.
 function escalationNotificationTemplate({
   caseNumber, createdByName, createdByDepartment, escalationFor,
-  targetNames, category, dateOccurred, description, dashboardLink,
+  targetNames, category, categoryDescription, dateOccurred, description, dashboardLink,
 }) {
   const row = (label, value) => `
     <tr>
@@ -30,6 +30,7 @@ function escalationNotificationTemplate({
       ${row('Escalation Type', escalationFor)}
       ${row('Concerning', targetNames)}
       ${row('Category', category)}
+      ${row('Category Description', categoryDescription || '-')}
       ${row('Date Occurred', formatDateIST(dateOccurred) || '-')}
       ${row('Description', (description || '').replace(/\n/g, '<br>'))}
     </table>

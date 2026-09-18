@@ -40,6 +40,7 @@ interface Escalation {
   project        : string;
   event          : string;
   category       : string;
+  categoryDescription: string;
   description    : string;
   dateOccurred   : string;
   cc             : string[];
@@ -86,9 +87,103 @@ const CATEGORIES = [
   { code: 'Culture', name: 'Culture-Leadership Behaviour' },
   { code: 'POSH', name: 'POSH Case' },
   { code: 'Ext Factors', name: 'External Factors Log' },
-  { code: 'Other', name: 'Any Other' },
+  { code: 'Other', name: 'Miscellaneous' },
 ];
 const categoryName = (code: string) => CATEGORIES.find(c => c.code === code)?.name || '';
+
+// Hardcoded "category description" suggestions per department, keyed by the
+// category codes above. Mirrors backend-node/models/Escalation.js exactly —
+// "Default" is the universal set (the business rule that named it and "All"
+// the same thing) applied on top of whatever a department adds of its own.
+// "Other" has no suggestions on purpose: the filer types their own.
+const CATEGORY_DESCRIPTIONS: Record<string, Record<string, string[]>> = {
+  Default: {
+    T: ['Delayed Services, Non / Late Performance'],
+    Q: ['Absence of Detail Orientation, Work done but NOT to Quality'],
+    C: ['Actions Leading to Reduced Profit / Increased Expense / Reduced Cash Flow'],
+    P: ['Non-Compliance with Processes, Non Reporting or Not Filling Data'],
+    H: [
+      'False Reporting, Fake Bills, Hiding/Failing to Report Bad News, Financial Impropriety, Non-Ethical Conduct',
+      'Data Fabrication, Dishonest Behaviour, Fraud, Fake Bills, etc.',
+    ],
+    Ext: [
+      'Complaints / Escalations by Clients, Customers, BO Members, Vendors, etc.',
+      'Customer, Visitor, Vendor, Member Complaint — salesperson behaviour, Unresponsiveness, Overcommitment, Promise Not Fulfilled, etc.',
+    ],
+    Culture: [
+      'Team/Member absent, Customer Meeting Missed, Rude Behaviour, Lack of Commitment, Problem Posing Without Providing Solution — e.g. Complaining behind back, Not working as a Team, Pitching one against other, Taking Credit but Not Claiming Blame',
+    ],
+    POSH: ['POSH Case'],
+    'Ext Factors': [
+      'Bad Debt, Non-Delivery by Vendor, Toxic Customer, Stakeholder POSH, Litigation notice received, Delay/No response from Client, Change of Requirement, Project/Position put on hold without intimation',
+    ],
+  },
+  Admin: {
+    T: ['Delayed Services, AMC renewal delayed, Utility bill payment delayed, Non / Late renewals'],
+    Q: ['Housekeeping complaint, Office not clean, Pantry/Stationery not replenished daily, Facility Breakdown, Vehicle unavailable, Security Lapse, Contractual Errors'],
+    C: ['Assets missing, Overpayment, Overexpense, Cash variance'],
+    P: ['Event held without advance-info email, HR and Admin both unavailable / Staff NA, Single Vendor Dependency, Contracts Expired, Policy/Dept Note reviews overdue, Process outdated/missing/buggy or not followed'],
+    H: ['False Reporting, Fake Bills, Hiding/Failing to Report Bad News, Financial Impropriety'],
+    Ext: ['Visitor complaint.'],
+  },
+  SysAdmin: {
+    T: ['Tickets Overdue'],
+    Q: ['System downtime, Backup Failure, Security Incident, Unauthorised Access, Data Loss'],
+  },
+  HR: {
+    T: ['Delayed salary processing, etc.'],
+    Q: ['Bad Hires'],
+    C: ['Payroll incorrect, Overspending on Events, etc.'],
+    P: ['Employee Files/Data incomplete or missing, Statutory non-compliance'],
+  },
+  Accounts: {
+    T: ['Delayed Invoicing, Delayed Reporting, Delayed Vendor Payments, Delayed Month Closing, Regulatory filing delayed, etc.'],
+    Q: ['Errors in Accounting Entries, Vendor quotation missing, Purchase Order Error'],
+    C: ['Invoice Errors, Duplicate Payments, Wrong GST Treatment, CashFlow Mismanagement, Investments not done timely, Loss due to non-compliance or wrong process, etc.'],
+    P: ['Incorrect Ledger Entry, etc.'],
+  },
+  Sales: {
+    T: ['Proposal Delays — not submitted on time, Customer response delayed, Follow up missed'],
+    Q: ['Errors in Proposal'],
+    C: ['Incorrect Pricing / Scope / Commitment'],
+    P: ['Incorrect Sales Data — e.g. missing customer data, CRM not updated, Missing Sales Docs, Contract unsigned after work started'],
+  },
+  Marketing: {
+    T: ['Tasks delayed / not done'],
+    Q: ['Content containing typos/errors, Wrong branding/logo usage, Broken website links, Website down, Wrong contact details published'],
+    C: ['Excessive spending on services'],
+  },
+  Operations: {
+    T: ['Activity started/completed late, Milestone Missed, Critical Path Delay, etc.'],
+    C: ['Cost Overrun, Excess Travel Cost, Money Wastage, Material Wastage, Scope Deviation, Unauthorised Work Done'],
+    Q: ['Work Quality Poor, SLA breach, Deliverable Omitted, Rework Required, Audit Non-conformance, GPS coordinates/Photos missing'],
+    P: ['Reports delayed, No Feedback, Change request not approved, Risks Not Identified, Process Deviation, Document control failure'],
+  },
+  'Leadership / CEO Office': {
+    T: ['Delayed/missed strategic milestone, Business Development/Partnership Delays'],
+    C: ['Revenue/Profit/CashFlow Target Shortfall beyond threshold, Customer churn'],
+    Q: ['Strategic Gaps, Over-Dependence on 1 Contract/Customer/Vendor'],
+    Culture: ['Loss of key employee, Major Reputation Issue, Unresolved inter-department conflict, Non-Appreciation and Awards, Not Setting Aspirations or Growth Opportunities, Not Providing Autonomy'],
+  },
+};
+
+// The hardcoded table above uses shorthand department names (HR, Admin,
+// etc.) — this maps the real Onboarding department strings that don't
+// already match one of those keys verbatim.
+const CATEGORY_DEPARTMENT_ALIASES: Record<string, string> = {
+  'Human Resources': 'HR',
+};
+
+// Every department gets the Default/universal descriptions for a category
+// in addition to whatever it adds of its own — same-named entries from both
+// are combined rather than one replacing the other. Empty for category
+// "Other" on purpose — the filer types their own description for it.
+const getCategoryDescriptionOptions = (department: string, categoryCode: string): string[] => {
+  const key = CATEGORY_DEPARTMENT_ALIASES[department] || department;
+  const deptOptions = CATEGORY_DESCRIPTIONS[key]?.[categoryCode] || [];
+  const defaultOptions = CATEGORY_DESCRIPTIONS.Default[categoryCode] || [];
+  return Array.from(new Set([...deptOptions, ...defaultOptions]));
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -255,7 +350,12 @@ function DashboardView({ records, employees, loading, onAdd, onSelect }: {
                     <TableCell sx={{ fontSize: 12, fontWeight: 700, color: score !== undefined && score < 0 ? '#dc2626' : '#0f172a' }}>
                       {score !== undefined ? score : '—'}
                     </TableCell>
-                    <TableCell sx={{ fontSize: 12 }}>{r.category} — {categoryName(r.category)}</TableCell>
+                    <TableCell sx={{ fontSize: 12, maxWidth: 220 }}>
+                      <Typography fontSize={12}>{r.category} — {categoryName(r.category)}</Typography>
+                      <Typography fontSize={11} color="text.secondary" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {r.categoryDescription}
+                      </Typography>
+                    </TableCell>
                     <TableCell sx={{ fontSize: 12, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description || '—'}</TableCell>
                   </TableRow>
                   );
@@ -338,6 +438,7 @@ function DetailModal({ record, onClose, onEdit }: { record: Escalation | null; o
               <Box>
                 <Typography fontSize={11} color="text.secondary">Category</Typography>
                 <Typography fontSize={13} fontWeight={600}>{record.category} — {categoryName(record.category)}</Typography>
+                <Typography fontSize={12} color="text.secondary" mt={0.25}>{record.categoryDescription}</Typography>
               </Box>
               <Divider />
               <Box>
@@ -393,6 +494,7 @@ function CreateEscalationForm({ employees, onDone, onBack, showToast }: {
   const [project, setProject] = useState('');
   const [event, setEvent] = useState('');
   const [category, setCategory] = useState('');
+  const [categoryDescription, setCategoryDescription] = useState('');
   const [description, setDescription] = useState('');
   // Management and the concerned employee are always notified server-side —
   // this is purely for optionally notifying anyone else too.
@@ -404,14 +506,17 @@ function CreateEscalationForm({ employees, onDone, onBack, showToast }: {
   const employeesInDept = useMemo(() =>
     department ? employees.filter(e => e.department === department) : [], [employees, department]);
 
+  const categoryDescriptionOptions = useMemo(() =>
+    department && category ? getCategoryDescriptionOptions(department, category) : [], [department, category]);
+
   const changeMode = (m: EscalationMode) => {
     setMode(m); setDepartment(''); setTargetEmployee(null);
     setReportedBy(''); setCompany(''); setProject(''); setEvent('');
-    setCategory(''); setDescription(''); setCcList([]); setError(null);
+    setCategory(''); setCategoryDescription(''); setDescription(''); setCcList([]); setError(null);
   };
 
   const canSubmit = () => {
-    const hasCore = !!category && !!department && description.trim().length > 0;
+    const hasCore = !!category && !!department && categoryDescription.trim().length > 0 && description.trim().length > 0;
     if (mode === 'Employee') return hasCore && !!targetEmployee;
     if (mode === 'External') return hasCore && !!targetEmployee && reportedBy.trim().length > 0;
     return hasCore; // BO
@@ -420,7 +525,7 @@ function CreateEscalationForm({ employees, onDone, onBack, showToast }: {
   const resetAll = () => {
     setMode('Employee'); setDepartment(''); setTargetEmployee(null);
     setReportedBy(''); setCompany(''); setProject(''); setEvent('');
-    setCategory(''); setDescription(''); setCcList([]); setError(null); setSubmitted(null);
+    setCategory(''); setCategoryDescription(''); setDescription(''); setCcList([]); setError(null); setSubmitted(null);
   };
 
   const submit = async () => {
@@ -446,6 +551,7 @@ function CreateEscalationForm({ employees, onDone, onBack, showToast }: {
         project: project.trim(),
         event: event.trim(),
         category,
+        categoryDescription,
         description,
         dateOccurred: todayStr(),
         cc: ccList.map(e => e.official_email || e.email).filter(Boolean),
@@ -477,7 +583,8 @@ function CreateEscalationForm({ employees, onDone, onBack, showToast }: {
   const categoryField = (
     <FormControl size="small" fullWidth>
       <InputLabel>Category</InputLabel>
-      <Select value={category} label="Category" onChange={e => setCategory(e.target.value)}>
+      <Select value={category} label="Category"
+        onChange={e => { setCategory(e.target.value); setCategoryDescription(''); }}>
         {CATEGORIES.map(c => <MenuItem key={c.code} value={c.code}>{c.code} — {c.name}</MenuItem>)}
       </Select>
     </FormControl>
@@ -486,8 +593,20 @@ function CreateEscalationForm({ employees, onDone, onBack, showToast }: {
     <FormControl size="small" fullWidth>
       <InputLabel>Department</InputLabel>
       <Select value={department} label="Department"
-        onChange={e => { setDepartment(e.target.value); if (resetEmployee) setTargetEmployee(null); }}>
+        onChange={e => { setDepartment(e.target.value); setCategoryDescription(''); if (resetEmployee) setTargetEmployee(null); }}>
         {departments.map(d => <MenuItem key={d} value={d}>{d}</MenuItem>)}
+      </Select>
+    </FormControl>
+  );
+  const categoryDescriptionField = category === 'Other' ? (
+    <TextField label="Category Description *" size="small" value={categoryDescription}
+      placeholder="Describe the category (free text for Miscellaneous)…"
+      onChange={e => setCategoryDescription(e.target.value)} fullWidth />
+  ) : (
+    <FormControl size="small" fullWidth disabled={!department || !category}>
+      <InputLabel>Category Description</InputLabel>
+      <Select value={categoryDescription} label="Category Description" onChange={e => setCategoryDescription(e.target.value)}>
+        {categoryDescriptionOptions.map(d => <MenuItem key={d} value={d}>{d}</MenuItem>)}
       </Select>
     </FormControl>
   );
@@ -560,9 +679,10 @@ function CreateEscalationForm({ employees, onDone, onBack, showToast }: {
       <Stack spacing={2}>
         {mode === 'Employee' && (
           <>
-            {categoryField}
             {departmentField(true)}
             {employeeField('Escalation Logged For (Employee Name)')}
+            {categoryField}
+            {categoryDescriptionField}
             {projectEventRow}
             {descriptionField}
             {autoTilesRow}
@@ -572,9 +692,10 @@ function CreateEscalationForm({ employees, onDone, onBack, showToast }: {
 
         {mode === 'External' && (
           <>
-            {categoryField}
             {departmentField(true)}
             {employeeField('Escalation Logged For (Employee Name)')}
+            {categoryField}
+            {categoryDescriptionField}
             <TextField label="Reported By (Contact Name) *" size="small" value={reportedBy}
               onChange={e => setReportedBy(e.target.value)} fullWidth />
             <TextField label="Company (if applicable)" size="small" value={company}
@@ -588,9 +709,10 @@ function CreateEscalationForm({ employees, onDone, onBack, showToast }: {
 
         {mode === 'BO' && (
           <>
-            {categoryField}
-            {projectEventRow}
             {departmentField(false)}
+            {categoryField}
+            {categoryDescriptionField}
+            {projectEventRow}
             {descriptionField}
             {autoTilesRow}
             {ccField}
@@ -632,6 +754,7 @@ function EditEscalationForm({ record, employees, onDone, onCancel, showToast }: 
   const [project, setProject] = useState(record.project || '');
   const [event, setEvent] = useState(record.event || '');
   const [category, setCategory] = useState(record.category);
+  const [categoryDescription, setCategoryDescription] = useState(record.categoryDescription || '');
   const [description, setDescription] = useState(record.description);
   const [ccList, setCcList] = useState<Employee[]>(() =>
     employees.filter(e => (record.cc || []).includes(e.official_email) || (record.cc || []).includes(e.email)));
@@ -641,8 +764,11 @@ function EditEscalationForm({ record, employees, onDone, onCancel, showToast }: 
   const employeesInDept = useMemo(() =>
     department ? employees.filter(e => e.department === department) : [], [employees, department]);
 
+  const categoryDescriptionOptions = useMemo(() =>
+    department && category ? getCategoryDescriptionOptions(department, category) : [], [department, category]);
+
   const canSubmit = () => {
-    const hasCore = !!category && !!department && description.trim().length > 0;
+    const hasCore = !!category && !!department && categoryDescription.trim().length > 0 && description.trim().length > 0;
     if (mode === 'Employee') return hasCore && !!targetEmployee;
     if (mode === 'External') return hasCore && !!targetEmployee && reportedBy.trim().length > 0;
     return hasCore; // BO
@@ -664,7 +790,7 @@ function EditEscalationForm({ record, employees, onDone, onCancel, showToast }: 
         company: mode === 'External' ? company.trim() : '',
         project: project.trim(),
         event: event.trim(),
-        category, description,
+        category, categoryDescription, description,
         dateOccurred: record.dateOccurred,
         cc: ccList.map(e => e.official_email || e.email).filter(Boolean),
       };
@@ -702,19 +828,12 @@ function EditEscalationForm({ record, employees, onDone, onCancel, showToast }: 
       </Box>
 
       <Stack spacing={2}>
-        <FormControl size="small" fullWidth>
-          <InputLabel>Category</InputLabel>
-          <Select value={category} label="Category" onChange={e => setCategory(e.target.value)}>
-            {CATEGORIES.map(c => <MenuItem key={c.code} value={c.code}>{c.code} — {c.name}</MenuItem>)}
-          </Select>
-        </FormControl>
-
         {mode !== 'BO' && (
           <>
             <FormControl size="small" fullWidth>
               <InputLabel>Department</InputLabel>
               <Select value={department} label="Department"
-                onChange={e => { setDepartment(e.target.value); setTargetEmployee(null); }}>
+                onChange={e => { setDepartment(e.target.value); setCategoryDescription(''); setTargetEmployee(null); }}>
                 {departments.map(d => <MenuItem key={d} value={d}>{d}</MenuItem>)}
               </Select>
             </FormControl>
@@ -725,6 +844,37 @@ function EditEscalationForm({ record, employees, onDone, onCancel, showToast }: 
           </>
         )}
 
+        {mode === 'BO' && (
+          <FormControl size="small" fullWidth>
+            <InputLabel>Department</InputLabel>
+            <Select value={department} label="Department"
+              onChange={e => { setDepartment(e.target.value); setCategoryDescription(''); }}>
+              {departments.map(d => <MenuItem key={d} value={d}>{d}</MenuItem>)}
+            </Select>
+          </FormControl>
+        )}
+
+        <FormControl size="small" fullWidth>
+          <InputLabel>Category</InputLabel>
+          <Select value={category} label="Category"
+            onChange={e => { setCategory(e.target.value); setCategoryDescription(''); }}>
+            {CATEGORIES.map(c => <MenuItem key={c.code} value={c.code}>{c.code} — {c.name}</MenuItem>)}
+          </Select>
+        </FormControl>
+
+        {category === 'Other' ? (
+          <TextField label="Category Description *" size="small" value={categoryDescription}
+            placeholder="Describe the category (free text for Miscellaneous)…"
+            onChange={e => setCategoryDescription(e.target.value)} fullWidth />
+        ) : (
+          <FormControl size="small" fullWidth disabled={!department || !category}>
+            <InputLabel>Category Description</InputLabel>
+            <Select value={categoryDescription} label="Category Description" onChange={e => setCategoryDescription(e.target.value)}>
+              {categoryDescriptionOptions.map(d => <MenuItem key={d} value={d}>{d}</MenuItem>)}
+            </Select>
+          </FormControl>
+        )}
+
         {mode === 'External' && (
           <>
             <TextField label="Reported By (Contact Name) *" size="small" value={reportedBy}
@@ -732,15 +882,6 @@ function EditEscalationForm({ record, employees, onDone, onCancel, showToast }: 
             <TextField label="Company (if applicable)" size="small" value={company}
               onChange={e => setCompany(e.target.value)} fullWidth />
           </>
-        )}
-
-        {mode === 'BO' && (
-          <FormControl size="small" fullWidth>
-            <InputLabel>Department</InputLabel>
-            <Select value={department} label="Department" onChange={e => setDepartment(e.target.value)}>
-              {departments.map(d => <MenuItem key={d} value={d}>{d}</MenuItem>)}
-            </Select>
-          </FormControl>
         )}
 
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>

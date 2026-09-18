@@ -48,6 +48,7 @@ async function sendEscalationNotification(escalation) {
     escalationFor: escalation.escalationFor,
     targetNames: escalation.targetEmployees.map(t => t.name).join(', ') || '-',
     category: `${escalation.category} — ${CATEGORY_NAMES[escalation.category] || escalation.category}`,
+    categoryDescription: escalation.categoryDescription,
     dateOccurred: escalation.dateOccurred,
     description: escalation.description,
     dashboardLink: `${FRONTEND_URL}/escalations`,
