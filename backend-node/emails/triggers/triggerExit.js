@@ -4,11 +4,6 @@ const sendExitReminder                  = require("../senders/sendExitReminder")
 const sendExitInstructionsToAll         = require("../senders/sendExitInstructionsToAll");
 const sendExitInstructionsToAllAlready  = require("../senders/sendExitInstructionsToAllAlready");
 
-// Paused 2026-09-17 per "stop all onboarding, exit, salary revision,
-// confirmation mails" — gates BOTH the create and update triggers below
-// (triggerUpdateExit just calls this same function).
-const EXIT_EMAILS_TEMPORARILY_DISABLED = true;
-
 // NOTE on doc's auto-email fields (autoExitEmail, autoReminderEmail,
 // autoInstructionsToAllEmail): the route handler is responsible for only
 // setting these to true on the SPECIFIC call where the checkbox was newly
@@ -20,8 +15,13 @@ const EXIT_EMAILS_TEMPORARILY_DISABLED = true;
 // Tell us what it should trigger and we'll wire it up.
 async function triggerNewExit(doc) {
   try {
-    if (EXIT_EMAILS_TEMPORARILY_DISABLED) {
-      console.log("[triggerNewExit] Exit emails temporarily disabled; skipping send.");
+    // No mail until HR has explicitly approved the exit (see PATCH
+    // :id/approve in routes/exit.js) — replaces the old blanket
+    // EXIT_EMAILS_TEMPORARILY_DISABLED kill switch (2026-09-17) with the
+    // actual intended gate: an exit still "Awaiting Approval" must not
+    // notify anyone, but an approved one sends normally again.
+    if (!doc.hr_approved_at) {
+      console.log("[triggerNewExit] Exit not yet approved; skipping send.");
       return;
     }
 

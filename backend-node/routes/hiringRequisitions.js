@@ -468,10 +468,13 @@ router.get('/next-serial', async (req, res) => {
   }
 });
 
-// GET /api/hiringrequisitions/open — public job postings
+// GET /api/hiringrequisitions/open — public job postings. Only requisitions
+// HR has explicitly approved (hr_approved_at set, via PATCH /:id/approve)
+// are candidate-visible — a requisition still "Awaiting Approval" must not
+// show on the careers page even if fmsStatus is Open.
 router.get('/open', async (req, res) => {
   try {
-    const jobs = await HiringRequisition.find({ fmsStatus: 'Open' })
+    const jobs = await HiringRequisition.find({ fmsStatus: 'Open', hr_approved_at: { $ne: null } })
       .select(
         'serial_no designation hiring_dept candidate_experience_level role_link jd_link createdAt ' +
         'required_skills role_category remote_eligible base_location screeningQuestions'
