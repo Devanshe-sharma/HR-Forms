@@ -44,7 +44,12 @@ const CtcComponentSchema = new mongoose.Schema(
 
     category: {
       type: String,
-      enum: ['Earning', 'Deduction', 'Contribution', 'Reimbursement', 'Bonus', 'Other'],
+      // 'Computed' added 2026-09-18 — the total/summary components
+      // (Gross Monthly Salary, Monthly CTC, Annual CTC) already had this
+      // value set on them before it existed in this enum, which made
+      // every save of those 3 documents fail validation (`runValidators`
+      // re-checks the WHOLE document, not just the fields being edited).
+      enum: ['Earning', 'Deduction', 'Contribution', 'Reimbursement', 'Bonus', 'Computed', 'Other'],
       default: 'Earning',
     },
 
