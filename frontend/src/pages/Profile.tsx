@@ -82,9 +82,11 @@ interface UserProfile {
   joining_status?: string;
   exit_status?: string;
 
-  // ── Probation/confirmation — a separate collection, fetched separately
+  // ── Probation/confirmation — a separate collection, fetched separately.
+  // No confirmation-date field — those were all bulk-backfilled during
+  // migration and don't reflect a real confirmation date, so nothing here
+  // should display one.
   confirmationStatus?: 'probation' | 'confirmed' | 'extended' | 'not_confirmed' | null;
-  confirmationDate?: string | null;
 
   // ── Personal info — self-service, editable from Overview / Emergency &
   // Family / Documents & Bank tabs
@@ -123,6 +125,10 @@ interface UserProfile {
   documents?: OnboardingDocument[];
   companyAssets?: CompanyAssets;
   signature?: EmployeeSignature | null;
+
+  // Used only to decide whether the Increment Letter is actually available
+  // (see hasCompletedIncrement) — not displayed directly.
+  salaryRevisions?: { stage?: string }[];
 }
 
 // Keys must match backend-node/utils/onboardingDocumentTypes.js exactly —
@@ -745,7 +751,7 @@ function SignatureCard({ signature, employeeId, onUploaded }: {
           <Typography variant="caption" color={error ? '#DC2626' : '#6B7280'} display="block" mb={1.5}>
             {error || (signature
               ? `${signature.fileName}${formatDateDisplay(signature.uploadedAt) ? ` • ${formatDateDisplay(signature.uploadedAt)}` : ''}`
-              : 'Upload a clear image of your signature (JPG or PNG). HR will see it on the Employee List.')}
+              : 'Upload a clear image of your signature (JPG or PNG, max 3MB). HR will see it on the Employee List.')}
           </Typography>
           {!employeeId && (
             <Alert severity="info" sx={{ mb: 1.5, fontSize: '0.76rem' }}>
@@ -926,6 +932,50 @@ const confirmationStatusLabel = (status?: string | null) => {
   }
 };
 
+const isExited = (p: UserProfile | null) => p?.exit_status === 'Left' || p?.exit_status === 'Already Left';
+
+// Every letter the generator (pages/EmployeeLetter.tsx → pages/LetterTemplate.tsx,
+// route "/letter") can produce — kept in sync with EmployeesPage.tsx's own
+// GENERATED_LETTER_TYPES list. Each one is only listed here (not just
+// disabled) once it's actually true for this employee — an employee who's
+// never had a completed revision shouldn't see an "Increment Letter" any
+// more than one who's still on probation should see a "Confirmation
+// Letter". `isAvailable` conditions are a best-effort mapping onto what
+// data is actually available; adjust here if a rule doesn't match reality.
+const OFFICIAL_LETTER_TYPES: {
+  type: string;
+  label: string;
+  subtitle: string;
+  directLink?: string;
+  isAvailable: (p: UserProfile | null) => boolean;
+}[] = [
+  { type: 'offer-letter', label: 'Offer Letter', subtitle: 'Original employment offer document',
+    isAvailable: (p) => !!p?._id },
+  { type: 'Appointment-letter', label: 'Appointment Letter', subtitle: 'Formal appointment confirmation',
+    isAvailable: (p) => p?.joining_status === 'Joined' },
+  { type: 'salary-revision', label: 'Increment Letter', subtitle: 'Salary revision & increment details',
+    isAvailable: (p) => !!p?.salaryRevisions?.some(r => r.stage === 'completed') },
+  { type: 'confirmation', label: 'Confirmation Letter', subtitle: 'Confirmation of employment',
+    isAvailable: (p) => p?.confirmationStatus === 'confirmed' },
+  { type: 'consultant-contract', label: 'Consultant Contract', subtitle: 'Consultant engagement agreement',
+    isAvailable: (p) => /consult/i.test(p?.employee_category || '') },
+  { type: 'salary-breakdown', label: 'Salary Breakdown', subtitle: 'CTC component breakdown',
+    isAvailable: (p) => p?.joining_status === 'Joined' },
+  { type: 'non-compete-agreement', label: 'Non-Compete Agreement', subtitle: 'Signed at onboarding',
+    isAvailable: (p) => p?.joining_status === 'Joined' },
+  { type: 'non-disclosure-agreement', label: 'Non-Disclosure Agreement', subtitle: 'Signed at onboarding',
+    isAvailable: (p) => p?.joining_status === 'Joined' },
+  { type: 'code-of-ethics', label: 'Code of Ethics', subtitle: 'Signed at onboarding',
+    isAvailable: (p) => p?.joining_status === 'Joined' },
+  { type: 'internship-certificate', label: 'Internship Certificate', subtitle: 'For interns only',
+    isAvailable: (p) => /intern/i.test(p?.employee_category || '') },
+  { type: 'experience-certificate', label: 'Experience Certificate', subtitle: 'Issued on exit',
+    isAvailable: isExited },
+  { type: 'exit-clearance', label: 'Exit Clearance Form', subtitle: 'Exit formalities',
+    directLink: 'https://docs.google.com/document/d/1d8MFqQAISbuOwP0SGM3IWBWf2J2V9s1O/edit',
+    isAvailable: isExited },
+];
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Profile() {
   const [tabValue, setTabValue] = useState(0);
@@ -964,19 +1014,39 @@ export default function Profile() {
       }
 
       // Probation/confirmation status lives in a separate collection —
-      // best-effort: a brand-new joiner may not have a record yet.
-      const lookupEmail = profile?.official_email || user.email;
+      // best-effort: a brand-new joiner may not have a record yet. Matched
+      // by employeeId (this onboarding record's own _id, which
+      // Confirmations.employeeId uniquely refs) rather than email — several
+      // onboarding records share the same generic/reused email address, so
+      // an email match could silently return a DIFFERENT employee's
+      // confirmation status. Falls back to email only if there's no
+      // onboarding record at all (shouldn't normally happen).
       try {
-        const confRes = await axios.get(`${API_URL}/confirmations/by-employee`, { params: { email: lookupEmail } });
+        const confRes = await axios.get(`${API_URL}/confirmations/by-employee`, {
+          params: profile?._id ? { employeeId: profile._id } : { email: user.email },
+        });
         if (confRes.data?.success && confRes.data.data) {
           setUserProfile((prev) => prev ? {
             ...prev,
             confirmationStatus: confRes.data.data.currentStatus,
-            confirmationDate: confRes.data.data.confirmedDate,
           } : prev);
         }
       } catch {
         // No confirmation record yet — Work tab just shows nothing for those two fields.
+      }
+
+      // Salary revision history — only used to know whether an Increment
+      // Letter actually exists to view (see hasCompletedIncrement below),
+      // not displayed directly on this page.
+      if (profile?._id) {
+        try {
+          const revRes = await axios.get(`${API_URL}/salary-revisions/history/${profile._id}`);
+          if (revRes.data?.success) {
+            setUserProfile((prev) => prev ? { ...prev, salaryRevisions: revRes.data.data || [] } : prev);
+          }
+        } catch {
+          // No history, or not permitted — Increment Letter just stays hidden.
+        }
       }
     } catch {
       setErrorMsg('Could not load full profile details from the server — showing what was available.');
@@ -1126,7 +1196,6 @@ export default function Profile() {
                   <SectionCard title="Status" icon={<CalendarIcon sx={{ fontSize: 17 }} />}>
                     <FieldRow label="Employee Status" value={userProfile?.joining_status === 'Joined' ? 'Joined' : 'Not Joined'} />
                     <FieldRow label="Probation Period Status" value={confirmationStatusLabel(userProfile?.confirmationStatus)} />
-                    <FieldRow label="Confirmation Date" value={formatDateDisplay(userProfile?.confirmationDate)} />
                   </SectionCard>
                   <SectionCard title="Reporting" icon={<TeamIcon sx={{ fontSize: 17 }} />}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1 }}>
@@ -1174,6 +1243,9 @@ export default function Profile() {
                         No onboarding record is linked to this account yet — uploads can't be saved until one exists.
                       </Alert>
                     )}
+                    <Typography variant="caption" color="#9CA3AF" sx={{ display: 'block', mb: 1 }}>
+                      Max file size: 10MB per document (PDF, DOC, DOCX, JPG, or PNG)
+                    </Typography>
                     <List disablePadding sx={{ mx: -3, mb: -2.5 }}>
                       <DocumentItem docType="resume" title="Resume" subtitle="Your latest resume/CV" requiredTag="Required" requiredTagColor="#E53E3E"
                         doc={latestDocFor(userProfile?.documents, 'resume')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
@@ -1187,20 +1259,26 @@ export default function Profile() {
                         doc={latestDocFor(userProfile?.documents, 'graduationMarksheet')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
                       <DocumentItem docType="pgMarksheet" title="Postgraduate Marksheet" subtitle="Master's / PG degree (if applicable)" requiredTag="Optional" requiredTagColor="#6B7280"
                         doc={latestDocFor(userProfile?.documents, 'pgMarksheet')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
-                      <DocumentItem docType="aadhaarPan" title="Aadhaar / PAN Card" subtitle="Government identity proof" requiredTag="Required" requiredTagColor="#E53E3E"
-                        doc={latestDocFor(userProfile?.documents, 'aadhaarPan')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
+                      <DocumentItem docType="aadhaarCard" title="Aadhaar Card" subtitle="Government identity proof" requiredTag="Required" requiredTagColor="#E53E3E"
+                        doc={latestDocFor(userProfile?.documents, 'aadhaarCard')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
+                      <DocumentItem docType="panCard" title="PAN Card" subtitle="Government identity proof" requiredTag="Required" requiredTagColor="#E53E3E"
+                        doc={latestDocFor(userProfile?.documents, 'panCard')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
                     </List>
                   </SectionCard>
                 </Box>
                 <Box>
                   <SectionCard title="Employment Documents" icon={<LetterIcon sx={{ fontSize: 17 }} />}>
+                    <Typography variant="caption" color="#9CA3AF" sx={{ display: 'block', mb: 1 }}>
+                      Official letters are generated live from your record — only the ones that actually apply to you are listed. Experience Letter is a 10MB-max upload.
+                    </Typography>
                     <List disablePadding sx={{ mx: -3, mb: -2.5 }}>
-                      <DocumentItem title="Offer Letter" subtitle="Original employment offer document" requiredTag="Issued" requiredTagColor="#059669" staticHref="/employee-letters" />
-                      <DocumentItem title="Appointment Letter" subtitle="Formal appointment confirmation" requiredTag="Issued" requiredTagColor="#059669" staticHref="/employee-letters" />
-                      <DocumentItem title="Increment Letter" subtitle="Salary revision & increment details" requiredTag="Issued" requiredTagColor="#059669" staticHref="/employee-letters" />
+                      {OFFICIAL_LETTER_TYPES.filter(lt => lt.isAvailable(userProfile)).map(lt => (
+                        <DocumentItem key={lt.type} title={lt.label} subtitle={lt.subtitle} requiredTag="Issued" requiredTagColor="#059669"
+                          staticHref={lt.directLink || `/letter?type=${encodeURIComponent(lt.type)}&empId=${encodeURIComponent(userProfile?._id || '')}`} />
+                      ))}
                       <DocumentItem docType="experienceLetter" title="Experience Letter" subtitle="For previous employment (if applicable)" requiredTag="Optional" requiredTagColor="#6B7280"
                         doc={latestDocFor(userProfile?.documents, 'experienceLetter')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
-                      <DocumentItem title="Payslips" subtitle="Monthly salary statements" requiredTag="Auto-generated" requiredTagColor="#3F6FE8" staticHref="/employee-letters" />
+                      <DocumentItem title="Payslips" subtitle="Not set up yet" requiredTag="Not available" requiredTagColor="#9CA3AF" />
                     </List>
                   </SectionCard>
                   <SignatureCard

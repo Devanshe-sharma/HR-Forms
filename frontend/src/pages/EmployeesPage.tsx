@@ -156,7 +156,8 @@ const PERSONAL_DOCUMENT_TYPES: { key: string; label: string }[] = [
   { key: 'twelfthMarksheet', label: '12th Marksheet' },
   { key: 'graduationMarksheet', label: 'Graduation Marksheet' },
   { key: 'pgMarksheet', label: 'Postgraduate Marksheet' },
-  { key: 'aadhaarPan', label: 'Aadhaar / PAN Card' },
+  { key: 'aadhaarCard', label: 'Aadhaar Card' },
+  { key: 'panCard', label: 'PAN Card' },
 ];
 
 const PROFESSIONAL_DOCUMENT_TYPES: { key: string; label: string }[] = [

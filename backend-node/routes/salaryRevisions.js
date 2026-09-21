@@ -418,16 +418,29 @@ router.get('/analytics/timeliness', authenticate, requireRole(FULL_ACCESS_ROLES)
 
 // ─── GET /api/salary-revisions/history/:employeeCode ─────────────────────────
 // All revisions for one employee, newest first — used to show past history
-// separately from whichever one is currently driving the dashboard.
+// separately from whichever one is currently driving the dashboard. Also
+// self-servable: the Profile page uses this to know whether an employee has
+// ever had a completed revision, to decide whether their Increment Letter
+// is actually available — so an employee may fetch their own history
+// (employeeCode === their own Onboarding _id) even without an HR-ish role.
 
-router.get('/history/:employeeCode', authenticate, requireRole([...FULL_ACCESS_ROLES, 'Manager']), asyncHandler(async (req, res) => {
+router.get('/history/:employeeCode', authenticate, asyncHandler(async (req, res) => {
   const revisions = await SalaryRevision.find({ employeeCode: req.params.employeeCode })
     .sort({ createdAt: -1 });
 
-  if (req.role === 'Manager') {
-    const managerName = await resolveOwnFullName(req.user);
-    if (!revisions.some((r) => isManagerOfRevision(r, managerName))) {
-      return res.status(403).json({ success: false, message: 'Insufficient permissions' });
+  if (!FULL_ACCESS_ROLES.includes(req.role)) {
+    if (req.role === 'Manager') {
+      const managerName = await resolveOwnFullName(req.user);
+      if (!revisions.some((r) => isManagerOfRevision(r, managerName))) {
+        return res.status(403).json({ success: false, message: 'Insufficient permissions' });
+      }
+    } else {
+      const own = await Onboarding.findOne({
+        $or: [{ officialEmail: req.user.email }, { persEmail: req.user.email }],
+      }).select('_id').lean();
+      if (!own || String(own._id) !== req.params.employeeCode) {
+        return res.status(403).json({ success: false, message: 'Insufficient permissions' });
+      }
     }
   }
 

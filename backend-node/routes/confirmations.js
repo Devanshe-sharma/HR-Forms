@@ -479,40 +479,37 @@ router.post('/bulk-confirm-before-date', async (req, res) => {
   }
 });
 
-// ─── GET /api/confirmations/by-employee?email=... ─────────────────────────────
+// ─── GET /api/confirmations/by-employee?employeeId=...  (or ?email=...) ───────
 // Single-record lookup for the Profile page's read-only Work tab (probation
-// status + confirmation date). Case-insensitive match against the
-// denormalized `email` snapshot (Onboarding.officialEmail at sync time).
-// No record yet (e.g. brand-new joiner before the first sync) isn't an
-// error — the Work tab just shows nothing for those two fields.
+// status), and for gating the Confirmation Letter on the Documents tab.
+// `employeeId` (the Onboarding _id — Confirmations.employeeId is a unique
+// ref to it) is the reliable match; prefer it. The `email` fallback exists
+// for older callers, but several Onboarding records share the same
+// generic/reused email address (a known data issue — see
+// onboardingroutes.js), so an email match can silently return the WRONG
+// person's confirmation status when that happens. No record yet (e.g. a
+// brand-new joiner before the first sync) isn't an error — the Work tab
+// just shows nothing for that field.
+//
+// No confirmation date is returned — every record's dates were
+// bulk-backfilled during migration and don't reflect a real confirmation
+// date, so nothing should compute or display one from this data.
 router.get('/by-employee', async (req, res) => {
   try {
+    const employeeId = String(req.query.employeeId || '').trim();
     const email = String(req.query.email || '').trim().toLowerCase();
-    if (!email) return err(res, 400, 'email is required');
+    if (!employeeId && !email) return err(res, 400, 'employeeId or email is required');
 
-    const record = await Confirmations.findOne({
-      email: new RegExp(`^${email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
-    }).lean();
+    const record = employeeId
+      ? await Confirmations.findOne({ employeeId }).lean()
+      : await Confirmations.findOne({
+          email: new RegExp(`^${email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+        }).lean();
     if (!record) return res.json({ success: true, data: null });
-
-    // Prefer the dedicated managementDecision timestamp; fall back to the
-    // most recent "confirmed" history entry for older records where that
-    // field wasn't populated.
-    let confirmedDate = null;
-    if (record.currentStatus === 'confirmed') {
-      if (record.managementDecision?.status === 'confirmed' && record.managementDecision.submittedAt) {
-        confirmedDate = record.managementDecision.submittedAt;
-      } else {
-        const confirmedEntries = (record.history || []).filter((h) => h.status === 'confirmed');
-        confirmedDate = confirmedEntries.length
-          ? confirmedEntries[confirmedEntries.length - 1].date
-          : null;
-      }
-    }
 
     res.json({
       success: true,
-      data: { currentStatus: record.currentStatus, stage: record.stage, confirmedDate },
+      data: { currentStatus: record.currentStatus, stage: record.stage },
     });
   } catch (e) {
     console.error('[Confirmations] by-employee lookup error:', e.message);

@@ -97,6 +97,7 @@ const Outing: React.FC = () => {
   const [outingList, setOutingList] = useState<Outing[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [projectOptions, setProjectOptions] = useState<ProjectOption[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
   const projectServices = useMemo(
     () => [...new Set(projectOptions.map(p => p.service))],
     [projectOptions]
@@ -207,6 +208,7 @@ const Outing: React.FC = () => {
 
   // ─── LOAD DATA ────────────────────────────────────────────
   const refreshData = async () => {
+    setProjectsLoading(true);
     try {
       const [oRes, eRes, rRes, pRes] = await Promise.all([
         axios.get(`${API_URL}/outing`),
@@ -232,6 +234,8 @@ const Outing: React.FC = () => {
       console.log('Mapped employees:', mappedEmployees); // Debug log
     } catch (err) {
       console.error("Data load failed", err);
+    } finally {
+      setProjectsLoading(false);
     }
   };
 
@@ -1392,13 +1396,16 @@ const Outing: React.FC = () => {
                     {suggestForm.eventType === 'Project' && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs font-semibold text-gray-600 mb-1">Project Service</label>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">
+                            Project Service{projectsLoading && <span className="font-normal text-gray-400"> (loading…)</span>}
+                          </label>
                           <select
                             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                             value={suggestForm.projectService}
+                            disabled={projectsLoading}
                             onChange={(e) => setSuggestForm({ ...suggestForm, projectService: e.target.value, projectName: '' })}
                           >
-                            <option value="">Select Project Service</option>
+                            <option value="">{projectsLoading ? 'Loading project services…' : 'Select Project Service'}</option>
                             {projectServices.map(service => (
                               <option key={service} value={service}>{service}</option>
                             ))}
@@ -1556,13 +1563,16 @@ const Outing: React.FC = () => {
                     {formData.eventType === 'Project' && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs font-semibold text-gray-600 mb-1">Project Service</label>
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">
+                            Project Service{projectsLoading && <span className="font-normal text-gray-400"> (loading…)</span>}
+                          </label>
                           <select
                             className="w-full border rounded-lg px-3 py-2 text-sm"
                             value={formData.projectService}
+                            disabled={projectsLoading}
                             onChange={e => setFormData({ ...formData, projectService: e.target.value, projectName: '' })}
                           >
-                            <option value="">Select Project Service</option>
+                            <option value="">{projectsLoading ? 'Loading project services…' : 'Select Project Service'}</option>
                             {projectServices.map(service => (
                               <option key={service} value={service}>{service}</option>
                             ))}
