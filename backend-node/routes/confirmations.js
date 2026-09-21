@@ -479,6 +479,47 @@ router.post('/bulk-confirm-before-date', async (req, res) => {
   }
 });
 
+// ─── GET /api/confirmations/by-employee?email=... ─────────────────────────────
+// Single-record lookup for the Profile page's read-only Work tab (probation
+// status + confirmation date). Case-insensitive match against the
+// denormalized `email` snapshot (Onboarding.officialEmail at sync time).
+// No record yet (e.g. brand-new joiner before the first sync) isn't an
+// error — the Work tab just shows nothing for those two fields.
+router.get('/by-employee', async (req, res) => {
+  try {
+    const email = String(req.query.email || '').trim().toLowerCase();
+    if (!email) return err(res, 400, 'email is required');
+
+    const record = await Confirmations.findOne({
+      email: new RegExp(`^${email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+    }).lean();
+    if (!record) return res.json({ success: true, data: null });
+
+    // Prefer the dedicated managementDecision timestamp; fall back to the
+    // most recent "confirmed" history entry for older records where that
+    // field wasn't populated.
+    let confirmedDate = null;
+    if (record.currentStatus === 'confirmed') {
+      if (record.managementDecision?.status === 'confirmed' && record.managementDecision.submittedAt) {
+        confirmedDate = record.managementDecision.submittedAt;
+      } else {
+        const confirmedEntries = (record.history || []).filter((h) => h.status === 'confirmed');
+        confirmedDate = confirmedEntries.length
+          ? confirmedEntries[confirmedEntries.length - 1].date
+          : null;
+      }
+    }
+
+    res.json({
+      success: true,
+      data: { currentStatus: record.currentStatus, stage: record.stage, confirmedDate },
+    });
+  } catch (e) {
+    console.error('[Confirmations] by-employee lookup error:', e.message);
+    err(res, 500, 'Failed to look up confirmation status');
+  }
+});
+
 // ─── GET /api/confirmations/:id ───────────────────────────────────────────────
 // ⚠️  This must stay AFTER all named GET routes above
 

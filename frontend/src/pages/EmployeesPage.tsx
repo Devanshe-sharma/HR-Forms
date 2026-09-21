@@ -59,6 +59,7 @@ type DateMode = 'all' | 'quarter' | 'year' | 'custom';
 interface EmployeeFullRecord {
   companyName?: string;
   jobLocation?: string;
+  address?: string;
   citizenship?: string;
   nationality?: string;
   passportNo?: string;
@@ -79,10 +80,20 @@ interface EmployeeFullRecord {
   emergencyContactPhone?: string;
   emergencyContactPlace?: string;
   familyFather?: string;
+  familyFatherOccupation?: string;
   familyMother?: string;
-  familySiblings?: string;
+  familyMotherOccupation?: string;
+  familySiblingsList?: { name: string; occupation: string }[];
   familySpouse?: string;
-  familyChildren?: string;
+  familySpouseOccupation?: string;
+  familyNumberOfChildren?: number | null;
+  companyAssets?: {
+    dateIssued?: string | null;
+    laptop?: boolean;
+    mouse?: boolean;
+    charger?: boolean;
+    simCard?: boolean;
+  };
 
   // ── Contract & CTC — headline figures only, not the full salary
   // breakdown (basic/HRA/allowances etc. live elsewhere, e.g. CTC
@@ -139,6 +150,8 @@ function buildSignatureThumbnailUrl(driveFileId: string) {
 }
 
 const PERSONAL_DOCUMENT_TYPES: { key: string; label: string }[] = [
+  { key: 'resume', label: 'Resume' },
+  { key: 'personalPhoto', label: 'Personal Photograph' },
   { key: 'tenthMarksheet', label: '10th Marksheet' },
   { key: 'twelfthMarksheet', label: '12th Marksheet' },
   { key: 'graduationMarksheet', label: 'Graduation Marksheet' },
@@ -458,24 +471,22 @@ const EmployeeDetailDialog: React.FC<{
     if (!open || !employee) { setFull(null); setDocuments([]); setSignature(null); setSalaryHistory([]); setTab(0); return; }
     setTab(0);
     setLoading(true);
-    const docsEmail = employee.official_email || employee.personal_email || '';
     Promise.all([
+      // Self-uploaded documents/signature now live directly on this same
+      // onboarding record (see backend-node/models/onboardingModel.js) —
+      // the employee's own Profile page writes here, so no separate
+      // Employee-collection lookup is needed to see it.
       fetch(`${API_BASE}/onboarding/${employee._id}`).then(res => res.json()).catch(() => null),
-      // Self-uploaded documents live on the Employee collection (keyed by
-      // email, not the onboarding _id above) — see EmployeeDocument comment.
-      docsEmail
-        ? fetch(`${API_BASE}/employees?email=${encodeURIComponent(docsEmail)}`).then(res => res.json()).catch(() => null)
-        : Promise.resolve(null),
       // Salary Revision history is keyed by employeeCode = this onboarding
       // _id (see SalaryRevision.js comment). Needs axios, not fetch — this
       // route is auth-gated and only axios carries the login's Authorization
       // header (set globally in AuthContext).
       axios.get(`${API_BASE}/salary-revisions/history/${employee._id}`).then(res => res.data).catch(() => null),
     ])
-      .then(([onboardingJson, employeeJson, revisionJson]) => {
+      .then(([onboardingJson, revisionJson]) => {
         setFull(onboardingJson?.data || null);
-        setDocuments(employeeJson?.data?.[0]?.documents || []);
-        setSignature(employeeJson?.data?.[0]?.signature || null);
+        setDocuments(onboardingJson?.data?.documents || []);
+        setSignature(onboardingJson?.data?.signature || null);
         setSalaryHistory(revisionJson?.data || []);
       })
       .catch(() => { setFull(null); setDocuments([]); setSalaryHistory([]); })
@@ -566,6 +577,7 @@ const EmployeeDetailDialog: React.FC<{
                   <InfoField label="Birthday" value={formatDateOnly(full?.birthday)} />
                   <InfoField label="Blood Group" value={full?.bloodGroup} />
                   <InfoField label="Marital Status" value={full?.maritalStatus} />
+                  <InfoField label="Address" value={full?.address} />
                 </Box>
 
                 <Divider />
@@ -583,10 +595,37 @@ const EmployeeDetailDialog: React.FC<{
                 <SectionLabel>Family Details</SectionLabel>
                 <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2 }}>
                   <InfoField label="Father" value={full?.familyFather} />
+                  <InfoField label="Father's Occupation" value={full?.familyFatherOccupation} />
                   <InfoField label="Mother" value={full?.familyMother} />
-                  <InfoField label="Siblings" value={full?.familySiblings} />
+                  <InfoField label="Mother's Occupation" value={full?.familyMotherOccupation} />
                   <InfoField label="Spouse" value={full?.familySpouse} />
-                  <InfoField label="Children" value={full?.familyChildren} />
+                  <InfoField label="Spouse's Occupation" value={full?.familySpouseOccupation} />
+                  <InfoField label="No. of Children" value={full?.familyNumberOfChildren != null ? String(full.familyNumberOfChildren) : undefined} />
+                </Box>
+                {!!full?.familySiblingsList?.length && (
+                  <Box sx={{ mt: 1 }}>
+                    <Typography sx={{ fontSize: '0.65rem', color: 'text.disabled', textTransform: 'uppercase', letterSpacing: 0.4, mb: 0.5 }}>
+                      Siblings
+                    </Typography>
+                    <Stack spacing={0.3}>
+                      {full.familySiblingsList.map((s, i) => (
+                        <Typography key={i} sx={{ fontSize: '0.8rem', color: 'text.primary' }}>
+                          {s.name}{s.occupation ? ` — ${s.occupation}` : ''}
+                        </Typography>
+                      ))}
+                    </Stack>
+                  </Box>
+                )}
+
+                <Divider />
+
+                <SectionLabel>Company Assets</SectionLabel>
+                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 2 }}>
+                  <InfoField label="Date Issued" value={formatDateOnly(full?.companyAssets?.dateIssued)} />
+                  <InfoField label="Laptop" value={full?.companyAssets?.laptop ? 'Received' : 'Not received'} />
+                  <InfoField label="Mouse" value={full?.companyAssets?.mouse ? 'Received' : 'Not received'} />
+                  <InfoField label="Charger" value={full?.companyAssets?.charger ? 'Received' : 'Not received'} />
+                  <InfoField label="SIM Card" value={full?.companyAssets?.simCard ? 'Received' : 'Not received'} />
                 </Box>
 
                 <Divider />

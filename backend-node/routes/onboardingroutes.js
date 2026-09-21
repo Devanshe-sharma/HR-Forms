@@ -14,6 +14,25 @@ const Employee = require('../models/Employee');
 const { syncUserEmailOnChange, syncEmployeeEmailOnChange } = require('../utils/syncUserEmail');
 const { getEmployeeMasterList } = require('../utils/employeeMaster');
 const { authenticate } = require('../middleware/authenticate');
+const multer = require('multer');
+const { uploadFileToDrive, createDriveFolder } = require('../utils/googleDrive');
+const ONBOARDING_DOCUMENT_TYPES = require('../utils/onboardingDocumentTypes');
+
+// Self-service writes (personal-info edits, document uploads, company
+// assets) are only ever meant to touch the requesting user's own Onboarding
+// record — an Admin/HR account can still reach any record (e.g. to fix a
+// typo on someone's behalf), but anyone else must own it (matched by their
+// login email against officialEmail/persEmail) or gets a 403.
+function ownsOnboardingRecord(user, doc) {
+  if (!user) return false;
+  if (user.role === 'Admin' || user.role === 'HR') return true;
+  const email = (user.email || '').trim().toLowerCase();
+  if (!email) return false;
+  return (
+    (doc.officialEmail || '').trim().toLowerCase() === email ||
+    (doc.persEmail || '').trim().toLowerCase() === email
+  );
+}
 
 const router = express.Router();
 
@@ -2703,6 +2722,221 @@ router.post('/test-reminder-and-feedback-email', async (req, res) => {
   } catch (err) {
     console.error('[test-reminder-and-feedback-email]', err);
     res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PUT /api/onboarding/:id/personal-info — Self-service update of Profile
+// page personal info fields only. Scoped to an allowlist so this can never
+// be used to touch HR-managed fields (dept, designation, salary, joining
+// status, etc). This is the SAME record the Employees page "Personal Info"
+// tab reads, so a self-service edit here shows up there immediately — no
+// separate copy to keep in sync.
+// ─────────────────────────────────────────────────────────────────────────────
+const PERSONAL_INFO_FIELDS = [
+  'name', 'persEmail', 'mobile', // Overview — full name / personal email / phone (officialEmail stays HR-managed)
+  'citizenship', 'nationality', 'address',
+  'passportNo', 'passportValidUpto', 'passportIssuePlace',
+  'bankName', 'bankAccountNo', 'ifscCode', 'panCard', 'aadhaarNo', 'uanNo', 'ePassbookLink',
+  'birthday', 'bloodGroup', 'maritalStatus',
+  'emergencyContactName', 'emergencyContactRelation', 'emergencyContactPhone', 'emergencyContactPlace',
+  'familyFather', 'familyFatherOccupation', 'familyMother', 'familyMotherOccupation',
+  'familySiblingsList', 'familySpouse', 'familySpouseOccupation', 'familyNumberOfChildren',
+];
+
+router.put('/:id/personal-info', authenticate, async (req, res) => {
+  try {
+    const existing = await Onboarding.findById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Onboarding record not found' });
+    }
+    if (!ownsOnboardingRecord(req.user, existing)) {
+      return res.status(403).json({ success: false, message: 'You can only edit your own personal info' });
+    }
+
+    const update = {};
+    for (const key of PERSONAL_INFO_FIELDS) {
+      if (key in req.body) update[key] = req.body[key];
+    }
+    if ('familySiblingsList' in update && !Array.isArray(update.familySiblingsList)) {
+      return res.status(400).json({ success: false, message: 'familySiblingsList must be an array' });
+    }
+
+    const doc = await Onboarding.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
+    return res.json({ success: true, data: doc });
+  } catch (err) {
+    console.error('Error updating onboarding personal info:', err);
+    return res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PUT /api/onboarding/:id/company-assets — Self-service "received it"
+// checklist. Partial updates merge into the existing companyAssets object
+// so ticking one box never clobbers the others.
+// ─────────────────────────────────────────────────────────────────────────────
+router.put('/:id/company-assets', authenticate, async (req, res) => {
+  try {
+    const existing = await Onboarding.findById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Onboarding record not found' });
+    }
+    if (!ownsOnboardingRecord(req.user, existing)) {
+      return res.status(403).json({ success: false, message: 'You can only edit your own company assets checklist' });
+    }
+
+    const allowed = ['dateIssued', 'laptop', 'mouse', 'charger', 'simCard'];
+    const current = existing.companyAssets || {};
+    const merged = {
+      dateIssued: current.dateIssued ?? null,
+      laptop: current.laptop ?? false,
+      mouse: current.mouse ?? false,
+      charger: current.charger ?? false,
+      simCard: current.simCard ?? false,
+    };
+    for (const key of allowed) {
+      if (key in req.body) merged[key] = req.body[key];
+    }
+
+    existing.companyAssets = merged;
+    await existing.save();
+    return res.json({ success: true, data: existing.companyAssets });
+  } catch (err) {
+    console.error('Error updating company assets:', err);
+    return res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/onboarding/:id/upload-documents — Self-service document upload
+// from the Profile page's Personal/Employment Documents tabs. One file per
+// request, keyed by `docType` (validated against ONBOARDING_DOCUMENT_TYPES).
+// Files never touch local disk (multer memoryStorage) — they're streamed
+// straight to this employee's own Drive subfolder (created lazily, on first
+// upload) and only the resulting link is persisted. Re-uploading the same
+// docType appends a new entry rather than replacing the old one; the
+// frontend shows the most recent entry per docType.
+// ─────────────────────────────────────────────────────────────────────────────
+const uploadOnboardingDoc = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png'];
+    const ext = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
+    allowed.includes(ext) ? cb(null, true) : cb(new Error('Invalid file type — use PDF, Word, or an image.'));
+  },
+}).single('file');
+
+router.post('/:id/upload-documents', authenticate, uploadOnboardingDoc, async (req, res) => {
+  try {
+    const docType = req.body.docType;
+    if (!ONBOARDING_DOCUMENT_TYPES.some((d) => d.key === docType)) {
+      return res.status(400).json({ success: false, message: 'Unknown document type' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file was selected' });
+    }
+
+    const doc = await Onboarding.findById(req.params.id);
+    if (!doc) {
+      return res.status(404).json({ success: false, message: 'Onboarding record not found' });
+    }
+    if (!ownsOnboardingRecord(req.user, doc)) {
+      return res.status(403).json({ success: false, message: 'You can only upload documents for your own profile' });
+    }
+
+    if (!doc.documentsUploadFolderId) {
+      const parentFolderId = process.env.GOOGLE_DRIVE_EMPLOYEE_DOCS_PARENT_FOLDER_ID || process.env.GOOGLE_DRIVE_RESUME_FOLDER_ID;
+      const folder = await createDriveFolder(`${doc.name || 'Employee'} - ${doc._id}`, parentFolderId);
+      doc.documentsUploadFolderId = folder.id;
+      doc.documentsUploadFolderLink = folder.webViewLink;
+    }
+
+    // makePublic: false — these are personal documents (resume, Aadhaar/PAN,
+    // marksheets), kept restricted to this Shared Drive's members rather
+    // than "anyone with the link".
+    const driveLink = await uploadFileToDrive(
+      req.file.buffer, req.file.originalname, req.file.mimetype,
+      doc.documentsUploadFolderId, { makePublic: false }
+    );
+    doc.documents.push({
+      docType,
+      fileName: req.file.originalname,
+      driveLink,
+      uploadedAt: new Date(),
+    });
+
+    await doc.save();
+    return res.json({ success: true, data: doc.documents });
+  } catch (err) {
+    console.error('Error uploading onboarding document:', err);
+    return res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/onboarding/:id/upload-signature — Self-service digital signature
+// upload from the Profile page. Single image file, replaces any previous
+// signature (unlike upload-documents above, which appends). Shares the same
+// lazily-created Drive subfolder as the other document uploads.
+// ─────────────────────────────────────────────────────────────────────────────
+function extractDriveFileId(webViewLink) {
+  const match = /\/d\/([^/]+)/.exec(webViewLink || '');
+  return match ? match[1] : '';
+}
+
+const uploadOnboardingSignature = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 3 * 1024 * 1024 }, // 3MB — a signature image is small
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.jpg', '.jpeg', '.png'];
+    const ext = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
+    allowed.includes(ext) ? cb(null, true) : cb(new Error('Signature must be a JPG or PNG image.'));
+  },
+}).single('file');
+
+router.post('/:id/upload-signature', authenticate, uploadOnboardingSignature, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file was selected' });
+    }
+
+    const doc = await Onboarding.findById(req.params.id);
+    if (!doc) {
+      return res.status(404).json({ success: false, message: 'Onboarding record not found' });
+    }
+    if (!ownsOnboardingRecord(req.user, doc)) {
+      return res.status(403).json({ success: false, message: 'You can only upload a signature for your own profile' });
+    }
+
+    if (!doc.documentsUploadFolderId) {
+      const parentFolderId = process.env.GOOGLE_DRIVE_EMPLOYEE_DOCS_PARENT_FOLDER_ID || process.env.GOOGLE_DRIVE_RESUME_FOLDER_ID;
+      const folder = await createDriveFolder(`${doc.name || 'Employee'} - ${doc._id}`, parentFolderId);
+      doc.documentsUploadFolderId = folder.id;
+      doc.documentsUploadFolderLink = folder.webViewLink;
+    }
+
+    // makePublic: true — unlike the ID/education documents above, a
+    // signature's whole purpose is being visually inspectable at a glance
+    // (Employee List, generated letters), and is low-sensitivity compared
+    // to Aadhaar/PAN/bank details.
+    const driveLink = await uploadFileToDrive(
+      req.file.buffer, req.file.originalname, req.file.mimetype,
+      doc.documentsUploadFolderId, { makePublic: true }
+    );
+
+    doc.signature = {
+      fileName: req.file.originalname,
+      driveLink,
+      driveFileId: extractDriveFileId(driveLink),
+      uploadedAt: new Date(),
+    };
+
+    await doc.save();
+    return res.json({ success: true, data: doc.signature });
+  } catch (err) {
+    console.error('Error uploading onboarding signature:', err);
+    return res.status(400).json({ success: false, message: err.message });
   }
 });
 

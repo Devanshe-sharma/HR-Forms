@@ -392,9 +392,12 @@ const onboardingSchema = new mongoose.Schema(
 
     // ============================================================
     // SECTION 13: PERSONAL INFO
-    // Shown only to Admin / Management / HR on the Employees page
-    // "Personal Info" tab. Not editable yet — populated later via a
-    // dedicated form; fields default blank ("Not provided" in the UI).
+    // Shown on the Employees page "Personal Info" tab (Admin/Management/HR)
+    // AND editable by the employee themselves from their own Profile page
+    // (self-service — see routes/onboardingroutes.js PUT /:id/personal-info).
+    // This is the single source of truth for this data: the employee's own
+    // edits land here directly, so the Employees page always reflects
+    // exactly what the employee last saved — no separate copy to sync.
     // ============================================================
 
     // Citizenship
@@ -403,6 +406,9 @@ const onboardingSchema = new mongoose.Schema(
     passportNo: { type: String, default: "" },
     passportValidUpto: { type: Date, default: null },
     passportIssuePlace: { type: String, default: "" },
+
+    // Address (self-service)
+    address: { type: String, default: "" },
 
     // Bank details
     bankName: { type: String, default: "" },
@@ -425,12 +431,58 @@ const onboardingSchema = new mongoose.Schema(
     emergencyContactPhone: { type: String, default: "" },
     emergencyContactPlace: { type: String, default: "" },
 
-    // Family details
+    // Family details. familySiblings/familyChildren (free text) are legacy —
+    // kept so old data isn't lost, but the Profile page's Family form now
+    // uses familySiblingsList (a real add/remove list) and
+    // familyNumberOfChildren (a count) instead.
     familyFather: { type: String, default: "" },
+    familyFatherOccupation: { type: String, default: "" },
     familyMother: { type: String, default: "" },
+    familyMotherOccupation: { type: String, default: "" },
     familySiblings: { type: String, default: "" },
+    familySiblingsList: {
+      type: [{ name: { type: String, default: "" }, occupation: { type: String, default: "" } }],
+      default: [],
+    },
     familySpouse: { type: String, default: "" },
+    familySpouseOccupation: { type: String, default: "" },
     familyChildren: { type: String, default: "" },
+    familyNumberOfChildren: { type: Number, default: null },
+
+    // Self-uploaded documents (Profile page, Personal/Employment Documents
+    // tabs) — one entry per successful upload, keyed by docType (see
+    // utils/onboardingDocumentTypes.js). Files live in Google Drive, not on
+    // local disk; only the resulting link is stored here.
+    documents: {
+      type: [{
+        docType:    { type: String, default: "" },
+        fileName:   { type: String, default: "" },
+        driveLink:  { type: String, default: "" },
+        uploadedAt: { type: Date,   default: null },
+      }],
+      default: [],
+    },
+    documentsUploadFolderId: { type: String, default: null },
+    documentsUploadFolderLink: { type: String, default: null },
+
+    // Digital signature — a single current image, replaced (not appended)
+    // on re-upload. Shown on the Employee List and generated letters.
+    signature: {
+      fileName:    { type: String, default: "" },
+      driveLink:   { type: String, default: "" },
+      driveFileId: { type: String, default: "" },
+      uploadedAt:  { type: Date,   default: null },
+    },
+
+    // Company assets issued on/around joining — a simple received-it
+    // checklist the employee ticks off themselves from their Profile page.
+    companyAssets: {
+      dateIssued: { type: Date, default: null },
+      laptop:     { type: Boolean, default: false },
+      mouse:      { type: Boolean, default: false },
+      charger:    { type: Boolean, default: false },
+      simCard:    { type: Boolean, default: false },
+    },
   },
   {
     timestamps: true,
