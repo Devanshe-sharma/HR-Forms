@@ -844,8 +844,8 @@ function CompanyAssetsCard({ assets, employeeId, defaultDate, onSaved }: {
   );
 }
 
-function ProfileCompletion({ profile }: { profile: UserProfile | null }) {
-  const fields = [
+function profileCompletionFields(profile: UserProfile | null) {
+  return [
     { label: 'Full Name', filled: !!profile?.full_name },
     { label: 'Official Email', filled: !!profile?.official_email },
     { label: 'Personal Email', filled: !!profile?.personal_email },
@@ -856,8 +856,45 @@ function ProfileCompletion({ profile }: { profile: UserProfile | null }) {
     { label: 'Blood Group', filled: !!profile?.bloodGroup },
     { label: 'Marital Status', filled: !!profile?.maritalStatus },
   ];
-  const filled = fields.filter(f => f.filled).length;
-  const pct = Math.round((filled / fields.length) * 100);
+}
+function profileCompletionPct(profile: UserProfile | null) {
+  const fields = profileCompletionFields(profile);
+  return Math.round((fields.filter(f => f.filled).length / fields.length) * 100);
+}
+
+// Compact ring badge shown top-right of the Hero, visible from every tab —
+// the full checklist (which fields are still missing) stays on the
+// Overview tab; this is just the at-a-glance number.
+function ProfileProgressBadge({ profile }: { profile: UserProfile | null }) {
+  const pct = profileCompletionPct(profile);
+  const color = pct === 100 ? '#4ADE80' : '#fff';
+  return (
+    <Box sx={{ position: 'absolute', top: { xs: 12, md: 20 }, right: { xs: 12, md: 32 }, display: 'flex', alignItems: 'center', gap: 1.2 }}>
+      <Box sx={{ textAlign: 'right', display: { xs: 'none', sm: 'block' } }}>
+        <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          Profile
+        </Typography>
+        <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.68rem' }}>
+          {pct === 100 ? 'Complete' : 'Strength'}
+        </Typography>
+      </Box>
+      <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+        <CircularProgress variant="determinate" value={100} size={48} thickness={4.5} sx={{ color: 'rgba(255,255,255,0.18)' }} />
+        <CircularProgress
+          variant="determinate" value={pct} size={48} thickness={4.5}
+          sx={{ color, position: 'absolute', left: 0, '& .MuiCircularProgress-circle': { strokeLinecap: 'round' } }}
+        />
+        <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '0.72rem' }}>{pct}%</Typography>
+        </Box>
+      </Box>
+    </Box>
+  );
+}
+
+function ProfileCompletion({ profile }: { profile: UserProfile | null }) {
+  const fields = profileCompletionFields(profile);
+  const pct = profileCompletionPct(profile);
   return (
     <Card sx={{ borderRadius: '12px', border: '1px solid #E8ECF0', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', mb: 2 }}>
       <CardContent sx={{ p: 3 }}>
@@ -1023,6 +1060,7 @@ export default function Profile() {
       {/* ── Hero ── */}
       <Box sx={{ background: `linear-gradient(135deg, ${getRoleColor(currentRole)} 0%, #0F172A 100%)`, px: { xs: 3, md: 5 }, pt: 4, pb: 0, position: 'relative' }}>
         <Box sx={{ position: 'absolute', inset: 0, opacity: 0.04, backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
+        <ProfileProgressBadge profile={userProfile} />
         <Stack direction="row" spacing={3} alignItems="flex-end">
           <Avatar sx={{ width: 88, height: 88, border: '4px solid rgba(255,255,255,0.9)', boxShadow: '0 8px 24px rgba(0,0,0,0.25)', bgcolor: '#CBD5E0', fontSize: '2rem', fontWeight: 800, mb: '-28px' }}>
             {userProfile?.full_name?.[0]}
