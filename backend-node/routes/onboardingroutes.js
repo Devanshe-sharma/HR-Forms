@@ -2610,6 +2610,26 @@ router.get("/analytics/intern-conversions", async (req, res) => {
       .map(([department, count]) => ({ department, count }))
       .sort((a, b) => b.count - a.count);
 
+    // % of interns converted to Employee — a distinct metric from the raw
+    // conversion count above, and from the Interns (%) widget (which is
+    // current workforce composition, not a conversion rate). Scoped to
+    // interns specifically ("Intern"/"Intern with PPO"), excluding
+    // Contract Based conversions. Denominator is "everyone ever tracked as
+    // an intern" = still-interning today + already converted to Employee —
+    // the best available proxy, since employeeCategory has no history and
+    // an intern who left without ever converting isn't visible here.
+    const INTERN_CATEGORIES = ["Intern", "Intern with PPO"];
+    const internConversionsCount = conversions.filter((c) => INTERN_CATEGORIES.includes(c.previousCategory)).length;
+    const currentInternsCount = await Onboarding.countDocuments({
+      employeeCategory: { $in: INTERN_CATEGORIES },
+      joiningStatus: "Joined",
+      exitStatus: { $nin: [...EXITED_STATUS_VALUES] },
+    });
+    const totalInternsTracked = currentInternsCount + internConversionsCount;
+    const internConversionPct = totalInternsTracked > 0
+      ? Math.round((internConversionsCount / totalInternsTracked) * 1000) / 10
+      : 0;
+
     // Quarterly trend — by conversionDate.
     const year = parseInt(req.query.year, 10) || fiscalYearOf(new Date());
     const quarters = [1, 2, 3, 4].map((q) => {
@@ -2637,6 +2657,10 @@ router.get("/analytics/intern-conversions", async (req, res) => {
       year,
       quarters,
       availableYears,
+      internConversionsCount,
+      currentInternsCount,
+      totalInternsTracked,
+      internConversionPct,
     });
   } catch (err) {
     console.error(err);

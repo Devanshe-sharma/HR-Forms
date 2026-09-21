@@ -232,6 +232,8 @@ function DashboardView({ records, employees, loading, onAdd, onSelect }: {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
   const [mode, setMode] = useState('All');
+  const [viewTab, setViewTab] = useState<'table' | 'category' | 'department' | 'employee'>('table');
+  const [drilldownCategory, setDrilldownCategory] = useState<string | null>(null);
 
   const filtered = useMemo(() => records.filter(r => {
     const searchOk = !search
@@ -243,6 +245,50 @@ function DashboardView({ records, employees, loading, onAdd, onSelect }: {
     const modeOk = mode === 'All' || r.escalationFor === mode;
     return searchOk && categoryOk && modeOk;
   }), [records, search, category, mode]);
+
+  // ── Category view: total per category, plus who's behind that total ──────
+  const categoryBreakdown = useMemo(() => {
+    const byCategory = new Map<string, { count: number; people: Map<string, { name: string; department: string; count: number }> }>();
+    CATEGORIES.forEach(c => byCategory.set(c.code, { count: 0, people: new Map() }));
+    records.forEach(r => {
+      const entry = byCategory.get(r.category) || { count: 0, people: new Map() };
+      entry.count += 1;
+      const people = r.targetEmployees.length
+        ? r.targetEmployees.map(t => ({ key: t.employeeId || t.name, name: t.name, department: t.department }))
+        : [{ key: `__none__:${r.escalationFor}`, name: r.escalationFor === 'BO' ? 'No named employee (BO)' : '—', department: r.department }];
+      people.forEach(p => {
+        const existing = entry.people.get(p.key) || { name: p.name, department: p.department, count: 0 };
+        existing.count += 1;
+        entry.people.set(p.key, existing);
+      });
+      byCategory.set(r.category, entry);
+    });
+    return byCategory;
+  }, [records]);
+
+  // ── Department view: how many escalations tie to each department ────────
+  const departmentBreakdown = useMemo(() => {
+    const byDept = new Map<string, number>();
+    records.forEach(r => {
+      const key = r.department || '(none)';
+      byDept.set(key, (byDept.get(key) || 0) + 1);
+    });
+    return Array.from(byDept.entries()).sort((a, b) => b[1] - a[1]);
+  }, [records]);
+
+  // ── Employee view: how many escalations concern each employee ───────────
+  const employeeBreakdown = useMemo(() => {
+    const byEmployee = new Map<string, { name: string; department: string; designation: string; count: number }>();
+    records.forEach(r => {
+      r.targetEmployees.forEach(t => {
+        const key = t.employeeId || t.name;
+        const existing = byEmployee.get(key) || { name: t.name, department: t.department, designation: t.designation, count: 0 };
+        existing.count += 1;
+        byEmployee.set(key, existing);
+      });
+    });
+    return Array.from(byEmployee.values()).sort((a, b) => b.count - a.count);
+  }, [records]);
 
   const kpis = useMemo(() => {
     const isThisMonth = (d?: string) => {
@@ -289,6 +335,27 @@ function DashboardView({ records, employees, loading, onAdd, onSelect }: {
         ))}
       </Box>
 
+      <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+        {([
+          { key: 'table', label: 'All Cases' },
+          { key: 'category', label: 'By Category' },
+          { key: 'department', label: 'By Department' },
+          { key: 'employee', label: 'By Employee' },
+        ] as const).map(t => (
+          <Button key={t.key} onClick={() => { setViewTab(t.key); setDrilldownCategory(null); }}
+            sx={{
+              textTransform: 'none', fontWeight: 600, fontSize: 12.5, borderRadius: 1.5, px: 1.75, py: 0.75,
+              bgcolor: viewTab === t.key ? ACCENT : 'white', color: viewTab === t.key ? 'white' : ACCENT,
+              border: `1px solid ${viewTab === t.key ? ACCENT : '#c7d2fe'}`,
+              '&:hover': { bgcolor: viewTab === t.key ? '#4338ca' : '#eef2ff' },
+            }}>
+            {t.label}
+          </Button>
+        ))}
+      </Box>
+
+      {viewTab === 'table' && (
+        <>
       <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
         <TextField size="small" placeholder="Search case #, name, or description…" value={search}
           onChange={e => setSearch(e.target.value)} sx={{ minWidth: 200 }} InputProps={{ sx: { fontSize: 13 } }} />
@@ -365,6 +432,119 @@ function DashboardView({ records, employees, loading, onAdd, onSelect }: {
           </TableContainer>
         )}
       </Box>
+        </>
+      )}
+
+      {viewTab === 'category' && (
+        <Box>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(3, 1fr)', md: 'repeat(5, 1fr)' }, gap: 1.25, mb: 2 }}>
+            {CATEGORIES.map(c => {
+              const entry = categoryBreakdown.get(c.code);
+              const count = entry?.count || 0;
+              const isSelected = drilldownCategory === c.code;
+              return (
+                <Box key={c.code} onClick={() => setDrilldownCategory(isSelected ? null : c.code)}
+                  sx={{
+                    cursor: 'pointer', bgcolor: isSelected ? '#eef2ff' : 'white',
+                    border: `1px solid ${isSelected ? ACCENT : '#e2e8f0'}`, borderRadius: 2, p: '12px 14px',
+                  }}>
+                  <Typography sx={{ fontSize: 11, fontWeight: 700, color: ACCENT }}>{c.code}</Typography>
+                  <Typography sx={{ fontSize: 11.5, color: 'text.secondary', mb: 0.5 }}>{c.name}</Typography>
+                  <Typography sx={{ fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{count}</Typography>
+                </Box>
+              );
+            })}
+          </Box>
+
+          {drilldownCategory && (
+            <Box sx={{ bgcolor: 'white', borderRadius: 2, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+              <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid #e2e8f0' }}>
+                <Typography fontSize={13} fontWeight={700}>
+                  {drilldownCategory} — {categoryName(drilldownCategory)}: {categoryBreakdown.get(drilldownCategory)?.count || 0} escalation(s)
+                </Typography>
+                <Typography fontSize={11.5} color="text.secondary">People behind this category's escalations</Typography>
+              </Box>
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ '& th': TH }}>
+                    <TableCell>Person</TableCell>
+                    <TableCell>Department</TableCell>
+                    <TableCell align="right"># Escalations</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {Array.from(categoryBreakdown.get(drilldownCategory)?.people.values() || [])
+                    .sort((a, b) => b.count - a.count)
+                    .map(p => (
+                      <TableRow key={p.name + p.department} sx={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <TableCell sx={{ fontSize: 12.5 }}>{p.name}</TableCell>
+                        <TableCell sx={{ fontSize: 12.5 }}>{p.department || '—'}</TableCell>
+                        <TableCell align="right" sx={{ fontSize: 12.5, fontWeight: 700 }}>{p.count}</TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
+            </Box>
+          )}
+        </Box>
+      )}
+
+      {viewTab === 'department' && (
+        <Box sx={{ bgcolor: 'white', borderRadius: 2, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow sx={{ '& th': TH }}>
+                <TableCell>Department</TableCell>
+                <TableCell align="right"># Escalations</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {departmentBreakdown.length === 0 && (
+                <TableRow><TableCell colSpan={2} align="center" sx={{ py: 6, color: 'text.secondary', fontSize: 13 }}>No escalations logged yet</TableCell></TableRow>
+              )}
+              {departmentBreakdown.map(([dept, count]) => (
+                <TableRow key={dept} sx={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <TableCell sx={{ fontSize: 12.5 }}>{dept}</TableCell>
+                  <TableCell align="right" sx={{ fontSize: 12.5, fontWeight: 700 }}>{count}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Box>
+      )}
+
+      {viewTab === 'employee' && (
+        <Box sx={{ bgcolor: 'white', borderRadius: 2, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow sx={{ '& th': TH }}>
+                <TableCell>Employee</TableCell>
+                <TableCell>Department</TableCell>
+                <TableCell>Designation</TableCell>
+                <TableCell align="right"># Escalations</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {employeeBreakdown.length === 0 && (
+                <TableRow><TableCell colSpan={4} align="center" sx={{ py: 6, color: 'text.secondary', fontSize: 13 }}>No escalations logged yet</TableCell></TableRow>
+              )}
+              {employeeBreakdown.map(e => (
+                <TableRow key={e.name + e.department} sx={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <TableCell sx={{ fontSize: 12.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Avatar sx={{ width: 22, height: 22, bgcolor: ACCENT, fontSize: 9.5, fontWeight: 700 }}>{initials(e.name)}</Avatar>
+                      {e.name}
+                    </Box>
+                  </TableCell>
+                  <TableCell sx={{ fontSize: 12.5 }}>{e.department || '—'}</TableCell>
+                  <TableCell sx={{ fontSize: 12.5 }}>{e.designation || '—'}</TableCell>
+                  <TableCell align="right" sx={{ fontSize: 12.5, fontWeight: 700 }}>{e.count}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Box>
+      )}
     </Box>
   );
 }

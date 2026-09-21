@@ -245,6 +245,10 @@ interface InternConversionsResponse {
   year: number;
   quarters: InternConversionQuarterRow[];
   availableYears: number[];
+  internConversionsCount: number;
+  currentInternsCount: number;
+  totalInternsTracked: number;
+  internConversionPct: number;
 }
 
 // Aggregate-only — no employee names, same confidentiality rule as
@@ -965,10 +969,29 @@ const AttritionWidget: React.FC = () => {
     ...["Q1", "Q2", "Q3", "Q4"].filter((q) => hasQuarterStarted(q, year)).map((q) => ({ key: q, label: q })),
   ];
 
-  const focusedQuarter: AttritionQuarterRow | undefined =
-    quarterFocus === "All"
-      ? startedQuarters[startedQuarters.length - 1]
-      : data?.quarters?.find((q) => q.quarter === quarterFocus);
+  // "All Quarters" combines the whole year-to-date rather than just
+  // showing the latest quarter alone: opening headcount is as of the
+  // START of the first started quarter, closing is as of the END of the
+  // most recent one, and employeesLeft is summed across all of them in
+  // between — not the same thing as any single quarter's own numbers.
+  const focusedQuarter: AttritionQuarterRow | undefined = useMemo(() => {
+    if (quarterFocus !== "All") return data?.quarters?.find((q) => q.quarter === quarterFocus);
+    if (startedQuarters.length === 0) return undefined;
+    const opening = startedQuarters[0].opening;
+    const closing = startedQuarters[startedQuarters.length - 1].closing;
+    const employeesLeft = startedQuarters.reduce((s, q) => s + q.employeesLeft, 0);
+    const avgHeadcount = Math.round(((opening + closing) / 2) * 10) / 10;
+    return {
+      quarter: "All Quarters",
+      asOf: startedQuarters[startedQuarters.length - 1].asOf,
+      opening,
+      closing,
+      employeesLeft,
+      avgHeadcount,
+      attritionPct: avgHeadcount > 0 ? Math.round((employeesLeft / avgHeadcount) * 1000) / 10 : 0,
+      retentionPct: opening > 0 ? Math.round(((opening - employeesLeft) / opening) * 1000) / 10 : null,
+    };
+  }, [quarterFocus, startedQuarters, data]);
 
   const pieData = focusedQuarter && focusedQuarter.opening > 0
     ? [
@@ -1294,6 +1317,13 @@ const InternConversionsWidget: React.FC = () => {
               bg="#eef2ff"
               onClick={() => setShowList((v) => !v)}
               active={showList}
+            />
+            <StatCard
+              label="Interns → Employee (%)"
+              value={`${data.internConversionPct}%`}
+              color={INTERN_COLOR}
+              bg="#f5f3ff"
+              hint={`${data.internConversionsCount} converted of ${data.totalInternsTracked} ever tracked as intern (${data.currentInternsCount} still interning)`}
             />
           </Box>
 
@@ -1920,12 +1950,24 @@ const AskedToLeaveWidget: React.FC = () => {
     ...["Q1", "Q2", "Q3", "Q4"].filter((q) => hasQuarterStarted(q, year)).map((q) => ({ key: q, label: q })),
   ];
 
-  // Stat cards follow the quarter/year filters — defaulting to the current
-  // quarter of the current year, not the all-time aggregate.
-  const focusedQuarter: AskedToLeaveQuarterRow | undefined =
-    quarterFocus === "All"
-      ? startedQuarters[startedQuarters.length - 1]
-      : data?.quarters?.find((q) => q.quarter === quarterFocus);
+  // Stat cards follow the quarter/year filters, defaulting to the current
+  // quarter. "All Quarters" means what it says — every started quarter
+  // this year, combined — not just the latest one on its own (that was
+  // the earlier bug here: Q1 had 3 asked-to-leave, Q2 had 1, but picking
+  // only the last-started quarter showed "1" under "All Quarters" instead
+  // of the true combined 4).
+  const focusedQuarter: AskedToLeaveQuarterRow | undefined = useMemo(() => {
+    if (quarterFocus !== "All") return data?.quarters?.find((q) => q.quarter === quarterFocus);
+    if (startedQuarters.length === 0) return undefined;
+    const totalExits = startedQuarters.reduce((s, q) => s + q.totalExits, 0);
+    const askedToLeaveCount = startedQuarters.reduce((s, q) => s + q.askedToLeaveCount, 0);
+    return {
+      quarter: "All Quarters",
+      totalExits,
+      askedToLeaveCount,
+      askedToLeavePct: totalExits > 0 ? Math.round((askedToLeaveCount / totalExits) * 1000) / 10 : 0,
+    };
+  }, [quarterFocus, startedQuarters, data]);
   const qTotalExits = focusedQuarter?.totalExits ?? 0;
   const qAskedToLeave = focusedQuarter?.askedToLeaveCount ?? 0;
   const qAskedToLeavePct = focusedQuarter?.askedToLeavePct ?? 0;
@@ -2039,12 +2081,21 @@ const ReferredWidget: React.FC = () => {
     ...["Q1", "Q2", "Q3", "Q4"].filter((q) => hasQuarterStarted(q, year)).map((q) => ({ key: q, label: q })),
   ];
 
-  // Stat cards follow the quarter/year filters — defaulting to the current
-  // quarter of the current year, not a running year-to-date total.
-  const focusedQuarter: ReferredQuarterRow | undefined =
-    quarterFocus === "All"
-      ? startedQuarters[startedQuarters.length - 1]
-      : data?.quarters?.find((q) => q.quarter === quarterFocus);
+  // Stat cards follow the quarter/year filters, defaulting to the current
+  // quarter. "All Quarters" combines every started quarter this year
+  // rather than just showing the latest one on its own.
+  const focusedQuarter: ReferredQuarterRow | undefined = useMemo(() => {
+    if (quarterFocus !== "All") return data?.quarters?.find((q) => q.quarter === quarterFocus);
+    if (startedQuarters.length === 0) return undefined;
+    const total = startedQuarters.reduce((s, q) => s + q.total, 0);
+    const referredCount = startedQuarters.reduce((s, q) => s + q.referredCount, 0);
+    return {
+      quarter: "All Quarters",
+      total,
+      referredCount,
+      referredPct: total > 0 ? Math.round((referredCount / total) * 1000) / 10 : 0,
+    };
+  }, [quarterFocus, startedQuarters, data]);
   const qTotal = focusedQuarter?.total ?? 0;
   const qReferred = focusedQuarter?.referredCount ?? 0;
   const qReferredPct = focusedQuarter?.referredPct ?? 0;
@@ -2154,12 +2205,21 @@ const OfferDropoutWidget: React.FC = () => {
     ...["Q1", "Q2", "Q3", "Q4"].filter((q) => hasQuarterStarted(q, year)).map((q) => ({ key: q, label: q })),
   ];
 
-  // Stat cards follow the quarter/year filters — defaulting to the current
-  // quarter of the current year, not a running year-to-date total.
-  const focusedQuarter: OfferDropoutQuarterRow | undefined =
-    quarterFocus === "All"
-      ? startedQuarters[startedQuarters.length - 1]
-      : data?.quarters?.find((q) => q.quarter === quarterFocus);
+  // Stat cards follow the quarter/year filters, defaulting to the current
+  // quarter. "All Quarters" combines every started quarter this year
+  // rather than just showing the latest one on its own.
+  const focusedQuarter: OfferDropoutQuarterRow | undefined = useMemo(() => {
+    if (quarterFocus !== "All") return data?.quarters?.find((q) => q.quarter === quarterFocus);
+    if (startedQuarters.length === 0) return undefined;
+    const total = startedQuarters.reduce((s, q) => s + q.total, 0);
+    const dropoutCount = startedQuarters.reduce((s, q) => s + q.dropoutCount, 0);
+    return {
+      quarter: "All Quarters",
+      total,
+      dropoutCount,
+      dropoutPct: total > 0 ? Math.round((dropoutCount / total) * 1000) / 10 : 0,
+    };
+  }, [quarterFocus, startedQuarters, data]);
   const qTotal = focusedQuarter?.total ?? 0;
   const qDropout = focusedQuarter?.dropoutCount ?? 0;
   const qDropoutPct = focusedQuarter?.dropoutPct ?? 0;
@@ -2279,12 +2339,29 @@ const DaysToHireWidget: React.FC = () => {
     ...["Q1", "Q2", "Q3", "Q4"].filter((q) => hasQuarterStarted(q, year)).map((q) => ({ key: q, label: q })),
   ];
 
-  // Stat cards follow the quarter/year filters — defaulting to the current
-  // quarter of the current year, not a year-to-date average.
-  const focusedQuarterRaw: DaysToHireQuarterRow | undefined =
-    quarterFocus === "All"
-      ? startedQuartersRaw[startedQuartersRaw.length - 1]
-      : data?.quarters?.find((q) => q.quarter === quarterFocus);
+  // Stat cards follow the quarter/year filters, defaulting to the current
+  // quarter. "All Quarters" combines every started quarter this year — a
+  // count-weighted average, not just the latest quarter's own average —
+  // rather than silently showing one quarter's number under an "All" label.
+  const combineDaysBucket = (key: "overall" | "fresher" | "experienced"): DaysToHireBucket => {
+    let totalDays = 0, totalCount = 0;
+    for (const q of startedQuartersRaw) {
+      const b = q[key];
+      if (b.count > 0) { totalDays += b.avgDays! * b.count; totalCount += b.count; }
+    }
+    return { avgDays: totalCount > 0 ? Math.round((totalDays / totalCount) * 10) / 10 : null, count: totalCount };
+  };
+  const focusedQuarterRaw: DaysToHireQuarterRow | undefined = useMemo(() => {
+    if (quarterFocus !== "All") return data?.quarters?.find((q) => q.quarter === quarterFocus);
+    if (startedQuartersRaw.length === 0) return undefined;
+    return {
+      quarter: "All Quarters",
+      overall: combineDaysBucket("overall"),
+      fresher: combineDaysBucket("fresher"),
+      experienced: combineDaysBucket("experienced"),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quarterFocus, startedQuartersRaw, data]);
   const focusedOverall = focusedQuarterRaw?.overall ?? { avgDays: null, count: 0 };
   const focusedFresher = focusedQuarterRaw?.fresher ?? { avgDays: null, count: 0 };
   const focusedExperienced = focusedQuarterRaw?.experienced ?? { avgDays: null, count: 0 };
@@ -2551,8 +2628,13 @@ async function fetchReferredSummary(): Promise<CardSummary> {
   const res = await axios.get(`${API}/onboarding/analytics/referred`, { params: { year: fy, _t: Date.now() } });
   const quarters: ReferredQuarterRow[] = res.data?.quarters ?? [];
   const latest = latestStartedQuarter(quarters, now, fy);
-  if (!latest || latest.total === 0) return { value: "—", sublabel: "No one joined this quarter" };
-  return { value: `${latest.referredPct}%`, sublabel: `${latest.referredCount} of ${latest.total} joined — ${latest.quarter} ${fyLabel(fy)}` };
+  // Always shows a real number — 0% (not a "—" placeholder) when no one
+  // joined this quarter or no one was referred, so the card never reads as
+  // "broken" or "no data" when the true answer is just zero.
+  const total = latest?.total ?? 0;
+  const referredCount = latest?.referredCount ?? 0;
+  const pct = latest?.referredPct ?? 0;
+  return { value: `${pct}%`, sublabel: `${referredCount} of ${total} joined — ${latest?.quarter ?? currentQuarterLabel()} ${fyLabel(fy)}` };
 }
 
 async function fetchDaysToHireSummary(level: "overall" | "fresher" | "experienced"): Promise<CardSummary> {
@@ -2608,6 +2690,18 @@ async function fetchInternsCombinedSummary(): Promise<CardSummary> {
   return { value: `${internPct}%`, sublabel: `${internsCount} of ${total} · ${conversions} converted to FTE` };
 }
 
+// Distinct from the current-composition "Interns (%)" card above — this is
+// a conversion RATE: of everyone ever tracked as an intern (still
+// interning today + already converted), what share made it to Employee.
+async function fetchInternConversionRateSummary(): Promise<CardSummary> {
+  const res = await axios.get(`${API}/onboarding/analytics/intern-conversions`, { params: { _t: Date.now() } });
+  const pct = res.data?.internConversionPct ?? 0;
+  const converted = res.data?.internConversionsCount ?? 0;
+  const trackedTotal = res.data?.totalInternsTracked ?? 0;
+  const stillInterning = res.data?.currentInternsCount ?? 0;
+  return { value: `${pct}%`, sublabel: `${converted} of ${trackedTotal} ever tracked as intern (${stillInterning} still interning)` };
+}
+
 // Offer dropout + referred-hire rate, combined into one "recruitment
 // funnel" card — the mockup's "0 of 11 offers · 0% referred".
 async function fetchRecruitmentFunnelSummary(): Promise<CardSummary> {
@@ -2621,13 +2715,15 @@ async function fetchRecruitmentFunnelSummary(): Promise<CardSummary> {
   const referredQuarters: ReferredQuarterRow[] = referredRes.data?.quarters ?? [];
   const dropoutLatest = latestStartedQuarter(dropoutQuarters, now, fy);
   const referredLatest = latestStartedQuarter(referredQuarters, now, fy);
-  if (!dropoutLatest || dropoutLatest.total === 0) {
-    return { value: "—", sublabel: "No onboardings recorded this quarter" };
-  }
+  // Always a real number — 0% (never a "—" placeholder) when nothing
+  // happened this quarter, for both halves of the funnel independently.
+  const dropoutPct = dropoutLatest?.dropoutPct ?? 0;
+  const dropoutCount = dropoutLatest?.dropoutCount ?? 0;
+  const totalOffers = dropoutLatest?.total ?? 0;
   const referredPct = referredLatest?.referredPct ?? 0;
   return {
-    value: `${dropoutLatest.dropoutPct}% dropout`,
-    sublabel: `${dropoutLatest.dropoutCount} of ${dropoutLatest.total} offers · ${referredPct}% referred — ${dropoutLatest.quarter} ${fyLabel(fy)}`,
+    value: `${dropoutPct}% dropout`,
+    sublabel: `${dropoutCount} of ${totalOffers} offers · ${referredPct}% referred — ${dropoutLatest?.quarter ?? currentQuarterLabel()} ${fyLabel(fy)}`,
   };
 }
 
@@ -2676,7 +2772,7 @@ async function fetchCostPerHireSummary(): Promise<CardSummary> {
 // cards. Clicking a card (where one has a detail view) opens that area's
 // full existing widget inside a modal, unchanged from before.
 
-type CardKey = "teeth" | "gender" | "interns" | "internConversions" | "increments" | "pip" | "askedToLeave" | "referred" | "offerDropout" | "attrition" | "daysToHireOverall" | "recruitment" | "onboarding" | "exit" | "avgTenure" | "costPerHire" | "salaryRevisionTimeliness" | "trainingsConducted" | "employeeConfirmationTimeliness";
+type CardKey = "teeth" | "gender" | "interns" | "internConversions" | "internConversionRate" | "increments" | "pip" | "askedToLeave" | "referred" | "offerDropout" | "attrition" | "daysToHireOverall" | "recruitment" | "onboarding" | "exit" | "avgTenure" | "costPerHire" | "salaryRevisionTimeliness" | "trainingsConducted" | "employeeConfirmationTimeliness";
 
 type CardDef = {
   key: CardKey;
@@ -2705,6 +2801,10 @@ const HRAnalyticsDashboard: React.FC = () => {
         { key: "gender", title: "Gender Ratio (Female)", icon: <WcIcon />, color: "#db2777", bg: "#fdf2f8", fetchSummary: fetchGenderSummary },
         // Interns (%) + Intern→Employee conversions merged into one card.
         { key: "interns", title: "Interns (%)", icon: <SchoolIcon />, color: INTERN_COLOR, bg: "#f5f3ff", fetchSummary: fetchInternsCombinedSummary },
+        // Kept as its own card, separate from "Interns (%)" above — that
+        // one is current workforce composition, this is a conversion rate
+        // (of everyone ever an intern, what share became an Employee).
+        { key: "internConversionRate", title: "Interns Converted to Employee (%)", icon: <SwapHorizIcon />, color: INTERN_COLOR, bg: "#f5f3ff", fetchSummary: fetchInternConversionRateSummary },
         { key: "avgTenure", title: "Avg Tenure", icon: <AccessTimeIcon />, color: "#0d9488", bg: "#f0fdfa", fetchSummary: fetchAvgTenureSummary, clickable: false, note: "New — suggested addition" },
       ],
     },
@@ -2820,7 +2920,7 @@ const HRAnalyticsDashboard: React.FC = () => {
           {activeCard === "teeth" && <TeethToTailWidget />}
           {activeCard === "gender" && <GenderDistributionWidget />}
           {activeCard === "interns" && <InternsWidget />}
-          {activeCard === "internConversions" && <InternConversionsWidget />}
+          {(activeCard === "internConversions" || activeCard === "internConversionRate") && <InternConversionsWidget />}
           {activeCard === "increments" && <IncrementAnalyticsWidget />}
           {activeCard === "salaryRevisionTimeliness" && <SalaryRevisionTimelinessWidget />}
           {activeCard === "pip" && <PipAnalyticsWidget />}
