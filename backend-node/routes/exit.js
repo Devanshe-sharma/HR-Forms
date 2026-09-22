@@ -917,6 +917,14 @@ router.patch("/:id/approve", async (req, res) => {
     doc.fmsStatus = deriveFmsStatus(doc.exitStatus, tasksNotDone);
 
     await doc.save();
+    // Approval is the moment the send gate in triggerNewExit actually opens
+    // (see that file's comment) — but nothing was calling it here, so every
+    // one-time email flag ticked back at creation (autoExitEmail etc.,
+    // already stamped "sent" at that point even though the send itself was
+    // skipped since hr_approved_at was still null) silently never fired.
+    // Firing it now, exactly once per record (this route 400s on a second
+    // approve attempt), is the actual intended first real send.
+    triggerNewExit(doc.toObject()).catch(console.error);
     res.json({ success: true, data: doc });
   } catch (err) {
     console.error(err);
