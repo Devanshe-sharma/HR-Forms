@@ -4,6 +4,7 @@ import {
   Box, Typography, Chip, CircularProgress, Alert, Modal, Divider,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Button, TextField, Autocomplete, Stack, IconButton,
+  Select, MenuItem, FormControl, InputLabel,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -45,6 +46,9 @@ interface OutOfOfficeRecord {
   ccEmployees: CcEmployee[];
   informedStatus: 'advance' | 'late_before_start' | 'late_after_start';
   informedLabel: string;
+  plannedStatus: '' | 'Planned' | 'Not Planned';
+  lateReason: string;
+  unplannedKnownAt?: string;
   createdAt: string;
 }
 
@@ -164,6 +168,28 @@ function OutOfOfficeDetailModal({ record, onClose }: { record: OutOfOfficeRecord
               <Chip size="small" label={record.informedLabel} sx={{ fontSize: 11, height: 'auto', py: 0.5, whiteSpace: 'normal',
                 bgcolor: '#f8fafc', color: informedColor(record.informedStatus), border: `1px solid ${informedColor(record.informedStatus)}30` }} />
             } />
+
+            {record.plannedStatus && (
+              <>
+                <Divider sx={{ my: 1.5 }} />
+                <DetailRow label="Planned in Advance?" value={
+                  <Chip size="small" label={record.plannedStatus} sx={{ fontSize: 11, height: 20,
+                    bgcolor: record.plannedStatus === 'Planned' ? '#fef2f2' : '#f8fafc',
+                    color: record.plannedStatus === 'Planned' ? '#dc2626' : '#0f172a' }} />
+                } />
+                {record.plannedStatus === 'Planned' && (
+                  <Typography fontSize={11.5} color="text.secondary" mt={0.5}>
+                    A Timeliness escalation was raised automatically for this late filing.
+                  </Typography>
+                )}
+                {record.plannedStatus === 'Not Planned' && (
+                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5, mt: 1 }}>
+                    <DetailRow label="Why filed late" value={record.lateReason || '—'} />
+                    <DetailRow label="When it was decided" value={fmtDateTime24(record.unplannedKnownAt)} />
+                  </Box>
+                )}
+              </>
+            )}
 
             <Divider sx={{ my: 1.5 }} />
             <DetailRow label="Keep in Cc?" value={
@@ -340,16 +366,36 @@ function OutOfOfficeFormModal({ open, employees, onDone, onClose, showToast }: {
   const [upToTime, setUpToTime] = useState('');
   const [reason, setReason] = useState('');
   const [ccEmployees, setCcEmployees] = useState<Employee[]>([]);
+  // Only asked when the entry is late (< 24h before start, or after start) —
+  // mirrors the backend's own informedStatus check in routes/outOfOffice.js.
+  const [plannedStatus, setPlannedStatus] = useState<'' | 'Planned' | 'Not Planned'>('');
+  const [lateReason, setLateReason] = useState('');
+  const [unplannedKnownAt, setUnplannedKnownAt] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const isLate = useMemo(() => {
+    if (!oooDate || !startTime) return false;
+    const start = new Date(`${oooDate}T${startTime}:00`);
+    if (Number.isNaN(start.getTime())) return false;
+    const diffDays = (start.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+    return diffDays < 1;
+  }, [oooDate, startTime]);
 
   // Reset the form and stamp the "logged at" time fresh each time the popup opens.
   useEffect(() => {
     if (!open) return;
     setLoggedAt(new Date());
     setPerson(null); setOooDate(''); setStartTime(''); setUpToDate(''); setUpToTime('');
-    setReason(''); setCcEmployees([]); setError(null);
+    setReason(''); setCcEmployees([]); setPlannedStatus(''); setLateReason(''); setUnplannedKnownAt(''); setError(null);
   }, [open]);
+
+  // If editing the date/time turns a late entry back into an on-time one,
+  // drop the now-irrelevant planned/not-planned answers rather than silently
+  // submitting stale ones.
+  useEffect(() => {
+    if (!isLate) { setPlannedStatus(''); setLateReason(''); setUnplannedKnownAt(''); }
+  }, [isLate]);
 
   // "Up to" date defaults to the out-of-office date so single-day entries
   // (the common case) need no extra input — only touched if the user hasn't
@@ -365,6 +411,11 @@ function OutOfOfficeFormModal({ open, employees, onDone, onClose, showToast }: {
     if (!oooDate || !startTime) { setError('Enter the out of office date and start time.'); return; }
     if (!upToTime) { setError('Enter the time up to.'); return; }
     if (!reason.trim()) { setError('Enter a reason.'); return; }
+    if (isLate && !plannedStatus) { setError('This is being filed late — select whether it was planned or not.'); return; }
+    if (isLate && plannedStatus === 'Not Planned') {
+      if (!lateReason.trim()) { setError('Enter why this was filed late.'); return; }
+      if (!unplannedKnownAt) { setError('Enter when this was decided.'); return; }
+    }
 
     const startDateTime = new Date(`${oooDate}T${startTime}:00`);
     if (Number.isNaN(startDateTime.getTime())) { setError('Invalid date/time.'); return; }
@@ -388,9 +439,24 @@ function OutOfOfficeFormModal({ open, employees, onDone, onClose, showToast }: {
         upToTime,
         reason: reason.trim(),
         ccEmployees: ccEmployees.map(e => ({ employeeId: e.employee_id, name: e.full_name, email: e.official_email || e.email })),
+        ...(isLate ? {
+          plannedStatus,
+          ...(plannedStatus === 'Not Planned' ? {
+            lateReason: lateReason.trim(),
+            unplannedKnownAt: new Date(unplannedKnownAt).toISOString(),
+          } : {}),
+        } : {}),
       };
       const { data } = await axios.post(API, payload);
-      if (data.success) { showToast('Out of office logged — HR has been notified', 'success'); onDone(); }
+      if (data.success) {
+        showToast(
+          plannedStatus === 'Planned'
+            ? 'Out of office logged — filed late, an escalation has been raised'
+            : 'Out of office logged — HR has been notified',
+          'success'
+        );
+        onDone();
+      }
       else showToast(data.message || 'Failed', 'error');
     } catch (e: any) { showToast(e?.response?.data?.message || 'Failed to submit', 'error'); }
     finally { setBusy(false); }
@@ -451,6 +517,38 @@ function OutOfOfficeFormModal({ open, employees, onDone, onClose, showToast }: {
                 inputProps={{ step: 300 }} label="Time" />
             </Box>
           </Box>
+
+          {isLate && (
+            <Box sx={{ bgcolor: '#fffbeb', border: '1px solid #fde68a', borderRadius: 1.5, p: 1.75 }}>
+              <Typography fontSize={12.5} fontWeight={700} color="#92400e" mb={1}>
+                This is being filed late (less than 24 hours before start, or after it's already started).
+              </Typography>
+              <FormControl size="small" fullWidth sx={{ mb: plannedStatus ? 1.5 : 0, bgcolor: 'white' }}>
+                <InputLabel>Was this planned in advance? *</InputLabel>
+                <Select value={plannedStatus} label="Was this planned in advance? *"
+                  onChange={e => setPlannedStatus(e.target.value as 'Planned' | 'Not Planned')}>
+                  <MenuItem value="Planned">Planned</MenuItem>
+                  <MenuItem value="Not Planned">Not Planned</MenuItem>
+                </Select>
+              </FormControl>
+
+              {plannedStatus === 'Planned' && (
+                <Typography fontSize={11.5} color="#92400e">
+                  This will be marked as filed late, and a Timeliness escalation will be raised automatically against {person?.full_name || 'this person'}.
+                </Typography>
+              )}
+
+              {plannedStatus === 'Not Planned' && (
+                <Stack spacing={1.5}>
+                  <TextField label="Why did you file this late? *" multiline rows={2} size="small" value={lateReason}
+                    onChange={e => setLateReason(e.target.value)} fullWidth sx={{ bgcolor: 'white' }} />
+                  <TextField type="datetime-local" size="small" fullWidth value={unplannedKnownAt}
+                    onChange={e => setUnplannedKnownAt(e.target.value)} InputLabelProps={{ shrink: true }}
+                    label="When was it decided? *" sx={{ bgcolor: 'white' }} />
+                </Stack>
+              )}
+            </Box>
+          )}
 
           <TextField label="Reason *" multiline rows={3} size="small" value={reason}
             onChange={e => setReason(e.target.value)} fullWidth />

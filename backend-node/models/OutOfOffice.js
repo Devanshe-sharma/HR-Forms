@@ -34,6 +34,14 @@ const OutOfOfficeSchema = new Schema(
       required: true,
     },
     informedLabel: { type: String, trim: true, default: '' },
+
+    // Only asked/set when informedStatus isn't 'advance' (see
+    // routes/outOfOffice.js). 'Planned' auto-raises a Timeliness escalation
+    // against the person; 'Not Planned' just records why it was late and
+    // when the filer found out, no escalation.
+    plannedStatus: { type: String, enum: ['', 'Planned', 'Not Planned'], default: '' },
+    lateReason: { type: String, trim: true, default: '' },
+    unplannedKnownAt: { type: Date, default: null },
   },
   {
     timestamps: true,

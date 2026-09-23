@@ -187,4 +187,33 @@ router.put('/:id', authenticate, async (req, res) => {
   }
 });
 
+// DELETE /api/escalations/:id — only the creator can delete their own
+// escalation, same trust boundary as edit. Reverts the escalationScore
+// point(s) it took off its target employee(s) before removing the doc —
+// the point every other write path (create/edit) keeps in sync, but a raw
+// DB deletion never would.
+router.delete('/:id', authenticate, async (req, res) => {
+  try {
+    const doc = await Escalation.findById(req.params.id);
+    if (!doc) return res.status(404).json({ success: false, message: 'Not found' });
+    if (!canEditEscalation(req, doc)) {
+      return res.status(403).json({ success: false, message: 'You do not have permission to delete this escalation.' });
+    }
+
+    if (doc.targetEmployees.length) {
+      await Onboarding.updateMany(
+        { _id: { $in: doc.targetEmployees.map(t => t.employeeId) } },
+        { $inc: { escalationScore: 1 } }
+      );
+    }
+
+    await Escalation.deleteOne({ _id: doc._id });
+
+    res.json({ success: true, message: `${doc.caseNumber} deleted.` });
+  } catch (err) {
+    console.error('Escalation delete error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 module.exports = router;

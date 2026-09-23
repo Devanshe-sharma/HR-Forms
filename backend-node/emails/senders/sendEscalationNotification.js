@@ -4,14 +4,14 @@ const { CATEGORY_NAMES } = require('../../models/Escalation');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://hr.briskolive.com';
 
-// TEMP kill switch — sending is off for now (asked to hold off on 2026-09-11,
-// asked again on 2026-09-14 to hold until the recipient list is confirmed).
-// Flip to true (or delete this guard) to actually dispatch mail again.
-const SEND_ENABLED = false;
+// Sending is live — asked to start 2026-09-23. (Was off from 2026-09-11
+// through 2026-09-23 while the recipient list was being worked out.)
+const SEND_ENABLED = true;
 
 // The Management group always gets every escalation — hardcoded here, not
 // dependent on any department/role lookup. Override via env if the roster
-// changes without needing a code deploy.
+// changes without needing a code deploy. Removed 2026-09-23, re-added same
+// day per explicit request.
 const MANAGEMENT_GROUP_EMAILS = (process.env.ESCALATION_MANAGEMENT_EMAILS ||
   'archana.prem@briskolive.com,amitmathur@briskolive.com,sunil.prem@briskolive.com')
   .split(',').map(s => s.trim()).filter(Boolean);
@@ -24,7 +24,8 @@ const BCC_EMAIL = process.env.ESCALATION_BCC_EMAIL || 'software.developer@brisko
 // To:  the employee(s) the escalation concerns (falls back to the
 //      Management group when there's no named employee, e.g. BO mode).
 // Cc:  the hardcoded Management group, plus whoever the filer
-//      additionally picked in the form — minus anyone already in To.
+//      additionally picked in the form's "Also notify" field — minus
+//      anyone already in To.
 // Bcc: BCC_EMAIL, the same address on every single mail, always.
 function buildRecipients(escalation) {
   const targetEmails = escalation.targetEmployees.map(t => t.email).filter(Boolean);
@@ -40,6 +41,11 @@ function buildRecipients(escalation) {
 
 async function sendEscalationNotification(escalation) {
   const { to, cc, bcc } = buildRecipients(escalation);
+
+  if (!to) {
+    console.warn(`[sendEscalationNotification] No recipients for ${escalation.caseNumber} (no named employee and nobody in "Also notify") — skipping.`);
+    return;
+  }
 
   const { subject, html } = escalationNotificationTemplate({
     caseNumber: escalation.caseNumber,

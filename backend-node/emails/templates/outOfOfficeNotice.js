@@ -26,6 +26,20 @@ function outOfOfficeNoticeTemplate(doc) {
   const recordsLink = `${FRONTEND_URL}/attendance?tab=out-of-office`;
   const informedColor = doc.informedStatus === 'advance' ? '#2563eb' : '#dc2626';
 
+  // Only set at all when the entry was late (see routes/outOfOffice.js) —
+  // an on-time entry never asked the planned/not-planned question.
+  const plannedColor = doc.plannedStatus === 'Planned' ? '#dc2626' : '#059669';
+  const plannedLine = doc.plannedStatus
+    ? `<br>Planned in Advance: <b><span style="color:${plannedColor}">${doc.plannedStatus}</span></b>`
+    : '';
+  const lateDetailLines = doc.plannedStatus === 'Not Planned'
+    ? `<br>Why Filed Late: <b>${doc.lateReason || '-'}</b>
+       <br>When It Was Decided: <b>${doc.unplannedKnownAt ? formatDateIST(doc.unplannedKnownAt) : '-'}</b>`
+    : '';
+  const escalationLine = doc.plannedStatus === 'Planned'
+    ? `<br><span style="color:#dc2626;">An escalation has been raised against <b>${doc.person.name}</b>.</span>`
+    : '';
+
   const subject = `Out-of-Office: ${doc.person.name}, ${dateStr}, ${timing}, ${doc.reason} (Informed ${doc.informedLabel})`;
 
   const html = `
@@ -36,6 +50,9 @@ function outOfOfficeNoticeTemplate(doc) {
       <br>Timing: <b>${timing}</b>
       <br>Reason: <b>${doc.reason}</b>
       <br>Informed: <b><span style="color:${informedColor}">${doc.informedLabel}</span></b>
+      ${plannedLine}
+      ${lateDetailLines}
+      ${escalationLine}
       <br>Link to Out-of-Office Records: <a href="${recordsLink}" target="_blank">${recordsLink}</a>
     </p>
     ${signature()}
