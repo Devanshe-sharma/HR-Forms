@@ -57,7 +57,6 @@ interface OnboardingEmployee {
   department: string;
   designation: string;
   official_email: string;
-  email: string;
 }
 
 export default function UserManagement() {
@@ -120,7 +119,7 @@ export default function UserManagement() {
   // bulk-create script uses (matched by email).
   const existingUserEmails = new Set(users.map(u => u.email.trim().toLowerCase()));
   const availableEmployees = employees.filter(e => {
-    const em = (e.official_email || e.email || '').trim().toLowerCase();
+    const em = (e.official_email || '').trim().toLowerCase();
     return em && !existingUserEmails.has(em);
   });
 
@@ -136,7 +135,7 @@ export default function UserManagement() {
     if (!u.employeeId) return null;
     const matches = employees.filter(e => e.employee_id === u.employeeId || e.emp_id === u.employeeId);
     if (matches.length !== 1) return null;
-    const officialEmail = (matches[0].official_email || matches[0].email || '').trim();
+    const officialEmail = (matches[0].official_email || '').trim();
     return officialEmail || null;
   };
   const isEmailOutOfSync = (u: AppUser): string | null => {
@@ -189,7 +188,7 @@ export default function UserManagement() {
   const findUserForEmployee = (emp: OnboardingEmployee): AppUser | undefined => {
     const idMatches = users.filter(u => u.employeeId && (u.employeeId === emp.employee_id || u.employeeId === emp.emp_id));
     if (idMatches.length === 1) return idMatches[0];
-    const emailKey = (emp.official_email || emp.email || '').trim().toLowerCase();
+    const emailKey = (emp.official_email || '').trim().toLowerCase();
     return users.find(u => !!emailKey && u.email.trim().toLowerCase() === emailKey);
   };
 
@@ -197,7 +196,7 @@ export default function UserManagement() {
     setSelectedEmployee(emp);
     if (emp) {
       setName(emp.full_name);
-      setEmail(emp.official_email || emp.email || '');
+      setEmail(emp.official_email || '');
       // Always link by the Onboarding record's own Mongo _id, never empId —
       // empId isn't reliably unique (see findUserForEmployee above), and an
       // id-based link that isn't guaranteed unique is what caused this bug.
@@ -364,7 +363,7 @@ export default function UserManagement() {
                     <TableCell>{emp.full_name}</TableCell>
                     <TableCell>{emp.department}</TableCell>
                     <TableCell>{emp.designation}</TableCell>
-                    <TableCell>{u ? u.email : (emp.official_email || emp.email || '—')}</TableCell>
+                    <TableCell>{u ? u.email : (emp.official_email || '—')}</TableCell>
                     {u ? renderAccountCells(u) : (
                       <>
                         <TableCell colSpan={3}>

@@ -180,23 +180,30 @@ export default function EmployeeContractsPage() {
     ANNUAL_CTC: 'annual_ctc',
   };
 
-  const letterItems = [
-    { type: 'salary-revision', label: 'Employee Letter' },
-    { type: 'confirmation', label: 'Confirmation Letter' },
-    { type: 'consultant-contract', label: 'Consultant Contract' },
-    { type: 'salary-breakdown', label: 'Salary Breakdown' },
-    { type: 'non-compete-agreement', label: 'Non-Compete Agreement' },
-    { type: 'non-disclosure-agreement', label: 'Non Disclosure Agreement' },
-    { type: 'code-of-ethics', label: 'Code of Ethics' },
-    { type: 'internship-certificate', label: 'Internship Certificate' },
-    { type: 'experience-certificate', label: 'Experience Certificate' },
+  const isInternCategory = (category: string) => /intern/i.test(category || '');
+
+  // isAvailable mirrors Profile.tsx's OFFICIAL_LETTER_TYPES / EmployeesPage.tsx's
+  // GENERATED_LETTER_TYPES: full-time employees get the Appointment Letter
+  // (which now also carries the Code of Ethics, Non-Disclosure and
+  // Non-Compete Agreements as part of the same document) and Salary
+  // Breakdown before/at joining; interns get the Consultant Contract
+  // instead, and an Internship Certificate rather than an Experience
+  // Certificate on exit.
+  const letterItems: { type: string; label: string; directLink?: string; isAvailable: (e: Employee) => boolean }[] = [
+    { type: 'offer-letter', label: 'Offer Letter', isAvailable: () => true },
+    { type: 'Appointment-letter', label: 'Appointment Letter', isAvailable: (e) => !!e.joining_date && !isInternCategory(e.employee_category) },
+    { type: 'salary-breakdown', label: 'Salary Breakdown', isAvailable: (e) => !!e.joining_date && !isInternCategory(e.employee_category) },
+    { type: 'consultant-contract', label: 'Consultant Contract', isAvailable: (e) => /consult/i.test(e.employee_category || '') || isInternCategory(e.employee_category) },
+    { type: 'salary-revision', label: 'Employee Letter', isAvailable: () => true },
+    { type: 'confirmation', label: 'Confirmation Letter', isAvailable: () => true },
+    { type: 'internship-certificate', label: 'Internship Certificate', isAvailable: (e) => isInternCategory(e.employee_category) && e.is_exited },
+    { type: 'experience-certificate', label: 'Experience Certificate', isAvailable: (e) => e.is_exited && !isInternCategory(e.employee_category) },
     {
       type: 'exit-clearance',
       label: 'Exit Clearance Form',
       directLink: 'https://docs.google.com/document/d/1d8MFqQAISbuOwP0SGM3IWBWf2J2V9s1O/edit',
+      isAvailable: (e) => e.is_exited,
     },
-    { type: 'Appointment-letter', label: 'Appointment Letter' },
-    { type: 'offer-letter', label: 'Offer Letter' },
   ];
 
   return (
@@ -408,7 +415,7 @@ export default function EmployeeContractsPage() {
                       className="hidden absolute right-0 z-10 mt-2 w-72 origin-top-right rounded-lg bg-white shadow-xl ring-1 ring-slate-200 focus:outline-none overflow-hidden"
                     >
                       <div className="py-1 max-h-80 overflow-y-auto">
-                        {letterItems.map((item) => (
+                        {letterItems.filter((item) => item.isAvailable(selectedEmployee)).map((item) => (
                           <button
                             key={item.type}
                             onClick={() => {

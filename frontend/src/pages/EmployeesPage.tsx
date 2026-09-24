@@ -164,24 +164,29 @@ const PROFESSIONAL_DOCUMENT_TYPES: { key: string; label: string }[] = [
   { key: 'experienceLetter', label: 'Experience Letter' },
 ];
 
+const isInternCategory = (category: string) => /intern/i.test(category || '');
+
 // Every letter template the generator (pages/EmployeeLetter.tsx →
 // pages/LetterTemplate.tsx, route "/letter") can produce — kept in sync
-// with that file's own `letterItems` list. All but Exit Clearance render
-// live from Onboarding data keyed by `type` + `empId`; Exit Clearance is a
-// static external form instead (`directLink`), same as in that generator.
-const GENERATED_LETTER_TYPES: { type: string; label: string; directLink?: string }[] = [
-  { type: 'offer-letter', label: 'Offer Letter' },
-  { type: 'Appointment-letter', label: 'Appointment Letter' },
-  { type: 'salary-revision', label: 'Increment Letter' },
-  { type: 'confirmation', label: 'Confirmation Letter' },
-  { type: 'consultant-contract', label: 'Consultant Contract' },
-  { type: 'salary-breakdown', label: 'Salary Breakdown' },
-  { type: 'non-compete-agreement', label: 'Non-Compete Agreement' },
-  { type: 'non-disclosure-agreement', label: 'Non-Disclosure Agreement' },
-  { type: 'code-of-ethics', label: 'Code of Ethics' },
-  { type: 'internship-certificate', label: 'Internship Certificate' },
-  { type: 'experience-certificate', label: 'Experience Certificate' },
-  { type: 'exit-clearance', label: 'Exit Clearance Form', directLink: 'https://docs.google.com/document/d/1d8MFqQAISbuOwP0SGM3IWBWf2J2V9s1O/edit' },
+// with that file's own `letterItems` list and with Profile.tsx's own
+// OFFICIAL_LETTER_TYPES list. All but Exit Clearance render live from
+// Onboarding data keyed by `type` + `empId`; Exit Clearance is a static
+// external form instead (`directLink`), same as in that generator.
+// `isAvailable` mirrors Profile.tsx: full-time employees get the
+// Appointment Letter (which now also carries the Code of Ethics,
+// Non-Disclosure and Non-Compete Agreements as part of the same document)
+// and Salary Breakdown; interns get the Consultant Contract instead, and
+// an Internship Certificate rather than an Experience Certificate on exit.
+const GENERATED_LETTER_TYPES: { type: string; label: string; directLink?: string; isAvailable: (e: EmployeeEntry) => boolean }[] = [
+  { type: 'offer-letter', label: 'Offer Letter', isAvailable: () => true },
+  { type: 'Appointment-letter', label: 'Appointment Letter', isAvailable: (e) => !!e.joining_date && !isInternCategory(e.employee_category) },
+  { type: 'salary-revision', label: 'Increment Letter', isAvailable: () => true },
+  { type: 'confirmation', label: 'Confirmation Letter', isAvailable: () => true },
+  { type: 'consultant-contract', label: 'Consultant Contract', isAvailable: (e) => /consult/i.test(e.employee_category || '') || isInternCategory(e.employee_category) },
+  { type: 'salary-breakdown', label: 'Salary Breakdown', isAvailable: (e) => !!e.joining_date && !isInternCategory(e.employee_category) },
+  { type: 'internship-certificate', label: 'Internship Certificate', isAvailable: (e) => isInternCategory(e.employee_category) && e.is_exited },
+  { type: 'experience-certificate', label: 'Experience Certificate', isAvailable: (e) => e.is_exited && !isInternCategory(e.employee_category) },
+  { type: 'exit-clearance', label: 'Exit Clearance Form', directLink: 'https://docs.google.com/document/d/1d8MFqQAISbuOwP0SGM3IWBWf2J2V9s1O/edit', isAvailable: (e) => e.is_exited },
 ];
 
 const latestDocFor = (documents: EmployeeDocument[] | undefined, docType: string) =>
@@ -697,7 +702,7 @@ const EmployeeDetailDialog: React.FC<{
                   <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                     <SectionLabel>Professional Documents</SectionLabel>
                     <Stack divider={<Divider />} sx={{ mt: 0.5, flex: 1, minHeight: 0, overflowY: 'auto', pr: 0.5 }}>
-                      {GENERATED_LETTER_TYPES.map(({ type, label, directLink }) => (
+                      {GENERATED_LETTER_TYPES.filter(({ isAvailable }) => isAvailable(employee)).map(({ type, label, directLink }) => (
                         <GeneratedLetterRow
                           key={type}
                           label={label}

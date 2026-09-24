@@ -933,6 +933,7 @@ const confirmationStatusLabel = (status?: string | null) => {
 };
 
 const isExited = (p: UserProfile | null) => p?.exit_status === 'Left' || p?.exit_status === 'Already Left';
+const isIntern = (p: UserProfile | null) => /intern/i.test(p?.employee_category || '');
 
 // Every letter the generator (pages/EmployeeLetter.tsx → pages/LetterTemplate.tsx,
 // route "/letter") can produce — kept in sync with EmployeesPage.tsx's own
@@ -951,26 +952,20 @@ const OFFICIAL_LETTER_TYPES: {
 }[] = [
   { type: 'offer-letter', label: 'Offer Letter', subtitle: 'Original employment offer document',
     isAvailable: (p) => !!p?._id },
-  { type: 'Appointment-letter', label: 'Appointment Letter', subtitle: 'Formal appointment confirmation',
-    isAvailable: (p) => p?.joining_status === 'Joined' },
+  { type: 'Appointment-letter', label: 'Appointment Letter', subtitle: 'Appointment confirmation (includes Code of Ethics, Non-Disclosure & Non-Compete Agreements)',
+    isAvailable: (p) => p?.joining_status === 'Joined' && !isIntern(p) },
   { type: 'salary-revision', label: 'Increment Letter', subtitle: 'Salary revision & increment details',
     isAvailable: (p) => !!p?.salaryRevisions?.some(r => r.stage === 'completed') },
   { type: 'confirmation', label: 'Confirmation Letter', subtitle: 'Confirmation of employment',
     isAvailable: (p) => p?.confirmationStatus === 'confirmed' },
-  { type: 'consultant-contract', label: 'Consultant Contract', subtitle: 'Consultant engagement agreement',
-    isAvailable: (p) => /consult/i.test(p?.employee_category || '') },
+  { type: 'consultant-contract', label: 'Consultant Contract', subtitle: 'Consultant / internship engagement agreement',
+    isAvailable: (p) => /consult/i.test(p?.employee_category || '') || isIntern(p) },
   { type: 'salary-breakdown', label: 'Salary Breakdown', subtitle: 'CTC component breakdown',
-    isAvailable: (p) => p?.joining_status === 'Joined' },
-  { type: 'non-compete-agreement', label: 'Non-Compete Agreement', subtitle: 'Signed at onboarding',
-    isAvailable: (p) => p?.joining_status === 'Joined' },
-  { type: 'non-disclosure-agreement', label: 'Non-Disclosure Agreement', subtitle: 'Signed at onboarding',
-    isAvailable: (p) => p?.joining_status === 'Joined' },
-  { type: 'code-of-ethics', label: 'Code of Ethics', subtitle: 'Signed at onboarding',
-    isAvailable: (p) => p?.joining_status === 'Joined' },
-  { type: 'internship-certificate', label: 'Internship Certificate', subtitle: 'For interns only',
-    isAvailable: (p) => /intern/i.test(p?.employee_category || '') },
+    isAvailable: (p) => p?.joining_status === 'Joined' && !isIntern(p) },
+  { type: 'internship-certificate', label: 'Internship Certificate', subtitle: 'For interns, issued on exit',
+    isAvailable: (p) => isIntern(p) && isExited(p) },
   { type: 'experience-certificate', label: 'Experience Certificate', subtitle: 'Issued on exit',
-    isAvailable: isExited },
+    isAvailable: (p) => isExited(p) && !isIntern(p) },
   { type: 'exit-clearance', label: 'Exit Clearance Form', subtitle: 'Exit formalities',
     directLink: 'https://docs.google.com/document/d/1d8MFqQAISbuOwP0SGM3IWBWf2J2V9s1O/edit',
     isAvailable: isExited },
@@ -1273,7 +1268,7 @@ export default function Profile() {
                     </Typography>
                     <List disablePadding sx={{ mx: -3, mb: -2.5 }}>
                       {OFFICIAL_LETTER_TYPES.filter(lt => lt.isAvailable(userProfile)).map(lt => (
-                        <DocumentItem key={lt.type} title={lt.label} subtitle={lt.subtitle} requiredTag="Issued" requiredTagColor="#059669"
+                        <DocumentItem key={lt.type} title={lt.label} subtitle={lt.subtitle}
                           staticHref={lt.directLink || `/letter?type=${encodeURIComponent(lt.type)}&empId=${encodeURIComponent(userProfile?._id || '')}`} />
                       ))}
                       <DocumentItem docType="experienceLetter" title="Experience Letter" subtitle="For previous employment (if applicable)" requiredTag="Optional" requiredTagColor="#6B7280"

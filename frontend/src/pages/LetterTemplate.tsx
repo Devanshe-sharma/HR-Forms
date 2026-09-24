@@ -1596,6 +1596,14 @@ export default function LetterTemplate() {
         </div>
       </div>
 
+      {/* Annexure 'C' - Non-Disclosure Agreement (referenced above, attached as part of this same Appointment Letter) */}
+      {renderNonDisclosureAgreement()}
+
+      {/* Annexure 'B' - Code of Ethics (referenced above, attached as part of this same Appointment Letter) */}
+      {renderCodeOfEthics()}
+
+      {/* Non-Compete Agreement (attached as part of this same Appointment Letter) */}
+      {renderNonCompeteAgreement()}
     </>
   );
 
@@ -1703,28 +1711,22 @@ export default function LetterTemplate() {
             ? renderConsultantContractLetter()
             : type === 'salary-breakdown'
               ? renderSalaryBreakdownLetter()
-              : type === 'non-compete-agreement'
-                ? renderNonCompeteAgreement()
-                : type === 'non-disclosure-agreement'
-                  ? renderNonDisclosureAgreement()
-                  : type === 'code-of-ethics'
-                    ? renderCodeOfEthics()
-                    : type === 'internship-certificate'
-                      ? renderInternshipCertificate()
-                      : type === 'experience-certificate'
-                        ? renderExperienceCertificate()
-                        // : type === 'exit-clearance'
-                        //   ? renderExitClearance()
-                          : type === 'Appointment-letter'
-                            ? renderAppointmentLetter()
-                            : type === 'offer-letter'
-                              ? renderOfferLetter()
+              : type === 'internship-certificate'
+                ? renderInternshipCertificate()
+                : type === 'experience-certificate'
+                  ? renderExperienceCertificate()
+                  // : type === 'exit-clearance'
+                  //   ? renderExitClearance()
+                    : type === 'Appointment-letter'
+                      ? renderAppointmentLetter()
+                      : type === 'offer-letter'
+                        ? renderOfferLetter()
 
-                              : (
-                                <div className="p-10 text-center text-gray-600">
-                                  Letter type '{type}' not implemented yet.
-                                </div>
-                              )}
+                        : (
+                          <div className="p-10 text-center text-gray-600">
+                            Letter type '{type}' not implemented yet.
+                          </div>
+                        )}
 
       {/* Print Button */}
       <div className="fixed bottom-8 right-8 z-50 print:hidden">
