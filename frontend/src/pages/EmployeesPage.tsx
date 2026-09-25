@@ -37,6 +37,7 @@ import { hasAnyRole } from '../config/rbac';
 
 interface EmployeeEntry {
   _id: string;
+  employee_id: string;
   full_name: string;
   department: string;
   designation: string;
@@ -158,6 +159,7 @@ const PERSONAL_DOCUMENT_TYPES: { key: string; label: string }[] = [
   { key: 'pgMarksheet', label: 'Postgraduate Marksheet' },
   { key: 'aadhaarCard', label: 'Aadhaar Card' },
   { key: 'panCard', label: 'PAN Card' },
+  { key: 'uanCard', label: 'UAN Card' },
 ];
 
 const PROFESSIONAL_DOCUMENT_TYPES: { key: string; label: string }[] = [
@@ -1138,6 +1140,7 @@ const EmployeesPage: React.FC = () => {
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             <BadgeIcon sx={{ fontSize: 11, color: 'text.disabled' }} />
                             <Typography sx={{ fontSize: '0.68rem', color: 'text.disabled' }}>
+                              {emp.employee_id ? `ID: ${emp.employee_id} · ` : ''}
                               {emp.joining_date
                                 ? new Date(emp.joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
                                 : 'Joining date unknown'}
@@ -1216,9 +1219,16 @@ const EmployeesPage: React.FC = () => {
                               <Avatar sx={{ width: 30, height: 30, bgcolor: bg, color: fg, fontSize: '0.7rem', fontWeight: 700 }}>
                                 {initials(emp.full_name)}
                               </Avatar>
-                              <Typography fontWeight={600} fontSize="0.78rem" color="text.primary" noWrap sx={{ flex: 1 }}>
-                                {emp.full_name || 'Unnamed'}
-                              </Typography>
+                              <Box sx={{ minWidth: 0, flex: 1 }}>
+                                <Typography fontWeight={600} fontSize="0.78rem" color="text.primary" noWrap>
+                                  {emp.full_name || 'Unnamed'}
+                                </Typography>
+                                {emp.employee_id && (
+                                  <Typography fontSize="0.65rem" color="text.disabled" noWrap>
+                                    ID: {emp.employee_id}
+                                  </Typography>
+                                )}
+                              </Box>
                             </Box>
                             {emp.designation && (
                               <Chip icon={<RoleIcon />} label={emp.designation} size="small" sx={chipSx(P.blue, isLight)} />

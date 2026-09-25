@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const { authenticate } = require('../middleware/authenticate');
+const { requireRole } = require('../config/roles');
 const { requireSsoServiceKey } = require('../middleware/ssoServiceAuth');
 const { createCode, consumeCode } = require('../utils/ssoCodes');
 
@@ -22,7 +23,7 @@ function toPublicUser(user) {
 
 function signToken(user) {
   return jwt.sign(
-    { id: user._id, email: user.email, role: user.role, name: user.name },
+    { id: user._id, email: user.email, role: user.role, name: user.name, tokenVersion: user.tokenVersion || 0 },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '12h' }
   );
@@ -85,6 +86,19 @@ router.post('/change-password', authenticate, asyncHandler(async (req, res) => {
   await user.save();
 
   res.json({ success: true, message: 'Password updated successfully' });
+}));
+
+// POST /api/auth/force-logout-all
+// Admin-only "kill switch" — bumps every user's tokenVersion so every
+// already-issued JWT fails its next request (see middleware/authenticate.js)
+// and everyone is forced to log in again. Not called automatically by
+// anything; deploying the tokenVersion check does NOT itself log anyone out
+// — only calling this route does. Meant to be triggered once, deliberately
+// (e.g. right after rolling out a new mandatory gate like profile
+// completion), not as part of routine deploys.
+router.post('/force-logout-all', authenticate, requireRole(['Admin']), asyncHandler(async (req, res) => {
+  const result = await User.updateMany({}, { $inc: { tokenVersion: 1 } });
+  res.json({ success: true, message: 'Every active session has been invalidated.', modifiedCount: result.modifiedCount });
 }));
 
 // POST /api/auth/sso/code

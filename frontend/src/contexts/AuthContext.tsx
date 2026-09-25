@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import axios from 'axios';
 import { SSO_PARTNER_LOGOUT_URLS } from '../config/sso';
+import { isProfileComplete } from '../utils/profileCompletion';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -18,9 +19,16 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  // Whether Onboarding's required Personal Details / Emergency Contact &
+  // Family fields (see utils/profileCompletion.ts) are all filled in. `true`
+  // until this is actually known (no account yet, or the check hasn't run)
+  // so nothing is blocked before there's a definite answer either way —
+  // ProtectedRoute is the enforcement point, gated behind PROFILE_GATE_ENABLED.
+  profileComplete: boolean;
   login: (email: string, password: string) => Promise<AuthUser>;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  refreshProfileCompletion: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -78,6 +86,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [profileComplete, setProfileComplete] = useState(true);
+
+  // Checks the same Onboarding record Profile.tsx edits, against the same
+  // required-fields rule (utils/profileCompletion.ts) it validates against.
+  // Best-effort: any failure (no linked record, request error) leaves
+  // profileComplete at its current/default value rather than blocking on it.
+  const checkProfileCompletion = async (email: string) => {
+    try {
+      const res = await axios.get(`${API_URL}/onboarding/by-email`, { params: { email } });
+      if (res.data?.success) setProfileComplete(isProfileComplete(res.data.data));
+    } catch {
+      // no onboarding record yet, or not reachable — leave as-is
+    }
+  };
 
   useEffect(() => {
     const storedToken = localStorage.getItem('authToken');
@@ -90,8 +112,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     applyAuthHeader(storedToken);
     setToken(storedToken);
+    let parsedUser: AuthUser | null = null;
     try {
-      setUser(JSON.parse(storedUser));
+      parsedUser = JSON.parse(storedUser);
+      setUser(parsedUser);
     } catch {
       clearSession();
     }
@@ -106,6 +130,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           setUser(freshUser);
           localStorage.setItem('authUser', JSON.stringify(freshUser));
           localStorage.setItem('role', freshUser.role);
+          return checkProfileCompletion(freshUser.email);
         }
       })
       .catch(() => {
@@ -117,6 +142,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       .finally(() => setIsLoading(false));
   }, []);
 
+  // If a request comes back 401 while a session is active, that session is
+  // dead — either the token expired, or it was force-invalidated server-side
+  // (POST /api/auth/force-logout-all bumps tokenVersion; see
+  // backend-node/middleware/authenticate.js). Drop it via React state only
+  // (no hard window navigation) so ProtectedRoute's own <Navigate to="/login">
+  // picks it up on next render — same clean redirect a manual logout gets,
+  // instead of whatever page they were on just silently failing.
+  useEffect(() => {
+    const id = axios.interceptors.response.use(
+      res => res,
+      err => {
+        if (err?.response?.status === 401) {
+          clearSession();
+          applyAuthHeader(null);
+          setToken(null);
+          setUser(null);
+          setProfileComplete(true);
+        }
+        return Promise.reject(err);
+      }
+    );
+    return () => axios.interceptors.response.eject(id);
+  }, []);
+
   const login = async (email: string, password: string): Promise<AuthUser> => {
     const res = await axios.post(`${API_URL}/auth/login`, { email, password });
     const { token: newToken, user: newUser } = res.data;
@@ -124,6 +173,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     applyAuthHeader(newToken);
     setToken(newToken);
     setUser(newUser);
+    await checkProfileCompletion(newUser.email);
     return newUser;
   };
 
@@ -132,6 +182,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     applyAuthHeader(null);
     setToken(null);
     setUser(null);
+    setProfileComplete(true);
     signOutOfPartnerApps();
   };
 
@@ -148,9 +199,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  // Re-checks profile completeness against the latest Onboarding data —
+  // called by Profile.tsx after a successful save so the gate clears the
+  // moment the required fields are actually filled in, with no re-login
+  // needed.
+  const refreshProfileCompletion = async () => {
+    if (user?.email) await checkProfileCompletion(user.email);
+  };
+
   return (
     <AuthContext.Provider
-      value={{ user, token, isAuthenticated: !!user && !!token, isLoading, login, logout, refreshUser }}
+      value={{
+        user, token, isAuthenticated: !!user && !!token, isLoading, profileComplete,
+        login, logout, refreshUser, refreshProfileCompletion,
+      }}
     >
       {children}
     </AuthContext.Provider>

@@ -29,6 +29,7 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
+import { PROFILE_GATE_ENABLED } from '../config/featureFlags';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
 
@@ -243,10 +244,12 @@ function SectionCard({ title, icon, children, action }: {
   );
 }
 
-function FieldRow({ label, value }: { label: string; value?: string | null }) {
+function FieldRow({ label, value, required }: { label: string; value?: string | null; required?: boolean }) {
   return (
-    <Box sx={{ display: 'flex', py: 1.2, borderBottom: '1px solid #F5F6F8', '&:last-child': { borderBottom: 'none' } }}>
-      <Typography sx={{ width: '45%', color: '#6B7280', fontSize: '0.82rem', fontWeight: 500 }}>{label}</Typography>
+    <Box sx={{ display: 'flex', alignItems: 'center', py: 1.2, borderBottom: '1px solid #F5F6F8', '&:last-child': { borderBottom: 'none' } }}>
+      <Typography sx={{ width: '45%', color: '#6B7280', fontSize: '0.82rem', fontWeight: 500 }}>
+        {label}{required && <Typography component="span" sx={{ color: '#E53E3E', ml: 0.3 }}>*</Typography>}
+      </Typography>
       <Typography sx={{ flex: 1, color: '#1A1F36', fontSize: '0.82rem', fontWeight: 600 }}>{value || '—'}</Typography>
     </Box>
   );
@@ -261,18 +264,23 @@ const toDateInputValue = (iso?: string | null) => (iso ? String(iso).slice(0, 10
 const formatDateDisplay = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : undefined;
 
-function EditableFieldRow({ label, value, editing, onChange, type = 'text', options }: {
+function EditableFieldRow({ label, value, editing, onChange, type = 'text', options, required, showError }: {
   label: string; value?: string | null; editing: boolean; onChange: (v: string) => void;
-  type?: 'text' | 'date' | 'select' | 'number'; options?: string[];
+  type?: 'text' | 'date' | 'select' | 'number'; options?: string[]; required?: boolean; showError?: boolean;
 }) {
-  if (!editing) return <FieldRow label={label} value={value} />;
+  if (!editing) return <FieldRow label={label} value={value} required={required} />;
+  const empty = required && !String(value || '').trim();
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', py: 1, gap: 1.5, borderBottom: '1px solid #F5F6F8', '&:last-child': { borderBottom: 'none' } }}>
-      <Typography sx={{ width: '45%', color: '#6B7280', fontSize: '0.82rem', fontWeight: 500, flexShrink: 0 }}>{label}</Typography>
+      <Typography sx={{ width: '45%', color: '#6B7280', fontSize: '0.82rem', fontWeight: 500, flexShrink: 0 }}>
+        {label}{required && <Typography component="span" sx={{ color: '#E53E3E', ml: 0.3 }}>*</Typography>}
+      </Typography>
       <TextField
         select={type === 'select'}
         size="small"
         fullWidth
+        required={required}
+        error={!!showError && empty}
         type={type === 'select' ? undefined : type}
         value={value || ''}
         onChange={e => onChange(e.target.value)}
@@ -288,17 +296,17 @@ function EditableFieldRow({ label, value, editing, onChange, type = 'text', opti
   );
 }
 
-type FieldSpec = { key: PersonalInfoField; label: string; type?: 'text' | 'date' | 'select' | 'number'; options?: string[] };
+type FieldSpec = { key: PersonalInfoField; label: string; type?: 'text' | 'date' | 'select' | 'number'; options?: string[]; required?: boolean };
 
 const OVERVIEW_FIELDS: FieldSpec[] = [
-  { key: 'name', label: 'Full Name' },
-  { key: 'nationality', label: 'Nationality' },
-  { key: 'address', label: 'Address' },
-  { key: 'birthday', label: 'Date of Birth', type: 'date' },
-  { key: 'bloodGroup', label: 'Blood Group', type: 'select', options: BLOOD_GROUPS },
-  { key: 'maritalStatus', label: 'Marital Status', type: 'select', options: MARITAL_STATUSES },
-  { key: 'persEmail', label: 'Personal Email ID' },
-  { key: 'mobile', label: 'Phone No' },
+  { key: 'name', label: 'Full Name', required: true },
+  { key: 'nationality', label: 'Nationality', required: true },
+  { key: 'address', label: 'Address', required: true },
+  { key: 'birthday', label: 'Date of Birth', type: 'date', required: true },
+  { key: 'bloodGroup', label: 'Blood Group', type: 'select', options: BLOOD_GROUPS, required: true },
+  { key: 'maritalStatus', label: 'Marital Status', type: 'select', options: MARITAL_STATUSES, required: true },
+  { key: 'persEmail', label: 'Personal Email ID', required: true },
+  { key: 'mobile', label: 'Phone No', required: true },
 ];
 
 // Citizenship/passport isn't in the new spec's tab list, but there's no data
@@ -312,16 +320,17 @@ const CITIZENSHIP_FIELDS: FieldSpec[] = [
 ];
 
 const EMERGENCY_CONTACT_FIELDS: FieldSpec[] = [
-  { key: 'emergencyContactName', label: 'Name of the Contact' },
-  { key: 'emergencyContactRelation', label: 'Relation' },
-  { key: 'emergencyContactPhone', label: 'Phone No' },
-  { key: 'emergencyContactPlace', label: 'Place' },
+  { key: 'emergencyContactName', label: 'Name of the Contact', required: true },
+  { key: 'emergencyContactRelation', label: 'Relation', required: true },
+  { key: 'emergencyContactPhone', label: 'Phone No', required: true },
+  { key: 'emergencyContactPlace', label: 'Place', required: true },
 ];
 
 const BANK_FIELDS: FieldSpec[] = [
   { key: 'bankName', label: 'Bank Name' },
   { key: 'bankAccountNo', label: 'Account No' },
   { key: 'ifscCode', label: 'IFSC Code' },
+  { key: 'mobile', label: 'Phone Number' },
   { key: 'panCard', label: 'PAN Card' },
   { key: 'aadhaarNo', label: 'Aadhaar Card No' },
   { key: 'uanNo', label: 'UAN No' },
@@ -332,10 +341,14 @@ const BANK_FIELDS: FieldSpec[] = [
 // the fields it lists. Lets a tab mix read-only SectionCards (HR-managed
 // facts) with editable ones (self-service fields) without one giant edit
 // toggle forcing everything on the tab into edit mode at once.
-function EditableSectionCard({ title, icon, fields, profile, employeeId, onSaved }: {
+// `leadingField` renders one always-read-only row above the editable ones
+// (e.g. Official Email — a login identifier, not safe to self-edit) so it
+// doesn't need its own separate, nearly-empty card.
+function EditableSectionCard({ title, icon, fields, profile, employeeId, onSaved, leadingField }: {
   title: string;
   icon: React.ReactNode;
   fields: FieldSpec[];
+  leadingField?: { label: string; value?: string | null };
   profile: UserProfile | null;
   employeeId?: string;
   onSaved: (patch: Partial<UserProfile>) => void;
@@ -344,6 +357,7 @@ function EditableSectionCard({ title, icon, fields, profile, employeeId, onSaved
   const [draft, setDraft] = useState<Partial<Record<PersonalInfoField, string>>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showErrors, setShowErrors] = useState(false);
 
   // profile's own key names sometimes differ from the PersonalInfoField the
   // API expects (full_name -> name), so field.key can't always index profile
@@ -362,13 +376,20 @@ function EditableSectionCard({ title, icon, fields, profile, employeeId, onSaved
     });
     setDraft(initial);
     setError(null);
+    setShowErrors(false);
     setEditing(true);
   };
 
-  const cancelEdit = () => { setEditing(false); setError(null); };
+  const cancelEdit = () => { setEditing(false); setError(null); setShowErrors(false); };
   const setField = (key: PersonalInfoField, value: string) => setDraft(prev => ({ ...prev, [key]: value }));
 
   const save = async () => {
+    const missing = fields.filter(f => f.required && !String(draft[f.key] || '').trim());
+    if (missing.length) {
+      setShowErrors(true);
+      setError(`Please fill in all required fields: ${missing.map(f => f.label).join(', ')}.`);
+      return;
+    }
     if (!employeeId) { setError('No onboarding record is linked to this account yet — nothing to save against.'); return; }
     setSaving(true);
     setError(null);
@@ -430,8 +451,9 @@ function EditableSectionCard({ title, icon, fields, profile, employeeId, onSaved
           No onboarding record is linked to this account yet — this can't be saved until one exists.
         </Alert>
       )}
+      {leadingField && <FieldRow label={leadingField.label} value={leadingField.value} />}
       {fields.map(f => (
-        <EditableFieldRow key={f.key} label={f.label} value={val(f)} editing={editing}
+        <EditableFieldRow key={f.key} label={f.label} value={val(f)} editing={editing} required={f.required} showError={showErrors}
           type={f.type} options={f.options} onChange={v => setField(f.key, v)} />
       ))}
     </SectionCard>
@@ -451,6 +473,7 @@ function FamilyCard({ profile, employeeId, onSaved }: {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showErrors, setShowErrors] = useState(false);
 
   const [father, setFather] = useState('');
   const [fatherOcc, setFatherOcc] = useState('');
@@ -473,14 +496,34 @@ function FamilyCard({ profile, employeeId, onSaved }: {
     setError(null);
     setEditing(true);
   };
-  const cancelEdit = () => { setEditing(false); setError(null); };
+  const cancelEdit = () => { setEditing(false); setError(null); setShowErrors(false); };
 
   const addSibling = () => setSiblings(prev => [...prev, { name: '', occupation: '' }]);
   const removeSibling = (i: number) => setSiblings(prev => prev.filter((_, idx) => idx !== i));
   const updateSibling = (i: number, field: 'name' | 'occupation', value: string) =>
     setSiblings(prev => prev.map((s, idx) => idx === i ? { ...s, [field]: value } : s));
 
+  // Spouse fields are only mandatory for someone who's actually married —
+  // showSpouse (below) is deliberately true for everyone while editing, so
+  // it isn't the right signal for "must fill this in".
+  const spouseRequired = profile?.maritalStatus === 'Married';
+
   const save = async () => {
+    const missing: string[] = [];
+    if (!father.trim()) missing.push("Father's Name");
+    if (!fatherOcc.trim()) missing.push("Father's Occupation");
+    if (!mother.trim()) missing.push("Mother's Name");
+    if (!motherOcc.trim()) missing.push("Mother's Occupation");
+    if (!numChildren.trim()) missing.push('No. of Children');
+    if (spouseRequired) {
+      if (!spouse.trim()) missing.push('Spouse Name');
+      if (!spouseOcc.trim()) missing.push('Spouse Occupation');
+    }
+    if (missing.length) {
+      setShowErrors(true);
+      setError(`Please fill in all required fields: ${missing.join(', ')}.`);
+      return;
+    }
     if (!employeeId) { setError('No onboarding record is linked to this account yet — nothing to save against.'); return; }
     setSaving(true);
     setError(null);
@@ -541,55 +584,59 @@ function FamilyCard({ profile, employeeId, onSaved }: {
         </Alert>
       )}
 
-      <EditableFieldRow label="Father's Name" value={editing ? father : profile?.familyFather} editing={editing} onChange={setFather} />
-      <EditableFieldRow label="Father's Occupation" value={editing ? fatherOcc : profile?.familyFatherOccupation} editing={editing} onChange={setFatherOcc} />
-      <EditableFieldRow label="Mother's Name" value={editing ? mother : profile?.familyMother} editing={editing} onChange={setMother} />
-      <EditableFieldRow label="Mother's Occupation" value={editing ? motherOcc : profile?.familyMotherOccupation} editing={editing} onChange={setMotherOcc} />
+      <EditableFieldRow label="Father's Name" value={editing ? father : profile?.familyFather} editing={editing} onChange={setFather} required showError={showErrors} />
+      <EditableFieldRow label="Father's Occupation" value={editing ? fatherOcc : profile?.familyFatherOccupation} editing={editing} onChange={setFatherOcc} required showError={showErrors} />
+      <EditableFieldRow label="Mother's Name" value={editing ? mother : profile?.familyMother} editing={editing} onChange={setMother} required showError={showErrors} />
+      <EditableFieldRow label="Mother's Occupation" value={editing ? motherOcc : profile?.familyMotherOccupation} editing={editing} onChange={setMotherOcc} required showError={showErrors} />
 
-      {/* Siblings — repeatable add/remove list */}
-      <Box sx={{ py: 1.2, borderBottom: '1px solid #F5F6F8' }}>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
-          <Typography sx={{ color: '#6B7280', fontSize: '0.82rem', fontWeight: 500 }}>Siblings</Typography>
+      {/* Siblings — repeatable add/remove list. Kept on the same 45%/55%
+          label/value column layout as every other row in this card. */}
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', py: 1.2, gap: 1.5, borderBottom: '1px solid #F5F6F8' }}>
+        <Typography sx={{ width: '45%', color: '#6B7280', fontSize: '0.82rem', fontWeight: 500, flexShrink: 0, pt: editing ? 1 : 0 }}>
+          Siblings
+        </Typography>
+        <Box sx={{ flex: 1 }}>
           {editing && (
             <Button size="small" onClick={addSibling} startIcon={<AddIcon sx={{ fontSize: 14 }} />}
-              sx={{ textTransform: 'none', fontSize: '0.72rem', fontWeight: 700, color: '#3F6FE8' }}>
+              sx={{ textTransform: 'none', fontSize: '0.78rem', fontWeight: 700, color: '#3F6FE8', mb: 0.5 }}>
               Add
             </Button>
           )}
-        </Stack>
 
-        {!editing && displaySiblings.length === 0 && (
-          <Typography fontSize="0.82rem" color="#9CA3AF">—</Typography>
-        )}
-        {!editing && displaySiblings.map((s, i) => (
-          <Typography key={i} fontSize="0.82rem" color="#1A1F36" fontWeight={600} sx={{ mb: 0.3 }}>
-            {s.name}{s.occupation ? ` — ${s.occupation}` : ''}
-          </Typography>
-        ))}
+          {!editing && displaySiblings.length === 0 && (
+            <Typography fontSize="0.82rem" color="#1A1F36" fontWeight={600}>—</Typography>
+          )}
+          {!editing && displaySiblings.map((s, i) => (
+            <Typography key={i} fontSize="0.82rem" color="#1A1F36" fontWeight={600} sx={{ mb: 0.3 }}>
+              {s.name}{s.occupation ? ` — ${s.occupation}` : ''}
+            </Typography>
+          ))}
 
-        {editing && siblings.length === 0 && (
-          <Typography fontSize="0.78rem" color="#9CA3AF" mb={0.5}>No siblings added yet.</Typography>
-        )}
-        {editing && siblings.map((s, i) => (
-          <Stack key={i} direction="row" spacing={1} alignItems="center" mb={1}>
-            <TextField size="small" placeholder="Name" value={s.name} onChange={e => updateSibling(i, 'name', e.target.value)}
-              sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: '0.8rem', py: 0.7 } }} />
-            <TextField size="small" placeholder="Occupation" value={s.occupation} onChange={e => updateSibling(i, 'occupation', e.target.value)}
-              sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: '0.8rem', py: 0.7 } }} />
-            <IconButton size="small" onClick={() => removeSibling(i)}>
-              <CancelIcon sx={{ fontSize: 16, color: '#9CA3AF' }} />
-            </IconButton>
-          </Stack>
-        ))}
+          {editing && siblings.length === 0 && (
+            <Typography fontSize="0.82rem" color="#9CA3AF" mb={0.5}>No siblings added yet.</Typography>
+          )}
+          {editing && siblings.map((s, i) => (
+            <Stack key={i} direction="row" spacing={1} alignItems="center" mb={1}>
+              <TextField size="small" placeholder="Name" value={s.name} onChange={e => updateSibling(i, 'name', e.target.value)}
+                sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: '0.82rem', py: 0.8 } }} />
+              <TextField size="small" placeholder="Occupation" value={s.occupation} onChange={e => updateSibling(i, 'occupation', e.target.value)}
+                sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: '0.82rem', py: 0.8 } }} />
+              <IconButton size="small" onClick={() => removeSibling(i)}>
+                <CancelIcon sx={{ fontSize: 16, color: '#9CA3AF' }} />
+              </IconButton>
+            </Stack>
+          ))}
+        </Box>
       </Box>
 
       {showSpouse && (
         <>
-          <EditableFieldRow label="Spouse Name" value={editing ? spouse : profile?.familySpouse} editing={editing} onChange={setSpouse} />
-          <EditableFieldRow label="Spouse Occupation" value={editing ? spouseOcc : profile?.familySpouseOccupation} editing={editing} onChange={setSpouseOcc} />
+          <EditableFieldRow label="Spouse Name" value={editing ? spouse : profile?.familySpouse} editing={editing} onChange={setSpouse} required={spouseRequired} showError={showErrors} />
+          <EditableFieldRow label="Spouse Occupation" value={editing ? spouseOcc : profile?.familySpouseOccupation} editing={editing} onChange={setSpouseOcc} required={spouseRequired} showError={showErrors} />
         </>
       )}
       <EditableFieldRow
+        required showError={showErrors}
         label="No. of Children"
         value={editing ? numChildren : (profile?.familyNumberOfChildren != null ? String(profile.familyNumberOfChildren) : undefined)}
         editing={editing} type="number" onChange={setNumChildren}
@@ -898,27 +945,30 @@ function ProfileProgressBadge({ profile }: { profile: UserProfile | null }) {
   );
 }
 
+// Uses the same SectionCard shell (icon box, title, border-bottom header)
+// as every other card on the page, with the percentage in the header's
+// action slot — same spot Edit/Save buttons sit on the editable cards —
+// instead of a bespoke header, so it reads as one consistent set of cards
+// rather than a one-off.
 function ProfileCompletion({ profile }: { profile: UserProfile | null }) {
   const fields = profileCompletionFields(profile);
   const pct = profileCompletionPct(profile);
   return (
-    <Card sx={{ borderRadius: '12px', border: '1px solid #E8ECF0', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', mb: 2 }}>
-      <CardContent sx={{ p: 3 }}>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1.5}>
-          <Typography fontWeight="700" fontSize="0.9rem" color="#1A1F36">Profile Completion</Typography>
-          <Typography fontWeight="800" fontSize="1.1rem" color={pct === 100 ? '#059669' : '#3F6FE8'}>{pct}%</Typography>
-        </Stack>
-        <LinearProgress variant="determinate" value={pct} sx={{ height: 8, borderRadius: 4, mb: 2, bgcolor: '#E8ECF0', '& .MuiLinearProgress-bar': { borderRadius: 4, bgcolor: pct === 100 ? '#059669' : '#3F6FE8' } }} />
-        <Stack spacing={0.8}>
-          {fields.map(f => (
-            <Stack key={f.label} direction="row" spacing={1} alignItems="center">
-              {f.filled ? <CheckCircleIcon sx={{ fontSize: 15, color: '#059669' }} /> : <EmptyCircleIcon sx={{ fontSize: 15, color: '#D1D5DB' }} />}
-              <Typography fontSize="0.78rem" color={f.filled ? '#374151' : '#9CA3AF'} fontWeight={f.filled ? 600 : 400}>{f.label}</Typography>
-            </Stack>
-          ))}
-        </Stack>
-      </CardContent>
-    </Card>
+    <SectionCard
+      title="Profile Completion"
+      icon={<InfoIcon sx={{ fontSize: 17 }} />}
+      action={<Typography fontWeight="800" fontSize="1rem" color={pct === 100 ? '#059669' : '#3F6FE8'}>{pct}%</Typography>}
+    >
+      <LinearProgress variant="determinate" value={pct} sx={{ height: 8, borderRadius: 4, mb: 2, bgcolor: '#E8ECF0', '& .MuiLinearProgress-bar': { borderRadius: 4, bgcolor: pct === 100 ? '#059669' : '#3F6FE8' } }} />
+      <Stack spacing={1}>
+        {fields.map(f => (
+          <Stack key={f.label} direction="row" spacing={1} alignItems="center">
+            {f.filled ? <CheckCircleIcon sx={{ fontSize: 15, color: '#059669' }} /> : <EmptyCircleIcon sx={{ fontSize: 15, color: '#D1D5DB' }} />}
+            <Typography fontSize="0.82rem" color={f.filled ? '#374151' : '#9CA3AF'} fontWeight={f.filled ? 600 : 500}>{f.label}</Typography>
+          </Stack>
+        ))}
+      </Stack>
+    </SectionCard>
   );
 }
 
@@ -977,7 +1027,7 @@ export default function Profile() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const { user } = useAuth();
+  const { user, profileComplete, refreshProfileCompletion } = useAuth();
   const currentRole = user?.role ?? null;
 
   useEffect(() => { fetchUserProfile(); }, [user]);
@@ -1050,11 +1100,6 @@ export default function Profile() {
     }
   };
 
-  const getRoleColor = (role: string | null) => {
-    const map: Record<string, string> = { Admin: '#E53E3E', HR: '#3182CE', Manager: '#38A169', HeadOfDepartment: '#D69E2E', Employee: '#6B46C1' };
-    return map[role || ''] || '#4A5568';
-  };
-
   const tabs = [
     { icon: <InfoIcon sx={{ fontSize: 18 }} />, label: 'Overview' },
     { icon: <WorkIcon sx={{ fontSize: 18 }} />, label: 'Work' },
@@ -1063,8 +1108,10 @@ export default function Profile() {
     { icon: <AssetIcon sx={{ fontSize: 18 }} />, label: 'Company Assets' },
   ];
 
-  const handlePersonalInfoSaved = (patch: Partial<UserProfile>) =>
+  const handlePersonalInfoSaved = (patch: Partial<UserProfile>) => {
     setUserProfile((prev) => prev ? { ...prev, ...patch } : prev);
+    refreshProfileCompletion();
+  };
 
   const handleDocumentsUploaded = (documents: OnboardingDocument[]) =>
     setUserProfile((prev) => prev ? { ...prev, documents } : prev);
@@ -1116,6 +1163,11 @@ export default function Profile() {
         <Box sx={{ minHeight: '100%', bgcolor: '#F3F5F8', display: 'flex', flexDirection: 'column' }}>
 
       {/* ── Status Banner ── */}
+      {PROFILE_GATE_ENABLED && !profileComplete && (
+        <Alert severity="info" sx={{ borderRadius: 0, fontSize: '0.82rem' }}>
+          Please fill in all required fields (marked *) in Personal Details and Emergency Contact & Family below — the rest of the app unlocks once your profile is complete.
+        </Alert>
+      )}
       {errorMsg && (
         <Alert severity="warning" sx={{ borderRadius: 0, fontSize: '0.82rem' }}>
           {errorMsg}
@@ -1123,7 +1175,7 @@ export default function Profile() {
       )}
 
       {/* ── Hero ── */}
-      <Box sx={{ background: `linear-gradient(135deg, ${getRoleColor(currentRole)} 0%, #0F172A 100%)`, px: { xs: 3, md: 5 }, pt: 4, pb: 0, position: 'relative' }}>
+      <Box sx={{ background: 'linear-gradient(135deg, #3182CE 0%, #0F172A 100%)', px: { xs: 3, md: 5 }, pt: 4, pb: 0, position: 'relative' }}>
         <Box sx={{ position: 'absolute', inset: 0, opacity: 0.04, backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
         <ProfileProgressBadge profile={userProfile} />
         <Stack direction="row" spacing={3} alignItems="flex-end">
@@ -1134,8 +1186,10 @@ export default function Profile() {
             <Typography variant="h6" fontWeight="800" color="white" sx={{ lineHeight: 1.2 }}>{userProfile?.full_name}</Typography>
             <Stack direction="row" spacing={1} alignItems="center" mt={0.5} flexWrap="wrap">
               <Chip label={currentRole} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.18)', color: 'white', fontWeight: 700, fontSize: '0.72rem', border: '1px solid rgba(255,255,255,0.3)' }} />
+              {userProfile?.empId && (
+                <Chip label={`ID: ${userProfile.empId}`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.9)', fontWeight: 700, fontSize: '0.72rem', border: '1px solid rgba(255,255,255,0.25)' }} />
+              )}
               <Typography fontSize="0.82rem" color="rgba(255,255,255,0.85)" fontWeight={500}>{userProfile?.designation} &bull; {userProfile?.department}</Typography>
-              {userProfile?.empId && <Typography fontSize="0.78rem" color="rgba(255,255,255,0.6)">#{userProfile.empId}</Typography>}
             </Stack>
           </Box>
         </Stack>
@@ -1154,23 +1208,19 @@ export default function Profile() {
 
             {/* ══ 1. OVERVIEW (editable) ══ */}
             <TabPanel value={tabValue} index={0}>
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2.5 }}>
-                <Box>
-                  <ProfileCompletion profile={userProfile} />
-                </Box>
-                <Box sx={{ gridColumn: { md: 'span 2' } }}>
-                  {/* Official Email stays read-only — it's the account's login
-                      identifier, kept in sync with Onboarding/Configuration
-                      elsewhere in the app, so it isn't safe to self-edit here. */}
-                  <SectionCard title="Official Email" icon={<PersonIcon sx={{ fontSize: 17 }} />}>
-                    <FieldRow label="Official Email ID" value={userProfile?.official_email} />
-                  </SectionCard>
-                  <EditableSectionCard
-                    title="Personal Details" icon={<PersonIcon sx={{ fontSize: 17 }} />}
-                    fields={OVERVIEW_FIELDS}
-                    profile={userProfile} employeeId={userProfile?._id} onSaved={handlePersonalInfoSaved}
-                  />
-                </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 2fr' }, gap: 2.5, alignItems: 'start' }}>
+                <ProfileCompletion profile={userProfile} />
+                {/* Official Email is folded in here as a read-only leading
+                    row, rather than its own near-empty card — it's the
+                    account's login identifier, kept in sync with
+                    Onboarding/Configuration elsewhere, so it isn't safe to
+                    self-edit here. */}
+                <EditableSectionCard
+                  title="Personal Details" icon={<PersonIcon sx={{ fontSize: 17 }} />}
+                  leadingField={{ label: 'Official Email ID', value: userProfile?.official_email }}
+                  fields={OVERVIEW_FIELDS}
+                  profile={userProfile} employeeId={userProfile?._id} onSaved={handlePersonalInfoSaved}
+                />
               </Box>
             </TabPanel>
 
@@ -1258,6 +1308,8 @@ export default function Profile() {
                         doc={latestDocFor(userProfile?.documents, 'aadhaarCard')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
                       <DocumentItem docType="panCard" title="PAN Card" subtitle="Government identity proof" requiredTag="Required" requiredTagColor="#E53E3E"
                         doc={latestDocFor(userProfile?.documents, 'panCard')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
+                      <DocumentItem docType="uanCard" title="UAN Card" subtitle="Universal Account Number card" requiredTag="Optional" requiredTagColor="#6B7280"
+                        doc={latestDocFor(userProfile?.documents, 'uanCard')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
                     </List>
                   </SectionCard>
                 </Box>

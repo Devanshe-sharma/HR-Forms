@@ -14,6 +14,7 @@ const ONBOARDING_DOCUMENT_TYPES = [
   { key: 'pgMarksheet', label: 'Postgraduate Marksheet' },
   { key: 'aadhaarCard', label: 'Aadhaar Card' },
   { key: 'panCard', label: 'PAN Card' },
+  { key: 'uanCard', label: 'UAN Card' },
   // Employment Documents (the rest of that tab — Offer/Appointment/
   // Increment Letters, Payslips — are system-issued via /employee-letters,
   // not self-uploaded, so they have no entry here)

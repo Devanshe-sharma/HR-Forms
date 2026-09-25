@@ -24,6 +24,13 @@ const UserSchema = new mongoose.Schema(
     // reset) — lets Admin verify a reset actually took effect, since
     // lastLoginAt/updatedAt don't reliably indicate a password change.
     passwordChangedAt: { type: Date, default: null },
+    // Embedded in every JWT issued at login and re-checked on every
+    // authenticated request (see middleware/authenticate.js). Bumping this
+    // (POST /api/auth/force-logout-all, Admin-only) makes every
+    // already-issued token fail its next request, forcing a fresh login —
+    // used to force everyone to re-login and pass through a new gate (e.g.
+    // profile-completion) without waiting for each token's own expiry.
+    tokenVersion: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
