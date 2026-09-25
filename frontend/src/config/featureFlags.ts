@@ -8,4 +8,6 @@
 // account's required Personal Details / Emergency Contact & Family fields
 // are filled in (see utils/profileCompletion.ts). Off by default so rolling
 // this build out doesn't immediately redirect anyone already using the app.
-export const PROFILE_GATE_ENABLED = false;
+// TEMP: flipped on for local testing only — flip back to false before this
+// is committed/deployed anywhere shared.
+export const PROFILE_GATE_ENABLED = true;
