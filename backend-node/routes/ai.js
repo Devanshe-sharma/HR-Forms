@@ -41,13 +41,19 @@ const MAX_TOOL_ROUNDS = 8;
 
 /* ─────────────── Prompt ─────────────── */
 
+// "status:String[Open|Closed]" — enum or observed values in brackets.
+function fieldText(f) {
+  const values = f.enum || f.values;
+  return `${f.path}:${f.type}${values ? `[${values.join('|')}]` : ''}${f.example ? `(e.g. "${f.example}")` : ''}`;
+}
+
 let catalogueCache = { at: 0, text: '' };
 async function catalogueText() {
   if (Date.now() - catalogueCache.at < 10 * 60 * 1000) return catalogueCache.text;
   const cat = await collectionCatalogue();
   const text = cat.map((c) =>
     `- ${c.name} (collection "${c.collection}", ~${c.docs ?? '?'} docs)${c.note ? ` — ${c.note}` : ''}\n` +
-    `  fields: ${c.fields.join(', ')}${c.moreFields ? `, …+${c.moreFields} more` : ''}`
+    `  fields: ${c.fields.map(fieldText).join(', ')}`
   ).join('\n');
   catalogueCache = { at: Date.now(), text };
   return text;
@@ -63,11 +69,12 @@ You answer questions about the company's HR data by querying MongoDB with read-o
 Available collections:
 ${await catalogueText()}
 
-How to work:
-1. If you are not sure about field names, types or value formats, call describe_collection first (it returns fields, enums and sample docs). Always check before filtering on a string value (e.g. status names, department names, date formats).
-2. Use run_query to compute answers. Prefer $group/$count/$project so results are small. Results are capped at 200 rows.
-3. When a chart or table would help — or the user asks for analytics, a breakdown, a trend or a comparison — call show_chart. The server runs its pipeline and shows the real data to the user, so they can pin it to their dashboard. Shape the pipeline output as flat rows, e.g. [{"department":"Sales","count":12}], and set xKey / yKeys to those field names. For "metric", return a single row and set yKeys to the one value field.
-4. Then reply with a short, direct answer in plain language (a few sentences or a short bullet list). Quote the actual numbers. Do not paste raw JSON or pipelines unless asked.
+How to work (each tool call is a round trip against a small per-minute quota, so use as few as possible — ideally one tool call, then your answer):
+1. The field list above is complete, with types; values in [brackets] are the actual values in the data, and (e.g. "…") shows the format of dates stored as strings. Only call describe_collection if you genuinely need sample documents (e.g. to see a date string format).
+2. When a chart or table would help — or the user asks for analytics, a breakdown, a trend, a list or a comparison — call show_chart directly. It runs the pipeline, shows the real data to the user (who can pin it to their dashboard), and returns the rows to you, so you do NOT need a separate run_query first. Shape the output as flat rows, e.g. [{"department":"Sales","count":12}], and set xKey / yKeys to those field names. For a single number use chartType "metric" with one row and yKeys = [the value field].
+3. Use run_query only for answers that need no visual (e.g. a yes/no or a single fact you'll state in words), or to look something up before charting.
+4. You may call several tools in the same turn when they are independent.
+5. Then reply with a short, direct answer in plain language (a few sentences or a short bullet list). Quote the actual numbers. Do not paste raw JSON or pipelines unless asked.
 
 Query rules:
 - Pipelines are JSON arrays passed as a string. For date literals use {"$date":"2026-01-01T00:00:00Z"} or "$$NOW".

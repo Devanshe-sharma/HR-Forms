@@ -110,23 +110,50 @@ function describeFields(schema, prefix = '', depth = 0) {
   return out;
 }
 
-/** Short catalogue for the system prompt: name, count, note, top-level fields. */
+// Up to this many distinct values of a String field go into the prompt, so
+// the model can filter on real values (statuses, departments…) without an
+// extra describe_collection round trip.
+const MAX_INLINE_VALUES = 30;
+
+const NUMERIC_OR_DATE = /^[\d\s.,:/+-]+$|^\d{4}-\d{2}-\d{2}T/;
+
+// Categorical values → { values }; numbers/dates stored as strings → a single
+// format example (never the actual amounts). Anything else → null.
+async function inlineValues(model, field) {
+  try {
+    const values = await model.distinct(field.path).maxTimeMS(3000);
+    const strings = values.filter((v) => typeof v === 'string' && v.trim());
+    if (!strings.length) return null;
+    if (strings.some((v) => NUMERIC_OR_DATE.test(v))) {
+      const dateLike = strings.find((v) => /\d{1,4}[-/]\d{1,2}[-/]\d{1,4}/.test(v));
+      return dateLike ? { example: dateLike } : null;
+    }
+    if (values.length > MAX_INLINE_VALUES || strings.some((v) => v.length > 40)) return null;
+    return { values: strings };
+  } catch {
+    return null;
+  }
+}
+
+/** Catalogue for the system prompt: name, count, note, every field with type and known values. */
 async function collectionCatalogue() {
   const models = allowedModels();
-  const counts = await Promise.all(models.map((m) => m.estimatedDocumentCount().catch(() => null)));
-  return models.map((m, i) => {
-    const fields = describeFields(m.schema)
-      .map((f) => f.path)
-      .filter((p) => !p.includes('.'));
+  return Promise.all(models.map(async (m) => {
+    const docs = await m.estimatedDocumentCount().catch(() => null);
+    const fields = describeFields(m.schema).filter((f) => f.path !== '_id');
+    await Promise.all(fields.map(async (f) => {
+      if (!f.enum && f.type === 'String' && docs && docs <= 100000) {
+        Object.assign(f, await inlineValues(m, f));
+      }
+    }));
     return {
       name: m.modelName,
       collection: m.collection.name,
-      docs: counts[i],
+      docs,
       note: COLLECTION_NOTES[m.modelName] || '',
-      fields: fields.slice(0, 60),
-      moreFields: Math.max(0, fields.length - 60),
+      fields,
     };
-  });
+  }));
 }
 
 /** Recursively drop sensitive keys and trim long strings from query output. */
