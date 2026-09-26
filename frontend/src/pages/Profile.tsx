@@ -29,7 +29,6 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
-import { PROFILE_GATE_ENABLED } from '../config/featureFlags';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
 
@@ -1027,7 +1026,7 @@ export default function Profile() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const { user, profileComplete, refreshProfileCompletion } = useAuth();
+  const { user, refreshProfileCompletion } = useAuth();
   const currentRole = user?.role ?? null;
 
   useEffect(() => { fetchUserProfile(); }, [user]);
@@ -1163,11 +1162,6 @@ export default function Profile() {
         <Box sx={{ minHeight: '100%', bgcolor: '#F3F5F8', display: 'flex', flexDirection: 'column' }}>
 
       {/* ── Status Banner ── */}
-      {PROFILE_GATE_ENABLED && !profileComplete && (
-        <Alert severity="info" sx={{ borderRadius: 0, fontSize: '0.82rem' }}>
-          Please fill in all required fields (marked *) in Personal Details and Emergency Contact & Family below — the rest of the app unlocks once your profile is complete.
-        </Alert>
-      )}
       {errorMsg && (
         <Alert severity="warning" sx={{ borderRadius: 0, fontSize: '0.82rem' }}>
           {errorMsg}

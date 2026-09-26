@@ -2,10 +2,10 @@ import React from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { usePageVisibility } from '../contexts/PageVisibilityContext';
-import { PROFILE_GATE_ENABLED } from '../config/featureFlags';
+import AiAssistant from './ai/AiAssistant';
 
 function ProtectedRoute() {
-  const { user, isAuthenticated, isLoading, profileComplete } = useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const { canViewLocation } = usePageVisibility();
   const location = useLocation();
 
@@ -27,21 +27,16 @@ function ProtectedRoute() {
     return <Navigate to="/force-change-password" replace />;
   }
 
-  // Required Personal Details / Emergency Contact & Family fields (see
-  // utils/profileCompletion.ts) must be filled in before anything else is
-  // reachable — everything but the Profile page itself bounces back there.
-  // PROFILE_GATE_ENABLED stages the rollout: flipping it on doesn't take
-  // effect for an already-open tab until profileComplete is (re)computed,
-  // which happens on next login/app-load, so pair it with force-logout-all.
-  if (PROFILE_GATE_ENABLED && !profileComplete && location.pathname !== '/profile') {
-    return <Navigate to="/profile" replace />;
-  }
-
   if (location.pathname !== '/profile' && !canViewLocation(location.pathname, location.search)) {
     return <Navigate to="/profile" replace />;
   }
 
-  return <Outlet />;
+  return (
+    <>
+      <Outlet />
+      {location.pathname !== '/force-change-password' && <AiAssistant />}
+    </>
+  );
 }
 
 export default ProtectedRoute;

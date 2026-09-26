@@ -21,9 +21,10 @@ interface AuthContextType {
   isLoading: boolean;
   // Whether Onboarding's required Personal Details / Emergency Contact &
   // Family fields (see utils/profileCompletion.ts) are all filled in. `true`
-  // until this is actually known (no account yet, or the check hasn't run)
-  // so nothing is blocked before there's a definite answer either way —
-  // ProtectedRoute is the enforcement point, gated behind PROFILE_GATE_ENABLED.
+  // until this is actually known (no account yet, or the check hasn't run).
+  // Purely informational now — nothing gates app/sidebar access on this
+  // (that ProtectedRoute check was removed so the profile page could never
+  // lock someone out of the rest of the app again).
   profileComplete: boolean;
   login: (email: string, password: string) => Promise<AuthUser>;
   logout: () => void;

@@ -117,6 +117,7 @@ app.use('/api/confirmation-mail-drafts', require('./routes/confirmationMailDraft
 app.use('/api/escalations',        require('./routes/escalations'));
 app.use('/api/grievances',         require('./routes/grievances'));
 app.use('/api/out-of-office',      require('./routes/outOfOffice'));
+app.use('/api/ai',                 require('./routes/ai'));
 
 /* ─────────────────── FRONTEND STATIC FILES ─────────────────────
    Serves the built React/Vue/etc app from frontend/dist.

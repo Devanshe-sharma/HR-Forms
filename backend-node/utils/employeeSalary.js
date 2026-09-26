@@ -4,7 +4,7 @@ const Onboarding = require('../models/onboardingModel');
 // no contact info, personal details, documents, etc. empId/name are kept
 // only as the minimal identifier needed to tell rows apart.
 const SALARY_PROJECTION = [
-  'empId', 'name',
+  'empId', 'name', 'mobile', 'dept', 'designation',
   'annualCtc', 'basicSal', 'hraSal', 'travelAllowance', 'childrenEducationAllowance',
   'supplementaryAllowance', 'grossMonthly', 'empEpf', 'empEsic', 'monthlyCtc',
   'medicalReimbursement', 'vehicleReimbursement', 'driverReimbursement', 'telephoneReimbursement',
@@ -25,6 +25,9 @@ async function getEmployeeSalaryList() {
   return docs.map((d) => ({
     employee_id: d.empId || String(d._id),
     full_name: d.name || '',
+    mobile: d.mobile || '',
+    department: d.dept || '',
+    designation: d.designation || '',
     annual_ctc: d.annualCtc ?? null,
     basic: d.basicSal ?? null,
     hra: d.hraSal ?? null,

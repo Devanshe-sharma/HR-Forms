@@ -3,6 +3,7 @@ import axios from "axios";
 import toast from "react-hot-toast";
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
+import AiInsightsSection from "../components/ai/AiInsightsSection";
 import HRKpiScorecard, { ModuleKpiRow, MODULES } from "../components/HRKpiScorecard";
 import {
   Box, Typography, CircularProgress, Tooltip as MuiTooltip,
@@ -2859,6 +2860,8 @@ const HRAnalyticsDashboard: React.FC = () => {
               Workforce composition and structural metrics — click any card for the full breakdown
             </Typography> */}
           </Box>
+
+          <AiInsightsSection />
 
           {sections.map((section) => (
             <Box key={section.title} sx={{ mb: 3, flexShrink: 0 }}>
