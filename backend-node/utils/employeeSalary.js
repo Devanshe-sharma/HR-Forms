@@ -1,5 +1,10 @@
 const Onboarding = require('../models/onboardingModel');
 
+// Same "active" definition as utils/employeeMaster.js's is_current: joined,
+// and not exited.
+const EXITED_STATUS_VALUES = ['Left', 'Already Left'];
+const ACTIVE_FILTER = { joiningStatus: 'Joined', exitStatus: { $nin: EXITED_STATUS_VALUES } };
+
 // Salary Structure section of the Onboarding schema only (models/onboardingModel.js) —
 // no contact info, personal details, documents, etc. empId/name are kept
 // only as the minimal identifier needed to tell rows apart.
@@ -14,13 +19,13 @@ const SALARY_PROJECTION = [
 ].join(' ');
 
 /**
- * Salary-only view of every Onboarding record, keyed by employee_id — used
- * by the external (API-key-gated) salary API. Deliberately excludes every
- * non-salary field (name is kept only as a human-readable label alongside
- * the key, not as identifying/contact data).
+ * Salary-only view of every ACTIVE (joined, not exited) Onboarding record,
+ * keyed by employee_id — used by the external (API-key-gated) salary API.
+ * Deliberately excludes every non-salary field (name is kept only as a
+ * human-readable label alongside the key, not as identifying/contact data).
  */
 async function getEmployeeSalaryList() {
-  const docs = await Onboarding.find({}, SALARY_PROJECTION).lean();
+  const docs = await Onboarding.find(ACTIVE_FILTER, SALARY_PROJECTION).lean();
 
   return docs.map((d) => ({
     employee_id: d.empId || String(d._id),
