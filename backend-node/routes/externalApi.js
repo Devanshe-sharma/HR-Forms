@@ -14,6 +14,7 @@ const express = require('express');
 const router = express.Router();
 const { requireApiKey } = require('../middleware/apiKeyAuth');
 const { getEmployeeMasterList } = require('../utils/employeeMaster');
+const { getEmployeeSalaryList } = require('../utils/employeeSalary');
 const Escalation = require('../models/Escalation');
 
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -27,6 +28,19 @@ router.get(
   asyncHandler(async (req, res) => {
     const employees = await getEmployeeMasterList();
     res.json({ success: true, data: employees });
+  })
+);
+
+// GET /api/external/salary — x-api-key: <EXTERNAL_SALARY_API_KEY>
+// Salary-only view of every Onboarding record, keyed by employee_id — no
+// contact info, personal details, or documents, just the Salary Structure
+// fields (see utils/employeeSalary.js).
+router.get(
+  '/salary',
+  requireApiKey('EXTERNAL_SALARY_API_KEY'),
+  asyncHandler(async (req, res) => {
+    const data = await getEmployeeSalaryList();
+    res.json({ success: true, data });
   })
 );
 
