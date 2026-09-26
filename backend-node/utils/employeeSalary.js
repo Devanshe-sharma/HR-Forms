@@ -9,7 +9,7 @@ const ACTIVE_FILTER = { joiningStatus: 'Joined', exitStatus: { $nin: EXITED_STAT
 // no contact info, personal details, documents, etc. empId/name are kept
 // only as the minimal identifier needed to tell rows apart.
 const SALARY_PROJECTION = [
-  'empId', 'name', 'mobile', 'dept', 'designation',
+  'empId', 'name', 'officialEmail', 'mobile', 'dept', 'designation',
   'annualCtc', 'basicSal', 'hraSal', 'travelAllowance', 'childrenEducationAllowance',
   'supplementaryAllowance', 'grossMonthly', 'empEpf', 'empEsic', 'monthlyCtc',
   'medicalReimbursement', 'vehicleReimbursement', 'driverReimbursement', 'telephoneReimbursement',
@@ -30,6 +30,7 @@ async function getEmployeeSalaryList() {
   return docs.map((d) => ({
     employee_id: d.empId || String(d._id),
     full_name: d.name || '',
+    official_email: d.officialEmail || '',
     mobile: d.mobile || '',
     department: d.dept || '',
     designation: d.designation || '',
