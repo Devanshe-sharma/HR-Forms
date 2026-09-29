@@ -417,6 +417,7 @@ export default function DeptDesignationMaster() {
   // ─── Columns ──────────────────────────────────────────────────────────────────
 
   const columns: { key: keyof RoleMasterRow; label: string; minWidth?: number }[] = [
+    { key: 'emp_name',          label: 'Employee',    minWidth: 120 },
     { key: 'dept_id',           label: 'D-ID',       minWidth: 52  },
     { key: 'department',        label: 'Department',  minWidth: 120 },
     { key: 'department_type',   label: 'Type',        minWidth: 80  },

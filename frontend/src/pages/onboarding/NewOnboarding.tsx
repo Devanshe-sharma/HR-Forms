@@ -462,16 +462,23 @@ const NewOnboarding: React.FC = () => {
 
   const onSubmit: SubmitHandler<FormValues> = async (data) => {
     try {
+      const matchedDept = formData.departments.find((dept) => dept.department === data.dept);
+      const matchedDesignation = formData.designations.find(
+        (designation) =>
+          designation.department === data.dept && designation.designation === data.designation
+      );
+
       const payload = {
         ...data,
         name: [data.firstName, data.lastName].filter(Boolean).join(" "),
-        deptLink:
-          formData.departments.find((dept) => dept.department === data.dept)?.dept_page_link ?? "",
-        designationLink:
-          formData.designations.find(
-            (designation) =>
-              designation.department === data.dept && designation.designation === data.designation
-          )?.role_document_link ?? "",
+        // Links this record to its Role Master row by ID (not just by
+        // matching text) so a later rename/edit in the Department &
+        // Designation Master can be cascaded down to this record — see
+        // PUT /api/rolemaster/:id in backend-node/routes/roles.js.
+        dept_id: matchedDept?.dept_id ?? null,
+        desig_id: matchedDesignation?.desig_id ?? null,
+        deptLink: matchedDept?.dept_page_link ?? "",
+        designationLink: matchedDesignation?.role_document_link ?? "",
         offerAcceptedDate: offerAcceptedDate?.toISOString(),
         plannedJoiningDate: plannedJoiningDate?.toISOString(),
         joinedDate: joinedDate?.toISOString(),

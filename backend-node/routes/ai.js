@@ -1,5 +1,5 @@
 /**
- * AI assistant (Gemini) — ask questions about HR data in plain English and
+ * AI assistant (Claude) — ask questions about HR data in plain English and
  * get answers + charts built from live, read-only MongoDB aggregations.
  *
  *   POST   /api/ai/chat                 { message, history? } → { answer, charts[] }
@@ -16,7 +16,7 @@ const express = require('express');
 const moment = require('moment-timezone');
 const router = express.Router();
 const { authenticate } = require('../middleware/authenticate');
-const { generateContent, geminiConfigured } = require('../utils/gemini');
+const { createMessage, claudeConfigured } = require('../utils/claude');
 const AiInsight = require('../models/AiInsight');
 const {
   findModel, describeFields, collectionCatalogue, sampleDocuments, runAggregation, parsePipeline, validatePipeline,
@@ -59,17 +59,23 @@ async function catalogueText() {
   return text;
 }
 
-async function systemPrompt(user) {
+// Per-request context — kept out of the cached prompt so it doesn't
+// invalidate the cache on every call.
+function volatilePrompt(user) {
   const today = moment().tz('Asia/Kolkata').format('dddd, D MMMM YYYY');
-  return `You are the HR analytics assistant inside Brisk Olive's HR portal. Today is ${today} (Asia/Kolkata).
-You are talking to ${user.name || 'a user'} (role: ${user.role}).
+  return `Today is ${today} (Asia/Kolkata). You are talking to ${user.name || 'a user'} (role: ${user.role}).`;
+}
+
+// Large, stable prompt (collection catalogue + rules) — prompt-cached.
+async function stablePrompt() {
+  return `You are the HR analytics assistant inside Brisk Olive's HR portal.
 
 You answer questions about the company's HR data by querying MongoDB with read-only aggregation pipelines.
 
 Available collections:
 ${await catalogueText()}
 
-How to work (each tool call is a round trip against a small per-minute quota, so use as few as possible — ideally one tool call, then your answer):
+How to work (each tool call adds a round trip the user waits for, so use as few as you need — often one tool call, then your answer):
 1. The field list above is complete, with types; values in [brackets] are the actual values in the data, and (e.g. "…") shows the format of dates stored as strings. Only call describe_collection if you genuinely need sample documents (e.g. to see a date string format).
 2. When a chart or table would help — or the user asks for analytics, a breakdown, a trend, a list or a comparison — call show_chart directly. It runs the pipeline, shows the real data to the user (who can pin it to their dashboard), and returns the rows to you, so you do NOT need a separate run_query first. Shape the output as flat rows, e.g. [{"department":"Sales","count":12}], and set xKey / yKeys to those field names. For a single number use chartType "metric" with one row and yKeys = [the value field].
 3. Use run_query only for answers that need no visual (e.g. a yes/no or a single fact you'll state in words), or to look something up before charting.
@@ -88,48 +94,46 @@ Query rules:
 
 /* ─────────────── Tools ─────────────── */
 
-const TOOLS = [{
-  functionDeclarations: [
-    {
-      name: 'describe_collection',
-      description: 'Get the full field list (with types and enum values) and a few recent sample documents for one collection.',
-      parameters: {
-        type: 'object',
-        properties: { collection: { type: 'string', description: 'Model name, e.g. "Employee"' } },
-        required: ['collection'],
-      },
+const TOOLS = [
+  {
+    name: 'describe_collection',
+    description: 'Get the full field list (with types and enum values) and a few recent sample documents for one collection. Only needed when the catalogue in the system prompt is not enough, e.g. to see how a nested field or a date string looks.',
+    input_schema: {
+      type: 'object',
+      properties: { collection: { type: 'string', description: 'Model name, e.g. "Employee"' } },
+      required: ['collection'],
     },
-    {
-      name: 'run_query',
-      description: 'Run a read-only MongoDB aggregation pipeline on one collection and get the resulting rows.',
-      parameters: {
-        type: 'object',
-        properties: {
-          collection: { type: 'string', description: 'Model name, e.g. "Employee"' },
-          pipeline: { type: 'string', description: 'JSON array of aggregation stages' },
-        },
-        required: ['collection', 'pipeline'],
+  },
+  {
+    name: 'run_query',
+    description: 'Run a read-only MongoDB aggregation pipeline on one collection and get the resulting rows (max 200). Use for answers that need no visual, or to look something up before charting.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        collection: { type: 'string', description: 'Model name, e.g. "Employee"' },
+        pipeline: { type: 'string', description: 'JSON array of aggregation stages' },
       },
+      required: ['collection', 'pipeline'],
     },
-    {
-      name: 'show_chart',
-      description: 'Display a chart / table / metric to the user from an aggregation pipeline. The user can pin it to their dashboard.',
-      parameters: {
-        type: 'object',
-        properties: {
-          title: { type: 'string' },
-          description: { type: 'string', description: 'One short line explaining the chart' },
-          chartType: { type: 'string', enum: CHART_TYPES },
-          collection: { type: 'string' },
-          pipeline: { type: 'string', description: 'JSON array of aggregation stages producing flat rows' },
-          xKey: { type: 'string', description: 'Row field used for the x-axis / pie labels (empty for metric)' },
-          yKeys: { type: 'array', items: { type: 'string' }, description: 'Numeric row field(s) to plot' },
-        },
-        required: ['title', 'chartType', 'collection', 'pipeline', 'yKeys'],
+  },
+  {
+    name: 'show_chart',
+    description: 'Display a chart, table or single metric to the user from an aggregation pipeline, and get the rows back. The user can pin it to their HR Dashboard, where it re-runs on live data.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        description: { type: 'string', description: 'One short line explaining the chart' },
+        chartType: { type: 'string', enum: CHART_TYPES },
+        collection: { type: 'string' },
+        pipeline: { type: 'string', description: 'JSON array of aggregation stages producing flat rows' },
+        xKey: { type: 'string', description: 'Row field used for the x-axis / pie labels (empty for metric)' },
+        yKeys: { type: 'array', items: { type: 'string' }, description: 'Numeric row field(s) to plot' },
       },
+      required: ['title', 'chartType', 'collection', 'pipeline', 'yKeys'],
     },
-  ],
-}];
+  },
+];
 
 // Keeps what goes back to the model small; the user still gets full chart data.
 function forModel(rows, limit = 50) {
@@ -182,46 +186,55 @@ async function runTool(name, args, charts) {
 /* ─────────────── Routes ─────────────── */
 
 router.post('/chat', asyncHandler(async (req, res) => {
-  if (!geminiConfigured()) {
-    return res.status(503).json({ success: false, error: 'GEMINI_API_KEY is not set on the server' });
+  if (!claudeConfigured()) {
+    return res.status(503).json({ success: false, error: 'ANTHROPIC_API_KEY is not set on the server' });
   }
   const message = String(req.body?.message || '').trim();
   if (!message) return res.status(400).json({ success: false, error: 'message is required' });
   if (message.length > 2000) return res.status(400).json({ success: false, error: 'message is too long' });
 
-  // Text-only history from the client (last few turns) for follow-up questions.
-  const history = (Array.isArray(req.body?.history) ? req.body.history : [])
-    .slice(-10)
-    .filter((h) => (h.role === 'user' || h.role === 'model') && typeof h.text === 'string' && h.text.trim())
-    .map((h) => ({ role: h.role, parts: [{ text: h.text.slice(0, 4000) }] }));
+  // Text-only history from the client (last few turns) for follow-up
+  // questions. Must start with a user turn and alternate.
+  const history = [];
+  for (const h of (Array.isArray(req.body?.history) ? req.body.history : []).slice(-10)) {
+    const role = h?.role === 'user' ? 'user' : h?.role === 'assistant' || h?.role === 'model' ? 'assistant' : null;
+    if (!role || typeof h.text !== 'string' || !h.text.trim()) continue;
+    if (!history.length && role !== 'user') continue;
+    if (history.length && history[history.length - 1].role === role) history.pop();
+    history.push({ role, content: h.text.slice(0, 4000) });
+  }
+  if (history.length && history[history.length - 1].role === 'user') history.pop();
 
-  const contents = [...history, { role: 'user', parts: [{ text: message }] }];
-  const systemInstruction = await systemPrompt(req.user);
+  const messages = [...history, { role: 'user', content: message }];
+  const system = { stablePrompt: await stablePrompt(), volatilePrompt: volatilePrompt(req.user) };
   const charts = [];
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const content = await generateContent({ systemInstruction, contents, tools: TOOLS });
-    const parts = content.parts || [];
-    const calls = parts.filter((p) => p.functionCall);
+    const response = await createMessage({ ...system, messages, tools: TOOLS });
+    if (process.env.AI_DEBUG_USAGE) console.log('usage', response.stop_reason, JSON.stringify(response.usage));
 
-    if (!calls.length) {
-      const answer = parts.map((p) => p.text || '').join('').trim();
+    if (response.stop_reason === 'refusal') {
+      return res.json({ success: true, answer: "Sorry — I can't help with that request.", charts });
+    }
+
+    const toolUses = response.content.filter((b) => b.type === 'tool_use');
+    if (response.stop_reason !== 'tool_use' || !toolUses.length) {
+      const answer = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
       return res.json({ success: true, answer: answer || 'Done.', charts });
     }
 
-    // Echo the model turn back unchanged (keeps thought signatures intact).
-    contents.push(content);
-    const responses = [];
-    for (const { functionCall } of calls) {
-      let response;
+    // Append the full assistant turn unchanged (keeps thinking blocks valid).
+    messages.push({ role: 'assistant', content: response.content });
+    const results = await Promise.all(toolUses.map(async (tu) => {
       try {
-        response = await runTool(functionCall.name, functionCall.args || {}, charts);
+        const out = await runTool(tu.name, tu.input || {}, charts);
+        return { type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(out), ...(out?.error ? { is_error: true } : {}) };
       } catch (err) {
-        response = { error: err.message };
+        return { type: 'tool_result', tool_use_id: tu.id, content: err.message, is_error: true };
       }
-      responses.push({ functionResponse: { name: functionCall.name, response } });
-    }
-    contents.push({ role: 'user', parts: responses });
+    }));
+    // All results for this turn go back in a single user message.
+    messages.push({ role: 'user', content: results });
   }
 
   res.json({

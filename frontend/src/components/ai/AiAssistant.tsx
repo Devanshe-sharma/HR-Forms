@@ -19,7 +19,7 @@ export const AI_ROLES = ["Admin", "HR", "Management"];
 export const AI_INSIGHTS_EVENT = "ai-insights-changed";
 
 interface Message {
-  role: "user" | "model";
+  role: "user" | "assistant";
   text: string;
   charts?: AiChartSpec[];
   question?: string;
@@ -69,10 +69,10 @@ const AiAssistant: React.FC = () => {
     setLoading(true);
     try {
       const res = await axios.post(`${API_URL}/ai/chat`, { message, history });
-      setMessages((prev) => [...prev, { role: "model", text: res.data.answer, charts: res.data.charts, question: message }]);
+      setMessages((prev) => [...prev, { role: "assistant", text: res.data.answer, charts: res.data.charts, question: message }]);
     } catch (err: any) {
       const msg = err.response?.data?.error || err.message || "Something went wrong";
-      setMessages((prev) => [...prev, { role: "model", text: msg, error: true }]);
+      setMessages((prev) => [...prev, { role: "assistant", text: msg, error: true }]);
     } finally {
       setLoading(false);
     }
@@ -86,7 +86,7 @@ const AiAssistant: React.FC = () => {
       window.dispatchEvent(new Event(AI_INSIGHTS_EVENT));
     } catch (err: any) {
       const msg = err.response?.data?.error || "Could not pin chart";
-      setMessages((prev) => [...prev, { role: "model", text: `Could not pin chart: ${msg}`, error: true }]);
+      setMessages((prev) => [...prev, { role: "assistant", text: `Could not pin chart: ${msg}`, error: true }]);
     }
   };
 

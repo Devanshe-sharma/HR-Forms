@@ -182,7 +182,9 @@ interface KpiQuarterResponse {
 }
 
 interface IncrementRow {
+  employeeName: string;
   department: string;
+  designation: string;
   incrementPct: number;
   revisionCount: number;
 }
@@ -1437,14 +1439,19 @@ const IncrementRowList: React.FC<{ rows: IncrementRow[]; color: string }> = ({ r
     <Box sx={{ border: "1px solid #e2e8f0", borderRadius: "10px", overflow: "hidden", maxHeight: 320, overflowY: "auto" }}>
       {rows.map((r, i) => (
         <Box
-          key={`${r.department}-${i}`}
+          key={`${r.employeeName}-${i}`}
           sx={{
             display: "flex", justifyContent: "space-between", alignItems: "center",
             px: 2, py: 1, bgcolor: "#fff",
             borderTop: i > 0 ? "1px solid #f1f5f9" : "none",
           }}
         >
-          <Typography fontSize="0.8rem" color="#1e293b" fontWeight={500}>{r.department || "—"}</Typography>
+          <Box>
+            <Typography fontSize="0.8rem" color="#1e293b" fontWeight={700}>{r.employeeName || "—"}</Typography>
+            <Typography fontSize="0.68rem" color="#94a3b8">
+              {[r.designation, r.department].filter(Boolean).join(" · ") || "—"}
+            </Typography>
+          </Box>
           <Box textAlign="right">
             <Typography fontSize="0.85rem" fontWeight={700} sx={{ color }}>+{r.incrementPct}%</Typography>
             <Typography fontSize="0.68rem" color="#94a3b8">

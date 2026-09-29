@@ -163,15 +163,24 @@ router.get('/', authenticate, requireRole([...FULL_ACCESS_ROLES, 'Manager']), as
 // produces a huge % jump that isn't a real merit increment — counting it
 // would falsely inflate the average and stuff the High Performer bucket
 // with conversions rather than actual raises.
+//
+// Also excluded: zero-change records where previousCtc === newCtc. A batch
+// of these (created_by "System" / "System (Onboarding Backfill)") exist
+// purely to give every pre-existing employee a starting SalaryRevision row
+// matching their Onboarding CTC — no revision decision was ever made, so
+// finalIncrementPct comes out to exactly 0. That's not a "low increment",
+// it's no increment at all, and was wrongly filling up the Low Increment
+// bucket with people who never actually went through a review cycle.
 
 const MAX_ANALYTIC_INCREMENT = 50;
 
 router.get('/analytics/increments', authenticate, requireRole(FULL_ACCESS_ROLES), asyncHandler(async (req, res) => {
   const raw = await SalaryRevision.find({
     stage: 'completed',
-  }, 'employeeName employeeCode department designation finalIncrementPct applicableDate createdAt categoryChanged previousCategory newCategory').lean();
+  }, 'employeeName employeeCode department designation previousCtc newCtc finalIncrementPct applicableDate createdAt categoryChanged previousCategory newCategory').lean();
   const completed = raw
-    .filter((r) => r.finalIncrementPct != null && !isPpoConversion(r) && r.finalIncrementPct <= MAX_ANALYTIC_INCREMENT);
+    .filter((r) => r.finalIncrementPct != null && !isPpoConversion(r) && r.finalIncrementPct <= MAX_ANALYTIC_INCREMENT
+      && r.previousCtc !== r.newCtc);
 
   const yearOf = (r) => fiscalYearOf(r.applicableDate || r.createdAt);
 
@@ -184,14 +193,11 @@ router.get('/analytics/increments', authenticate, requireRole(FULL_ACCESS_ROLES)
   // before judging low/high — someone who got a 5% increment in one
   // revision and another 6% later the same year genuinely received ~11%
   // that year, and judging either revision on its own as "low" would be
-  // misleading. employeeName/employeeCode are only used internally to
-  // group revisions by person — this endpoint is aggregate-only, same
-  // confidentiality rule as Asked-to-Leave/Referred/Offer Dropout: no
-  // name, designation, salary figure (CTC), or other per-employee
-  // identifier is ever included in what's actually sent back below.
-  // designation is deliberately left out too — in a small department a
-  // designation can narrow a row down to one specific person just as
-  // easily as a name would.
+  // misleading. employeeName/employeeCode group revisions by person AND
+  // are included in what's sent back below (per HR's request) — unlike the
+  // aggregate-only Asked-to-Leave/Referred/Offer Dropout widgets, this one
+  // is meant to name the specific employees in the low/high buckets, for
+  // the Admin/HR/Management audience that can already reach this route.
   const byEmployee = new Map();
   for (const r of inYear) {
     const key = r.employeeCode || r.employeeName;
@@ -201,7 +207,9 @@ router.get('/analytics/increments', authenticate, requireRole(FULL_ACCESS_ROLES)
       existing.revisionCount += 1;
     } else {
       byEmployee.set(key, {
+        employeeName: r.employeeName,
         department: r.department,
+        designation: r.designation,
         incrementPct: r.finalIncrementPct,
         revisionCount: 1,
       });

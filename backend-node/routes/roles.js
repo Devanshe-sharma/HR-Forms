@@ -2,11 +2,60 @@ const express = require('express');
 const router = express.Router();
 
 const RoleMaster = require('../models/role_master');
+const Onboarding = require('../models/onboardingModel');
 
 const {
   getRoles,
   getAllFormData,
 } = require('../controllers/roleMasterController');
+
+// Pushes a Role Master row's current department/designation text down onto
+// Onboarding records — called after any edit that could have changed
+// department or designation names, so a rename here actually shows up in
+// Employee List / Profile / Onboarding instead of staying a stale snapshot
+// forever. Two ways a record gets reached, since most records were never
+// linked by the backfill (see POST /onboarding/backfill-dept-desig-ids —
+// most existing employees' dept/designation combo isn't in the Master at
+// all yet, so there was nothing to link them to):
+//   1. ID-linked — dept_id/desig_id match this row exactly. Most precise;
+//      survives even if the OLD text was already wrong/inconsistent.
+//   2. Text fallback — no ID link required at all. If this edit actually
+//      changed the department/designation text, every record still
+//      holding the OLD text gets moved to the new text. `before` is the
+//      row as it was immediately before this update, so "old text" always
+//      means what was really there a moment ago, not a guess.
+async function cascadeRoleMasterEdit(doc, before) {
+  if (!doc) return;
+
+  if (doc.dept_id != null) {
+    await Onboarding.updateMany(
+      { dept_id: doc.dept_id },
+      { $set: { dept: doc.department, deptLink: doc.dept_page_link || '' } }
+    );
+  }
+  if (doc.dept_id != null && doc.desig_id != null) {
+    await Onboarding.updateMany(
+      { dept_id: doc.dept_id, desig_id: doc.desig_id },
+      { $set: { designation: doc.designation, designationLink: doc.role_document_link || '' } }
+    );
+  }
+
+  if (before?.department && doc.department && before.department !== doc.department) {
+    await Onboarding.updateMany(
+      { dept: before.department },
+      { $set: { dept: doc.department, deptLink: doc.dept_page_link || '' } }
+    );
+  }
+  // Scoped to the (new) department too — a bare designation title like
+  // "Manager" can exist under several departments, and without this a
+  // rename in one department could wrongly relabel someone in another.
+  if (before?.designation && doc.designation && before.designation !== doc.designation) {
+    await Onboarding.updateMany(
+      { dept: doc.department, designation: before.designation },
+      { $set: { designation: doc.designation, designationLink: doc.role_document_link || '' } }
+    );
+  }
+}
 
 // GET /api/role-master
 router.get('/', async (req, res) => {
@@ -96,6 +145,11 @@ router.put('/designation', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Designation not found in Role Master' });
     }
 
+    await Onboarding.updateMany(
+      { dept_id: deptIdNum, desig_id: desigIdNum },
+      { $set: { designationLink: roleDocLinkTrimmed } }
+    );
+
     res.json({ success: true, data: doc });
   } catch (e) {
     res.status(400).json({ success: false, message: e.message });
@@ -105,11 +159,14 @@ router.put('/designation', async (req, res) => {
 // PUT
 router.put('/:id', async (req, res) => {
   try {
+    const before = await RoleMaster.findById(req.params.id).lean();
     const doc = await RoleMaster.findByIdAndUpdate(
       req.params.id,
       req.body,
       { new: true }
     );
+
+    await cascadeRoleMasterEdit(doc, before);
 
     res.json({
       success: true,

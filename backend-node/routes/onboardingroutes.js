@@ -703,6 +703,69 @@ router.post("/backfill-empid-from-rolemaster", async (req, res) => {
   }
 });
 
+// POST /onboarding/backfill-dept-desig-ids
+// One-time (safely re-runnable) sync: links every Onboarding record that's
+// missing dept_id/desig_id to its Role Master row, matched on today's
+// dept/designation TEXT (trimmed, case-insensitive exact match only — no
+// fuzzy matching). Once linked, a later rename in the Department &
+// Designation Master cascades down to this record automatically (see
+// cascadeRoleMasterEdit in routes/roles.js); until then, edits there have
+// no effect on it. Records whose current text doesn't match any Role
+// Master row (typos, since-renamed/removed rows, etc.) are left alone and
+// listed back for manual review rather than guessed at.
+router.post("/backfill-dept-desig-ids", async (req, res) => {
+  try {
+    const roleRows = await RoleMaster.collection.find({}).toArray();
+
+    // "department|||designation" (trimmed, lowercased) -> {dept_id, desig_id}
+    const byDeptDesig = new Map();
+    for (const r of roleRows) {
+      const deptIdRaw = r.dept_id ?? r.Dept_Id ?? null;
+      const desigIdRaw = r.desig_id ?? r.Desig_id ?? null;
+      if (deptIdRaw == null || desigIdRaw == null) continue;
+
+      const dept = String(r.department ?? r.Department ?? "").trim().toLowerCase();
+      const designation = String(r.designation ?? r.Designation ?? "").trim().toLowerCase();
+      if (!dept || !designation) continue;
+
+      const key = `${dept}|||${designation}`;
+      if (!byDeptDesig.has(key)) {
+        byDeptDesig.set(key, { dept_id: Number(deptIdRaw), desig_id: Number(desigIdRaw) });
+      }
+    }
+
+    const candidates = await Onboarding.find(
+      { $or: [{ dept_id: null }, { desig_id: null }] },
+      "name empId dept designation"
+    );
+
+    let updated = 0;
+    const unmatched = [];
+
+    for (const doc of candidates) {
+      const dept = (doc.dept || "").trim().toLowerCase();
+      const designation = (doc.designation || "").trim().toLowerCase();
+      const match = dept && designation ? byDeptDesig.get(`${dept}|||${designation}`) : null;
+
+      if (match) {
+        await Onboarding.findByIdAndUpdate(doc._id, { dept_id: match.dept_id, desig_id: match.desig_id });
+        updated++;
+      } else {
+        unmatched.push({ name: doc.name, empId: doc.empId, dept: doc.dept, designation: doc.designation });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Linked dept_id/desig_id on ${updated} record(s). ${unmatched.length} had no exact match in Role Master.`,
+      unmatched,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 const EXITED_STATUS_VALUES = new Set(["Left", "Already Left"]);
 
 router.get("/employee-letters-source", async (req, res) => {
