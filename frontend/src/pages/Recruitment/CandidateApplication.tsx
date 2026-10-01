@@ -143,7 +143,13 @@ const formSchema = z
 type FormData = z.infer<typeof formSchema>;
 
 const STEP_FIELDS: (keyof FormData)[][] = [
-  ['full_name', 'candidateType', 'email', 'dob', 'dial_code', 'mobile', 'whatsapp_same', 'whatsappNumber', 'state', 'city', 'pin_code', 'relocation'],
+  // 'designation' included here so a failed/missing job match (see the
+  // jobIdParam effect — e.g. the requisition closed between the careers
+  // page load and this click, or the link was missing job_id) is caught
+  // the moment the candidate tries to leave Step 1, with a visible error
+  // right there — not silently at final submit, 5 steps later, with
+  // nothing on screen to point at (see onInvalid).
+  ['full_name', 'candidateType', 'email', 'dob', 'dial_code', 'mobile', 'whatsapp_same', 'whatsappNumber', 'state', 'city', 'pin_code', 'relocation', 'designation'],
   ['highest_qualification', 'educationSpecialization', 'collegeUniversity', 'graduationYear', 'courseName', 'semesterOrYear', 'internshipDuration', 'total_experience', 'relevantExperience', 'current_company', 'current_designation'],
   ['primarySkills', 'secondarySkills', 'languagesKnown', 'otherLanguage', 'current_ctc', 'expected_annual_ctc'],
   ['notice_period', 'expectedJoiningDate', 'preferredWorkMode'],
@@ -415,6 +421,28 @@ export default function CandidateApplicationPage() {
   };
 
   // ── Submit ───────────────────────────────────────────────────────────────────
+  // handleSubmit(onSubmit) validates the FULL schema (including superRefine's
+  // cross-field checks) regardless of which step is on screen — e.g. a
+  // candidate who passed Step 2 as "Fresher" and then goes back and changes
+  // candidateType to "Experienced" silently invalidates total_experience/
+  // relevantExperience (now required) without ever re-running Step 2's own
+  // per-step trigger() check. Without this handler, that failure is
+  // completely invisible: handleSubmit just declines to call onSubmit, the
+  // offending field lives on an unmounted earlier step, and the candidate
+  // sees the Submit button do nothing. This jumps back to the earliest step
+  // that actually has an error so there's always something visible to fix.
+  const onInvalid = (formErrors: typeof errors) => {
+    const errorFields = Object.keys(formErrors);
+    if (errorFields.length === 0) return;
+    let targetStep = STEP_TITLES.length - 1;
+    for (let i = 0; i < STEP_FIELDS.length; i++) {
+      if (STEP_FIELDS[i].some((f) => errorFields.includes(f))) { targetStep = i; break; }
+    }
+    setCurrentStep(targetStep);
+    setStepError('Please fix the highlighted error(s) before submitting.');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const onSubmit = async (data: FormData) => {
     if (!resumeFile) {
       setResumeError('Resume is required');
@@ -612,7 +640,7 @@ export default function CandidateApplicationPage() {
           <p className="text-xs text-gray-400 mt-2 sm:hidden">Step {currentStep + 1} of {STEP_TITLES.length}: <span className="font-semibold text-gray-600">{STEP_TITLES[currentStep]}</span></p>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="px-8 py-8">
+        <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="px-8 py-8">
 
           <input type="hidden" {...register('job_id')} />
           <input type="hidden" {...register('designation')} />
