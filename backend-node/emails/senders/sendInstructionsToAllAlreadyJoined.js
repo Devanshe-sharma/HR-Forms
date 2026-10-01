@@ -5,7 +5,20 @@ const buildCc      = require("../../utils/buildCc");
 const resolveDeptContactEmail = require("../../utils/resolveDeptContactEmail");
 
 async function sendInstructionsToAllAlreadyJoined(doc) {
-  const { subject, html } = template(doc);
+  // Same field-name mismatch as sendInstructionsToAll.js — the template's
+  // `email` param means the joinee's PERSONAL email, but Onboarding has no
+  // `email` field (it's `persEmail`), so passing `doc` straight through
+  // always rendered a blank "Personal Email" regardless of what's on file.
+  const { subject, html } = template({
+    name: doc.name,
+    email: doc.persEmail,
+    mobile: doc.mobile,
+    dept: doc.dept,
+    deptLink: doc.deptLink,
+    designation: doc.designation,
+    designationLink: doc.designationLink,
+    joinedDate: doc.joinedDate,
+  });
 
   // CC the joinee's own department (Role Master's group/head email).
   const deptEmail = await resolveDeptContactEmail(doc.dept);

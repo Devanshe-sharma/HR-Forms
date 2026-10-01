@@ -5,7 +5,19 @@ const resolveEmployeeEmailByName = require("../../utils/resolveEmployeeEmailByNa
 const resolveDeptContactEmail = require("../../utils/resolveDeptContactEmail");
 
 async function sendInstructionsToAll(doc) {
-  const { subject, html } = template(doc);
+  // The template's `email` param means the joinee's PERSONAL email — doc
+  // has no `email` field at all (Onboarding's field is `persEmail`), so
+  // passing `doc` straight through always rendered "Personal Email: -"
+  // regardless of what's actually on file.
+  const { subject, html } = template({
+    name: doc.name,
+    email: doc.persEmail,
+    mobile: doc.mobile,
+    dept: doc.dept,
+    designation: doc.designation,
+    reportingHead: doc.reportingHead,
+    plannedJoiningDate: doc.plannedJoiningDate,
+  });
 
   // Concerned departments get this directly (not CC'd): HR, DME, Admin,
   // this joinee's Reporting/Department Manager (doc.reportingHead is a
