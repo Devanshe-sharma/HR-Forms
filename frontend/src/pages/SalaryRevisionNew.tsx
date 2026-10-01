@@ -1028,7 +1028,9 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onOpenCtc
   // window), 'interns' (plain Interns only — kept out of Action Needed
   // entirely, see allEmps/internEmps below), and 'history' (who's already
   // completed, optionally narrowed to PPO conversions).
-  const [mainTab, setMainTab] = useState<'action'|'interns'|'history'>('action');
+  const [mainTab, setMainTab] = useState<'action'|'interns'|'history'|'mail'>('action');
+  const role = localStorage.getItem('role') || '';
+  const canSeeSentMail = role === 'Admin' || role === 'HR';
   // Within 'action': 'quarter' browses by fiscal quarter, 'custom' by an
   // explicit date range, 'all' shows every current employee regardless
   // of date. One dropdown picks between these, instead of separate
@@ -1438,10 +1440,13 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onOpenCtc
           <Tab label="Action Needed" value="action"/>
           <Tab label="Interns" value="interns"/>
           <Tab label="History" value="history"/>
+          {canSeeSentMail && <Tab label="Sent Mail" value="mail"/>}
         </Tabs>
       </Box>
 
-      {mainTab!=='history'&&(
+      {mainTab==='mail' && <SentMailHistory/>}
+
+      {mainTab!=='history'&&mainTab!=='mail'&&(
         <Box sx={{ display:'flex', gap:1.5, mb:2.5 }}>
           {[
             { label: 'Total', value: 'All' as const, count: stats.total, color: '#334155' },
@@ -1594,6 +1599,7 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onOpenCtc
         </Box>
       )}
 
+      {mainTab!=='mail'&&(
       <Box sx={{ bgcolor:'white', borderRadius:2, border:'1px solid var(--border)', overflow:'hidden' }}>
         {loading?<Box display="flex" justifyContent="center" py={6}><CircularProgress size={28}/></Box>:(
           <TableContainer sx={{ maxHeight:460, overflow:'auto' }}>
@@ -1715,6 +1721,7 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onOpenCtc
           </TableContainer>
         )}
       </Box>
+      )}
 
       <Popover
         open={!!historyAnchor}
@@ -1921,6 +1928,117 @@ interface MailDraft {
 }
 
 const DRAFTS_API = `${API_URL}/salary-revision-mail-drafts`;
+
+// Full history of every mail this app has actually sent on HR's behalf —
+// manager requests, escalations, HR notify, employee confirmations, PIP
+// hold notices, and both the company-wide and per-manager quarterly
+// digests — in one place. Everywhere else a sent mail only shows as a
+// small chip buried on its own revision card (RevisionMailButtons) or
+// inside the Company Mail modal (CompanyMailButton); this is the one view
+// across all of them. Admin/HR only, read-only (no edit/resend — a sent
+// mail is a historical record).
+function SentMailHistory() {
+  const [drafts, setDrafts] = useState<MailDraft[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [typeFilter, setTypeFilter] = useState('All');
+  const [search, setSearch] = useState('');
+  const [viewing, setViewing] = useState<MailDraft | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    axios.get(`${DRAFTS_API}?status=sent`)
+      .then(({ data }) => setDrafts(data.data || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const types = useMemo(() => ['All', ...Array.from(new Set(drafts.map(d => d.mailType)))], [drafts]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return drafts
+      .filter(d => typeFilter === 'All' || d.mailType === typeFilter)
+      .filter(d => !q || d.employeeName.toLowerCase().includes(q) || d.to.toLowerCase().includes(q) || d.subject.toLowerCase().includes(q))
+      .sort((a, b) => new Date(b.sentAt || b.createdAt).getTime() - new Date(a.sentAt || a.createdAt).getTime());
+  }, [drafts, typeFilter, search]);
+
+  return (
+    <Box>
+      <Box sx={{ display:'flex', gap:1.5, mb:2, flexWrap:'wrap' }}>
+        <TextField size="small" placeholder="Search employee, recipient, or subject…" value={search}
+          onChange={e=>setSearch(e.target.value)} sx={{ minWidth: 260 }}/>
+        <FormControl size="small" sx={{ minWidth: 200 }}>
+          <Select value={typeFilter} onChange={e=>setTypeFilter(e.target.value)}>
+            {types.map(t => <MenuItem key={t} value={t}>{t === 'All' ? 'All mail types' : (MAIL_TYPE_LABEL[t] || t)}</MenuItem>)}
+          </Select>
+        </FormControl>
+      </Box>
+
+      <Box sx={{ bgcolor:'white', borderRadius:2, border:'1px solid var(--border)', overflow:'hidden' }}>
+        {loading ? (
+          <Box display="flex" justifyContent="center" py={6}><CircularProgress size={28}/></Box>
+        ) : filtered.length === 0 ? (
+          <Box sx={{ py:6, textAlign:'center', color:'var(--text-secondary)', fontSize:13 }}>No sent mail yet.</Box>
+        ) : (
+          <TableContainer sx={{ maxHeight: 520, overflow:'auto' }}>
+            <Table size="small" stickyHeader>
+              <TableHead>
+                <TableRow sx={{ '& th':TH }}>
+                  <TableCell>Employee / Target</TableCell>
+                  <TableCell>Mail Type</TableCell>
+                  <TableCell>To</TableCell>
+                  <TableCell>Sent By</TableCell>
+                  <TableCell>Sent At</TableCell>
+                  <TableCell align="center">Mail</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filtered.map(d => (
+                  <TableRow key={d._id} hover>
+                    <TableCell sx={{ fontWeight:600, fontSize:12.5 }}>{d.employeeName || '—'}</TableCell>
+                    <TableCell sx={{ fontSize:12.5 }}>{MAIL_TYPE_LABEL[d.mailType] || d.mailType}</TableCell>
+                    <TableCell sx={{ fontSize:12.5 }}>{d.to}</TableCell>
+                    <TableCell sx={{ fontSize:12.5 }}>{d.sentBy || '—'}</TableCell>
+                    <TableCell sx={{ fontSize:12.5 }}>{d.sentAt ? fmtDate(d.sentAt) : '—'}</TableCell>
+                    <TableCell align="center">
+                      <Tooltip title="View mail">
+                        <IconButton size="small" onClick={()=>setViewing(d)}>
+                          <VisibilityIcon sx={{ fontSize:16 }}/>
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Box>
+
+      <Modal open={!!viewing} onClose={()=>setViewing(null)}>
+        <Box sx={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)',
+          width:{ xs:'95vw', md:640 }, maxHeight:'85vh', overflow:'auto',
+          bgcolor:'white', borderRadius:2, border:'1px solid #e2e8f0', outline:'none', p:2.5 }}>
+          {viewing && (
+            <Stack spacing={1.5}>
+              <Typography fontSize={14} fontWeight={700}>{MAIL_TYPE_LABEL[viewing.mailType] || viewing.mailType}</Typography>
+              <Typography fontSize={12} color="text.secondary">
+                Sent {viewing.sentAt ? fmtDate(viewing.sentAt) : ''}{viewing.sentBy ? ` by ${viewing.sentBy}` : ''}
+              </Typography>
+              <Divider/>
+              <Typography fontSize={12}><b>To:</b> {viewing.to}</Typography>
+              {viewing.cc && <Typography fontSize={12}><b>Cc:</b> {viewing.cc}</Typography>}
+              {viewing.bcc && <Typography fontSize={12}><b>Bcc:</b> {viewing.bcc}</Typography>}
+              <Typography fontSize={12}><b>Subject:</b> {viewing.subject}</Typography>
+              <Box sx={{ border:'1px solid #e2e8f0', borderRadius:1, p:1.5, maxHeight:380, overflow:'auto', fontSize:13 }}
+                dangerouslySetInnerHTML={{ __html: viewing.html }}/>
+            </Stack>
+          )}
+        </Box>
+      </Modal>
+    </Box>
+  );
+}
 
 // Every recurring mail that isn't about any single employee's revision —
 // currently just the quarterly "due this quarter" digest to Management
