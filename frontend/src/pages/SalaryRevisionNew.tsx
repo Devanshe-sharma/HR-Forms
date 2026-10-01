@@ -309,6 +309,20 @@ const fiscalQuarterEnd = (year: number, quarter: number): Date =>
 const fiscalYearLabel = (year: number): string =>
   `FY ${year}-${String((year + 1) % 100).padStart(2, '0')}`;
 
+// Once a completed revision has actually converted someone off an
+// intern-style cycle (fullTimeSince set — see computeAnchorDate), the
+// normal annual anchor-date cycle takes over. Until then, 'Intern' and
+// 'Intern with PPO' both run on the contract-period cycle
+// (internReviewDate) — an Intern with PPO is still an intern on a fixed
+// contract, reviewed at contract end like any intern, not an annual
+// employee from day one. Mirrors backend-node/utils/salaryRevisionDueDate.js
+// exactly — keep both in sync.
+const hasConvertedToFullTime = (revisions: SalaryRevision[]): boolean =>
+  revisions.some(r => r.stage === 'completed' && !!r.fullTimeSince);
+
+const isInternPhase = (category: string, revisions: SalaryRevision[]): boolean =>
+  (category === 'Intern' || category === 'Intern with PPO') && !hasConvertedToFullTime(revisions);
+
 // Does this employee's recurring annual due-date land inside [rangeStart,
 // rangeEnd]? Works for both a fiscal-quarter window and an arbitrary
 // custom date range — checks every calendar year the range could touch
@@ -1139,9 +1153,10 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onOpenCtc
 
   // Every active NON-INTERN employee with a joining date. Plain Interns
   // are handled entirely in their own tab (internEmps/internRows below) —
-  // "Intern with PPO" is NOT excluded here, since that category is
-  // treated like any other employee (its own annual anchor-date cycle),
-  // matching the quarterly Salary Revision email's same distinction. No
+  // "Intern with PPO" is NOT excluded here (it still needs a row in the
+  // table), but its due date is resolved via isInternPhase inside the
+  // 'all'/quarter branches below: contract-period cycle pre-conversion,
+  // normal annual anchor-date cycle once fullTimeSince is set. No
   // 11-month tenure gate — "All Employees" should mean exactly that, and
   // quarter/custom-range browsing already correctly excludes anyone not
   // yet due via isDueInRange, so this gate was only ever doing anything
@@ -1249,9 +1264,12 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onOpenCtc
         // anchor-derived guess — it's ground truth, not a re-derivation.
         const realRev = realOpenRevisionMap.get(e.employee_id);
         if (realRev) return { emp: e, rec: realRev, dueDate: new Date(realRev.managerRequestedAt!) };
-        const dueDate = anchorDateMap.get(e.employee_id)
-          ? anniversaryDateForYear(anchorDateMap.get(e.employee_id)!.toISOString(), now.getFullYear())
-          : null;
+        const revs = revisionMap.get(e.employee_id) || [];
+        const dueDate = isInternPhase(e.employee_category, revs)
+          ? (e.joining_date && e.contract_period_months ? internReviewDate(e.joining_date, e.contract_period_months) : null)
+          : (anchorDateMap.get(e.employee_id)
+            ? anniversaryDateForYear(anchorDateMap.get(e.employee_id)!.toISOString(), now.getFullYear())
+            : null);
         return { emp: e, rec: revisionForYear(e.employee_id, now.getFullYear()), dueDate };
       });
     }
@@ -1283,13 +1301,20 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onOpenCtc
         if (realReminder < rangeStart || realReminder > rangeEnd) return [];
         return [{ emp: e, rec: realRev, dueDate: realReminder }];
       }
+      const revs = revisionMap.get(e.employee_id) || [];
+      if (isInternPhase(e.employee_category, revs)) {
+        if (!e.joining_date || !e.contract_period_months) return [];
+        const due = internReviewDate(e.joining_date, e.contract_period_months);
+        if (due < rangeStart || due > rangeEnd) return [];
+        return [{ emp: e, rec: revisionForYear(e.employee_id, due.getFullYear()), dueDate: due }];
+      }
       const anchor = anchorDateMap.get(e.employee_id);
       if (!anchor) return [];
       const due = isDueInRange(anchor, rangeStart, rangeEnd);
       if (!due) return [];
       return [{ emp: e, rec: revisionForYear(e.employee_id, due.getFullYear()), dueDate: due }];
     });
-  }, [mainTab, period, ppoOnly, completedRows, ppoRows, allEmps, internRows, selFY, selQ, customFrom, customTo, anchorDateMap, realOpenRevisionMap, revisionForYear]);
+  }, [mainTab, period, ppoOnly, completedRows, ppoRows, allEmps, internRows, selFY, selQ, customFrom, customTo, anchorDateMap, realOpenRevisionMap, revisionForYear, revisionMap]);
 
   // Status is purely date-driven now — whether someone has any PRIOR
   // history (a real past review, or a backfilled onboarding baseline)

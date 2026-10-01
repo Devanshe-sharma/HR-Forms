@@ -24,11 +24,7 @@ async function sendSalaryRevisionDue(now = new Date()) {
     .select('name dept designation joinedDate employeeCategory contractPeriod exitStatus')
     .lean();
 
-  // Plain Interns aren't part of this digest, but "Intern with PPO" is —
-  // exact match only, same as dueDateInRange's own intern check and the
-  // dashboard's (SalaryRevisionNew.tsx), so an "Intern with PPO" employee
-  // is still evaluated through the normal annual anchor-date logic below.
-  const active = employees.filter((e) => !EXITED_STATUS_VALUES.has(e.exitStatus || '') && e.employeeCategory !== 'Intern');
+  const active = employees.filter((e) => !EXITED_STATUS_VALUES.has(e.exitStatus || ''));
 
   const revisionsByEmployee = new Map();
   const allRevisions = await SalaryRevision.find({

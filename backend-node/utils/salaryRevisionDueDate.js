@@ -72,13 +72,28 @@ function isDueInRange(anchor, rangeStart, rangeEnd) {
   return null;
 }
 
+// Once a completed revision has actually converted someone off an
+// intern-style cycle (fullTimeSince set — see computeAnchorDate), the
+// normal annual anchor-date cycle takes over. Until then, 'Intern' and
+// 'Intern with PPO' both run on the contract-period cycle (internReviewDate)
+// — an Intern with PPO is still an intern on a fixed contract, reviewed at
+// contract end like any intern, not an annual employee from day one.
+function hasConvertedToFullTime(revisions) {
+  return (revisions || []).some((r) => r.stage === 'completed' && r.fullTimeSince);
+}
+
+function isInternPhase(employeeCategory, revisions) {
+  return (employeeCategory === 'Intern' || employeeCategory === 'Intern with PPO')
+    && !hasConvertedToFullTime(revisions);
+}
+
 // This employee's Due Date occurrence inside [rangeStart, rangeEnd] — null
 // if there isn't enough data (no joining date, an intern with no contract
 // period on file) or their due-date simply doesn't fall in this window.
 function dueDateInRange(employee, revisions, rangeStart, rangeEnd) {
   if (!employee.joiningDate) return null;
 
-  if (employee.employeeCategory === 'Intern') {
+  if (isInternPhase(employee.employeeCategory, revisions)) {
     if (!employee.contractPeriod) return null;
     const d = internReviewDate(employee.joiningDate, employee.contractPeriod);
     return (d >= rangeStart && d <= rangeEnd) ? d : null;
@@ -102,6 +117,8 @@ module.exports = {
   anniversaryDateForYear,
   computeAnchorDate,
   isDueInRange,
+  hasConvertedToFullTime,
+  isInternPhase,
   dueDateInRange,
   doneDateFor,
 };
