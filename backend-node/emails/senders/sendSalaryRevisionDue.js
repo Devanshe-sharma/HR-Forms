@@ -3,6 +3,7 @@ const SalaryRevision = require('../../models/SalaryRevision');
 const { queueSalaryRevisionMail } = require('../../utils/salaryRevisionMailQueue');
 const salaryRevisionDueTemplate = require('../templates/salaryRevisionDueTemplate');
 const { dueDateInRange, doneDateFor } = require('../../utils/salaryRevisionDueDate');
+const { resolveManagerEmailByName } = require('../../utils/resolveManagerContact');
 const {
   fiscalYearOf, fiscalQuarterOf, fiscalQuarterStart, fiscalQuarterEnd, fiscalYearLabel,
 } = require('../../utils/fiscalQuarter');
@@ -21,7 +22,7 @@ async function sendSalaryRevisionDue(now = new Date()) {
   const quarterLabel = `Q${quarter} ${fiscalYearLabel(fy)}`;
 
   const employees = await Onboarding.find({ joiningStatus: 'Joined' })
-    .select('name dept designation joinedDate employeeCategory contractPeriod exitStatus')
+    .select('name dept designation joinedDate employeeCategory contractPeriod exitStatus reportingHead')
     .lean();
 
   const active = employees.filter((e) => !EXITED_STATUS_VALUES.has(e.exitStatus || ''));
@@ -54,6 +55,7 @@ async function sendSalaryRevisionDue(now = new Date()) {
         joiningDate: e.joinedDate,
         doneDate: doneDateFor(dueDate),
         dueDate,
+        reportingHead: e.reportingHead || '',
       };
     })
     .filter(Boolean)
@@ -66,7 +68,34 @@ async function sendSalaryRevisionDue(now = new Date()) {
     to: RECIPIENT, cc: HR_HEAD_CC, subject, html,
   });
 
-  return { dueCount: rows.length };
+  // One additional digest PER MANAGER, each listing only their own direct
+  // reports who are due — on request, alongside the existing Management-
+  // wide digest above (which still goes out unchanged). Grouped by
+  // reportingHead's resolved email rather than its raw name text, since
+  // the same manager can be spelled/cased slightly differently across
+  // records and would otherwise split into separate (and separately
+  // mailed) groups.
+  const byManagerEmail = new Map();
+  for (const row of rows) {
+    if (!row.reportingHead) continue;
+    const manager = await resolveManagerEmailByName(row.reportingHead, row.department);
+    if (!manager.email) continue;
+    if (!byManagerEmail.has(manager.email)) byManagerEmail.set(manager.email, { name: manager.name, rows: [] });
+    byManagerEmail.get(manager.email).rows.push(row);
+  }
+
+  let managerDigestCount = 0;
+  for (const [managerEmail, { name: managerName, rows: managerRows }] of byManagerEmail) {
+    const managerTemplate = salaryRevisionDueTemplate(managerRows, quarterLabel, managerName);
+    await queueSalaryRevisionMail({
+      mailType: 'quarterlyDigest',
+      employeeName: `${managerRows.length} direct report(s) — ${managerName} — ${quarterLabel}`,
+      to: managerEmail, cc: HR_HEAD_CC, subject: managerTemplate.subject, html: managerTemplate.html,
+    });
+    managerDigestCount++;
+  }
+
+  return { dueCount: rows.length, managerDigestCount };
 }
 
 module.exports = sendSalaryRevisionDue;

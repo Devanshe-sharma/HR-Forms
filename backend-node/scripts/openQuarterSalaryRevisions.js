@@ -57,6 +57,7 @@ async function run() {
   let notDueThisQuarter = 0;
   const createdFor = [];
   const failures = [];
+  let skippedPlainIntern = 0;
 
   for (const e of active) {
     const revisions = revisionsByEmployee.get(String(e._id)) || [];
@@ -66,6 +67,13 @@ async function run() {
       revisions, rangeStart, rangeEnd
     );
     if (!due) { notDueThisQuarter++; continue; }
+
+    // Plain Interns never get a formal SalaryRevision (CTC-increment)
+    // workflow record or Mail 1 — same rule as the daily auto-trigger
+    // cron and sendSalaryRevisionManagerRequest. They still show up in the
+    // quarterly digest mail (sendSalaryRevisionDue.js) on their own due
+    // date; that's a listing only, not a revision cycle.
+    if (e.employeeCategory === 'Intern') { skippedPlainIntern++; continue; }
 
     if (revisions.some((r) => OPEN_STAGES.includes(r.stage))) { skippedOpen++; continue; }
 
@@ -101,6 +109,7 @@ async function run() {
   console.log(`\nCreated: ${createdCount}`);
   createdFor.forEach((n) => console.log('  +', n));
   console.log(`Skipped (already had an open revision): ${skippedOpen}`);
+  console.log(`Skipped (plain Intern — no formal revision, only the quarterly digest listing): ${skippedPlainIntern}`);
   console.log(`Not due this quarter: ${notDueThisQuarter}`);
   if (failures.length) console.log('Failures:', JSON.stringify(failures, null, 2));
 

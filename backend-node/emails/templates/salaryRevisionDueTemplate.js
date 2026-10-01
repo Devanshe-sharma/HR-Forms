@@ -31,17 +31,22 @@ function buildTable(rows) {
     </table>`;
 }
 
-function salaryRevisionDueTemplate(rows, quarterLabel) {
+// recipientName lets the same template serve both the Management-wide
+// digest (every due employee, default greeting) and a per-manager digest
+// (that manager's own direct reports only — see sendSalaryRevisionDue.js)
+// with an appropriately personal greeting, without duplicating the table
+// markup or subject-line convention between the two.
+function salaryRevisionDueTemplate(rows, quarterLabel, recipientName = 'Management') {
   if (!rows.length) {
     return {
       subject: `Salary Revision — No Revisions Due in ${quarterLabel}`,
-      html: `<p>Dear Management,</p><p>No employees have a Salary Revision due in <b>${quarterLabel}</b>.</p>${signature()}`,
+      html: `<p>Dear ${recipientName},</p><p>No employees have a Salary Revision due in <b>${quarterLabel}</b>.</p>${signature()}`,
     };
   }
 
   const html = `
-    <p>Dear Management,</p>
-    <p>The following employees have a Salary Revision due in <b>${quarterLabel}</b>:</p>
+    <p>Dear ${recipientName},</p>
+    <p>The following employee${rows.length === 1 ? ' has' : 's have'} a Salary Revision due in <b>${quarterLabel}</b>:</p>
     ${buildTable(rows)}
     ${signature()}
   `;

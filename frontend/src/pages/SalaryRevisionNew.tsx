@@ -2025,24 +2025,45 @@ function CompanyMailButton() {
               <Typography fontSize={14} fontWeight={700} mb={2}>Company-Wide Mail</Typography>
               <Stack spacing={1}>
                 {COMPANY_MAIL_SCHEDULE.map(sched => {
-                  const draft = drafts.find(d => d.mailType === sched.mailType);
-                  return (
-                    <Box key={sched.mailType} sx={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:1,
-                      p:1.25, border:'1px solid #e2e8f0', borderRadius:1.5 }}>
-                      <Box>
-                        <Typography fontSize={12} fontWeight={600}>{MAIL_TYPE_LABEL[sched.mailType] || sched.label}</Typography>
-                        <Typography fontSize={11} color="text.secondary">
-                          {draft ? draft.subject : `Not queued yet — next fires ${fmtDate(sched.computeNext(new Date()).toISOString())}`}
-                        </Typography>
-                      </Box>
-                      {draft ? (
-                        <Button size="small" variant="outlined" onClick={()=>openEdit(draft)}
-                          sx={{ textTransform:'none', fontSize:11, py:0.2, px:1, minWidth:0, borderColor:ACCENT, color:ACCENT }}>
-                          Send Mail
-                        </Button>
-                      ) : (
+                  // ALL queued drafts of this type, not just one — a quarter
+                  // can have the single Management-wide digest AND one per
+                  // manager (see sendSalaryRevisionDue.js) all at once, and
+                  // every one of them needs its own visible Send button here.
+                  const typeDrafts = drafts.filter(d => d.mailType === sched.mailType);
+                  if (typeDrafts.length === 0) {
+                    return (
+                      <Box key={sched.mailType} sx={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:1,
+                        p:1.25, border:'1px solid #e2e8f0', borderRadius:1.5 }}>
+                        <Box>
+                          <Typography fontSize={12} fontWeight={600}>{MAIL_TYPE_LABEL[sched.mailType] || sched.label}</Typography>
+                          <Typography fontSize={11} color="text.secondary">
+                            {`Not queued yet — next fires ${fmtDate(sched.computeNext(new Date()).toISOString())}`}
+                          </Typography>
+                        </Box>
                         <Chip size="small" label="Scheduled" sx={{ fontSize:10, height:20, bgcolor:'#f8fafc', color:'#94a3b8' }}/>
-                      )}
+                      </Box>
+                    );
+                  }
+                  return (
+                    <Box key={sched.mailType}>
+                      <Typography fontSize={11} fontWeight={700} color="text.secondary" textTransform="uppercase" letterSpacing="0.04em" mb={0.5}>
+                        {MAIL_TYPE_LABEL[sched.mailType] || sched.label} ({typeDrafts.length})
+                      </Typography>
+                      <Stack spacing={0.75}>
+                        {typeDrafts.map(draft => (
+                          <Box key={draft._id} sx={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:1,
+                            p:1.25, border:'1px solid #e2e8f0', borderRadius:1.5 }}>
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography fontSize={12} fontWeight={600} noWrap>{draft.employeeName || draft.to}</Typography>
+                              <Typography fontSize={11} color="text.secondary" noWrap>{draft.subject}</Typography>
+                            </Box>
+                            <Button size="small" variant="outlined" onClick={()=>openEdit(draft)}
+                              sx={{ textTransform:'none', fontSize:11, py:0.2, px:1, minWidth:0, flexShrink:0, borderColor:ACCENT, color:ACCENT }}>
+                              Send Mail
+                            </Button>
+                          </Box>
+                        ))}
+                      </Stack>
                     </Box>
                   );
                 })}
