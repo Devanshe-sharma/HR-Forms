@@ -22,6 +22,7 @@ import {
   Visibility     as VisibilityIcon,
   MailOutline    as MailIcon,
   Settings       as SettingsIcon,
+  PlaylistAddCheck as OpenQuarterIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import Sidebar from '../components/Sidebar';
@@ -1414,6 +1415,7 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onOpenCtc
           </Typography>
         </Box>
         <Stack direction="row" spacing={1} alignItems="center">
+          <OpenQuarterButton/>
           <CompanyMailButton/>
           <Button variant="outlined" startIcon={<SettingsIcon/>} onClick={onOpenCtc} size="small"
             sx={{ textTransform:'none', fontWeight:600, borderRadius:1.5,
@@ -1943,6 +1945,116 @@ const COMPANY_MAIL_SCHEDULE: { mailType: string; label: string; computeNext: (fr
   },
 ];
 
+// Bulk-opens every due-this-quarter employee at once (POST /salary-
+// revisions/open-quarter) instead of waiting for each person's own
+// reminder date to arrive naturally through the quarter (the daily
+// auto-trigger cron only acts once that date falls within the CURRENT
+// calendar month). Each one gets a real SalaryRevision + a manager-request
+// draft — still draft-only, never auto-sent; those show up on that
+// employee's own revision card (Action Needed tab), not here. Admin/HR
+// only, same as CompanyMailButton.
+function OpenQuarterButton() {
+  const role = localStorage.getItem('role') || '';
+  const canOpen = role === 'Admin' || role === 'HR';
+
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{
+    quarterLabel: string; createdCount: number; createdFor: { name:string; department:string; dueDate:string }[];
+    skippedOpen: number; skippedPlainIntern: number; notDueThisQuarter: number; failures: { name:string; error:string }[];
+  } | null>(null);
+  const [error, setError] = useState('');
+
+  if (!canOpen) return null;
+
+  const run = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const { data } = await axios.post(`${API_URL}/salary-revisions/open-quarter`);
+      setResult(data);
+    } catch (e:any) {
+      setError(e?.response?.data?.message || e?.message || 'Failed to open this quarter\'s revisions');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const close = () => {
+    setOpen(false);
+    // A full reload is the simplest reliable way to reflect newly-created
+    // revisions across every tab/count on this page (Action Needed list,
+    // stat cards, etc.) after a bulk action like this one.
+    if (result && result.createdCount > 0) window.location.reload();
+    else { setResult(null); setError(''); }
+  };
+
+  return (
+    <>
+      <Button size="small" variant="outlined" startIcon={<OpenQuarterIcon sx={{ fontSize:16 }}/>}
+        onClick={()=>setOpen(true)}
+        sx={{ textTransform:'none', fontWeight:600, fontSize:12, borderRadius:1.5,
+          borderColor:'var(--border)', color:'var(--text-primary)', bgcolor:'white' }}>
+        Open This Quarter
+      </Button>
+
+      <Modal open={open} onClose={()=>{ if (!busy) close(); }}>
+        <Box sx={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)',
+          width:{ xs:'95vw', md:520 }, maxHeight:'85vh', overflow:'auto',
+          bgcolor:'white', borderRadius:2, border:'1px solid #e2e8f0', outline:'none', p:2.5 }}>
+          <Typography fontSize={14} fontWeight={700} mb={1.5}>Open This Quarter's Revisions</Typography>
+
+          {!result ? (
+            <>
+              <Typography fontSize={12.5} color="text.secondary" mb={2}>
+                Creates a Salary Revision and queues a manager-request draft for every employee whose Due Date
+                falls in this fiscal quarter and doesn't already have an open revision — right now, instead of
+                waiting for each person's own reminder date. Plain Interns are skipped (handled separately);
+                Intern with PPO is included. Nothing is emailed automatically — each manager-request still lands
+                as a draft on that employee's own revision card for you to review and send.
+              </Typography>
+              {error && <Alert severity="error" sx={{ mb:1.5, fontSize:12 }} onClose={()=>setError('')}>{error}</Alert>}
+              <Box sx={{ display:'flex', gap:1.5 }}>
+                <Button variant="contained" onClick={run} disabled={busy}
+                  sx={{ bgcolor:ACCENT, '&:hover':{ bgcolor:'#4338ca' }, textTransform:'none', fontWeight:600 }}>
+                  {busy ? <CircularProgress size={18} sx={{ color:'white' }}/> : 'Open All Due This Quarter'}
+                </Button>
+                <Button variant="outlined" onClick={close} disabled={busy} sx={{ textTransform:'none' }}>Cancel</Button>
+              </Box>
+            </>
+          ) : (
+            <>
+              <Typography fontSize={13} fontWeight={600} mb={1}>{result.quarterLabel}</Typography>
+              <Stack spacing={0.5} mb={2}>
+                <Typography fontSize={12.5}>✅ Created: <b>{result.createdCount}</b></Typography>
+                <Typography fontSize={12.5} color="text.secondary">Already had an open revision: {result.skippedOpen}</Typography>
+                <Typography fontSize={12.5} color="text.secondary">Plain Interns (skipped — not on this track): {result.skippedPlainIntern}</Typography>
+                <Typography fontSize={12.5} color="text.secondary">Not due this quarter: {result.notDueThisQuarter}</Typography>
+                {result.failures.length > 0 && (
+                  <Typography fontSize={12.5} color="error.main">Failed: {result.failures.length}</Typography>
+                )}
+              </Stack>
+              {result.createdFor.length > 0 && (
+                <Box sx={{ maxHeight: 220, overflow:'auto', border:'1px solid #e2e8f0', borderRadius:1.5, p:1, mb:2 }}>
+                  {result.createdFor.map((r,i) => (
+                    <Typography key={i} fontSize={12} sx={{ py:0.3 }}>
+                      {r.name} <span style={{ color:'#94a3b8' }}>— {r.department} — due {fmtDate(r.dueDate)}</span>
+                    </Typography>
+                  ))}
+                </Box>
+              )}
+              <Button variant="contained" onClick={close}
+                sx={{ bgcolor:'#059669', '&:hover':{ bgcolor:'#047857' }, textTransform:'none', fontWeight:600 }}>
+                Done
+              </Button>
+            </>
+          )}
+        </Box>
+      </Modal>
+    </>
+  );
+}
+
 // Button for company-wide mail — mail that isn't tied to any single
 // employee's revision, so it has nowhere to show up on a per-revision
 // card. Always visible for Admin/HR (never for anyone else), even with
@@ -1965,10 +2077,13 @@ function CompanyMailButton() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  // status=all (not just 'draft') — a sent mail should stay visible as a
+  // record of who sent it and when, same as RevisionMailButtons' own list,
+  // rather than disappearing the moment it's sent.
   const load = useCallback(async () => {
     if (!canSeeMail) return;
     try {
-      const { data } = await axios.get(`${DRAFTS_API}?unassigned=true&status=draft`);
+      const { data } = await axios.get(`${DRAFTS_API}?unassigned=true&status=all`);
       setDrafts(data.data || []);
     } catch { /* quiet — a failed fetch just means the list falls back to schedule-only rows */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2005,9 +2120,11 @@ function CompanyMailButton() {
     finally { setBusy(false); }
   };
 
+  const pendingCount = drafts.filter(d => d.status === 'draft').length;
+
   return (
     <>
-      <Badge badgeContent={drafts.length} color="error">
+      <Badge badgeContent={pendingCount} color="error">
         <Button size="small" variant="outlined" startIcon={<MailIcon sx={{ fontSize:16 }}/>}
           onClick={()=>setOpen(true)}
           sx={{ textTransform:'none', fontWeight:600, fontSize:12, borderRadius:1.5,
@@ -2057,10 +2174,18 @@ function CompanyMailButton() {
                               <Typography fontSize={12} fontWeight={600} noWrap>{draft.employeeName || draft.to}</Typography>
                               <Typography fontSize={11} color="text.secondary" noWrap>{draft.subject}</Typography>
                             </Box>
-                            <Button size="small" variant="outlined" onClick={()=>openEdit(draft)}
-                              sx={{ textTransform:'none', fontSize:11, py:0.2, px:1, minWidth:0, flexShrink:0, borderColor:ACCENT, color:ACCENT }}>
-                              Send Mail
-                            </Button>
+                            {draft.status === 'draft' ? (
+                              <Button size="small" variant="outlined" onClick={()=>openEdit(draft)}
+                                sx={{ textTransform:'none', fontSize:11, py:0.2, px:1, minWidth:0, flexShrink:0, borderColor:ACCENT, color:ACCENT }}>
+                                Send Mail
+                              </Button>
+                            ) : draft.status === 'sent' ? (
+                              <Chip size="small" icon={<CheckCircleIcon sx={{ fontSize:'12px !important' }}/>}
+                                label={`Sent${draft.sentBy ? ` · ${draft.sentBy}` : ''}${draft.sentAt ? ` · ${fmtDate(draft.sentAt)}` : ''}`}
+                                sx={{ fontSize:10, height:20, flexShrink:0, bgcolor:'#f0fdf4', color:'#059669', '& .MuiChip-icon':{ color:'inherit' } }}/>
+                            ) : (
+                              <Chip size="small" label="Discarded" sx={{ fontSize:10, height:20, flexShrink:0, bgcolor:'#f8fafc', color:'#94a3b8' }}/>
+                            )}
                           </Box>
                         ))}
                       </Stack>

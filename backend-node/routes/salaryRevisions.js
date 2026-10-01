@@ -4,7 +4,8 @@ const SalaryRevision = require('../models/SalaryRevision');
 const asyncHandler = require('express-async-handler');
 const Onboarding   = require('../models/onboardingModel');
 const Confirmations = require('../models/Confirmations');
-const { fiscalYearOf, fiscalQuarterOf } = require('../utils/fiscalQuarter');
+const { fiscalYearOf, fiscalQuarterOf, fiscalQuarterStart, fiscalQuarterEnd } = require('../utils/fiscalQuarter');
+const { dueDateInRange } = require('../utils/salaryRevisionDueDate');
 const sendSalaryRevisionManagerRequest      = require('../emails/senders/sendSalaryRevisionManagerRequest');
 const sendSalaryRevisionManagementApproval  = require('../emails/senders/sendSalaryRevisionManagementApproval');
 const sendSalaryRevisionEmployeeConfirmation = require('../emails/senders/sendSalaryRevisionEmployeeConfirmation');
@@ -26,6 +27,11 @@ const { uploadFileToDrive } = require('../utils/googleDrive');
 // Admin/HR/Management see everything; Manager sees only revisions for
 // employees who list them as the reporting manager.
 const FULL_ACCESS_ROLES = ['Admin', 'HR', 'Management'];
+
+// A revision in any of these stages is still an open/live cycle — same set
+// POST /open-quarter and the daily auto-trigger cron both check before
+// creating a new one, so nobody ever ends up with two concurrent cycles.
+const OPEN_STAGES = ['pending_manager', 'pending_management', 'pending_hr', 'on_hold'];
 
 // The logged-in user's own User.name is NOT reliable for this comparison —
 // checked directly against real accounts and both existing Manager users
@@ -696,6 +702,96 @@ router.post('/', authenticate, requireRole(['Admin', 'HR']), asyncHandler(async 
       fields : saveErr.errors ? Object.keys(saveErr.errors) : [],
     });
   }
+}));
+
+// ─── POST /api/salary-revisions/open-quarter ─────────────────────────────────
+// Creates a SalaryRevision (pending_manager) + queues the Mail 1 manager-
+// request draft (see sendSalaryRevisionManagerRequest — drafts only, never
+// auto-sent) for every active employee whose Due Date falls in the CURRENT
+// fiscal quarter — on request, rather than waiting for each person's own
+// reminder date to arrive naturally (the daily auto-trigger cron only acts
+// once a reminder date falls within the current calendar month). Same
+// rules as that cron: plain Interns are skipped entirely (no formal
+// revision — they're confirmation/PPO candidates, not on the CTC-increment
+// track), "Intern with PPO" IS included, on their own contract-period
+// cycle until they convert (see utils/salaryRevisionDueDate.js). Safe to
+// re-run — anyone who already has an open revision is left alone.
+router.post('/open-quarter', authenticate, requireRole(['Admin', 'HR']), asyncHandler(async (req, res) => {
+  const now = new Date();
+  const fy = fiscalYearOf(now);
+  const quarter = fiscalQuarterOf(now);
+  const rangeStart = fiscalQuarterStart(fy, quarter);
+  const rangeEnd = fiscalQuarterEnd(fy, quarter);
+
+  const employees = await Onboarding.find({ joiningStatus: 'Joined' })
+    .select('name dept designation officialEmail persEmail joinedDate employeeCategory contractPeriod contractStartDate contractEndDate annualCtc reportingHead exitStatus')
+    .lean();
+  const active = employees.filter((e) => !EXITED_STATUS_VALUES.has(e.exitStatus || '') && e.joinedDate);
+
+  const revisionsByEmployee = new Map();
+  const allRevisions = await SalaryRevision.find({
+    employeeCode: { $in: active.map((e) => String(e._id)) },
+  }).select('employeeCode stage applicableDate createdAt fullTimeSince').lean();
+  allRevisions.forEach((r) => {
+    if (!revisionsByEmployee.has(r.employeeCode)) revisionsByEmployee.set(r.employeeCode, []);
+    revisionsByEmployee.get(r.employeeCode).push(r);
+  });
+
+  const user = caller(req);
+  let createdCount = 0, skippedOpen = 0, skippedPlainIntern = 0, notDueThisQuarter = 0;
+  const createdFor = [];
+  const failures = [];
+
+  for (const e of active) {
+    const revisions = revisionsByEmployee.get(String(e._id)) || [];
+
+    const due = dueDateInRange(
+      { joiningDate: e.joinedDate, employeeCategory: e.employeeCategory, contractPeriod: e.contractPeriod },
+      revisions, rangeStart, rangeEnd
+    );
+    if (!due) { notDueThisQuarter++; continue; }
+
+    if (e.employeeCategory === 'Intern') { skippedPlainIntern++; continue; }
+
+    if (revisions.some((r) => OPEN_STAGES.includes(r.stage))) { skippedOpen++; continue; }
+
+    try {
+      const revision = new SalaryRevision({
+        onboardingId: e._id,
+        employeeCode: String(e._id),
+        employeeName: e.name,
+        department: e.dept,
+        designation: e.designation,
+        email: e.officialEmail || e.persEmail,
+        joiningDate: e.joinedDate,
+        contractStartDate: e.contractStartDate || null,
+        contractEndDate: e.contractEndDate || null,
+        category: e.employeeCategory || 'Employee',
+        previousCtc: e.annualCtc || 0,
+        previousDesignation: e.designation,
+        previousReportingHead: e.reportingHead || '',
+        previousCategory: e.employeeCategory || 'Employee',
+        stage: 'pending_manager',
+        managerRequestedAt: now,
+        createdBy: user,
+        updatedBy: user,
+      });
+      applyScore(revision);
+      await revision.save();
+      await sendSalaryRevisionManagerRequest(revision);
+      createdCount++;
+      createdFor.push({ name: e.name, department: e.dept, dueDate: due });
+    } catch (err) {
+      console.error(`[open-quarter] Failed for ${e.name}:`, err.message);
+      failures.push({ name: e.name, error: err.message });
+    }
+  }
+
+  res.status(200).json({
+    success: true,
+    quarterLabel: `Q${quarter} ${fy}-${String((fy + 1) % 100).padStart(2, '0')}`,
+    createdCount, createdFor, skippedOpen, skippedPlainIntern, notDueThisQuarter, failures,
+  });
 }));
 
 // ─── PUT /api/salary-revisions/:id/manager ───────────────────────────────────
