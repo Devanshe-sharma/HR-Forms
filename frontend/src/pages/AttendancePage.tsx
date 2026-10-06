@@ -384,7 +384,7 @@ function OutOfOfficeDashboard({ records, loading, onAdd }: {
               </TableHead>
               <TableBody>
                 {filteredRecords.length === 0 && (
-                  <TableRow><TableCell colSpan={6} align="center" sx={{ py: 6, color: 'text.secondary', fontSize: 13 }}>
+                  <TableRow><TableCell colSpan={7} align="center" sx={{ py: 6, color: 'text.secondary', fontSize: 13 }}>
                     {records.length === 0 ? 'No out-of-office records logged yet' : 'No records match the current filters'}
                   </TableCell></TableRow>
                 )}
@@ -783,7 +783,7 @@ function MyRequestsTable({ requests, leaveTypes, loading, onSelect }: {
             </TableHead>
             <TableBody>
               {filteredRequests.length === 0 && (
-                <TableRow><TableCell colSpan={6} align="center" sx={{ py: 6, color: 'text.secondary', fontSize: 13 }}>
+                <TableRow><TableCell colSpan={7} align="center" sx={{ py: 6, color: 'text.secondary', fontSize: 13 }}>
                   {requests.length === 0 ? 'No time off yet. Create your first request.' : 'No requests match this filter.'}
                 </TableCell></TableRow>
               )}
@@ -1511,7 +1511,7 @@ function ApprovalsTab({ requests, leaveTypes, summary, loading, onSelect, onAppr
               </TableHead>
               <TableBody>
                 {filtered.length === 0 && (
-                  <TableRow><TableCell colSpan={6} align="center" sx={{ py: 6, color: 'text.secondary', fontSize: 13 }}>
+                  <TableRow><TableCell colSpan={7} align="center" sx={{ py: 6, color: 'text.secondary', fontSize: 13 }}>
                     You're all caught up. Nothing is waiting for your approval.
                   </TableCell></TableRow>
                 )}
@@ -1723,6 +1723,7 @@ function LeavesTab() {
 
 interface AttendanceDay {
   employeeCode: string;
+  employeeName?: string;
   day: string;
   onboardingId: string | null;
   punchIn: string;
@@ -1731,7 +1732,7 @@ interface AttendanceDay {
 }
 
 const fmtTime = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '—';
+  iso ? new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) : '—';
 
 const fmtHours = (inIso: string, outIso: string | null) => {
   if (!outIso) return '—';
@@ -1740,7 +1741,8 @@ const fmtHours = (inIso: string, outIso: string | null) => {
 };
 
 function AttendanceTab() {
-  const toInput = (d: Date) => d.toISOString().slice(0, 10);
+  // Dates are IST calendar days, regardless of the browser's own time zone.
+  const toInput = (d: Date) => new Date(d.getTime() + 5.5 * 3600000).toISOString().slice(0, 10);
   const [from, setFrom] = useState(() => toInput(new Date(Date.now() - 30 * 86400000)));
   const [to, setTo] = useState(() => toInput(new Date()));
   const [empId, setEmpId] = useState('');
@@ -1754,8 +1756,8 @@ function AttendanceTab() {
     try {
       const params: Record<string, string> = {};
       if (empId.trim()) params.empId = empId.trim();
-      if (from) params.from = new Date(`${from}T00:00:00`).toISOString();
-      if (to) params.to = new Date(`${to}T23:59:59.999`).toISOString();
+      if (from) params.from = new Date(`${from}T00:00:00+05:30`).toISOString();
+      if (to) params.to = new Date(`${to}T23:59:59.999+05:30`).toISOString();
       const res = await axios.get(`${API_URL}/attendance/daily`, { params });
       setRows(res.data.data || []);
     } catch (e: any) {
@@ -1770,7 +1772,7 @@ function AttendanceTab() {
   return (
     <Box>
       <Stack direction="row" spacing={1.5} sx={{ mb: 2 }} alignItems="center" flexWrap="wrap" useFlexGap>
-        <TextField size="small" label="Employee ID" value={empId} onChange={e => setEmpId(e.target.value)} sx={{ width: 160 }} />
+        <TextField size="small" label="Employee Code" value={empId} onChange={e => setEmpId(e.target.value)} sx={{ width: 160 }} />
         <TextField size="small" type="date" label="From" value={from} onChange={e => setFrom(e.target.value)} InputLabelProps={{ shrink: true }} />
         <TextField size="small" type="date" label="To" value={to} onChange={e => setTo(e.target.value)} InputLabelProps={{ shrink: true }} />
         <Button startIcon={<RestartAltIcon />} onClick={load} sx={{ textTransform: 'none', color: ACCENT }}>Refresh</Button>
@@ -1783,21 +1785,22 @@ function AttendanceTab() {
         <Table size="small">
           <TableHead>
             <TableRow>
-              {['Date', 'Employee ID', 'Punch In', 'Punch Out', 'Hours', 'Punches'].map(h => (
+              {['Date', 'Employee Name', 'Employee Code', 'Punch In', 'Punch Out', 'Hours', 'Punches'].map(h => (
                 <TableCell key={h} sx={{ fontWeight: 700, fontSize: 12, color: '#475569' }}>{h}</TableCell>
               ))}
             </TableRow>
           </TableHead>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><CircularProgress size={22} /></TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><CircularProgress size={22} /></TableCell></TableRow>
             ) : rows.length === 0 ? (
-              <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4, color: 'text.secondary', fontSize: 13 }}>No attendance records for this range.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary', fontSize: 13 }}>No attendance records for this range.</TableCell></TableRow>
             ) : rows.map(r => (
               <TableRow key={`${r.employeeCode}-${r.day}`} hover>
                 <TableCell sx={{ fontSize: 13 }}>
-                  {new Date(`${r.day}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}
+                  {new Date(`${r.day}T00:00:00Z`).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })}
                 </TableCell>
+                <TableCell sx={{ fontSize: 13, fontWeight: 600 }}>{r.employeeName || '—'}</TableCell>
                 <TableCell sx={{ fontSize: 13 }}>{r.employeeCode}</TableCell>
                 <TableCell sx={{ fontSize: 13 }}>{fmtTime(r.punchIn)}</TableCell>
                 <TableCell sx={{ fontSize: 13 }}>

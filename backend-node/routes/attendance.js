@@ -61,9 +61,12 @@ router.get('/daily', authenticate, requireRole(FULL_ACCESS_ROLES), asyncHandler(
       $group: {
         _id: {
           employeeCode: '$employeeCode',
-          day: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
+          // Bucket days in IST, not UTC, so a 00:30 IST punch isn't filed
+          // under the previous day.
+          day: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp', timezone: 'Asia/Kolkata' } },
         },
         onboardingId: { $first: '$onboardingId' },
+        employeeName: { $max: '$employeeName' },
         punchIn: { $min: '$timestamp' },
         punchOut: { $max: '$timestamp' },
         punchCount: { $sum: 1 },
@@ -76,6 +79,7 @@ router.get('/daily', authenticate, requireRole(FULL_ACCESS_ROLES), asyncHandler(
         employeeCode: '$_id.employeeCode',
         day: '$_id.day',
         onboardingId: 1,
+        employeeName: 1,
         punchIn: 1,
         // A single punch that day has no real "out" yet — leave it null
         // rather than reporting the same timestamp as both in and out.

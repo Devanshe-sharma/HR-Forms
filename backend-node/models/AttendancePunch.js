@@ -16,6 +16,10 @@ const AttendancePunchSchema = new Schema(
     // doesn't line up yet.
     employeeCode: { type: String, required: true, trim: true, index: true },
 
+    // Name as the machine/vendor reports it (employee_name), shown on the
+    // Attendance tab since the machine code can't be matched to an empId.
+    employeeName: { type: String, trim: true, default: '' },
+
     // Best-effort link to the actual employee record, resolved at
     // ingestion time by matching employeeCode against Onboarding.empId.
     // Null if no match was found — the raw employeeCode is always kept

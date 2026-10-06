@@ -17,7 +17,6 @@ const { getEmployeeMasterList } = require('../utils/employeeMaster');
 const { getEmployeeSalaryList } = require('../utils/employeeSalary');
 const Escalation = require('../models/Escalation');
 const AttendancePunch = require('../models/AttendancePunch');
-const Onboarding = require('../models/onboardingModel');
 
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -31,7 +30,14 @@ function normalisePunch(p) {
   ).trim();
 
   const timestampRaw = p.timestamp ?? p.log_datetime ?? p.logDatetime ?? p.punchTime ??p.punch_time ?? p.time ?? p.datetime ?? p.date;
-  const timestamp = timestampRaw ? new Date(timestampRaw) : null;
+  // The vendor sends zone-less local times ("2026-10-06 10:00:00") in IST,
+  // but the server would otherwise read those in its own zone (UTC) — pin
+  // them to +05:30. Values that already carry a zone/offset are left alone.
+  const zoneless = typeof timestampRaw === 'string' &&
+    /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(timestampRaw.trim());
+  const timestamp = timestampRaw
+    ? new Date(zoneless ? `${timestampRaw.trim().replace(' ', 'T')}+05:30` : timestampRaw)
+    : null;
 
   const directionRaw = String(p.direction ?? p.type ?? p.punchType ?? p.punch_type ?? '').trim().toLowerCase();
   const direction =
@@ -40,7 +46,9 @@ function normalisePunch(p) {
 
   const deviceId = String(p.deviceId ?? p.device_id ?? p.terminalId ?? p.terminal_id ?? '').trim();
 
-  return { employeeCode, timestamp, direction, deviceId, raw: p };
+  const employeeName = String(p.employeeName ?? p.employee_name ?? p.name ?? '').trim();
+
+  return { employeeCode, employeeName, timestamp, direction, deviceId, raw: p };
 }
 
 // GET /api/external/employees — x-api-key: <EXTERNAL_EMPLOYEES_API_KEY>
@@ -91,10 +99,10 @@ router.get(
 // (GET /api/attendance), not assumed here, since a device can report more
 // than 2 punches in a day.
 //
-// employeeCode is matched against Onboarding.empId to link the punch to a
-// real employee record; if the vendor's code doesn't match empId yet, the
-// punch is still stored (onboardingId stays null) rather than rejected —
-// nothing sent to us is ever silently dropped, only unrecognised.
+// employeeCode is the attendance machine's own code, which is NOT the same
+// as Onboarding.empId, so it is stored verbatim and not linked to an
+// employee record (onboardingId stays null) — matching it against empId
+// could attach a punch to the wrong person.
 router.post(
   '/attendance',
   requireApiKey('EXTERNAL_ATTENDANCE_API_KEY'),
@@ -112,11 +120,10 @@ router.post(
         continue;
       }
 
-      const employee = await Onboarding.findOne({ empId: p.employeeCode }).select('_id').lean();
-
       await AttendancePunch.create({
         employeeCode: p.employeeCode,
-        onboardingId: employee?._id || null,
+        employeeName: p.employeeName,
+        onboardingId: null,
         timestamp: p.timestamp,
         direction: p.direction,
         deviceId: p.deviceId,
