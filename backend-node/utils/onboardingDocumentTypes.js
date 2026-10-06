@@ -17,8 +17,11 @@ const ONBOARDING_DOCUMENT_TYPES = [
   { key: 'uanCard', label: 'UAN Card' },
   // Employment Documents (the rest of that tab — Offer/Appointment/
   // Increment Letters, Payslips — are system-issued via /employee-letters,
-  // not self-uploaded, so they have no entry here)
-  { key: 'experienceLetter', label: 'Experience Letter' },
+  // not self-uploaded, so they have no entry here). Both of these accept
+  // more than one file per employee — see upload-documents' append (not
+  // replace) behavior in routes/onboardingroutes.js.
+  { key: 'experienceLetter', label: 'Previous Company Experience Letter / Relieving Letter' },
+  { key: 'previousSalarySlips', label: "Last 3 Months' Salary Slips" },
 ];
 
 module.exports = ONBOARDING_DOCUMENT_TYPES;

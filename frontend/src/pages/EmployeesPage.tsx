@@ -162,8 +162,12 @@ const PERSONAL_DOCUMENT_TYPES: { key: string; label: string }[] = [
   { key: 'uanCard', label: 'UAN Card' },
 ];
 
+// Both of these accept more than one file per employee (see
+// MultiDocumentRow below) — a previous employer's relieving letter plus
+// their own experience letter, three months of salary slips, etc.
 const PROFESSIONAL_DOCUMENT_TYPES: { key: string; label: string }[] = [
-  { key: 'experienceLetter', label: 'Experience Letter' },
+  { key: 'experienceLetter', label: 'Previous Company Experience Letter / Relieving Letter' },
+  { key: 'previousSalarySlips', label: "Last 3 Months' Salary Slips" },
 ];
 
 const isInternCategory = (category: string) => /intern/i.test(category || '');
@@ -195,6 +199,11 @@ const latestDocFor = (documents: EmployeeDocument[] | undefined, docType: string
   (documents || [])
     .filter(d => d.docType === docType)
     .sort((a, b) => new Date(b.uploadedAt || 0).getTime() - new Date(a.uploadedAt || 0).getTime())[0];
+
+const allDocsFor = (documents: EmployeeDocument[] | undefined, docType: string) =>
+  (documents || [])
+    .filter(d => d.docType === docType)
+    .sort((a, b) => new Date(b.uploadedAt || 0).getTime() - new Date(a.uploadedAt || 0).getTime());
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL;
 
@@ -399,6 +408,36 @@ const DocumentRow: React.FC<{ label: string; doc?: EmployeeDocument; emptyLabel?
       </Button>
     ) : (
       <Chip label={emptyLabel} size="small" sx={{ fontSize: '0.65rem', height: 20, bgcolor: 'action.disabledBackground', color: 'text.disabled' }} />
+    )}
+  </Box>
+);
+
+// Same as DocumentRow, but for a docType the employee can upload more than
+// one file against (see Profile.tsx's MultiDocumentItem) — lists every
+// upload instead of collapsing to just the latest.
+const MultiDocumentRow: React.FC<{ label: string; docs: EmployeeDocument[]; emptyLabel?: string }> = ({ label, docs, emptyLabel = 'Not uploaded' }) => (
+  <Box sx={{ py: 0.9 }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5 }}>
+      <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: 'text.primary' }}>{label}</Typography>
+      {docs.length === 0 && (
+        <Chip label={emptyLabel} size="small" sx={{ fontSize: '0.65rem', height: 20, bgcolor: 'action.disabledBackground', color: 'text.disabled' }} />
+      )}
+    </Box>
+    {docs.length > 0 && (
+      <Stack spacing={0.4} sx={{ mt: 0.5 }}>
+        {docs.map((d, i) => (
+          <Box key={i} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5 }}>
+            <Typography sx={{ fontSize: '0.72rem', color: 'text.secondary', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {d.fileName}{d.uploadedAt ? ` • ${formatDateOnly(d.uploadedAt)}` : ''}
+            </Typography>
+            <Button size="small" component="a" href={d.driveLink} target="_blank" rel="noreferrer"
+              startIcon={<DownloadIcon sx={{ fontSize: 14 }} />}
+              sx={{ textTransform: 'none', fontSize: '0.72rem', flexShrink: 0 }}>
+              View
+            </Button>
+          </Box>
+        ))}
+      </Stack>
     )}
   </Box>
 );
@@ -712,7 +751,7 @@ const EmployeeDetailDialog: React.FC<{
                         />
                       ))}
                       {PROFESSIONAL_DOCUMENT_TYPES.map(({ key, label }) => (
-                        <DocumentRow key={key} label={label} doc={latestDocFor(documents, key)} />
+                        <MultiDocumentRow key={key} label={label} docs={allDocsFor(documents, key)} />
                       ))}
                       <DocumentRow label="Payslips" emptyLabel="Not available" />
                     </Stack>

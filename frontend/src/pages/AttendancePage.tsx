@@ -1719,6 +1719,101 @@ function LeavesTab() {
   );
 }
 
+// ─── Attendance tab ─────────────────────────────────────────────────────────────
+
+interface AttendanceDay {
+  employeeCode: string;
+  day: string;
+  onboardingId: string | null;
+  punchIn: string;
+  punchOut: string | null;
+  punchCount: number;
+}
+
+const fmtTime = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '—';
+
+const fmtHours = (inIso: string, outIso: string | null) => {
+  if (!outIso) return '—';
+  const mins = Math.round((new Date(outIso).getTime() - new Date(inIso).getTime()) / 60000);
+  return `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m`;
+};
+
+function AttendanceTab() {
+  const toInput = (d: Date) => d.toISOString().slice(0, 10);
+  const [from, setFrom] = useState(() => toInput(new Date(Date.now() - 30 * 86400000)));
+  const [to, setTo] = useState(() => toInput(new Date()));
+  const [empId, setEmpId] = useState('');
+  const [rows, setRows] = useState<AttendanceDay[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const params: Record<string, string> = {};
+      if (empId.trim()) params.empId = empId.trim();
+      if (from) params.from = new Date(`${from}T00:00:00`).toISOString();
+      if (to) params.to = new Date(`${to}T23:59:59.999`).toISOString();
+      const res = await axios.get(`${API_URL}/attendance/daily`, { params });
+      setRows(res.data.data || []);
+    } catch (e: any) {
+      setError(e.response?.data?.message || e.response?.data?.error || 'Failed to load attendance');
+    } finally {
+      setLoading(false);
+    }
+  }, [from, to, empId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <Box>
+      <Stack direction="row" spacing={1.5} sx={{ mb: 2 }} alignItems="center" flexWrap="wrap" useFlexGap>
+        <TextField size="small" label="Employee ID" value={empId} onChange={e => setEmpId(e.target.value)} sx={{ width: 160 }} />
+        <TextField size="small" type="date" label="From" value={from} onChange={e => setFrom(e.target.value)} InputLabelProps={{ shrink: true }} />
+        <TextField size="small" type="date" label="To" value={to} onChange={e => setTo(e.target.value)} InputLabelProps={{ shrink: true }} />
+        <Button startIcon={<RestartAltIcon />} onClick={load} sx={{ textTransform: 'none', color: ACCENT }}>Refresh</Button>
+        <Typography fontSize={12} color="text.secondary">{rows.length} day record{rows.length === 1 ? '' : 's'}</Typography>
+      </Stack>
+
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+      <TableContainer sx={{ bgcolor: 'white', border: '1px solid #e2e8f0', borderRadius: 1.5 }}>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              {['Date', 'Employee ID', 'Punch In', 'Punch Out', 'Hours', 'Punches'].map(h => (
+                <TableCell key={h} sx={{ fontWeight: 700, fontSize: 12, color: '#475569' }}>{h}</TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {loading ? (
+              <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><CircularProgress size={22} /></TableCell></TableRow>
+            ) : rows.length === 0 ? (
+              <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4, color: 'text.secondary', fontSize: 13 }}>No attendance records for this range.</TableCell></TableRow>
+            ) : rows.map(r => (
+              <TableRow key={`${r.employeeCode}-${r.day}`} hover>
+                <TableCell sx={{ fontSize: 13 }}>
+                  {new Date(`${r.day}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}
+                </TableCell>
+                <TableCell sx={{ fontSize: 13 }}>{r.employeeCode}</TableCell>
+                <TableCell sx={{ fontSize: 13 }}>{fmtTime(r.punchIn)}</TableCell>
+                <TableCell sx={{ fontSize: 13 }}>
+                  {r.punchOut ? fmtTime(r.punchOut) : <Chip size="small" label="No out punch" sx={{ fontSize: 11 }} />}
+                </TableCell>
+                <TableCell sx={{ fontSize: 13, fontWeight: 600 }}>{fmtHours(r.punchIn, r.punchOut)}</TableCell>
+                <TableCell sx={{ fontSize: 13 }}>{r.punchCount}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Box>
+  );
+}
+
 // ─── Placeholder tabs ────────────────────────────────────────────────────────────
 
 function ComingSoonTab({ icon, title }: { icon: React.ReactNode; title: string }) {
@@ -1769,7 +1864,7 @@ export default function AttendancePage() {
             </Box>
 
             {activeTab === 'out-of-office' && <OutOfOfficeTab />}
-            {activeTab === 'attendance' && <ComingSoonTab icon={<TodayIcon sx={{ fontSize: 40 }} />} title="Attendance" />}
+            {activeTab === 'attendance' && <AttendanceTab />}
             {activeTab === 'leaves' && <LeavesTab />}
           </Box>
         </main>

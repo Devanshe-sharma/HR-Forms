@@ -27,10 +27,10 @@ const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next
 // narrow it to the real ones once we've seen an actual payload from them.
 function normalisePunch(p) {
   const employeeCode = String(
-    p.employeeCode ?? p.employee_id ?? p.empId ?? p.emp_id ?? p.userId ?? p.user_id ?? p.card_no ?? ''
+    p.employeeCode ?? p.employee_code ?? p.employee_id ??p.empId ?? p.emp_id ?? p.userId ?? p.user_id ?? p.card_no ?? ''
   ).trim();
 
-  const timestampRaw = p.timestamp ?? p.punchTime ?? p.punch_time ?? p.time ?? p.datetime ?? p.date;
+  const timestampRaw = p.timestamp ?? p.log_datetime ?? p.logDatetime ?? p.punchTime ??p.punch_time ?? p.time ?? p.datetime ?? p.date;
   const timestamp = timestampRaw ? new Date(timestampRaw) : null;
 
   const directionRaw = String(p.direction ?? p.type ?? p.punchType ?? p.punch_type ?? '').trim().toLowerCase();

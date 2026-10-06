@@ -139,6 +139,14 @@ function latestDocFor(documents: OnboardingDocument[] | undefined, docType: stri
     .sort((a, b) => new Date(b.uploadedAt || 0).getTime() - new Date(a.uploadedAt || 0).getTime())[0];
 }
 
+// Every upload for this docType, newest first — for the documents that
+// accept more than one file at once (e.g. "last 3 months' salary slips").
+function allDocsFor(documents: OnboardingDocument[] | undefined, docType: string): OnboardingDocument[] {
+  return (documents || [])
+    .filter(d => d.docType === docType)
+    .sort((a, b) => new Date(b.uploadedAt || 0).getTime() - new Date(a.uploadedAt || 0).getTime());
+}
+
 type PersonalInfoField =
   | 'name' | 'persEmail' | 'mobile' | 'address'
   | 'citizenship' | 'nationality' | 'passportNo' | 'passportValidUpto' | 'passportIssuePlace'
@@ -737,6 +745,96 @@ function DocumentItem({ docType, title, subtitle, requiredTag, requiredTagColor 
   );
 }
 
+// Same idea as DocumentItem, but for documents that can legitimately have
+// more than one file at once (a previous-employer relieving letter plus
+// its own experience letter, three months of salary slips, etc.) — every
+// upload for this docType is kept and listed, "Add" never replaces an
+// earlier one.
+function MultiDocumentItem({ docType, title, subtitle, docs, employeeId, onUploaded }: {
+  docType: string;
+  title: string;
+  subtitle: string;
+  docs: OnboardingDocument[];
+  employeeId?: string;
+  onUploaded?: (documents: OnboardingDocument[]) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // lets the same filename be re-selected later
+    if (!file || !employeeId) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('docType', docType);
+      const res = await axios.post(`${API_URL}/onboarding/${employeeId}/upload-documents`, formData);
+      if (res.data?.success) onUploaded?.(res.data.data || []);
+      else setError('Upload failed.');
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Upload failed.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <ListItem sx={{ px: 3, py: 2, alignItems: 'flex-start', borderBottom: '1px solid #F0F2F5', '&:last-child': { borderBottom: 'none' } }}>
+      <ListItemIcon sx={{ minWidth: 44, mt: 0.4 }}>
+        <Box sx={{ width: 36, height: 36, borderRadius: '8px', bgcolor: '#F0F4FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <DocumentIcon sx={{ color: '#3F6FE8', fontSize: 18 }} />
+        </Box>
+      </ListItemIcon>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+          <Typography fontWeight="700" fontSize="0.85rem" color="#1A1F36">{title}</Typography>
+          <Chip
+            label={docs.length ? `${docs.length} uploaded` : 'Optional'} size="small"
+            sx={{
+              bgcolor: docs.length ? '#ECFDF5' : '#F3F4F6', color: docs.length ? '#059669' : '#6B7280',
+              fontWeight: 700, fontSize: '0.7rem', height: 20, borderRadius: '4px',
+            }}
+          />
+        </Stack>
+        <Typography variant="caption" color={error ? '#DC2626' : '#6B7280'} sx={{ display: 'block', mt: 0.2 }}>
+          {error || subtitle}
+        </Typography>
+        {docs.length > 0 && (
+          <Stack spacing={0.5} sx={{ mt: 1 }}>
+            {docs.map((d, i) => (
+              <Stack key={i} direction="row" alignItems="center" spacing={1} sx={{ bgcolor: '#F8F9FB', borderRadius: '6px', px: 1.2, py: 0.6 }}>
+                <DocumentIcon sx={{ fontSize: 14, color: '#9CA3AF' }} />
+                <Typography fontSize="0.76rem" color="#374151" sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {d.fileName}{formatDateDisplay(d.uploadedAt) ? ` • ${formatDateDisplay(d.uploadedAt)}` : ''}
+                </Typography>
+                <Button component={Link} href={d.driveLink} target="_blank" rel="noopener" size="small"
+                  sx={{ textTransform: 'none', fontSize: '0.72rem', fontWeight: 700, color: '#3F6FE8', minWidth: 0, p: 0 }}>
+                  View
+                </Button>
+              </Stack>
+            ))}
+          </Stack>
+        )}
+      </Box>
+      {docType && employeeId && (
+        <Box sx={{ ml: 1, flexShrink: 0 }}>
+          <input ref={inputRef} type="file" hidden accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onChange={handleFile} />
+          <Button
+            size="small" variant="text" disabled={uploading} onClick={() => inputRef.current?.click()}
+            startIcon={uploading ? <CircularProgress size={12} color="inherit" /> : <AddIcon sx={{ fontSize: 14 }} />}
+            sx={{ textTransform: 'none', fontSize: '0.75rem', fontWeight: 700, color: '#3F6FE8' }}>
+            {uploading ? 'Uploading…' : 'Add'}
+          </Button>
+        </Box>
+      )}
+    </ListItem>
+  );
+}
+
 // Digital signature — a single current image (re-upload replaces it,
 // unlike DocumentItem's append-and-keep-latest), shown as an inline
 // thumbnail rather than a "View" link-out since the whole point is being
@@ -1310,15 +1408,17 @@ export default function Profile() {
                 <Box>
                   <SectionCard title="Employment Documents" icon={<LetterIcon sx={{ fontSize: 17 }} />}>
                     <Typography variant="caption" color="#9CA3AF" sx={{ display: 'block', mb: 1 }}>
-                      Official letters are generated live from your record — only the ones that actually apply to you are listed. Experience Letter is a 10MB-max upload.
+                      Official letters are generated live from your record — only the ones that actually apply to you are listed. The two upload rows below accept multiple files (10MB max each).
                     </Typography>
                     <List disablePadding sx={{ mx: -3, mb: -2.5 }}>
                       {OFFICIAL_LETTER_TYPES.filter(lt => lt.isAvailable(userProfile)).map(lt => (
                         <DocumentItem key={lt.type} title={lt.label} subtitle={lt.subtitle}
                           staticHref={lt.directLink || `/letter?type=${encodeURIComponent(lt.type)}&empId=${encodeURIComponent(userProfile?._id || '')}`} />
                       ))}
-                      <DocumentItem docType="experienceLetter" title="Experience Letter" subtitle="For previous employment (if applicable)" requiredTag="Optional" requiredTagColor="#6B7280"
-                        doc={latestDocFor(userProfile?.documents, 'experienceLetter')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
+                      <MultiDocumentItem docType="experienceLetter" title="Previous Company Experience Letter / Relieving Letter" subtitle="From your previous employer, if applicable — add as many as you need"
+                        docs={allDocsFor(userProfile?.documents, 'experienceLetter')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
+                      <MultiDocumentItem docType="previousSalarySlips" title="Last 3 Months' Salary Slips" subtitle="From your previous employer, if applicable — add one file per month"
+                        docs={allDocsFor(userProfile?.documents, 'previousSalarySlips')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
                       <DocumentItem title="Payslips" subtitle="Not set up yet" requiredTag="Not available" requiredTagColor="#9CA3AF" />
                     </List>
                   </SectionCard>
