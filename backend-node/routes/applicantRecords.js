@@ -876,9 +876,10 @@ router.get('/:id/interview-rounds/:roundId/feedback-context', async (req, res) =
         name:        record.full_name,
         designation: record.designation,
         resume:      record.resume || '',
+        linkedin:    record.linkedin || '',
       },
       jdLink: jdLink || '',
-      round: { stage: round.stage, scheduledDate: round.scheduledDate, scheduledTime: round.scheduledTime },
+      round: { stage: round.stage, scheduledDate: round.scheduledDate, scheduledTime: round.scheduledTime, interviewer: round.interviewer || '' },
       interviewerFeedbackStatus: round.interviewerFeedbackStatus || '',
       feedback: round.feedback || '',
       screener: record.screenerNotes || record.screenerStatus

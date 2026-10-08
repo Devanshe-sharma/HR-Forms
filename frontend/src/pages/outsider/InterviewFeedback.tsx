@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { INTERVIEWER_FEEDBACK_STATUS_OPTIONS } from '../Recruitment/applicantTypes';
-import { FormattedFeedback } from '../Recruitment/FeedbackTemplate';
+import { FormattedFeedback, TemplateModal } from '../Recruitment/FeedbackTemplate';
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
 
@@ -15,9 +15,9 @@ type PreviousRound = {
 };
 
 type Context = {
-  candidate: { name: string; designation: string; resume: string };
+  candidate: { name: string; designation: string; resume: string; linkedin: string };
   jdLink: string;
-  round: { stage: string; scheduledDate: string; scheduledTime: string };
+  round: { stage: string; scheduledDate: string; scheduledTime: string; interviewer: string };
   interviewerFeedbackStatus: string;
   feedback: string;
   screener: { name: string; status: string; notes: string } | null;
@@ -37,6 +37,7 @@ export default function InterviewFeedback() {
   const [feedback, setFeedback] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted]   = useState(false);
+  const [templateOpen, setTemplateOpen] = useState(false);
 
   useEffect(() => {
     if (!recordId || !roundId || !sig) { setError('This link is invalid.'); setLoading(false); return; }
@@ -107,7 +108,7 @@ export default function InterviewFeedback() {
         </div>
       </nav>
 
-      <div className="container mx-auto px-6 py-10 max-w-xl">
+      <div className="container mx-auto px-6 py-10 max-w-5xl">
         {/* Candidate details + JD — for reference while writing feedback */}
         <div className="bg-white rounded-xl shadow p-6 mb-6 space-y-1.5">
           <p className="text-sm text-gray-500">Candidate</p>
@@ -174,13 +175,33 @@ export default function InterviewFeedback() {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Feedback</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-semibold text-gray-700">Feedback</label>
+              <button
+                type="button"
+                onClick={() => setTemplateOpen(true)}
+                className="text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition"
+              >
+                {feedback ? 'Edit via template' : 'Use template'}
+              </button>
+            </div>
             <textarea
               value={feedback}
               onChange={(e) => setFeedback(e.target.value)}
               rows={8}
               placeholder="Share your assessment of the candidate…"
               className="w-full border rounded-lg px-3 py-2 resize-y"
+            />
+            <TemplateModal
+              open={templateOpen}
+              onClose={() => setTemplateOpen(false)}
+              onInsert={(text: string) => setFeedback(text)}
+              screenerName={context?.round.interviewer || ''}
+              existingText={feedback}
+              defaultRound={context?.round.stage || 'Interview Round'}
+              title="Interview Feedback Template"
+              defaultResume={context?.candidate.resume}
+              defaultLinkedin={context?.candidate.linkedin}
             />
           </div>
 
