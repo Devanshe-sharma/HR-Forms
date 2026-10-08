@@ -44,7 +44,9 @@ function buildDefaultBody({ type, audience, candidateName, position, round, canc
   const mode  = formatMode(round.mode);
   const link  = round.meetingLink || '[Address/Link]';
 
-  const greeting = audience === 'interviewer' ? 'Dear Interviewer,' : `Dear ${candidateName},`;
+  const greeting = audience === 'interviewer'
+    ? `Dear ${round.interviewer || 'Interviewer'},`
+    : `Dear ${candidateName},`;
 
   let intro;
   if (type === 'cancel') {

@@ -800,15 +800,15 @@ const InterviewRoundTab = ({
       {/* ── Schedule / Reschedule / Cancel mail dialog ── */}
       {mailModal.open && mailModal.round && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={closeMailModal}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className={`flex items-center justify-between px-5 py-3.5 border-b rounded-t-2xl ${mailModal.type === 'cancel' ? 'bg-red-700' : 'bg-slate-800'}`}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className={`flex items-center justify-between px-5 py-3.5 border-b rounded-t-2xl flex-shrink-0 ${mailModal.type === 'cancel' ? 'bg-red-700' : 'bg-slate-800'}`}>
               <p className="text-sm font-bold text-white">
                 {mailModal.type === 'schedule' ? 'Schedule Interview' : mailModal.type === 'reschedule' ? 'Reschedule Interview' : 'Cancel Interview'} — Round {mailModal.round.roundNumber}
               </p>
               <button onClick={closeMailModal} className="text-white/70 hover:text-white transition"><X size={16} /></button>
             </div>
 
-            <div className="p-5 space-y-3">
+            <div className="p-5 space-y-3 overflow-y-auto flex-1 min-h-0">
               {mailModal.type === 'cancel' && (
                 <div>
                   <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-0.5 block">
@@ -970,7 +970,7 @@ const InterviewRoundTab = ({
               })()}
             </div>
 
-            <div className="flex justify-end gap-2 px-5 py-3.5 border-t bg-gray-50 rounded-b-2xl flex-wrap">
+            <div className="flex justify-end gap-2 px-5 py-3.5 border-t bg-gray-50 rounded-b-2xl flex-wrap flex-shrink-0">
               <button onClick={closeMailModal} className="px-3 py-1.5 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition">Close</button>
               {mailModal.type === 'cancel' && (
                 <button
