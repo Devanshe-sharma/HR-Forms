@@ -2805,7 +2805,7 @@ const HRAnalyticsDashboard: React.FC = () => {
     {
       title: "Workforce Composition",
       cards: [
-        { key: "teeth", title: "Productive : Support Ratio", icon: <BalanceIcon />, color: ACCENT, bg: "#eef2ff", fetchSummary: fetchTeethToTailSummary },
+        { key: "teeth", title: "Delivery : Support Ratio", icon: <BalanceIcon />, color: ACCENT, bg: "#eef2ff", fetchSummary: fetchTeethToTailSummary },
         { key: "gender", title: "Gender Ratio (Female)", icon: <WcIcon />, color: "#db2777", bg: "#fdf2f8", fetchSummary: fetchGenderSummary },
         // Interns (%) + Intern→Employee conversions merged into one card.
         { key: "interns", title: "Interns (%)", icon: <SchoolIcon />, color: INTERN_COLOR, bg: "#f5f3ff", fetchSummary: fetchInternsCombinedSummary },
@@ -2830,7 +2830,7 @@ const HRAnalyticsDashboard: React.FC = () => {
       title: "Retention & Performance",
       cards: [
         { key: "attrition", title: "Attrition Rate (%)", icon: <TrendingDownIcon />, color: "#dc2626", bg: "#fef2f2", fetchSummary: fetchAttritionSummary },
-        { key: "askedToLeave", title: "Involuntary Attrition (%)", icon: <PersonRemoveIcon />, color: "#dc2626", bg: "#fef2f2", fetchSummary: fetchAskedToLeaveSummary },
+        { key: "askedToLeave", title: "Asked to Leave (%)", icon: <PersonRemoveIcon />, color: "#dc2626", bg: "#fef2f2", fetchSummary: fetchAskedToLeaveSummary },
         { key: "pip", title: "On Performance Plan (%)", icon: <AssessmentIcon />, color: "#d97706", bg: "#fffbeb", fetchSummary: fetchPipSummary },
         { key: "increments", title: "Salary Increments (%)", icon: <TrendingUpIcon />, color: "#7c3aed", bg: "#f5f3ff", fetchSummary: fetchIncrementSummary },
       ],

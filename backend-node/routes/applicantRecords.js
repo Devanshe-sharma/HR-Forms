@@ -637,34 +637,6 @@ function buildFeedbackLinkFor(audience, type, recordId, roundId) {
   return buildFeedbackLink(recordId, roundId);
 }
 
-// Screener's (HR recruiter's) notes plus every earlier interview round's
-// feedback, for the mail an interviewer receives — same data the public
-// feedback-context route returns, just also surfaced directly in the
-// schedule/reschedule mail itself rather than only once they click into the
-// feedback form. Only meaningful for the interviewer audience, and only
-// when there's something earlier to show.
-function buildPreviousFeedbackFor(audience, type, record, round) {
-  if (audience !== 'interviewer' || type === 'cancel') return undefined;
-
-  const allRounds = record.interviewRounds || [];
-  const previousRounds = allRounds
-    .filter((r) => (r.roundNumber ?? 0) < (round.roundNumber ?? 0) && (r.feedback || r.interviewerFeedbackStatus))
-    .sort((a, b) => (a.roundNumber ?? 0) - (b.roundNumber ?? 0))
-    .map((r) => ({
-      stage: r.stage || `Round ${r.roundNumber}`,
-      interviewer: r.interviewer || '',
-      interviewerFeedbackStatus: r.interviewerFeedbackStatus || '',
-      feedback: r.feedback || '',
-    }));
-
-  const screener = (record.screenerNotes || record.screenerStatus)
-    ? { name: record.screenerName || '', status: record.screenerStatus || '', notes: record.screenerNotes || '' }
-    : null;
-
-  if (!screener && previousRounds.length === 0) return undefined;
-  return { screener, previousRounds };
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/applicant-records/:id/interview-rounds/:roundId/preview-mail
 // Builds the exact subject/body the send-mail route would generate by
@@ -684,7 +656,6 @@ router.post('/:id/interview-rounds/:roundId/preview-mail', async (req, res) => {
 
     const to = audience === 'candidate' ? record.email : await resolveInterviewerEmail(round.interviewer);
     const feedbackLink = buildFeedbackLinkFor(audience, type, record._id, round._id);
-    const previousFeedback = buildPreviousFeedbackFor(audience, type, record, round);
 
     const { subject, body } = buildInterviewRoundMail({
       type,
@@ -695,15 +666,15 @@ router.post('/:id/interview-rounds/:roundId/preview-mail', async (req, res) => {
       cancellationReason: cancellationReason ?? round.cancellationReason,
       confirmLinks: buildConfirmLinks(record._id, round._id, audience, type),
       feedbackLink,
-      previousFeedback,
     });
 
-    // previousFeedback and willIncludeFeedbackLink are purely informational —
-    // the dashboard renders them as a read-only "Previous Feedback" panel and
-    // a note, separate from the editable subject/body, since neither is
-    // something HR types or edits here (see buildPreviousFeedbackFor /
-    // buildFeedbackLinkFor above).
-    ok(res, { to: to || '', subject, body, previousFeedback: previousFeedback || null, willIncludeFeedbackLink: !!feedbackLink });
+    // willIncludeFeedbackLink is purely informational — the dashboard shows
+    // a note that the "Submit Interview Feedback" button will be added,
+    // separate from the editable subject/body. Previous-round/screener
+    // feedback is intentionally NOT included here — it belongs only on the
+    // interviewer's own feedback-context page (GET .../feedback-context),
+    // not in this mail.
+    ok(res, { to: to || '', subject, body, willIncludeFeedbackLink: !!feedbackLink });
   } catch (e) {
     console.error('[preview-mail] error:', e);
     err(res, 'Failed to build mail preview');
@@ -748,7 +719,6 @@ router.post('/:id/interview-rounds/:roundId/send-mail', async (req, res) => {
       cancellationReason: cancellationReason ?? round.cancellationReason,
       confirmLinks: buildConfirmLinks(record._id, round._id, audience, type),
       feedbackLink: buildFeedbackLinkFor(audience, type, record._id, round._id),
-      previousFeedback: buildPreviousFeedbackFor(audience, type, record, round),
       subjectOverride,
       customBody,
     });

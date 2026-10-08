@@ -305,11 +305,9 @@ const InterviewRoundTab = ({
   const [jdLink,    setJdLink]    = useState<string | null>(null);
   const [interviewers,        setInterviewers]        = useState<EmployeeOption[]>([]);
   const [loadingInterviewers, setLoadingInterviewers]  = useState(true);
-  type PreviousRoundFeedback = { stage: string; interviewer: string; interviewerFeedbackStatus: string; feedback: string };
-  type PreviousFeedback = { screener: { name: string; status: string; notes: string } | null; previousRounds: PreviousRoundFeedback[] } | null;
   type MailContent = {
     to: string; cc: string; subject: string; body: string;
-    previousFeedback: PreviousFeedback; willIncludeFeedbackLink: boolean;
+    willIncludeFeedbackLink: boolean;
   };
   const [mailModal, setMailModal] = useState<{
     open: boolean; type: 'schedule' | 'reschedule' | 'cancel'; round: InterviewRound | null;
@@ -320,7 +318,6 @@ const InterviewRoundTab = ({
     open: false, type: 'schedule', round: null, tab: 'interviewer', sentTabs: [], sending: false, reason: '',
     content: {}, loadingPreview: false, previewError: null,
   });
-  const [previousFeedbackOpen, setPreviousFeedbackOpen] = useState(false);
 
   const [rejectionModal, setRejectionModal] = useState<{
     open: boolean; to: string; cc: string; subject: string; body: string;
@@ -457,7 +454,6 @@ const InterviewRoundTab = ({
       sending: false, reason: type === 'cancel' ? (round.cancellationReason || '') : '',
       content: {}, loadingPreview: false, previewError: null,
     });
-    setPreviousFeedbackOpen(false);
   };
 
   const closeMailModal = () => setMailModal((m) => ({ ...m, open: false }));
@@ -488,7 +484,6 @@ const InterviewRoundTab = ({
           // Regenerating keeps whatever CC HR already typed — only To/Subject/Body reset to the fresh default.
           [tab]: {
             to: json.data.to || '', cc: m.content[tab]?.cc ?? DEFAULT_HR_CC, subject: json.data.subject, body: json.data.body,
-            previousFeedback: json.data.previousFeedback || null,
             willIncludeFeedbackLink: !!json.data.willIncludeFeedbackLink,
           },
         },
@@ -523,7 +518,7 @@ const InterviewRoundTab = ({
       content: {
         ...m.content,
         [tab]: {
-          to: '', cc: '', subject: '', body: '', previousFeedback: null, willIncludeFeedbackLink: false,
+          to: '', cc: '', subject: '', body: '', willIncludeFeedbackLink: false,
           ...m.content[tab], [field]: value,
         },
       },
@@ -941,44 +936,6 @@ const InterviewRoundTab = ({
                     )}
                     {current && (
                       <div className="p-3 space-y-2.5 bg-white">
-                        {/* Previous feedback — read-only, contracted (collapsed) by
-                            default, separate from the editable body below so it
-                            can't be accidentally edited away. Only ever present
-                            for the interviewer's schedule/reschedule mail. */}
-                        {current.previousFeedback && (current.previousFeedback.screener || current.previousFeedback.previousRounds.length > 0) && (
-                          <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
-                            <button
-                              type="button"
-                              onClick={() => setPreviousFeedbackOpen((o) => !o)}
-                              className="w-full flex items-center justify-between px-3 py-2 text-[11px] font-bold text-gray-500 uppercase tracking-wide"
-                            >
-                              Previous Feedback (included in mail)
-                              {previousFeedbackOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                            </button>
-                            {previousFeedbackOpen && (
-                              <div className="px-3 pb-3 space-y-2">
-                                {current.previousFeedback.screener && (
-                                  <div>
-                                    <p className="text-xs font-semibold text-gray-500">
-                                      HR Screening{current.previousFeedback.screener.name ? ` — ${current.previousFeedback.screener.name}` : ''}
-                                      {current.previousFeedback.screener.status ? ` (${current.previousFeedback.screener.status})` : ''}
-                                    </p>
-                                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{current.previousFeedback.screener.notes || '—'}</p>
-                                  </div>
-                                )}
-                                {current.previousFeedback.previousRounds.map((r, i) => (
-                                  <div key={i}>
-                                    <p className="text-xs font-semibold text-gray-500">
-                                      {r.stage}{r.interviewer ? ` — ${r.interviewer}` : ''}{r.interviewerFeedbackStatus ? ` (${r.interviewerFeedbackStatus})` : ''}
-                                    </p>
-                                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{r.feedback || '—'}</p>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-
                         <div>
                           <label className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5 block">To</label>
                           <input

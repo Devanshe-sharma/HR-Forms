@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { INTERVIEWER_FEEDBACK_STATUS_OPTIONS } from '../Recruitment/applicantTypes';
+import { FormattedFeedback } from '../Recruitment/FeedbackTemplate';
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
 
@@ -142,7 +143,7 @@ export default function InterviewFeedback() {
                   HR Screening{context.screener.name ? ` — ${context.screener.name}` : ''}
                   {context.screener.status ? ` (${context.screener.status})` : ''}
                 </p>
-                <p className="text-sm text-gray-800 whitespace-pre-wrap">{context.screener.notes || '—'}</p>
+                {context.screener.notes ? <FormattedFeedback text={context.screener.notes} /> : <p className="text-sm text-gray-400 italic">—</p>}
               </div>
             )}
 
@@ -152,7 +153,7 @@ export default function InterviewFeedback() {
                   {r.stage}{r.interviewer ? ` — ${r.interviewer}` : ''}
                   {r.interviewerFeedbackStatus ? ` (${r.interviewerFeedbackStatus})` : ''}
                 </p>
-                <p className="text-sm text-gray-800 whitespace-pre-wrap">{r.feedback || '—'}</p>
+                {r.feedback ? <FormattedFeedback text={r.feedback} /> : <p className="text-sm text-gray-400 italic">—</p>}
               </div>
             ))}
           </div>

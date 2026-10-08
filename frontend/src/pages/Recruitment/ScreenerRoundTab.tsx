@@ -5,7 +5,7 @@ import { Loader2, Edit2, Save, UserCheck, ChevronDown, Send, Check, X } from 'lu
 import toast from 'react-hot-toast';
 import { Field, EditSelect } from './ApplicantFieldComponents';
 import { ApplicantRecord, API_BASE, SCREENER_STATUS_OPTIONS, SCREENER_STATUS_COLORS } from './applicantTypes';
-import { TemplateModal, parseFormattedText, TEMPLATE_FIELDS, SECTIONS } from './FeedbackTemplate';
+import { TemplateModal, FormattedFeedback } from './FeedbackTemplate';
 
 // Default CC on every candidate-management mail — HR previously had to
 // type this in by hand on every single send.
@@ -19,56 +19,6 @@ function resolveResumeUrl(resume?: string): string {
   const origin = API_BASE.replace(/\/api\/?$/, '');
   return `${origin}${resume.startsWith('/') ? '' : '/'}${resume}`;
 }
-
-// Renders saved feedback with bold section/field headings and real spacing
-// instead of dumping the raw template string as one flat monospace block.
-// Falls back to the raw text when it wasn't built via the template (e.g.
-// manually typed notes) — parseFormattedText only finds a round/screener
-// header when the text actually matches the template's own format.
-const FormattedFeedback = ({ text }: { text: string }) => {
-  const parsed = parseFormattedText(text);
-
-  if (!parsed?.__round) {
-    return (
-      <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed font-mono">
-        {text}
-      </p>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <p className="text-sm font-bold text-gray-800">
-        {parsed.__round}
-        {parsed.__screener && <span className="font-normal text-gray-500"> — {parsed.__screener}</span>}
-      </p>
-      {SECTIONS.map((section) => (
-        <div key={section}>
-          <p className="text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2 pb-1 border-b border-gray-100">
-            {section}
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-            {TEMPLATE_FIELDS.filter((f) => f.section === section && f.id !== 'remarks').map((f) => (
-              <p key={f.id} className={`text-sm text-black ${'full' in f && f.full ? 'sm:col-span-2' : ''}`}>
-                <span className="font-bold text-gray-900">{f.label}: </span>
-                {parsed[f.id] ? <span className="font-normal">{parsed[f.id]}</span> : <span className="font-normal text-gray-400 italic">—</span>}
-              </p>
-            ))}
-          </div>
-        </div>
-      ))}
-
-      {/* Remarks — free-form and usually longer than the other fields, so it
-          gets its own boxed section instead of sitting in the Assessment grid. */}
-      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-        <p className="text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Remarks</p>
-        <p className="text-sm font-normal text-black whitespace-pre-wrap">
-          {parsed.remarks || <span className="text-gray-400 italic">—</span>}
-        </p>
-      </div>
-    </div>
-  );
-};
 
 const ScreenerRoundTab = ({
   record, mode, setMode, onSave,
