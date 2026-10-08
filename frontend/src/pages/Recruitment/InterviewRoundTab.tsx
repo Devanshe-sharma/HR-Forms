@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Loader2, Edit2, Save, Plus, ClipboardList,
   ChevronDown, ChevronUp, ExternalLink, CalendarClock, RefreshCw,
-  X, Send, Check, Ban, CheckCircle2,
+  X, Send, Check, Ban, CheckCircle2, AlertTriangle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { FIELD_PLACEHOLDER_CLASS } from './ApplicantFieldComponents';
@@ -501,12 +501,21 @@ const InterviewRoundTab = ({
 
   // Fetches the preview for whichever tab is active, once per tab per
   // modal-open — a manual "Regenerate" button (near the editor) re-fetches
-  // on demand, e.g. after the cancellation reason text changes.
+  // on demand, e.g. after the cancellation reason text changes. Cancel mail
+  // shows both recipients' rows at once (not tab-gated), so both previews
+  // are fetched up front instead of lazily per active tab.
   useEffect(() => {
-    if (!mailModal.open || !mailModal.round || mailModal.content[mailModal.tab]) return;
+    if (!mailModal.open || !mailModal.round) return;
+    if (mailModal.type === 'cancel') {
+      (['interviewer', 'candidate'] as const).forEach((t) => {
+        if (!mailModal.content[t]) fetchPreview(t, mailModal.round!, mailModal.type, mailModal.reason);
+      });
+      return;
+    }
+    if (mailModal.content[mailModal.tab]) return;
     fetchPreview(mailModal.tab, mailModal.round, mailModal.type, mailModal.reason);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mailModal.open, mailModal.tab, mailModal.round?._id]);
+  }, [mailModal.open, mailModal.tab, mailModal.round?._id, mailModal.type]);
 
   const updateMailContent = (tab: 'interviewer' | 'candidate', field: 'to' | 'cc' | 'subject' | 'body', value: string) =>
     setMailModal((m) => ({
@@ -824,6 +833,62 @@ const InterviewRoundTab = ({
                 </div>
               )}
 
+              {mailModal.type === 'cancel' && mailModal.round && (() => {
+                const round = mailModal.round;
+                return (
+                  <>
+                    <div className="border border-blue-100 bg-blue-50/60 rounded-lg p-3">
+                      <p className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">Interview Details</p>
+                      <div className="space-y-0.5 text-sm text-gray-800">
+                        <p><span className="font-semibold">Candidate:</span> {record.full_name}</p>
+                        <p><span className="font-semibold">Position:</span> {record.designation}</p>
+                        <p><span className="font-semibold">Interviewer:</span> {round.interviewer || '—'}</p>
+                        <p><span className="font-semibold">Scheduled Date:</span> {round.scheduledDate ? new Date(round.scheduledDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'TBD'}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold px-3 py-2 rounded-lg">
+                      <AlertTriangle size={14} className="flex-shrink-0" /> Send cancellation notifications before finalizing.
+                    </div>
+
+                    {(['interviewer', 'candidate'] as const).map((tab) => {
+                      const content = mailModal.content[tab];
+                      const sent = mailModal.sentTabs.includes(tab);
+                      const name = tab === 'interviewer' ? (round.interviewer || '—') : record.full_name;
+                      return (
+                        <div
+                          key={tab}
+                          className={`flex items-center justify-between gap-3 p-3 rounded-lg border ${sent ? 'bg-green-50 border-green-200' : 'border-gray-200'}`}
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-gray-800 flex items-center gap-2 flex-wrap">
+                              {tab === 'interviewer' ? 'Interviewer' : 'Candidate'}: {name}
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tab === 'interviewer' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
+                                {tab === 'interviewer' ? 'with reason' : 'no reason'}
+                              </span>
+                            </p>
+                            <p className="text-xs text-gray-500 truncate">
+                              {content?.to || (mailModal.loadingPreview ? 'Loading…' : 'No email on file')}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => handleSendMail(tab)}
+                            disabled={mailModal.sending || sent || !mailModal.reason.trim() || !content?.to}
+                            className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
+                              sent ? 'bg-gray-200 text-gray-500' : 'text-white bg-lime-600 hover:bg-lime-700 disabled:opacity-50'
+                            }`}
+                          >
+                            {sent ? <><Check size={13} /> Sent</> : <><Send size={13} /> Send</>}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </>
+                );
+              })()}
+
+              {mailModal.type !== 'cancel' && (
+              <>
               <div className="flex gap-2">
                 {(['interviewer', 'candidate'] as const).map((tab) => (
                   <button
@@ -952,12 +1017,12 @@ const InterviewRoundTab = ({
                             rows={10}
                             className={`${fieldClass(!isDone)} resize-y`}
                           />
-                          {mailModal.tab === 'candidate' && mailModal.type !== 'cancel' && (
+                          {mailModal.tab === 'candidate' && (
                             <p className="text-[11px] text-gray-400 mt-1">
                               A Yes / Maybe / Can't-attend confirmation block is added automatically below this message.
                             </p>
                           )}
-                          {mailModal.tab === 'interviewer' && mailModal.type !== 'cancel' && current.willIncludeFeedbackLink && (
+                          {mailModal.tab === 'interviewer' && current.willIncludeFeedbackLink && (
                             <p className="text-[11px] text-gray-400 mt-1">
                               A "Submit Interview Feedback" button linking to the feedback form is added automatically below this message.
                             </p>
@@ -968,29 +1033,46 @@ const InterviewRoundTab = ({
                   </div>
                 );
               })()}
+              </>
+              )}
             </div>
 
             <div className="flex justify-end gap-2 px-5 py-3.5 border-t bg-gray-50 rounded-b-2xl flex-wrap flex-shrink-0">
               <button onClick={closeMailModal} className="px-3 py-1.5 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition">Close</button>
-              {mailModal.type === 'cancel' && (
+              {mailModal.type === 'cancel' ? (
+                <>
+                  {/* Skips sending anything — just records the cancellation.
+                      Still requires a reason, for the record, even though
+                      nobody gets emailed. */}
+                  <button
+                    onClick={finalizeCancellation}
+                    disabled={!mailModal.reason.trim()}
+                    className="px-3 py-1.5 text-sm font-semibold text-red-700 border border-red-200 bg-white hover:bg-red-50 disabled:opacity-50 rounded-lg transition"
+                  >
+                    Cancel Without Email
+                  </button>
+                  <button
+                    onClick={finalizeCancellation}
+                    disabled={!mailModal.reason.trim() || !(mailModal.sentTabs.includes('interviewer') && mailModal.sentTabs.includes('candidate'))}
+                    className="px-3 py-1.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg transition"
+                    title={!(mailModal.sentTabs.includes('interviewer') && mailModal.sentTabs.includes('candidate')) ? 'Send both notifications first, or use "Cancel Without Email"' : undefined}
+                  >
+                    Finalize Cancellation
+                  </button>
+                </>
+              ) : (
                 <button
-                  onClick={finalizeCancellation}
-                  className="px-3 py-1.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition"
+                  onClick={() => handleSendMail(mailModal.tab)}
+                  disabled={mailModal.sending || mailModal.sentTabs.includes(mailModal.tab)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-lime-600 hover:bg-lime-700 disabled:opacity-60 rounded-lg transition"
                 >
-                  Finalize Cancellation
+                  {mailModal.sending
+                    ? <><Loader2 size={14} className="animate-spin" /> Sending...</>
+                    : mailModal.sentTabs.includes(mailModal.tab)
+                      ? <><Check size={14} /> Sent</>
+                      : <><Send size={14} /> Send</>}
                 </button>
               )}
-              <button
-                onClick={() => handleSendMail(mailModal.tab)}
-                disabled={mailModal.sending || mailModal.sentTabs.includes(mailModal.tab) || (mailModal.type === 'cancel' && !mailModal.reason.trim())}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-lime-600 hover:bg-lime-700 disabled:opacity-60 rounded-lg transition"
-              >
-                {mailModal.sending
-                  ? <><Loader2 size={14} className="animate-spin" /> Sending...</>
-                  : mailModal.sentTabs.includes(mailModal.tab)
-                    ? <><Check size={14} /> Sent</>
-                    : <><Send size={14} /> Send</>}
-              </button>
             </div>
           </div>
         </div>
