@@ -399,12 +399,9 @@ router.patch('/:id/screener-round', async (req, res) => {
     const existing = await ApplicantRecord.findById(req.params.id).lean();
     if (!existing) return err(res, 'Record not found', 404);
 
-    // Shortlisted/Rejected is a final decision — once set, this stage is
-    // locked and cannot be changed (enforced here, not just hidden in the
-    // UI, since a stale client could otherwise still PATCH around it).
-    if (existing.screenerStatus === 'Shortlisted' || existing.screenerStatus === 'Rejected') {
-      return err(res, `This screening decision is final (${existing.screenerStatus}) and cannot be changed.`, 400);
-    }
+    // Shortlisted/Rejected used to be locked permanently once set — per
+    // explicit "candidate management" instruction (2026-10-07), HR can now
+    // edit the screener decision at any time, even after finalizing it.
 
     const { screenerName, screenerStatus, screenerNotes } = req.body;
 
@@ -448,14 +445,19 @@ router.patch('/:id/interview-final-status', async (req, res) => {
     const record = await ApplicantRecord.findById(req.params.id);
     if (!record) return err(res, 'Record not found', 404);
 
+    // Conflicting signals across rounds (one Recommended, another Not
+    // Recommended) must not block BOTH options — that would leave the
+    // candidate stuck at "In Progress" with no way to resolve it. A real
+    // conflict is left to HR's judgment instead of being blocked outright.
     const feedbackStatuses = (record.interviewRounds || []).map((r) => r.interviewerFeedbackStatus).filter(Boolean);
     const hasRecommended    = feedbackStatuses.some((s) => s === 'Recommended as P1' || s === 'Recommended as P2');
     const hasNotRecommended = feedbackStatuses.includes('Not Recommended');
+    const conflictingSignals = hasRecommended && hasNotRecommended;
 
-    if (interviewFinalStatus === 'Rejected' && hasRecommended) {
+    if (interviewFinalStatus === 'Rejected' && hasRecommended && !conflictingSignals) {
       return err(res, 'This candidate has a Recommended (P1/P2) interview round on file — cannot be marked Rejected.', 400);
     }
-    if (interviewFinalStatus === 'Shortlisted' && hasNotRecommended) {
+    if (interviewFinalStatus === 'Shortlisted' && hasNotRecommended && !conflictingSignals) {
       return err(res, 'This candidate has a Not Recommended interview round on file — cannot be marked Shortlisted.', 400);
     }
 
@@ -551,13 +553,13 @@ router.post('/:id/interview-rounds', async (req, res) => {
 
     const newRound = {
       roundNumber:   nextRoundNumber,
-      stage:         req.body.stage         || 'Technical Round 1',
-      schedulingStatus:      req.body.schedulingStatus      || 'Scheduled',
+      stage:         req.body.stage         || '',
+      schedulingStatus:      req.body.schedulingStatus      || '',
       cancellationReason:    req.body.cancellationReason    || '',
       scheduledDate:         req.body.scheduledDate         || null,
       scheduledTime:         req.body.scheduledTime         || '',
       interviewer:           req.body.interviewer           || '',
-      mode:                  req.body.mode                  || 'Not Decided Yet',
+      mode:                  req.body.mode                  || '',
       meetingLink:           req.body.meetingLink           || '',
       candidateConfirmation: req.body.candidateConfirmation || 'Pending',
       note:                  req.body.note                  || '',
@@ -587,6 +589,14 @@ router.patch('/:id/interview-rounds/:roundId', async (req, res) => {
 
     const round = record.interviewRounds.id(req.params.roundId);
     if (!round) return err(res, 'Round not found', 404);
+
+    // A round marked Done is final — no further edits, enforced here (not
+    // just hidden in the UI) since a stale client could otherwise still
+    // PATCH around it. The transition INTO Done itself (via Mark Done)
+    // still works fine, since at that point the round isn't Done yet.
+    if (round.schedulingStatus === 'Done') {
+      return err(res, 'This round is marked Done and cannot be edited.', 400);
+    }
 
     const updatable = [
       'stage', 'schedulingStatus', 'cancellationReason', 'scheduledDate', 'scheduledTime',
@@ -627,6 +637,34 @@ function buildFeedbackLinkFor(audience, type, recordId, roundId) {
   return buildFeedbackLink(recordId, roundId);
 }
 
+// Screener's (HR recruiter's) notes plus every earlier interview round's
+// feedback, for the mail an interviewer receives — same data the public
+// feedback-context route returns, just also surfaced directly in the
+// schedule/reschedule mail itself rather than only once they click into the
+// feedback form. Only meaningful for the interviewer audience, and only
+// when there's something earlier to show.
+function buildPreviousFeedbackFor(audience, type, record, round) {
+  if (audience !== 'interviewer' || type === 'cancel') return undefined;
+
+  const allRounds = record.interviewRounds || [];
+  const previousRounds = allRounds
+    .filter((r) => (r.roundNumber ?? 0) < (round.roundNumber ?? 0) && (r.feedback || r.interviewerFeedbackStatus))
+    .sort((a, b) => (a.roundNumber ?? 0) - (b.roundNumber ?? 0))
+    .map((r) => ({
+      stage: r.stage || `Round ${r.roundNumber}`,
+      interviewer: r.interviewer || '',
+      interviewerFeedbackStatus: r.interviewerFeedbackStatus || '',
+      feedback: r.feedback || '',
+    }));
+
+  const screener = (record.screenerNotes || record.screenerStatus)
+    ? { name: record.screenerName || '', status: record.screenerStatus || '', notes: record.screenerNotes || '' }
+    : null;
+
+  if (!screener && previousRounds.length === 0) return undefined;
+  return { screener, previousRounds };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/applicant-records/:id/interview-rounds/:roundId/preview-mail
 // Builds the exact subject/body the send-mail route would generate by
@@ -645,6 +683,8 @@ router.post('/:id/interview-rounds/:roundId/preview-mail', async (req, res) => {
     if (!round) return err(res, 'Round not found', 404);
 
     const to = audience === 'candidate' ? record.email : await resolveInterviewerEmail(round.interviewer);
+    const feedbackLink = buildFeedbackLinkFor(audience, type, record._id, round._id);
+    const previousFeedback = buildPreviousFeedbackFor(audience, type, record, round);
 
     const { subject, body } = buildInterviewRoundMail({
       type,
@@ -654,10 +694,16 @@ router.post('/:id/interview-rounds/:roundId/preview-mail', async (req, res) => {
       round,
       cancellationReason: cancellationReason ?? round.cancellationReason,
       confirmLinks: buildConfirmLinks(record._id, round._id, audience, type),
-      feedbackLink: buildFeedbackLinkFor(audience, type, record._id, round._id),
+      feedbackLink,
+      previousFeedback,
     });
 
-    ok(res, { to: to || '', subject, body });
+    // previousFeedback and willIncludeFeedbackLink are purely informational —
+    // the dashboard renders them as a read-only "Previous Feedback" panel and
+    // a note, separate from the editable subject/body, since neither is
+    // something HR types or edits here (see buildPreviousFeedbackFor /
+    // buildFeedbackLinkFor above).
+    ok(res, { to: to || '', subject, body, previousFeedback: previousFeedback || null, willIncludeFeedbackLink: !!feedbackLink });
   } catch (e) {
     console.error('[preview-mail] error:', e);
     err(res, 'Failed to build mail preview');
@@ -702,6 +748,7 @@ router.post('/:id/interview-rounds/:roundId/send-mail', async (req, res) => {
       cancellationReason: cancellationReason ?? round.cancellationReason,
       confirmLinks: buildConfirmLinks(record._id, round._id, audience, type),
       feedbackLink: buildFeedbackLinkFor(audience, type, record._id, round._id),
+      previousFeedback: buildPreviousFeedbackFor(audience, type, record, round),
       subjectOverride,
       customBody,
     });
@@ -834,10 +881,25 @@ router.get('/:id/interview-rounds/:roundId/feedback-context', async (req, res) =
 
     const record = await ApplicantRecord.findById(req.params.id).lean();
     if (!record) return err(res, 'Record not found', 404);
-    const round = (record.interviewRounds || []).find((r) => String(r._id) === req.params.roundId);
+    const allRounds = record.interviewRounds || [];
+    const round = allRounds.find((r) => String(r._id) === req.params.roundId);
     if (!round) return err(res, 'Round not found', 404);
 
     const { jdLink } = await resolveJdLink(record.job_id);
+
+    // Prior-round context — screener's (HR recruiter's) notes plus every
+    // earlier interview round's feedback — so the next interviewer isn't
+    // starting from zero. "Earlier" is by roundNumber, not array position,
+    // since rounds are always appended but roundNumber is the real order.
+    const previousRounds = allRounds
+      .filter((r) => (r.roundNumber ?? 0) < (round.roundNumber ?? 0) && (r.feedback || r.interviewerFeedbackStatus))
+      .sort((a, b) => (a.roundNumber ?? 0) - (b.roundNumber ?? 0))
+      .map((r) => ({
+        stage: r.stage || `Round ${r.roundNumber}`,
+        interviewer: r.interviewer || '',
+        interviewerFeedbackStatus: r.interviewerFeedbackStatus || '',
+        feedback: r.feedback || '',
+      }));
 
     ok(res, {
       candidate: {
@@ -849,6 +911,10 @@ router.get('/:id/interview-rounds/:roundId/feedback-context', async (req, res) =
       round: { stage: round.stage, scheduledDate: round.scheduledDate, scheduledTime: round.scheduledTime },
       interviewerFeedbackStatus: round.interviewerFeedbackStatus || '',
       feedback: round.feedback || '',
+      screener: record.screenerNotes || record.screenerStatus
+        ? { name: record.screenerName || '', status: record.screenerStatus || '', notes: record.screenerNotes || '' }
+        : null,
+      previousRounds,
     });
   } catch (e) {
     console.error('[feedback-context] error:', e);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Fragment, useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Edit2, Eye, Plus, RefreshCw, ExternalLink } from 'lucide-react';
 import dayjs from 'dayjs';
@@ -7,6 +7,7 @@ import Navbar from '../../components/Navbar';
 import Modal from '../../components/Modal';
 import NewRequisitionForm from './new-requisition-form';
 import UpdateRequisition  from './UpdateRequisition';
+import { FiltersMenuButton, GroupByMenuButton, FavoritesMenuButton, GroupByOption } from '../../components/FilterBar';
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
 
@@ -70,6 +71,9 @@ export default function RequisitionDashboard() {
   const [search,       setSearch]       = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [cardFilter,   setCardFilter]   = useState<CardFilter>('all');
+  // Odoo-style Group By — when set, rows render as grouped sections in the
+  // same table instead of one flat list.
+  const [groupByField, setGroupByField] = useState<string | null>(null);
 
   const modal  = searchParams.get('modal');
   const editId = searchParams.get('id');
@@ -128,7 +132,101 @@ export default function RequisitionDashboard() {
     });
   }, [rows, cardFilter, filterStatus, search]);
 
+  const GROUP_BY_OPTIONS: GroupByOption[] = [
+    { key: 'hiring_dept', label: 'Department' },
+    { key: 'hiring_status', label: 'Hiring Status' },
+    { key: 'fmsStatus', label: 'FMS Status' },
+    { key: 'requisitioner_name', label: 'Raised By' },
+  ];
+  const groupedRows = useMemo(() => {
+    if (!groupByField) return null;
+    const groups: Record<string, Requisition[]> = {};
+    for (const r of filteredRows) {
+      const key = (r as any)[groupByField] || 'Unassigned';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(r);
+    }
+    return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [filteredRows, groupByField]);
+
+  interface RequisitionFilterSnapshot {
+    search: string; filterStatus: string; cardFilter: CardFilter; groupByField: string | null;
+  }
+  const currentFilterSnapshot: RequisitionFilterSnapshot = { search, filterStatus, cardFilter, groupByField };
+  const applyFilterSnapshot = (s: RequisitionFilterSnapshot) => {
+    setSearch(s.search ?? '');
+    setFilterStatus(s.filterStatus ?? '');
+    setCardFilter(s.cardFilter ?? 'all');
+    setGroupByField(s.groupByField ?? null);
+  };
+  const activeFilterCount = (filterStatus ? 1 : 0) + (cardFilter !== 'all' ? 1 : 0);
+
   const anyModalOpen = newModalOpen || viewModalOpen || updateModalOpen;
+
+  // Pulled out so both the flat and grouped-by table bodies can reuse the
+  // same row markup.
+  const renderRow = (row: Requisition) => (
+    <tr key={row._id} onClick={() => openView(row._id)} className="hover:bg-gray-50 transition cursor-pointer">
+      <td className="px-3 py-2.5">{row.serial_no}</td>
+      <td className="px-3 py-2.5">
+        <span className="block font-medium">{row.designation}</span>
+        {row.candidate_experience_level && (
+          <span className="text-xs text-gray-400">{row.candidate_experience_level}</span>
+        )}
+      </td>
+
+      <td className="px-3 py-2.5">{row.hiring_dept}</td>
+      <td className="px-3 py-2.5">{row.requisitioner_name}</td>
+      <td className="px-3 py-2.5">{fmtDate(row.request_date)}</td>
+      <td className="px-3 py-2.5">{fmtDate(row.planned_joined)}</td>
+
+      {/* Hiring Status — read-only display. All
+          changes go through the Update Requisition
+          form, which uses the real PATCH /:id route
+          (rescoring + email included). */}
+      <td className="px-3 py-2.5">
+        {row.hiring_status && (
+          <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CHIP[row.hiring_status] ?? 'bg-gray-100 text-gray-700'}`}>
+            {row.hiring_status}
+          </span>
+        )}
+      </td>
+
+      {/* FMS Status — read-only. Computed automatically
+          from checklist completion server-side. */}
+      <td className="px-3 py-2.5">
+        <span
+          title="Computed automatically from checklist completion"
+          className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+            row.fmsStatus === 'Open'
+              ? 'bg-green-100 text-green-800'
+              : 'bg-gray-100 text-gray-700'
+          }`}
+        >
+          {row.fmsStatus}
+        </span>
+      </td>
+
+      <td className="px-3 py-2.5 text-center">
+        <div className="flex items-center justify-center gap-1">
+          <button
+            title="View this requisition"
+            onClick={e => { e.stopPropagation(); openView(row._id); }}
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-[0.7rem] font-semibold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition"
+          >
+            <Eye size={11} /> View
+          </button>
+          <button
+            title="Update this requisition"
+            onClick={e => { e.stopPropagation(); openEdit(row._id); }}
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-[0.7rem] font-semibold bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-100 transition"
+          >
+            <Edit2 size={11} /> Update
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
 
   const CARDS: { key: CardFilter; label: string; value: number; color: string; bg: string }[] = [
     { key: 'all',     label: 'Total Requisitions', value: counts.total,   color: '#3B82F6', bg: '#EFF6FF' },
@@ -203,8 +301,8 @@ export default function RequisitionDashboard() {
               ))}
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3 mb-5">
-              <div className="relative flex-[2]">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-5 p-2.5 rounded-xl border border-gray-200 bg-gray-50 flex-wrap">
+              <div className="relative flex-[2] min-w-[180px]">
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 <input
                   type="text"
@@ -214,30 +312,42 @@ export default function RequisitionDashboard() {
                   className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
-              <select
-                value={filterStatus}
-                onChange={e => setFilterStatus(e.target.value)}
-                className="flex-1 min-w-[160px] px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Hiring Statuses</option>
-                {HIRING_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-              <select
-                value={cardFilter === 'open' ? 'Open' : cardFilter === 'closed' ? 'Closed' : ''}
-                onChange={e => {
-                  const v = e.target.value;
-                  setCardFilter(v === 'Open' ? 'open' : v === 'Closed' ? 'closed' : 'all');
-                }}
-                className="flex-1 min-w-[140px] px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All FMS Statuses</option>
-                <option value="Open">Open</option>
-                <option value="Closed">Closed</option>
-              </select>
-              {(cardFilter !== 'all' || filterStatus || search) && (
+
+              <FiltersMenuButton activeCount={activeFilterCount}>
+                <select
+                  value={filterStatus}
+                  onChange={e => setFilterStatus(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All Hiring Statuses</option>
+                  {HIRING_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <select
+                  value={cardFilter === 'open' ? 'Open' : cardFilter === 'closed' ? 'Closed' : ''}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setCardFilter(v === 'Open' ? 'open' : v === 'Closed' ? 'closed' : 'all');
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All FMS Statuses</option>
+                  <option value="Open">Open</option>
+                  <option value="Closed">Closed</option>
+                </select>
+              </FiltersMenuButton>
+
+              <GroupByMenuButton options={GROUP_BY_OPTIONS} value={groupByField} onChange={setGroupByField} />
+
+              <FavoritesMenuButton
+                storageKey="filters:recruitment-dashboard"
+                currentState={currentFilterSnapshot}
+                onApply={applyFilterSnapshot}
+              />
+
+              {(cardFilter !== 'all' || filterStatus || search || groupByField) && (
                 <button
-                  onClick={() => { setCardFilter('all'); setFilterStatus(''); setSearch(''); }}
-                  className="px-4 py-2 text-sm text-blue-600 hover:underline whitespace-nowrap"
+                  onClick={() => { setCardFilter('all'); setFilterStatus(''); setSearch(''); setGroupByField(null); }}
+                  className="px-3 py-1.5 text-xs font-medium text-blue-600 hover:underline whitespace-nowrap sm:ml-auto"
                 >
                   Reset Filters
                 </button>
@@ -270,70 +380,18 @@ export default function RequisitionDashboard() {
                         <td colSpan={9} className="py-12 text-center text-gray-400">No requisitions match the current filters</td>
                       </tr>
                     )}
-                    {filteredRows.map(row => {
-                      return (
-                        <tr key={row._id} onClick={() => openView(row._id)} className="hover:bg-gray-50 transition cursor-pointer">
-                          <td className="px-3 py-2.5">{row.serial_no}</td>
-                          <td className="px-3 py-2.5">
-                            <span className="block font-medium">{row.designation}</span>
-                            {row.candidate_experience_level && (
-                              <span className="text-xs text-gray-400">{row.candidate_experience_level}</span>
-                            )}
-                          </td>
-
-                          <td className="px-3 py-2.5">{row.hiring_dept}</td>
-                          <td className="px-3 py-2.5">{row.requisitioner_name}</td>
-                          <td className="px-3 py-2.5">{fmtDate(row.request_date)}</td>
-                          <td className="px-3 py-2.5">{fmtDate(row.planned_joined)}</td>
-
-                          {/* Hiring Status — read-only display. All
-                              changes go through the Update Requisition
-                              form, which uses the real PATCH /:id route
-                              (rescoring + email included). */}
-                          <td className="px-3 py-2.5">
-                            {row.hiring_status && (
-                              <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CHIP[row.hiring_status] ?? 'bg-gray-100 text-gray-700'}`}>
-                                {row.hiring_status}
-                              </span>
-                            )}
-                          </td>
-
-                          {/* FMS Status — read-only. Computed automatically
-                              from checklist completion server-side. */}
-                          <td className="px-3 py-2.5">
-                            <span
-                              title="Computed automatically from checklist completion"
-                              className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                                row.fmsStatus === 'Open'
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-gray-100 text-gray-700'
-                              }`}
-                            >
-                              {row.fmsStatus}
-                            </span>
-                          </td>
-
-                          <td className="px-3 py-2.5 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                title="View this requisition"
-                                onClick={e => { e.stopPropagation(); openView(row._id); }}
-                                className="flex items-center gap-1 px-2 py-1 rounded-md text-[0.7rem] font-semibold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition"
-                              >
-                                <Eye size={11} /> View
-                              </button>
-                              <button
-                                title="Update this requisition"
-                                onClick={e => { e.stopPropagation(); openEdit(row._id); }}
-                                className="flex items-center gap-1 px-2 py-1 rounded-md text-[0.7rem] font-semibold bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-100 transition"
-                              >
-                                <Edit2 size={11} /> Update
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {groupedRows
+                      ? groupedRows.map(([groupLabel, groupRows]) => (
+                          <Fragment key={groupLabel}>
+                            <tr className="bg-gray-100">
+                              <td colSpan={9} className="px-3 py-1.5 font-semibold text-gray-700">
+                                {groupLabel} <span className="ml-1 font-normal text-gray-400">({groupRows.length})</span>
+                              </td>
+                            </tr>
+                            {groupRows.map(row => renderRow(row))}
+                          </Fragment>
+                        ))
+                      : filteredRows.map(row => renderRow(row))}
                   </tbody>
                 </table>
               </div>

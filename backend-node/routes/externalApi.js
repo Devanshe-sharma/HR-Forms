@@ -17,7 +17,7 @@ const { getEmployeeMasterList } = require('../utils/employeeMaster');
 const { getEmployeeSalaryList } = require('../utils/employeeSalary');
 const Escalation = require('../models/Escalation');
 const AttendancePunch = require('../models/AttendancePunch');
-
+const { nameForCode } = require('../utils/attendanceEmployees');
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 // Turns one punch payload (whatever shape the attendance vendor actually
@@ -122,7 +122,7 @@ router.post(
 
       await AttendancePunch.create({
         employeeCode: p.employeeCode,
-        employeeName: p.employeeName,
+        employeeName: p.employeeName || nameForCode(p.employeeCode),
         onboardingId: null,
         timestamp: p.timestamp,
         direction: p.direction,

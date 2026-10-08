@@ -6,12 +6,21 @@ import { INTERVIEWER_FEEDBACK_STATUS_OPTIONS } from '../Recruitment/applicantTyp
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
 
+type PreviousRound = {
+  stage: string;
+  interviewer: string;
+  interviewerFeedbackStatus: string;
+  feedback: string;
+};
+
 type Context = {
   candidate: { name: string; designation: string; resume: string };
   jdLink: string;
   round: { stage: string; scheduledDate: string; scheduledTime: string };
   interviewerFeedbackStatus: string;
   feedback: string;
+  screener: { name: string; status: string; notes: string } | null;
+  previousRounds: PreviousRound[];
 };
 
 export default function InterviewFeedback() {
@@ -119,6 +128,35 @@ export default function InterviewFeedback() {
             )}
           </div>
         </div>
+
+        {/* Previous feedback — HR recruiter's screening notes and any earlier
+            interview round's feedback, so this interviewer isn't starting
+            from zero. Hidden entirely when there's nothing to show. */}
+        {(context?.screener || (context?.previousRounds?.length ?? 0) > 0) && (
+          <div className="bg-white rounded-xl shadow p-6 mb-6 space-y-4">
+            <p className="text-sm font-bold text-slate-700">Previous Feedback</p>
+
+            {context?.screener && (
+              <div className="border border-gray-100 rounded-lg p-3 bg-gray-50">
+                <p className="text-xs font-semibold text-gray-500 mb-1">
+                  HR Screening{context.screener.name ? ` — ${context.screener.name}` : ''}
+                  {context.screener.status ? ` (${context.screener.status})` : ''}
+                </p>
+                <p className="text-sm text-gray-800 whitespace-pre-wrap">{context.screener.notes || '—'}</p>
+              </div>
+            )}
+
+            {context?.previousRounds.map((r, i) => (
+              <div key={i} className="border border-gray-100 rounded-lg p-3 bg-gray-50">
+                <p className="text-xs font-semibold text-gray-500 mb-1">
+                  {r.stage}{r.interviewer ? ` — ${r.interviewer}` : ''}
+                  {r.interviewerFeedbackStatus ? ` (${r.interviewerFeedbackStatus})` : ''}
+                </p>
+                <p className="text-sm text-gray-800 whitespace-pre-wrap">{r.feedback || '—'}</p>
+              </div>
+            ))}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow p-6 space-y-4">
           <div>

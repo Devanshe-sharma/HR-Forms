@@ -30,6 +30,7 @@ import axios from 'axios';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
 import { hasAnyRole } from '../config/rbac';
+import { FiltersMenuButton, GroupByMenuButton, FavoritesMenuButton, GroupByOption } from '../components/FilterBar';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -162,10 +163,12 @@ const PERSONAL_DOCUMENT_TYPES: { key: string; label: string }[] = [
   { key: 'uanCard', label: 'UAN Card' },
 ];
 
-// Both of these accept more than one file per employee (see
-// MultiDocumentRow below) — a previous employer's relieving letter plus
-// their own experience letter, three months of salary slips, etc.
-const PROFESSIONAL_DOCUMENT_TYPES: { key: string; label: string }[] = [
+// Personal Documents too — previous-employer proof, not Brisk Olive-issued
+// paperwork, so these sit with Resume/Aadhaar/PAN rather than the generated
+// letters. Both accept more than one file per employee (see
+// MultiDocumentRow below) — a relieving letter plus an experience letter,
+// three months of salary slips, etc.
+const PREVIOUS_EMPLOYER_DOCUMENT_TYPES: { key: string; label: string }[] = [
   { key: 'experienceLetter', label: 'Previous Company Experience Letter / Relieving Letter' },
   { key: 'previousSalarySlips', label: "Last 3 Months' Salary Slips" },
 ];
@@ -737,6 +740,9 @@ const EmployeeDetailDialog: React.FC<{
                       {PERSONAL_DOCUMENT_TYPES.map(({ key, label }) => (
                         <DocumentRow key={key} label={label} doc={latestDocFor(documents, key)} />
                       ))}
+                      {PREVIOUS_EMPLOYER_DOCUMENT_TYPES.map(({ key, label }) => (
+                        <MultiDocumentRow key={key} label={label} docs={allDocsFor(documents, key)} />
+                      ))}
                     </Stack>
                   </Box>
 
@@ -749,9 +755,6 @@ const EmployeeDetailDialog: React.FC<{
                           label={label}
                           href={directLink || `/letter?type=${encodeURIComponent(type)}&empId=${encodeURIComponent(employee._id)}`}
                         />
-                      ))}
-                      {PROFESSIONAL_DOCUMENT_TYPES.map(({ key, label }) => (
-                        <MultiDocumentRow key={key} label={label} docs={allDocsFor(documents, key)} />
                       ))}
                       <DocumentRow label="Payslips" emptyLabel="Not available" />
                     </Stack>
@@ -802,6 +805,11 @@ const EmployeesPage: React.FC = () => {
   const [dateMode,    setDateMode]    = useState<DateMode>('all');
   const [customFrom,  setCustomFrom]  = useState('');
   const [customTo,    setCustomTo]    = useState('');
+
+  // Odoo-style Group By — only affects the List view's layout (Kanban
+  // already groups by department unconditionally; changing that too is a
+  // separate, bigger change). null = flat grid, same as before.
+  const [groupByField, setGroupByField] = useState<string | null>(null);
 
   const [detailEmployee, setDetailEmployee] = useState<EmployeeEntry | null>(null);
   const openDetail  = (emp: EmployeeEntry) => setDetailEmployee(emp);
@@ -876,7 +884,48 @@ const EmployeesPage: React.FC = () => {
   }, [filtered]);
 
   const hasFilters = !!(search || filterDept || filterDesig || dateMode !== 'all');
-  const clearAll   = () => { setSearch(''); setFilterDept(''); setFilterDesig(''); setDateMode('all'); setCustomFrom(''); setCustomTo(''); };
+  const clearAll   = () => { setSearch(''); setFilterDept(''); setFilterDesig(''); setDateMode('all'); setCustomFrom(''); setCustomTo(''); setGroupByField(null); };
+
+  // Generalized version of byDepartment above, for whichever field Group By
+  // is currently set to (List view only — see groupByField's own comment).
+  const GROUP_BY_OPTIONS: GroupByOption[] = [
+    { key: 'department', label: 'Department' },
+    { key: 'designation', label: 'Designation' },
+    { key: 'management_level', label: 'Management Level' },
+    { key: 'reporting_head', label: 'Reporting Manager' },
+  ];
+  const groupedFiltered = useMemo(() => {
+    if (!groupByField) return null;
+    const groups: Record<string, EmployeeEntry[]> = {};
+    for (const e of filtered) {
+      const key = (e as any)[groupByField] || 'Unassigned';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(e);
+    }
+    return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [filtered, groupByField]);
+
+  // Favorites — a plain snapshot of everything this page's Filters/Group By
+  // control, named and reapplied later. Scoped to this page in localStorage
+  // via the storageKey FavoritesMenuButton is given below.
+  interface EmployeeFilterSnapshot {
+    search: string; filterDept: string; filterDesig: string;
+    dateMode: DateMode; customFrom: string; customTo: string;
+    groupByField: string | null;
+  }
+  const currentFilterSnapshot: EmployeeFilterSnapshot = {
+    search, filterDept, filterDesig, dateMode, customFrom, customTo, groupByField,
+  };
+  const applyFilterSnapshot = (s: EmployeeFilterSnapshot) => {
+    setSearch(s.search ?? '');
+    setFilterDept(s.filterDept ?? '');
+    setFilterDesig(s.filterDesig ?? '');
+    setDateMode(s.dateMode ?? 'all');
+    setCustomFrom(s.customFrom ?? '');
+    setCustomTo(s.customTo ?? '');
+    setGroupByField(s.groupByField ?? null);
+  };
+  const activeFilterCount = (filterDept ? 1 : 0) + (filterDesig ? 1 : 0) + (dateMode !== 'all' ? 1 : 0);
 
   // ── Export handler ──────────────────────────────────────────────────────────
   const handleExport = useCallback(() => {
@@ -916,6 +965,89 @@ const EmployeesPage: React.FC = () => {
     { key: 'year',    label: 'This Year' },
     { key: 'custom',  label: 'Custom Range' },
   ];
+
+  // Pulled out of the List view below so a Group By section can reuse it
+  // without duplicating the whole card.
+  const renderEmployeeCard = (emp: EmployeeEntry) => (
+    <Card key={emp._id} onClick={() => openDetail(emp)} sx={{
+      height: '100%', borderRadius: '14px', cursor: 'pointer',
+      backgroundColor: theme.palette.background.paper,
+      border: `1.5px solid ${border}`,
+      boxShadow: isLight ? '0 1px 4px rgba(0,0,0,0.04)' : 'none',
+      transition: 'border-color 0.18s, box-shadow 0.18s, transform 0.18s',
+      '&:hover': {
+        borderColor: isLight ? '#94A3B8' : '#64748B',
+        boxShadow: '0 6px 24px rgba(0,0,0,0.08)',
+        transform: 'translateY(-2px)',
+      },
+    }}>
+      <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.75 }}>
+          <Avatar sx={{
+            width: 48, height: 48, flexShrink: 0,
+            bgcolor: isLight ? '#F1F5F9' : 'rgba(255,255,255,0.08)',
+            color: isLight ? '#475569' : '#CBD5E1',
+            fontSize: '1rem', fontWeight: 700,
+            border: `2px solid ${border}`,
+          }}>
+            {initials(emp.full_name)}
+          </Avatar>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography fontWeight={700} color="text.primary" noWrap
+              sx={{ fontSize: '0.9rem', lineHeight: 1.3, mb: 0.3 }}>
+              {emp.full_name || 'Unnamed Employee'}
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <BadgeIcon sx={{ fontSize: 11, color: 'text.disabled' }} />
+              <Typography sx={{ fontSize: '0.68rem', color: 'text.disabled' }}>
+                {emp.employee_id ? `ID: ${emp.employee_id} · ` : ''}
+                {emp.joining_date
+                  ? new Date(emp.joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                  : 'Joining date unknown'}
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+
+        <Stack direction="row" flexWrap="wrap" sx={{ gap: '5px', mb: 1.75 }}>
+          {emp.designation && (
+            <Tooltip title={`Designation: ${emp.designation}`} arrow>
+              <Chip icon={<RoleIcon />} label={emp.designation} size="small" sx={chipSx(P.gray, isLight)} />
+            </Tooltip>
+          )}
+          {emp.department && (
+            <Tooltip title={`Department: ${emp.department}`} arrow>
+              <Chip icon={<DeptIcon />} label={emp.department} size="small" sx={chipSx(P.gray, isLight)} />
+            </Tooltip>
+          )}
+          {emp.management_level && (
+            <Tooltip title={`Management Level: ${emp.management_level}`} arrow>
+              <Chip icon={<LevelIcon />} label={emp.management_level} size="small" sx={chipSx(P.gray, isLight)} />
+            </Tooltip>
+          )}
+          {emp.reporting_head && (
+            <Tooltip title={`Reports to: ${emp.reporting_head}`} arrow>
+              <Chip icon={<ManagerIcon />} label={emp.reporting_head} size="small" sx={chipSx(P.gray, isLight)} />
+            </Tooltip>
+          )}
+        </Stack>
+
+        <Divider sx={{ mb: 1.75, borderColor: isLight ? '#F1F5F9' : 'rgba(255,255,255,0.06)' }} />
+
+        <Stack spacing={1.1}>
+          <ContactRow
+            icon={<DesigEmailIcon sx={{ fontSize: 13, color: 'text.disabled' }} />}
+            label="Official email" value={emp.official_email} />
+          <ContactRow
+            icon={<EmailIcon sx={{ fontSize: 13, color: 'text.disabled' }} />}
+            label="Personal email" value={emp.personal_email} />
+          <ContactRow
+            icon={<PhoneIcon sx={{ fontSize: 13, color: 'text.disabled' }} />}
+            label="Phone" value={emp.mobile} />
+        </Stack>
+      </CardContent>
+    </Card>
+  );
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -977,41 +1109,12 @@ const EmployeesPage: React.FC = () => {
                   </Button>
                 </span>
               </Tooltip>
-
-              {/* ── View toggle ── */}
-              <Box sx={{ display: 'flex', borderRadius: '8px', overflow: 'hidden', border: `1px solid ${border}` }}>
-                {(['list', 'kanban'] as const).map(v => (
-                  <Button
-                    key={v}
-                    onClick={() => setView(v)}
-                    startIcon={v === 'list' ? <ViewListIcon sx={{ fontSize: 16 }} /> : <ViewKanbanIcon sx={{ fontSize: 16 }} />}
-                    sx={{
-                      textTransform: 'none', fontSize: '0.78rem', fontWeight: 600, borderRadius: 0,
-                      px: 1.5, py: 0.6,
-                      bgcolor: view === v ? theme.palette.primary.main : 'transparent',
-                      color: view === v ? '#fff' : 'text.secondary',
-                      '&:hover': { bgcolor: view === v ? theme.palette.primary.dark : 'action.hover' },
-                    }}
-                  >
-                    {v.charAt(0).toUpperCase() + v.slice(1)}
-                  </Button>
-                ))}
-              </Box>
-
-              <Button
-                startIcon={<ArchiveIcon />}
-                onClick={() => navigate('/employees/archive')}
-                size="small"
-                sx={{ textTransform: 'none', fontWeight: 600, fontSize: '0.82rem', color: 'text.secondary' }}
-              >
-                View Archive
-              </Button>
             </Stack>
           </Box>
 
-          {/* ── Filters ── */}
+          {/* ── Filters / Group By / Favorites — Odoo-style toolbar ── */}
           <Box sx={{
-            mb: 2.5, p: 1.5, borderRadius: '12px',
+            mb: 2.5, p: 1.25, borderRadius: '12px',
             border: `1px solid ${isLight ? '#E9EEF5' : 'rgba(255,255,255,0.08)'}`,
             backgroundColor: isLight ? '#F8FAFC' : 'rgba(255,255,255,0.02)',
           }}>
@@ -1040,17 +1143,72 @@ const EmployeesPage: React.FC = () => {
                 }}
               />
 
-              <TextField select label="Department" size="small" value={filterDept}
-                onChange={e => { setFilterDept(e.target.value); setFilterDesig(''); }} sx={filterSx}>
-                <MenuItem value="" sx={{ fontSize: '0.78rem', color: 'text.secondary' }}>All Departments</MenuItem>
-                {departments.map(d => <MenuItem key={d} value={d} sx={{ fontSize: '0.78rem' }}>{d}</MenuItem>)}
-              </TextField>
+              <FiltersMenuButton activeCount={activeFilterCount}>
+                <TextField select label="Department" size="small" fullWidth value={filterDept}
+                  onChange={e => { setFilterDept(e.target.value); setFilterDesig(''); }} sx={{ ...filterSx, flex: 'unset', minWidth: 'unset', width: '100%' }}>
+                  <MenuItem value="" sx={{ fontSize: '0.78rem', color: 'text.secondary' }}>All Departments</MenuItem>
+                  {departments.map(d => <MenuItem key={d} value={d} sx={{ fontSize: '0.78rem' }}>{d}</MenuItem>)}
+                </TextField>
 
-              <TextField select label="Designation" size="small" value={filterDesig}
-                onChange={e => setFilterDesig(e.target.value)} sx={filterSx}>
-                <MenuItem value="" sx={{ fontSize: '0.78rem', color: 'text.secondary' }}>All Designations</MenuItem>
-                {designations.map(d => <MenuItem key={d} value={d} sx={{ fontSize: '0.78rem' }}>{d}</MenuItem>)}
-              </TextField>
+                <TextField select label="Designation" size="small" fullWidth value={filterDesig}
+                  onChange={e => setFilterDesig(e.target.value)} sx={{ ...filterSx, flex: 'unset', minWidth: 'unset', width: '100%' }}>
+                  <MenuItem value="" sx={{ fontSize: '0.78rem', color: 'text.secondary' }}>All Designations</MenuItem>
+                  {designations.map(d => <MenuItem key={d} value={d} sx={{ fontSize: '0.78rem' }}>{d}</MenuItem>)}
+                </TextField>
+
+                <Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, mb: 0.75 }}>
+                    <CalendarIcon sx={{ fontSize: 15, color: 'text.disabled' }} />
+                    <Typography variant="caption" color="text.disabled" fontWeight={600} sx={{ fontSize: '0.71rem' }}>
+                      Joining Date
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', borderRadius: '8px', overflow: 'hidden', border: `1px solid ${border}`, mb: dateMode === 'custom' ? 1 : 0 }}>
+                    {dateModeOptions.map(({ key, label }) => (
+                      <Button key={key} onClick={() => setDateMode(key)} sx={{
+                        flex: 1, textTransform: 'none', fontSize: '0.74rem', fontWeight: 600, borderRadius: 0,
+                        px: 1, py: 0.5,
+                        bgcolor: dateMode === key ? theme.palette.primary.main : 'transparent',
+                        color: dateMode === key ? '#fff' : 'text.secondary',
+                        '&:hover': { bgcolor: dateMode === key ? theme.palette.primary.dark : 'action.hover' },
+                      }}>
+                        {label}
+                      </Button>
+                    ))}
+                  </Box>
+                  {dateMode === 'custom' && (
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <TextField type="date" size="small" label="From" value={customFrom}
+                        onChange={e => setCustomFrom(e.target.value)}
+                        InputLabelProps={{ shrink: true }} sx={{ ...filterSx, flex: 1 }} />
+                      <TextField type="date" size="small" label="To" value={customTo}
+                        onChange={e => setCustomTo(e.target.value)}
+                        InputLabelProps={{ shrink: true }} sx={{ ...filterSx, flex: 1 }} />
+                    </Stack>
+                  )}
+                  {dateMode === 'quarter' && (
+                    <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.71rem', display: 'block', mt: 0.75 }}>
+                      {(() => {
+                        const [from, to] = getQuarterRange();
+                        return `${from.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} – ${to.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`;
+                      })()}
+                    </Typography>
+                  )}
+                  {dateMode === 'year' && (
+                    <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.71rem', display: 'block', mt: 0.75 }}>
+                      {new Date().getFullYear()}
+                    </Typography>
+                  )}
+                </Box>
+              </FiltersMenuButton>
+
+              <GroupByMenuButton options={GROUP_BY_OPTIONS} value={groupByField} onChange={setGroupByField} />
+
+              <FavoritesMenuButton
+                storageKey="filters:employees-list"
+                currentState={currentFilterSnapshot}
+                onApply={applyFilterSnapshot}
+              />
 
               <Stack direction="row" alignItems="center" spacing={0.75} sx={{ ml: { sm: 'auto' } }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -1069,58 +1227,37 @@ const EmployeesPage: React.FC = () => {
                     Clear
                   </Button>
                 )}
+
+                {/* ── View toggle ── */}
+                <Box sx={{ display: 'flex', borderRadius: '8px', overflow: 'hidden', border: `1px solid ${border}` }}>
+                  {(['list', 'kanban'] as const).map(v => (
+                    <Tooltip key={v} title={v === 'list' ? 'List view' : 'Kanban view'} arrow>
+                      <IconButton
+                        onClick={() => setView(v)}
+                        size="small"
+                        sx={{
+                          borderRadius: 0, px: 1, py: 0.6,
+                          bgcolor: view === v ? theme.palette.primary.main : 'transparent',
+                          color: view === v ? '#fff' : 'text.secondary',
+                          '&:hover': { bgcolor: view === v ? theme.palette.primary.dark : 'action.hover' },
+                        }}
+                      >
+                        {v === 'list' ? <ViewListIcon sx={{ fontSize: 18 }} /> : <ViewKanbanIcon sx={{ fontSize: 18 }} />}
+                      </IconButton>
+                    </Tooltip>
+                  ))}
+                </Box>
+
+                <Tooltip title="View Archive" arrow>
+                  <IconButton
+                    onClick={() => navigate('/employees/archive')}
+                    size="small"
+                    sx={{ color: 'text.secondary', border: `1px solid ${border}`, borderRadius: '8px' }}
+                  >
+                    <ArchiveIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                </Tooltip>
               </Stack>
-            </Stack>
-
-            {/* ── Joining-date filter row ── */}
-            <Divider sx={{ my: 1.5, borderColor: isLight ? '#E9EEF5' : 'rgba(255,255,255,0.08)' }} />
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} alignItems={{ sm: 'center' }} flexWrap="wrap" useFlexGap>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, flexShrink: 0 }}>
-                <CalendarIcon sx={{ fontSize: 15, color: 'text.disabled' }} />
-                <Typography variant="caption" color="text.disabled" fontWeight={600} sx={{ fontSize: '0.71rem' }}>
-                  Joining Date:
-                </Typography>
-              </Box>
-
-              <Box sx={{ display: 'flex', borderRadius: '8px', overflow: 'hidden', border: `1px solid ${border}` }}>
-                {dateModeOptions.map(({ key, label }) => (
-                  <Button key={key} onClick={() => setDateMode(key)} sx={{
-                    textTransform: 'none', fontSize: '0.74rem', fontWeight: 600, borderRadius: 0,
-                    px: 1.4, py: 0.5,
-                    bgcolor: dateMode === key ? theme.palette.primary.main : 'transparent',
-                    color: dateMode === key ? '#fff' : 'text.secondary',
-                    '&:hover': { bgcolor: dateMode === key ? theme.palette.primary.dark : 'action.hover' },
-                  }}>
-                    {label}
-                  </Button>
-                ))}
-              </Box>
-
-              {dateMode === 'custom' && (
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <TextField type="date" size="small" label="From" value={customFrom}
-                    onChange={e => setCustomFrom(e.target.value)}
-                    InputLabelProps={{ shrink: true }} sx={{ ...filterSx, flex: '0 1 150px' }} />
-                  <Typography variant="caption" color="text.disabled">to</Typography>
-                  <TextField type="date" size="small" label="To" value={customTo}
-                    onChange={e => setCustomTo(e.target.value)}
-                    InputLabelProps={{ shrink: true }} sx={{ ...filterSx, flex: '0 1 150px' }} />
-                </Stack>
-              )}
-
-              {dateMode === 'quarter' && (
-                <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.71rem' }}>
-                  {(() => {
-                    const [from, to] = getQuarterRange();
-                    return `${from.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} – ${to.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`;
-                  })()}
-                </Typography>
-              )}
-              {dateMode === 'year' && (
-                <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.71rem' }}>
-                  {new Date().getFullYear()}
-                </Typography>
-              )}
             </Stack>
           </Box>
 
@@ -1141,94 +1278,35 @@ const EmployeesPage: React.FC = () => {
 
           {/* ── List view ── */}
           {!loading && !error && view === 'list' && filtered.length > 0 && (
-            <Box sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2,1fr)', md: 'repeat(3,1fr)', xl: 'repeat(4,1fr)' },
-              gap: 2,
-            }}>
-              {filtered.map(emp => {
-                return (
-                  <Card key={emp._id} onClick={() => openDetail(emp)} sx={{
-                    height: '100%', borderRadius: '14px', cursor: 'pointer',
-                    backgroundColor: theme.palette.background.paper,
-                    border: `1.5px solid ${border}`,
-                    boxShadow: isLight ? '0 1px 4px rgba(0,0,0,0.04)' : 'none',
-                    transition: 'border-color 0.18s, box-shadow 0.18s, transform 0.18s',
-                    '&:hover': {
-                      borderColor: isLight ? '#94A3B8' : '#64748B',
-                      boxShadow: '0 6px 24px rgba(0,0,0,0.08)',
-                      transform: 'translateY(-2px)',
-                    },
-                  }}>
-                    <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.75 }}>
-                        <Avatar sx={{
-                          width: 48, height: 48, flexShrink: 0,
-                          bgcolor: isLight ? '#F1F5F9' : 'rgba(255,255,255,0.08)',
-                          color: isLight ? '#475569' : '#CBD5E1',
-                          fontSize: '1rem', fontWeight: 700,
-                          border: `2px solid ${border}`,
-                        }}>
-                          {initials(emp.full_name)}
-                        </Avatar>
-                        <Box sx={{ minWidth: 0, flex: 1 }}>
-                          <Typography fontWeight={700} color="text.primary" noWrap
-                            sx={{ fontSize: '0.9rem', lineHeight: 1.3, mb: 0.3 }}>
-                            {emp.full_name || 'Unnamed Employee'}
-                          </Typography>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <BadgeIcon sx={{ fontSize: 11, color: 'text.disabled' }} />
-                            <Typography sx={{ fontSize: '0.68rem', color: 'text.disabled' }}>
-                              {emp.employee_id ? `ID: ${emp.employee_id} · ` : ''}
-                              {emp.joining_date
-                                ? new Date(emp.joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                                : 'Joining date unknown'}
-                            </Typography>
-                          </Box>
-                        </Box>
-                      </Box>
-
-                      <Stack direction="row" flexWrap="wrap" sx={{ gap: '5px', mb: 1.75 }}>
-                        {emp.designation && (
-                          <Tooltip title={`Designation: ${emp.designation}`} arrow>
-                            <Chip icon={<RoleIcon />} label={emp.designation} size="small" sx={chipSx(P.gray, isLight)} />
-                          </Tooltip>
-                        )}
-                        {emp.department && (
-                          <Tooltip title={`Department: ${emp.department}`} arrow>
-                            <Chip icon={<DeptIcon />} label={emp.department} size="small" sx={chipSx(P.gray, isLight)} />
-                          </Tooltip>
-                        )}
-                        {emp.management_level && (
-                          <Tooltip title={`Management Level: ${emp.management_level}`} arrow>
-                            <Chip icon={<LevelIcon />} label={emp.management_level} size="small" sx={chipSx(P.gray, isLight)} />
-                          </Tooltip>
-                        )}
-                        {emp.reporting_head && (
-                          <Tooltip title={`Reports to: ${emp.reporting_head}`} arrow>
-                            <Chip icon={<ManagerIcon />} label={emp.reporting_head} size="small" sx={chipSx(P.gray, isLight)} />
-                          </Tooltip>
-                        )}
-                      </Stack>
-
-                      <Divider sx={{ mb: 1.75, borderColor: isLight ? '#F1F5F9' : 'rgba(255,255,255,0.06)' }} />
-
-                      <Stack spacing={1.1}>
-                        <ContactRow
-                          icon={<DesigEmailIcon sx={{ fontSize: 13, color: 'text.disabled' }} />}
-                          label="Official email" value={emp.official_email} />
-                        <ContactRow
-                          icon={<EmailIcon sx={{ fontSize: 13, color: 'text.disabled' }} />}
-                          label="Personal email" value={emp.personal_email} />
-                        <ContactRow
-                          icon={<PhoneIcon sx={{ fontSize: 13, color: 'text.disabled' }} />}
-                          label="Phone" value={emp.mobile} />
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </Box>
+            groupedFiltered ? (
+              <Stack spacing={2.5}>
+                {groupedFiltered.map(([groupLabel, emps]) => (
+                  <Box key={groupLabel}>
+                    <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
+                      <Typography fontWeight={700} sx={{ fontSize: '0.85rem' }} color="text.primary">
+                        {groupLabel}
+                      </Typography>
+                      <Chip label={emps.length} size="small" sx={{ fontSize: '0.68rem', height: 18, bgcolor: 'action.selected' }} />
+                    </Stack>
+                    <Box sx={{
+                      display: 'grid',
+                      gridTemplateColumns: { xs: '1fr', sm: 'repeat(2,1fr)', md: 'repeat(3,1fr)', xl: 'repeat(4,1fr)' },
+                      gap: 2,
+                    }}>
+                      {emps.map(renderEmployeeCard)}
+                    </Box>
+                  </Box>
+                ))}
+              </Stack>
+            ) : (
+              <Box sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2,1fr)', md: 'repeat(3,1fr)', xl: 'repeat(4,1fr)' },
+                gap: 2,
+              }}>
+                {filtered.map(renderEmployeeCard)}
+              </Box>
+            )
           )}
 
           {/* ── Kanban view ── */}

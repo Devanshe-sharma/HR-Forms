@@ -1,0 +1,535 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Box, Typography, Chip, CircularProgress, Alert, Modal, Divider, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, Autocomplete, Stack, IconButton, Select, MenuItem, FormControl, InputLabel,
+} from '@mui/material';
+import {
+  Add as AddIcon,
+  Close as CloseIcon,
+  Search as SearchIcon,
+  RestartAlt as RestartAltIcon,
+} from '@mui/icons-material';
+import axios from 'axios';
+import { useAuth } from '../../contexts/AuthContext';
+import { Employee, API, EMP_API, ACCENT, TH, TD, ELLIPSIS, fmtDate, fmtTime24, fmtDateTime24, fmtDayMonth, Toast, DetailRow } from './shared';
+
+interface CcEmployee { employeeId: string; name: string; email: string }
+
+interface OutOfOfficeRecord {
+  _id: string;
+  submittedByEmail: string;
+  submittedByName: string;
+  person: { employeeId?: string; name: string; email: string };
+  startDateTime: string;
+  upToDate?: string;
+  upToTime: string;
+  reason: string;
+  ccEmployees: CcEmployee[];
+  informedStatus: 'advance' | 'late_before_start' | 'late_after_start';
+  informedLabel: string;
+  plannedStatus: '' | 'Planned' | 'Not Planned';
+  lateReason: string;
+  unplannedKnownAt?: string;
+  createdAt: string;
+}
+
+const informedColor = (s: OutOfOfficeRecord['informedStatus']) => (s === 'advance' ? '#2563eb' : '#dc2626');
+const informedShortLabel = (s: OutOfOfficeRecord['informedStatus']) =>
+  s === 'advance' ? 'On time' : s === 'late_before_start' ? 'Late (<24h)' : 'Late (after start)';
+
+// upToDate is only set when the OOO runs past the start day — same-day
+// records (the common case, and every pre-existing one) just show the time.
+const fmtUpTo = (upToTime: string, upToDate?: string | null) =>
+  upToDate ? `${fmtDate(upToDate)}, ${upToTime}` : upToTime;
+
+// Table date column: single date for same-day entries, "start – end" range
+// (year only on the end) when upToDate pushes the OOO past the start day —
+// the time itself is shown separately, on its own line, in the row below.
+const fmtOooDateRange = (startDateTime: string, upToDate?: string | null) => {
+  if (!upToDate) return fmtDate(startDateTime);
+  const start = new Date(startDateTime);
+  const end = new Date(upToDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return fmtDate(startDateTime);
+  const sameDay = start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth() && start.getDate() === end.getDate();
+  if (sameDay) return fmtDate(startDateTime);
+  return `${fmtDayMonth(start)} – ${fmtDate(end)}`;
+};
+
+
+function OutOfOfficeDetailModal({ record, onClose }: { record: OutOfOfficeRecord | null; onClose: () => void }) {
+  return (
+    <Modal open={!!record} onClose={onClose}>
+      <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+        width: { xs: '92vw', sm: 480 }, maxHeight: '85vh', overflowY: 'auto', bgcolor: 'white', borderRadius: 2, p: 3, outline: 'none' }}>
+        {record && (
+          <>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+              <Box>
+                <Typography fontSize={16} fontWeight={700}>Out of Office Details</Typography>
+                <Typography fontSize={12} color="text.secondary">Logged {fmtDateTime24(record.createdAt)}</Typography>
+              </Box>
+              <IconButton size="small" onClick={onClose}><CloseIcon fontSize="small" /></IconButton>
+            </Box>
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
+              <DetailRow label="Person Name" value={record.person.name} />
+              <DetailRow label="Person Email" value={record.person.email} />
+              <DetailRow label="Out of Office Date" value={fmtDate(record.startDateTime)} />
+              <DetailRow label="Start Time – Time Up To" value={`${fmtTime24(record.startDateTime)} – ${fmtUpTo(record.upToTime, record.upToDate)}`} />
+            </Box>
+
+            {record.submittedByName && record.submittedByEmail?.toLowerCase() !== record.person.email?.toLowerCase() && (
+              <>
+                <Divider sx={{ my: 1.5 }} />
+                <DetailRow label="Logged By (on behalf of)" value={`${record.submittedByName} <${record.submittedByEmail}>`} />
+              </>
+            )}
+
+            <Divider sx={{ my: 1.5 }} />
+            <DetailRow label="Reason" value={record.reason} />
+
+            <Divider sx={{ my: 1.5 }} />
+            <DetailRow label="Informed Before or After Event?" value={
+              <Chip size="small" label={record.informedLabel} sx={{ fontSize: 11, height: 'auto', py: 0.5, whiteSpace: 'normal',
+                bgcolor: '#f8fafc', color: informedColor(record.informedStatus), border: `1px solid ${informedColor(record.informedStatus)}30` }} />
+            } />
+
+            {record.plannedStatus && (
+              <>
+                <Divider sx={{ my: 1.5 }} />
+                <DetailRow label="Planned in Advance?" value={
+                  <Chip size="small" label={record.plannedStatus} sx={{ fontSize: 11, height: 20,
+                    bgcolor: record.plannedStatus === 'Planned' ? '#fef2f2' : '#f8fafc',
+                    color: record.plannedStatus === 'Planned' ? '#dc2626' : '#0f172a' }} />
+                } />
+                {record.plannedStatus === 'Planned' && (
+                  <Typography fontSize={11.5} color="text.secondary" mt={0.5}>
+                    A Timeliness escalation was raised automatically for this late filing.
+                  </Typography>
+                )}
+                {record.plannedStatus === 'Not Planned' && (
+                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5, mt: 1 }}>
+                    <DetailRow label="Why filed late" value={record.lateReason || '—'} />
+                    <DetailRow label="When it was decided" value={fmtDateTime24(record.unplannedKnownAt)} />
+                  </Box>
+                )}
+              </>
+            )}
+
+            <Divider sx={{ my: 1.5 }} />
+            <DetailRow label="Keep in Cc?" value={
+              record.ccEmployees?.length ? record.ccEmployees.map(c => `${c.name} <${c.email}>`).join(', ') : '—'
+            } />
+          </>
+        )}
+      </Box>
+    </Modal>
+  );
+}
+
+// ─── Out of Office: dashboard ──────────────────────────────────────────────────
+
+function OutOfOfficeDashboard({ records, loading, onAdd }: {
+  records: OutOfOfficeRecord[]; loading: boolean; onAdd: () => void;
+}) {
+  const [selected, setSelected] = useState<OutOfOfficeRecord | null>(null);
+  const [search, setSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  // Local-date key (yyyy-mm-dd) so the <input type="date"> filter compares
+  // against the same calendar day the table displays, not a UTC-shifted one.
+  const dateKey = (d?: string | Date | null) => {
+    if (!d) return '';
+    const dt = new Date(d);
+    if (Number.isNaN(dt.getTime())) return '';
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+  };
+
+  const filteredRecords = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return records.filter(r => {
+      const matchesSearch = !term ||
+        r.person.name?.toLowerCase().includes(term) ||
+        r.person.email?.toLowerCase().includes(term) ||
+        r.reason?.toLowerCase().includes(term) ||
+        r.submittedByName?.toLowerCase().includes(term);
+      const key = dateKey(r.startDateTime);
+      const matchesDate = (!dateFrom || key >= dateFrom) && (!dateTo || key <= dateTo);
+      return matchesSearch && matchesDate;
+    });
+  }, [records, search, dateFrom, dateTo]);
+
+  const hasActiveFilters = !!(search || dateFrom || dateTo);
+  const resetFilters = () => { setSearch(''); setDateFrom(''); setDateTo(''); };
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
+        <Box>
+          <Typography fontSize={18} fontWeight={700} color="#0f172a">Out of Office</Typography>
+          <Typography fontSize={12} color="text.secondary">Advance notice of employees working out of office — click a row for full details</Typography>
+        </Box>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={onAdd} size="small"
+          sx={{ bgcolor: ACCENT, textTransform: 'none', fontWeight: 600, borderRadius: 1.5, '&:hover': { bgcolor: '#4338ca' } }}>
+          Log Out of Office
+        </Button>
+      </Box>
+
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2, flexWrap: 'wrap' }}>
+        <TextField
+          size="small"
+          placeholder="Search name, email, reason…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          InputProps={{ startAdornment: <SearchIcon sx={{ fontSize: 18, color: 'text.secondary', mr: 0.75 }} /> }}
+          sx={{ minWidth: 240, bgcolor: 'white' }}
+        />
+        <TextField
+          type="date"
+          size="small"
+          label="From"
+          value={dateFrom}
+          onChange={e => setDateFrom(e.target.value)}
+          InputLabelProps={{ shrink: true }}
+          inputProps={{ max: dateTo || undefined }}
+          sx={{ bgcolor: 'white' }}
+        />
+        <TextField
+          type="date"
+          size="small"
+          label="To"
+          value={dateTo}
+          onChange={e => setDateTo(e.target.value)}
+          InputLabelProps={{ shrink: true }}
+          inputProps={{ min: dateFrom || undefined }}
+          sx={{ bgcolor: 'white' }}
+        />
+        {hasActiveFilters && (
+          <Button size="small" startIcon={<RestartAltIcon />} onClick={resetFilters}
+            sx={{ textTransform: 'none', fontWeight: 600, color: 'text.secondary' }}>
+            Reset
+          </Button>
+        )}
+      </Box>
+
+      <Box sx={{ bgcolor: 'white', borderRadius: 2, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+        {loading ? <Box display="flex" justifyContent="center" py={6}><CircularProgress size={28} /></Box> : (
+          <TableContainer sx={{ maxHeight: 520, overflowY: 'auto', overflowX: 'hidden' }}>
+            <Table size="small" stickyHeader sx={{ tableLayout: 'fixed', width: '100%' }}>
+              <TableHead>
+                <TableRow sx={{ '& th': TH }}>
+                  <TableCell sx={{ width: '16%' }}>Logged</TableCell>
+                  <TableCell sx={{ width: '24%' }}>Person</TableCell>
+                  <TableCell sx={{ width: '20%' }}>Out of Office Date</TableCell>
+                  <TableCell sx={{ width: '20%' }}>Reason</TableCell>
+                  <TableCell sx={{ width: '12%' }}>Informed</TableCell>
+                  <TableCell sx={{ width: '8%' }}>Cc</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filteredRecords.length === 0 && (
+                  <TableRow><TableCell colSpan={7} align="center" sx={{ py: 6, color: 'text.secondary', fontSize: 13 }}>
+                    {records.length === 0 ? 'No out-of-office records logged yet' : 'No records match the current filters'}
+                  </TableCell></TableRow>
+                )}
+                {filteredRecords.map(r => (
+                  <TableRow key={r._id} onClick={() => setSelected(r)}
+                    sx={{ cursor: 'pointer', '&:hover': { bgcolor: '#f8fafc' }, borderBottom: '1px solid #f1f5f9' }}>
+                    <TableCell sx={TD}>{fmtDateTime24(r.createdAt)}</TableCell>
+                    <TableCell sx={TD}>
+                      <Typography component="span" sx={{ ...ELLIPSIS, fontSize: 12, fontWeight: 600 }}>{r.person.name}</Typography>
+                      <Typography component="span" sx={{ ...ELLIPSIS, fontSize: 11, color: 'text.secondary' }}>{r.person.email}</Typography>
+                    </TableCell>
+                    <TableCell sx={TD}>
+                      <Typography component="span" sx={{ ...ELLIPSIS, fontSize: 12, fontWeight: 600 }}>{fmtOooDateRange(r.startDateTime, r.upToDate)}</Typography>
+                      <Typography component="span" sx={{ ...ELLIPSIS, fontSize: 11, color: 'text.secondary' }}>{fmtTime24(r.startDateTime)} – {r.upToTime}</Typography>
+                    </TableCell>
+                    <TableCell sx={TD}>
+                      <Typography component="span" sx={{ ...ELLIPSIS, fontSize: 12 }}>{r.reason}</Typography>
+                    </TableCell>
+                    <TableCell sx={TD}>
+                      <Chip size="small" label={informedShortLabel(r.informedStatus)} sx={{ fontSize: 10, height: 20, bgcolor: '#f8fafc', color: informedColor(r.informedStatus), border: `1px solid ${informedColor(r.informedStatus)}30` }} />
+                    </TableCell>
+                    <TableCell sx={TD}>
+                      <Typography fontSize={12}>{r.ccEmployees?.length || '—'}</Typography>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Box>
+
+      <OutOfOfficeDetailModal record={selected} onClose={() => setSelected(null)} />
+    </Box>
+  );
+}
+
+// ─── Out of Office: form (popup) ────────────────────────────────────────────────
+
+function OutOfOfficeFormModal({ open, employees, onDone, onClose, showToast }: {
+  open: boolean; employees: Employee[]; onDone: () => void; onClose: () => void; showToast: (m: string, t: 'success' | 'error') => void;
+}) {
+  const { user } = useAuth();
+
+  const submitter = useMemo(() => {
+    const email = user?.email?.toLowerCase();
+    if (!email) return null;
+    return employees.find(e =>
+      (user?.employeeId && e.employee_id === user.employeeId) ||
+      e.official_email?.toLowerCase() === email || e.email?.toLowerCase() === email
+    ) || null;
+  }, [employees, user]);
+
+  const [loggedAt, setLoggedAt] = useState<Date | null>(null);
+  const [person, setPerson] = useState<Employee | null>(null);
+  const [oooDate, setOooDate] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [upToDate, setUpToDate] = useState('');
+  const [upToTime, setUpToTime] = useState('');
+  const [reason, setReason] = useState('');
+  const [ccEmployees, setCcEmployees] = useState<Employee[]>([]);
+  // Only asked when the entry is late (< 24h before start, or after start) —
+  // mirrors the backend's own informedStatus check in routes/outOfOffice.js.
+  const [plannedStatus, setPlannedStatus] = useState<'' | 'Planned' | 'Not Planned'>('');
+  const [lateReason, setLateReason] = useState('');
+  const [unplannedKnownAt, setUnplannedKnownAt] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const isLate = useMemo(() => {
+    if (!oooDate || !startTime) return false;
+    const start = new Date(`${oooDate}T${startTime}:00`);
+    if (Number.isNaN(start.getTime())) return false;
+    const diffDays = (start.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+    return diffDays < 1;
+  }, [oooDate, startTime]);
+
+  // Reset the form and stamp the "logged at" time fresh each time the popup opens.
+  useEffect(() => {
+    if (!open) return;
+    setLoggedAt(new Date());
+    setPerson(null); setOooDate(''); setStartTime(''); setUpToDate(''); setUpToTime('');
+    setReason(''); setCcEmployees([]); setPlannedStatus(''); setLateReason(''); setUnplannedKnownAt(''); setError(null);
+  }, [open]);
+
+  // If editing the date/time turns a late entry back into an on-time one,
+  // drop the now-irrelevant planned/not-planned answers rather than silently
+  // submitting stale ones.
+  useEffect(() => {
+    if (!isLate) { setPlannedStatus(''); setLateReason(''); setUnplannedKnownAt(''); }
+  }, [isLate]);
+
+  // "Up to" date defaults to the out-of-office date so single-day entries
+  // (the common case) need no extra input — only touched if the user hasn't
+  // picked one of their own yet, so it never overwrites a multi-day choice.
+  useEffect(() => {
+    if (oooDate && !upToDate) setUpToDate(oooDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oooDate]);
+
+  const submit = async () => {
+    setError(null);
+    if (!person) { setError('Select the person out of office.'); return; }
+    if (!oooDate || !startTime) { setError('Enter the out of office date and start time.'); return; }
+    if (!upToTime) { setError('Enter the time up to.'); return; }
+    if (!reason.trim()) { setError('Enter a reason.'); return; }
+    if (isLate && !plannedStatus) { setError('This is being filed late — select whether it was planned or not.'); return; }
+    if (isLate && plannedStatus === 'Not Planned') {
+      if (!lateReason.trim()) { setError('Enter why this was filed late.'); return; }
+      if (!unplannedKnownAt) { setError('Enter when this was decided.'); return; }
+    }
+
+    const startDateTime = new Date(`${oooDate}T${startTime}:00`);
+    if (Number.isNaN(startDateTime.getTime())) { setError('Invalid date/time.'); return; }
+
+    const effectiveUpToDate = upToDate || oooDate;
+    if (effectiveUpToDate < oooDate) { setError('Time up to date cannot be before the out of office date.'); return; }
+    const upToDateTime = new Date(`${effectiveUpToDate}T${upToTime}:00`);
+    if (Number.isNaN(upToDateTime.getTime())) { setError('Invalid time up to date/time.'); return; }
+    if (upToDateTime <= startDateTime) { setError('Time up to must be after the start date and time.'); return; }
+
+    setBusy(true);
+    try {
+      const payload = {
+        submittedByEmail: submitter?.official_email || submitter?.email || user?.email || '',
+        submittedByName: submitter?.full_name || '',
+        person: { employeeId: person.employee_id, name: person.full_name, email: person.official_email || person.email },
+        startDateTime: startDateTime.toISOString(),
+        // Only sent when it differs from the OOO date — keeps same-day
+        // entries (still the vast majority) identical to before.
+        upToDate: effectiveUpToDate !== oooDate ? effectiveUpToDate : '',
+        upToTime,
+        reason: reason.trim(),
+        ccEmployees: ccEmployees.map(e => ({ employeeId: e.employee_id, name: e.full_name, email: e.official_email || e.email })),
+        ...(isLate ? {
+          plannedStatus,
+          ...(plannedStatus === 'Not Planned' ? {
+            lateReason: lateReason.trim(),
+            unplannedKnownAt: new Date(unplannedKnownAt).toISOString(),
+          } : {}),
+        } : {}),
+      };
+      const { data } = await axios.post(API, payload);
+      if (data.success) {
+        showToast(
+          plannedStatus === 'Planned'
+            ? 'Out of office logged — filed late, an escalation has been raised'
+            : 'Out of office logged — HR has been notified',
+          'success'
+        );
+        onDone();
+      }
+      else showToast(data.message || 'Failed', 'error');
+    } catch (e: any) { showToast(e?.response?.data?.message || 'Failed to submit', 'error'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose}>
+      <Box sx={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+        width: { xs: '92vw', sm: 560 }, maxHeight: '85vh', overflowY: 'auto', bgcolor: 'white', borderRadius: 2, p: 3, outline: 'none' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+          <Box>
+            <Typography fontSize={16} fontWeight={700}>Log Out of Office</Typography>
+            <Typography fontSize={12} color="text.secondary">Notifies HR, plus anyone kept in cc</Typography>
+          </Box>
+          <IconButton size="small" onClick={onClose}><CloseIcon fontSize="small" /></IconButton>
+        </Box>
+
+        {loggedAt && (
+          <Box sx={{ bgcolor: '#eef2ff', border: '1px solid #e0e7ff', borderRadius: 1.5, px: 1.5, py: 1, mb: 2.5 }}>
+            <Typography fontSize={12} color="#4338ca">
+              This entry will be logged at <b>{fmtDateTime24(loggedAt)}</b>
+              {submitter && <> by <b>{submitter.full_name}</b></>}
+              {person && submitter && person.official_email !== submitter.official_email && person.email !== submitter.email && (
+                <> on behalf of <b>{person.full_name}</b></>
+              )}
+            </Typography>
+          </Box>
+        )}
+
+        <Stack spacing={2.5}>
+          <Autocomplete options={employees} getOptionLabel={e => `${e.full_name} (${e.department})`}
+            value={person} onChange={(_, v) => setPerson(v)}
+            renderInput={p => <TextField {...p} size="small" label="Person out of office *" placeholder="Search name or department…" />} />
+
+          <Box>
+            <Typography fontSize={12} color="text.secondary" mb={0.75}>
+              Out of Office Date and Start Time * — 24-hour format, e.g. 28 May 2024, 14:00
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1.5 }}>
+              <TextField type="date" size="small" fullWidth value={oooDate}
+                onChange={e => setOooDate(e.target.value)} InputLabelProps={{ shrink: true }} label="Date" />
+              <TextField type="time" size="small" fullWidth value={startTime}
+                onChange={e => setStartTime(e.target.value)} InputLabelProps={{ shrink: true }}
+                inputProps={{ step: 300 }} label="Start Time" />
+            </Box>
+          </Box>
+
+          <Box>
+            <Typography fontSize={12} color="text.secondary" mb={0.75}>
+              Time Up To *
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1.5 }}>
+              <TextField type="date" size="small" fullWidth value={upToDate}
+                onChange={e => setUpToDate(e.target.value)} InputLabelProps={{ shrink: true }}
+                inputProps={{ min: oooDate || undefined }} label="Date" />
+              <TextField type="time" size="small" fullWidth value={upToTime}
+                onChange={e => setUpToTime(e.target.value)} InputLabelProps={{ shrink: true }}
+                inputProps={{ step: 300 }} label="Time" />
+            </Box>
+          </Box>
+
+          {isLate && (
+            <Box sx={{ bgcolor: '#fffbeb', border: '1px solid #fde68a', borderRadius: 1.5, p: 1.75 }}>
+              <Typography fontSize={12.5} fontWeight={700} color="#92400e" mb={1}>
+                This is being filed late (less than 24 hours before start, or after it's already started).
+              </Typography>
+              <FormControl size="small" fullWidth sx={{ mb: plannedStatus ? 1.5 : 0, bgcolor: 'white' }}>
+                <InputLabel>Was this planned in advance? *</InputLabel>
+                <Select value={plannedStatus} label="Was this planned in advance? *"
+                  onChange={e => setPlannedStatus(e.target.value as 'Planned' | 'Not Planned')}>
+                  <MenuItem value="Planned">Planned</MenuItem>
+                  <MenuItem value="Not Planned">Not Planned</MenuItem>
+                </Select>
+              </FormControl>
+
+              {plannedStatus === 'Planned' && (
+                <Typography fontSize={11.5} color="#92400e">
+                  This will be marked as filed late, and a Timeliness escalation will be raised automatically against {person?.full_name || 'this person'}.
+                </Typography>
+              )}
+
+              {plannedStatus === 'Not Planned' && (
+                <Stack spacing={1.5}>
+                  <TextField label="Why did you file this late? *" multiline rows={2} size="small" value={lateReason}
+                    onChange={e => setLateReason(e.target.value)} fullWidth sx={{ bgcolor: 'white' }} />
+                  <TextField type="datetime-local" size="small" fullWidth value={unplannedKnownAt}
+                    onChange={e => setUnplannedKnownAt(e.target.value)} InputLabelProps={{ shrink: true }}
+                    label="When was it decided? *" sx={{ bgcolor: 'white' }} />
+                </Stack>
+              )}
+            </Box>
+          )}
+
+          <TextField label="Reason *" multiline rows={3} size="small" value={reason}
+            onChange={e => setReason(e.target.value)} fullWidth />
+
+          <Autocomplete multiple options={employees} getOptionLabel={e => `${e.full_name} (${e.department})`}
+            value={ccEmployees} onChange={(_, v) => setCcEmployees(v)}
+            renderInput={p => <TextField {...p} size="small" label="Keep in Cc" placeholder="Search name or department…" />} />
+
+          {error && <Alert severity="error" sx={{ fontSize: 12 }}>{error}</Alert>}
+
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, pt: 1 }}>
+            <Button onClick={onClose} disabled={busy} sx={{ textTransform: 'none', fontWeight: 600 }}>Cancel</Button>
+            <Button variant="contained" onClick={submit} disabled={busy}
+              sx={{ bgcolor: '#059669', '&:hover': { bgcolor: '#047857' }, textTransform: 'none', fontWeight: 600 }}>
+              {busy ? <CircularProgress size={20} sx={{ color: 'white' }} /> : 'Submit'}
+            </Button>
+          </Box>
+        </Stack>
+      </Box>
+    </Modal>
+  );
+}
+
+// ─── Out of Office: tab root ────────────────────────────────────────────────────
+
+export function OutOfOfficeTab() {
+  const [records, setRecords] = useState<OutOfOfficeRecord[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [formOpen, setFormOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (msg: string, type: 'success' | 'error' = 'success') => setToast({ msg, type });
+
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [rRes, eRes] = await Promise.all([axios.get(API), axios.get(EMP_API)]);
+      setRecords(Array.isArray(rRes.data) ? rRes.data : rRes.data?.data || []);
+      const employeeList: Employee[] = Array.isArray(eRes.data) ? eRes.data : eRes.data?.data || [];
+      setEmployees([...employeeList].sort((a, b) => a.full_name.localeCompare(b.full_name)));
+    } catch { showToast('Failed to load data', 'error'); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  return (
+    <Box sx={{ maxWidth: 1300, mx: 'auto' }}>
+      {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
+
+      <OutOfOfficeDashboard records={records} loading={loading} onAdd={() => setFormOpen(true)} />
+
+      <OutOfOfficeFormModal open={formOpen} employees={employees}
+        onClose={() => setFormOpen(false)}
+        onDone={() => { setFormOpen(false); loadData(); }}
+        showToast={showToast} />
+    </Box>
+  );
+}

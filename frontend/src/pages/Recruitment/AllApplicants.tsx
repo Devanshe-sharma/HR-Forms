@@ -69,19 +69,39 @@ const STAGE_COLORS: Record<string, string> = {
 // arrived — there's no separate "joined" flag on the record, so an offer
 // whose joining date is still in the future counts as Offer Made only.
 // ─────────────────────────────────────────────────────────────────────────────
-type CardFilterKey = 'offerMade' | 'internalInterviews' | 'rejected' | 'joined';
+type CardFilterKey = 'screenerShortlisted' | 'offerMade' | 'internalInterviews' | 'rejected' | 'joined';
 
-type CardFilterRecord = Pick<ApplicantRecordWithAI, 'status' | 'finalDecision' | 'interviewRounds'>;
+type CardFilterRecord = Pick<ApplicantRecordWithAI, 'status' | 'finalDecision' | 'interviewRounds' | 'screenerStatus' | 'interviewFinalStatus'>;
+
+// Rejection can happen at any stage — screener, interview, or offer — so
+// check each stage's own status rather than trusting only the rollup
+// `status` field, which can desync if a save path overwrites it without
+// going through the stage-specific PATCH routes.
+function isRejected(r: CardFilterRecord): boolean {
+  return r.status === 'Rejected'
+    || r.screenerStatus === 'Rejected'
+    || r.interviewFinalStatus === 'Rejected'
+    || r.finalDecision?.decision === 'Rejected';
+}
 
 function matchesCardFilter(r: CardFilterRecord, key: CardFilterKey): boolean {
   const decision = r.finalDecision?.decision;
   switch (key) {
+    case 'screenerShortlisted':
+      // Everyone HR has cleared through the Screening Round, regardless of
+      // whether they've since moved further into Interview Round or Offer —
+      // but NOT someone later rejected at a later stage; they belong only
+      // under "Rejected", not here too.
+      return r.screenerStatus === 'Shortlisted' && !isRejected(r);
     case 'offerMade':
       return decision === 'Offer Made';
     case 'internalInterviews':
-      return getStageLabel(r) === 'Interview Round';
+      // Same exclusion — a candidate rejected during/after Interview Round
+      // still technically "sits" at that stage, but belongs only under
+      // "Rejected", not double-counted here too.
+      return getStageLabel(r) === 'Interview Round' && !isRejected(r);
     case 'rejected':
-      return r.status === 'Rejected';
+      return isRejected(r);
     case 'joined':
       return decision === 'Offer Made'
         && !!r.finalDecision?.joiningDate
@@ -92,6 +112,7 @@ function matchesCardFilter(r: CardFilterRecord, key: CardFilterKey): boolean {
 }
 
 const CARD_FILTERS: { key: CardFilterKey; label: string; activeClasses: string }[] = [
+  { key: 'screenerShortlisted', label: 'HR Shortlisted',     activeClasses: 'border-amber-400 bg-amber-50' },
   { key: 'offerMade',           label: 'Offer Made',          activeClasses: 'border-green-400 bg-green-50' },
   { key: 'internalInterviews',  label: 'Internal Interviews', activeClasses: 'border-blue-400 bg-blue-50' },
   { key: 'rejected',            label: 'Rejected',            activeClasses: 'border-red-400 bg-red-50' },
@@ -105,7 +126,7 @@ const StatCards = ({
   active: CardFilterKey | null;
   onToggle: (key: CardFilterKey) => void;
 }) => (
-  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
     {CARD_FILTERS.map(({ key, label, activeClasses }) => {
       const isActive = active === key;
       return (
@@ -175,10 +196,16 @@ const ApplicantModal = ({
   };
 
   // A recommended (P1/P2) round rules out Rejected; a Not Recommended one
-  // rules out Shortlisted — same constraint enforced server-side.
+  // rules out Shortlisted — same constraint enforced server-side. But when
+  // rounds give CONFLICTING signals (one round Recommended, another Not
+  // Recommended), that would block both options and leave the candidate
+  // permanently stuck at "In Progress" with no way to resolve it — so a
+  // genuine conflict instead leaves the choice to HR's judgment rather
+  // than blocking either one.
   const feedbackStatuses = (localRec.interviewRounds || []).map((r) => r.interviewerFeedbackStatus).filter(Boolean);
   const hasRecommended    = feedbackStatuses.some((s) => s === 'Recommended as P1' || s === 'Recommended as P2');
   const hasNotRecommended = feedbackStatuses.includes('Not Recommended');
+  const conflictingSignals = hasRecommended && hasNotRecommended;
 
   const handleBackdrop = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) onClose();
@@ -228,7 +255,7 @@ const ApplicantModal = ({
                   <option
                     key={s}
                     value={s}
-                    disabled={s === 'New' || (s === 'Rejected' && hasRecommended) || (s === 'Shortlisted' && hasNotRecommended)}
+                    disabled={s === 'New' || (s === 'Rejected' && hasRecommended && !conflictingSignals) || (s === 'Shortlisted' && hasNotRecommended && !conflictingSignals)}
                   >
                     {s}
                   </option>
@@ -536,6 +563,7 @@ const CandidatesTab: React.FC = () => {
   }, [records]);
 
   const cardCounts = useMemo(() => ({
+    screenerShortlisted: records.filter((r) => matchesCardFilter(r, 'screenerShortlisted')).length,
     offerMade:          records.filter((r) => matchesCardFilter(r, 'offerMade')).length,
     internalInterviews: records.filter((r) => matchesCardFilter(r, 'internalInterviews')).length,
     rejected:           records.filter((r) => matchesCardFilter(r, 'rejected')).length,

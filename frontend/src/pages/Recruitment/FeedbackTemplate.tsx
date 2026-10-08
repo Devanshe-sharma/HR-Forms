@@ -92,6 +92,13 @@ type TemplateModalProps = {
   existingText?: string;
   defaultRound?: string;
   title?: string;
+  // Candidate's own resume/LinkedIn link on file — auto-fills the Resume/
+  // LinkedIn fields instead of leaving them for HR to paste in by hand
+  // every time. Only used when there's nothing already parsed out of
+  // existingText (so re-opening a template someone already filled in never
+  // overwrites what they typed).
+  defaultResume?: string;
+  defaultLinkedin?: string;
 };
 
 export function buildFormattedText(vals: TemplateVals) {
@@ -157,12 +164,12 @@ export function parseFormattedText(text?: string): TemplateVals | null {
   return result;
 }
 
-export const TemplateModal = ({ open, onClose, onInsert, screenerName, existingText, defaultRound, title }: TemplateModalProps) => {
+export const TemplateModal = ({ open, onClose, onInsert, screenerName, existingText, defaultRound, title, defaultResume, defaultLinkedin }: TemplateModalProps) => {
   const [vals, setVals] = useState(() => {
     const parsed = parseFormattedText(existingText);
     return parsed
-      ? { ...parsed }
-      : { ...EMPTY_TEMPLATE, __round: defaultRound || "HR Round", __screener: screenerName || "" };
+      ? { ...parsed, resume: parsed.resume || defaultResume || "", linkedin: parsed.linkedin || defaultLinkedin || "" }
+      : { ...EMPTY_TEMPLATE, __round: defaultRound || "HR Round", __screener: screenerName || "", resume: defaultResume || "", linkedin: defaultLinkedin || "" };
   });
   const [preview, setPreview] = useState(false);
 
@@ -176,11 +183,16 @@ export const TemplateModal = ({ open, onClose, onInsert, screenerName, existingT
         // Always prefer the passed props over whatever was parsed from text
         __round:    defaultRound  || parsed.__round    || "HR Round",
         __screener: screenerName  || parsed.__screener || "",
+        resume:     parsed.resume   || defaultResume   || "",
+        linkedin:   parsed.linkedin || defaultLinkedin || "",
       });
     } else {
-      setVals({ ...EMPTY_TEMPLATE, __round: defaultRound || "HR Round", __screener: screenerName || "" });
+      setVals({
+        ...EMPTY_TEMPLATE, __round: defaultRound || "HR Round", __screener: screenerName || "",
+        resume: defaultResume || "", linkedin: defaultLinkedin || "",
+      });
     }
-  }, [open, existingText, screenerName, defaultRound]);
+  }, [open, existingText, screenerName, defaultRound, defaultResume, defaultLinkedin]);
 
   const set = (id: keyof TemplateVals) => (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>

@@ -19,14 +19,29 @@ const STATUS_STYLE = {
   cancel:     { label: 'Cancelled',   bg: '#fce4ec', color: '#880e4f', border: '#e91e63' },
 };
 
+// Raw enum value -> wording that reads naturally in a mail sentence,
+// instead of the literal field value (e.g. "Face-to-Face (F2F)").
+const MODE_MAIL_LABELS = {
+  'Virtual': 'Video Call',
+  'Face-to-Face (F2F)': 'In-Person (Face-to-Face)',
+  'Phone Call': 'Phone Call',
+  'Not Decided Yet': 'To be decided',
+};
+function formatMode(mode) {
+  return MODE_MAIL_LABELS[mode] || mode || 'To be decided';
+}
+
 // The plain-text body HR actually sees and edits — greeting, a short
 // intro sentence, the round details as plain "Label: value" lines, and a
 // sign-off. No markup at all, so editing it can never break anything.
+// Previous feedback is NOT part of this — it renders as its own contracted
+// (collapsed) HTML section instead, so it can't get mixed into or
+// accidentally edited away as part of the plain-text message body.
 function buildDefaultBody({ type, audience, candidateName, position, round, cancellationReason }) {
   const stage = round.stage || 'Interview';
   const date  = formatDate(round.scheduledDate);
   const time  = round.scheduledTime || 'To be confirmed';
-  const mode  = round.mode || 'To be decided';
+  const mode  = formatMode(round.mode);
   const link  = round.meetingLink || '[Address/Link]';
 
   const greeting = audience === 'interviewer' ? 'Dear Interviewer,' : `Dear ${candidateName},`;
@@ -85,7 +100,7 @@ function buildDefaultBody({ type, audience, candidateName, position, round, canc
 // fixed/non-editable treatment as confirmLinks.
 // customBody: optional plain-text override for the entire message,
 // straight from the "Edit & Send Mail" dashboard popup.
-function interviewRoundMailTemplate({ type, audience, candidateName, position, round, cancellationReason, confirmLinks, feedbackLink, customBody }) {
+function interviewRoundMailTemplate({ type, audience, candidateName, position, round, cancellationReason, confirmLinks, feedbackLink, previousFeedback, customBody }) {
   const status = STATUS_STYLE[type];
 
   const subject = audience === 'interviewer'
@@ -143,6 +158,37 @@ function interviewRoundMailTemplate({ type, audience, candidateName, position, r
     `
     : '';
 
+  // Previous recruiter/interviewer feedback — a contracted (collapsed by
+  // default) section, not mixed into the editable plain-text body, so this
+  // interviewer has earlier context without it cluttering the main message
+  // or risking being edited away by HR. <details> collapses natively in
+  // clients that support it (most modern webmail/desktop clients) and just
+  // renders open in those that don't — never hidden entirely either way.
+  const hasPreviousFeedback = previousFeedback && (previousFeedback.screener || previousFeedback.previousRounds?.length);
+  const previousFeedbackHtml = hasPreviousFeedback
+    ? `
+      <details style="margin:22px 0 4px;border:1px solid #e4eaf4;border-radius:8px;background:#f8fafd;">
+        <summary style="cursor:pointer;padding:10px 14px;font-size:13px;font-weight:700;color:#1a3e72;">
+          Previous Feedback
+        </summary>
+        <div style="padding:4px 14px 14px;">
+          ${previousFeedback.screener ? `
+            <p style="font-size:12px;font-weight:700;color:#5a6a85;margin:10px 0 2px;">
+              HR Screening${previousFeedback.screener.name ? ` — ${escapeHtml(previousFeedback.screener.name)}` : ''}${previousFeedback.screener.status ? ` (${escapeHtml(previousFeedback.screener.status)})` : ''}
+            </p>
+            <p style="font-size:13px;color:#333;margin:0 0 6px;white-space:pre-wrap;">${escapeHtml(previousFeedback.screener.notes || '—')}</p>
+          ` : ''}
+          ${(previousFeedback.previousRounds || []).map((r) => `
+            <p style="font-size:12px;font-weight:700;color:#5a6a85;margin:10px 0 2px;">
+              ${escapeHtml(r.stage)}${r.interviewer ? ` — ${escapeHtml(r.interviewer)}` : ''}${r.interviewerFeedbackStatus ? ` (${escapeHtml(r.interviewerFeedbackStatus)})` : ''}
+            </p>
+            <p style="font-size:13px;color:#333;margin:0 0 6px;white-space:pre-wrap;">${escapeHtml(r.feedback || '—')}</p>
+          `).join('')}
+        </div>
+      </details>
+    `
+    : '';
+
   const html = `
     <div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:0 auto;background:#f4f6fa;padding:24px;">
       <div style="background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e4eaf4;">
@@ -159,6 +205,7 @@ function interviewRoundMailTemplate({ type, audience, candidateName, position, r
           </span>
 
           ${bodyHtml}
+          ${previousFeedbackHtml}
           ${confirmButtons}
           ${feedbackButton}
         </div>

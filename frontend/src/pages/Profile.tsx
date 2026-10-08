@@ -241,7 +241,7 @@ function SectionCard({ title, icon, children, action }: {
             <Box sx={{ width: 32, height: 32, borderRadius: '8px', bgcolor: '#F0F4FF', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3F6FE8' }}>
               {icon}
             </Box>
-            <Typography variant="subtitle1" fontWeight="700" sx={{ color: '#1A1F36', fontSize: '0.9rem' }}>{title}</Typography>
+            <Typography variant="subtitle1" fontWeight="700" sx={{ color: '#1A1F36', fontSize: '0.8rem' }}>{title}</Typography>
           </Stack>
           {action}
         </Box>
@@ -254,10 +254,10 @@ function SectionCard({ title, icon, children, action }: {
 function FieldRow({ label, value, required }: { label: string; value?: string | null; required?: boolean }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', py: 1.2, borderBottom: '1px solid #F5F6F8', '&:last-child': { borderBottom: 'none' } }}>
-      <Typography sx={{ width: '45%', color: '#6B7280', fontSize: '0.82rem', fontWeight: 500 }}>
+      <Typography sx={{ width: '45%', color: '#6B7280', fontSize: '0.75rem', fontWeight: 500 }}>
         {label}{required && <Typography component="span" sx={{ color: '#E53E3E', ml: 0.3 }}>*</Typography>}
       </Typography>
-      <Typography sx={{ flex: 1, color: '#1A1F36', fontSize: '0.82rem', fontWeight: 600 }}>{value || '—'}</Typography>
+      <Typography sx={{ flex: 1, color: '#1A1F36', fontSize: '0.75rem', fontWeight: 600 }}>{value || '—'}</Typography>
     </Box>
   );
 }
@@ -279,7 +279,7 @@ function EditableFieldRow({ label, value, editing, onChange, type = 'text', opti
   const empty = required && !String(value || '').trim();
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', py: 1, gap: 1.5, borderBottom: '1px solid #F5F6F8', '&:last-child': { borderBottom: 'none' } }}>
-      <Typography sx={{ width: '45%', color: '#6B7280', fontSize: '0.82rem', fontWeight: 500, flexShrink: 0 }}>
+      <Typography sx={{ width: '45%', color: '#6B7280', fontSize: '0.75rem', fontWeight: 500, flexShrink: 0 }}>
         {label}{required && <Typography component="span" sx={{ color: '#E53E3E', ml: 0.3 }}>*</Typography>}
       </Typography>
       <TextField
@@ -292,7 +292,7 @@ function EditableFieldRow({ label, value, editing, onChange, type = 'text', opti
         value={value || ''}
         onChange={e => onChange(e.target.value)}
         InputLabelProps={type === 'date' ? { shrink: true } : undefined}
-        sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: '0.82rem', py: 0.8 } }}
+        sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: '0.75rem', py: 0.8 } }}
       >
         {type === 'select' && [
           <MenuItem key="__empty" value="">—</MenuItem>,
@@ -432,19 +432,19 @@ function EditableSectionCard({ title, icon, fields, profile, employeeId, onSaved
 
   const action = !editing ? (
     <Button size="small" startIcon={<EditIcon sx={{ fontSize: 14 }} />} onClick={startEdit}
-      sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', color: '#3F6FE8' }}>
+      sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.72rem', color: '#3F6FE8' }}>
       Edit
     </Button>
   ) : (
     <Stack direction="row" spacing={0.5}>
       <Button size="small" startIcon={<CancelIcon sx={{ fontSize: 14 }} />} onClick={cancelEdit} disabled={saving}
-        sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', color: '#6B7280' }}>
+        sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.72rem', color: '#6B7280' }}>
         Cancel
       </Button>
       <Button
         size="small" variant="contained" onClick={save} disabled={saving}
         startIcon={saving ? <CircularProgress size={12} color="inherit" /> : <SaveIcon sx={{ fontSize: 14 }} />}
-        sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', bgcolor: '#3F6FE8', borderRadius: '8px', '&:hover': { bgcolor: '#3357C9' } }}>
+        sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.72rem', bgcolor: '#3F6FE8', borderRadius: '8px', '&:hover': { bgcolor: '#3357C9' } }}>
         {saving ? 'Saving…' : 'Save'}
       </Button>
     </Stack>
@@ -452,9 +452,9 @@ function EditableSectionCard({ title, icon, fields, profile, employeeId, onSaved
 
   return (
     <SectionCard title={title} icon={icon} action={action}>
-      {error && <Alert severity="error" sx={{ mb: 1.5, fontSize: '0.76rem' }}>{error}</Alert>}
+      {error && <Alert severity="error" sx={{ mb: 1.5, fontSize: '0.7rem' }}>{error}</Alert>}
       {editing && !employeeId && (
-        <Alert severity="info" sx={{ mb: 1.5, fontSize: '0.76rem' }}>
+        <Alert severity="info" sx={{ mb: 1.5, fontSize: '0.7rem' }}>
           No onboarding record is linked to this account yet — this can't be saved until one exists.
         </Alert>
       )}
@@ -564,19 +564,19 @@ function FamilyCard({ profile, employeeId, onSaved }: {
 
   const action = !editing ? (
     <Button size="small" startIcon={<EditIcon sx={{ fontSize: 14 }} />} onClick={startEdit}
-      sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', color: '#3F6FE8' }}>
+      sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.72rem', color: '#3F6FE8' }}>
       Edit
     </Button>
   ) : (
     <Stack direction="row" spacing={0.5}>
       <Button size="small" startIcon={<CancelIcon sx={{ fontSize: 14 }} />} onClick={cancelEdit} disabled={saving}
-        sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', color: '#6B7280' }}>
+        sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.72rem', color: '#6B7280' }}>
         Cancel
       </Button>
       <Button
         size="small" variant="contained" onClick={save} disabled={saving}
         startIcon={saving ? <CircularProgress size={12} color="inherit" /> : <SaveIcon sx={{ fontSize: 14 }} />}
-        sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', bgcolor: '#3F6FE8', borderRadius: '8px', '&:hover': { bgcolor: '#3357C9' } }}>
+        sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.72rem', bgcolor: '#3F6FE8', borderRadius: '8px', '&:hover': { bgcolor: '#3357C9' } }}>
         {saving ? 'Saving…' : 'Save'}
       </Button>
     </Stack>
@@ -584,9 +584,9 @@ function FamilyCard({ profile, employeeId, onSaved }: {
 
   return (
     <SectionCard title="Family" icon={<FamilyIcon sx={{ fontSize: 17 }} />} action={action}>
-      {error && <Alert severity="error" sx={{ mb: 1.5, fontSize: '0.76rem' }}>{error}</Alert>}
+      {error && <Alert severity="error" sx={{ mb: 1.5, fontSize: '0.7rem' }}>{error}</Alert>}
       {editing && !employeeId && (
-        <Alert severity="info" sx={{ mb: 1.5, fontSize: '0.76rem' }}>
+        <Alert severity="info" sx={{ mb: 1.5, fontSize: '0.7rem' }}>
           No onboarding record is linked to this account yet — this can't be saved until one exists.
         </Alert>
       )}
@@ -599,35 +599,35 @@ function FamilyCard({ profile, employeeId, onSaved }: {
       {/* Siblings — repeatable add/remove list. Kept on the same 45%/55%
           label/value column layout as every other row in this card. */}
       <Box sx={{ display: 'flex', alignItems: 'flex-start', py: 1.2, gap: 1.5, borderBottom: '1px solid #F5F6F8' }}>
-        <Typography sx={{ width: '45%', color: '#6B7280', fontSize: '0.82rem', fontWeight: 500, flexShrink: 0, pt: editing ? 1 : 0 }}>
+        <Typography sx={{ width: '45%', color: '#6B7280', fontSize: '0.75rem', fontWeight: 500, flexShrink: 0, pt: editing ? 1 : 0 }}>
           Siblings
         </Typography>
         <Box sx={{ flex: 1 }}>
           {editing && (
             <Button size="small" onClick={addSibling} startIcon={<AddIcon sx={{ fontSize: 14 }} />}
-              sx={{ textTransform: 'none', fontSize: '0.78rem', fontWeight: 700, color: '#3F6FE8', mb: 0.5 }}>
+              sx={{ textTransform: 'none', fontSize: '0.72rem', fontWeight: 700, color: '#3F6FE8', mb: 0.5 }}>
               Add
             </Button>
           )}
 
           {!editing && displaySiblings.length === 0 && (
-            <Typography fontSize="0.82rem" color="#1A1F36" fontWeight={600}>—</Typography>
+            <Typography fontSize="0.75rem" color="#1A1F36" fontWeight={600}>—</Typography>
           )}
           {!editing && displaySiblings.map((s, i) => (
-            <Typography key={i} fontSize="0.82rem" color="#1A1F36" fontWeight={600} sx={{ mb: 0.3 }}>
+            <Typography key={i} fontSize="0.75rem" color="#1A1F36" fontWeight={600} sx={{ mb: 0.3 }}>
               {s.name}{s.occupation ? ` — ${s.occupation}` : ''}
             </Typography>
           ))}
 
           {editing && siblings.length === 0 && (
-            <Typography fontSize="0.82rem" color="#9CA3AF" mb={0.5}>No siblings added yet.</Typography>
+            <Typography fontSize="0.75rem" color="#9CA3AF" mb={0.5}>No siblings added yet.</Typography>
           )}
           {editing && siblings.map((s, i) => (
             <Stack key={i} direction="row" spacing={1} alignItems="center" mb={1}>
               <TextField size="small" placeholder="Name" value={s.name} onChange={e => updateSibling(i, 'name', e.target.value)}
-                sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: '0.82rem', py: 0.8 } }} />
+                sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: '0.75rem', py: 0.8 } }} />
               <TextField size="small" placeholder="Occupation" value={s.occupation} onChange={e => updateSibling(i, 'occupation', e.target.value)}
-                sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: '0.82rem', py: 0.8 } }} />
+                sx={{ flex: 1, '& .MuiInputBase-input': { fontSize: '0.75rem', py: 0.8 } }} />
               <IconButton size="small" onClick={() => removeSibling(i)}>
                 <CancelIcon sx={{ fontSize: 16, color: '#9CA3AF' }} />
               </IconButton>
@@ -702,30 +702,30 @@ function DocumentItem({ docType, title, subtitle, requiredTag, requiredTagColor 
 
   return (
     <ListItem sx={{
-      px: 3, py: 2, borderBottom: '1px solid #F0F2F5', '&:last-child': { borderBottom: 'none' },
+      px: 2.5, py: 1.2, borderBottom: '1px solid #F0F2F5', '&:last-child': { borderBottom: 'none' },
     }}>
-      <ListItemIcon sx={{ minWidth: 44 }}>
-        <Box sx={{ width: 36, height: 36, borderRadius: '8px', bgcolor: '#F0F4FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <DocumentIcon sx={{ color: '#3F6FE8', fontSize: 18 }} />
+      <ListItemIcon sx={{ minWidth: 36 }}>
+        <Box sx={{ width: 28, height: 28, borderRadius: '7px', bgcolor: '#F0F4FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <DocumentIcon sx={{ color: '#3F6FE8', fontSize: 14 }} />
         </Box>
       </ListItemIcon>
       <ListItemText
         primary={
-          <Stack direction="row" alignItems="center" spacing={1}>
-            <Typography fontWeight="700" fontSize="0.85rem" color="#1A1F36">{title}</Typography>
-            {tag && <Chip label={tag} size="small" sx={{ bgcolor: `${tagColor}18`, color: tagColor, fontWeight: 700, fontSize: '0.7rem', height: 20, borderRadius: '4px' }} />}
+          <Stack direction="row" alignItems="center" spacing={0.8}>
+            <Typography fontWeight="700" fontSize="0.74rem" color="#1A1F36">{title}</Typography>
+            {tag && <Chip label={tag} size="small" sx={{ bgcolor: `${tagColor}18`, color: tagColor, fontWeight: 700, fontSize: '0.6rem', height: 16, borderRadius: '4px' }} />}
           </Stack>
         }
         secondary={
-          <Typography variant="caption" color={error ? '#DC2626' : '#6B7280'}>
+          <Typography sx={{ fontSize: '0.65rem' }} color={error ? '#DC2626' : '#6B7280'}>
             {error || (uploaded ? `${doc!.fileName}${formatDateDisplay(doc!.uploadedAt) ? ` • ${formatDateDisplay(doc!.uploadedAt)}` : ''}` : subtitle)}
           </Typography>
         }
       />
-      <Stack direction="row" spacing={1} alignItems="center">
+      <Stack direction="row" spacing={0.8} alignItems="center">
         {viewHref && (
           <Button component={Link} href={viewHref} target="_blank" rel="noopener" size="small" variant="outlined"
-            sx={{ borderRadius: '8px', textTransform: 'none', fontSize: '0.75rem', fontWeight: 600, borderColor: '#E0E5EC', color: '#475467', '&:hover': { borderColor: '#3F6FE8', color: '#3F6FE8' } }}>
+            sx={{ borderRadius: '7px', textTransform: 'none', fontSize: '0.64rem', fontWeight: 600, py: 0.2, minWidth: 0, borderColor: '#E0E5EC', color: '#475467', '&:hover': { borderColor: '#3F6FE8', color: '#3F6FE8' } }}>
             View
           </Button>
         )}
@@ -734,8 +734,8 @@ function DocumentItem({ docType, title, subtitle, requiredTag, requiredTagColor 
             <input ref={inputRef} type="file" hidden accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onChange={handleFile} />
             <Button
               size="small" variant="text" disabled={uploading} onClick={() => inputRef.current?.click()}
-              startIcon={uploading ? <CircularProgress size={12} color="inherit" /> : <UploadIcon sx={{ fontSize: 14 }} />}
-              sx={{ textTransform: 'none', fontSize: '0.75rem', fontWeight: 700, color: '#3F6FE8' }}>
+              startIcon={uploading ? <CircularProgress size={10} color="inherit" /> : <UploadIcon sx={{ fontSize: 12 }} />}
+              sx={{ textTransform: 'none', fontSize: '0.64rem', fontWeight: 700, color: '#3F6FE8', minWidth: 0 }}>
               {uploading ? 'Uploading…' : uploaded ? 'Replace' : 'Upload'}
             </Button>
           </>
@@ -783,36 +783,36 @@ function MultiDocumentItem({ docType, title, subtitle, docs, employeeId, onUploa
   };
 
   return (
-    <ListItem sx={{ px: 3, py: 2, alignItems: 'flex-start', borderBottom: '1px solid #F0F2F5', '&:last-child': { borderBottom: 'none' } }}>
-      <ListItemIcon sx={{ minWidth: 44, mt: 0.4 }}>
-        <Box sx={{ width: 36, height: 36, borderRadius: '8px', bgcolor: '#F0F4FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <DocumentIcon sx={{ color: '#3F6FE8', fontSize: 18 }} />
+    <ListItem sx={{ px: 2.5, py: 1.2, alignItems: 'flex-start', borderBottom: '1px solid #F0F2F5', '&:last-child': { borderBottom: 'none' } }}>
+      <ListItemIcon sx={{ minWidth: 36, mt: 0.3 }}>
+        <Box sx={{ width: 28, height: 28, borderRadius: '7px', bgcolor: '#F0F4FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <DocumentIcon sx={{ color: '#3F6FE8', fontSize: 14 }} />
         </Box>
       </ListItemIcon>
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
-          <Typography fontWeight="700" fontSize="0.85rem" color="#1A1F36">{title}</Typography>
+        <Stack direction="row" alignItems="center" spacing={0.8} flexWrap="wrap">
+          <Typography fontWeight="700" fontSize="0.74rem" color="#1A1F36">{title}</Typography>
           <Chip
             label={docs.length ? `${docs.length} uploaded` : 'Optional'} size="small"
             sx={{
               bgcolor: docs.length ? '#ECFDF5' : '#F3F4F6', color: docs.length ? '#059669' : '#6B7280',
-              fontWeight: 700, fontSize: '0.7rem', height: 20, borderRadius: '4px',
+              fontWeight: 700, fontSize: '0.6rem', height: 16, borderRadius: '4px',
             }}
           />
         </Stack>
-        <Typography variant="caption" color={error ? '#DC2626' : '#6B7280'} sx={{ display: 'block', mt: 0.2 }}>
+        <Typography sx={{ fontSize: '0.65rem', display: 'block', mt: 0.2 }} color={error ? '#DC2626' : '#6B7280'}>
           {error || subtitle}
         </Typography>
         {docs.length > 0 && (
-          <Stack spacing={0.5} sx={{ mt: 1 }}>
+          <Stack spacing={0.4} sx={{ mt: 0.8 }}>
             {docs.map((d, i) => (
-              <Stack key={i} direction="row" alignItems="center" spacing={1} sx={{ bgcolor: '#F8F9FB', borderRadius: '6px', px: 1.2, py: 0.6 }}>
-                <DocumentIcon sx={{ fontSize: 14, color: '#9CA3AF' }} />
-                <Typography fontSize="0.76rem" color="#374151" sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <Stack key={i} direction="row" alignItems="center" spacing={0.8} sx={{ bgcolor: '#F8F9FB', borderRadius: '6px', px: 1, py: 0.4 }}>
+                <DocumentIcon sx={{ fontSize: 12, color: '#9CA3AF' }} />
+                <Typography fontSize="0.65rem" color="#374151" sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {d.fileName}{formatDateDisplay(d.uploadedAt) ? ` • ${formatDateDisplay(d.uploadedAt)}` : ''}
                 </Typography>
                 <Button component={Link} href={d.driveLink} target="_blank" rel="noopener" size="small"
-                  sx={{ textTransform: 'none', fontSize: '0.72rem', fontWeight: 700, color: '#3F6FE8', minWidth: 0, p: 0 }}>
+                  sx={{ textTransform: 'none', fontSize: '0.62rem', fontWeight: 700, color: '#3F6FE8', minWidth: 0, p: 0 }}>
                   View
                 </Button>
               </Stack>
@@ -825,8 +825,8 @@ function MultiDocumentItem({ docType, title, subtitle, docs, employeeId, onUploa
           <input ref={inputRef} type="file" hidden accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onChange={handleFile} />
           <Button
             size="small" variant="text" disabled={uploading} onClick={() => inputRef.current?.click()}
-            startIcon={uploading ? <CircularProgress size={12} color="inherit" /> : <AddIcon sx={{ fontSize: 14 }} />}
-            sx={{ textTransform: 'none', fontSize: '0.75rem', fontWeight: 700, color: '#3F6FE8' }}>
+            startIcon={uploading ? <CircularProgress size={10} color="inherit" /> : <AddIcon sx={{ fontSize: 12 }} />}
+            sx={{ textTransform: 'none', fontSize: '0.64rem', fontWeight: 700, color: '#3F6FE8', minWidth: 0 }}>
             {uploading ? 'Uploading…' : 'Add'}
           </Button>
         </Box>
@@ -877,8 +877,8 @@ function SignatureCard({ signature, employeeId, onUploaded }: {
         <Box sx={{ width: 36, height: 36, borderRadius: '8px', bgcolor: '#F0F4FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <EditIcon sx={{ color: '#3F6FE8', fontSize: 18 }} />
         </Box>
-        <Typography fontWeight="700" fontSize="0.9rem" color="#1A1F36">Digital Signature</Typography>
-        <Chip label="Visible on Employee List" size="small" sx={{ ml: 'auto', bgcolor: '#F0F4FF', color: '#3F6FE8', fontWeight: 600, fontSize: '0.68rem', height: 20, borderRadius: '4px' }} />
+        <Typography fontWeight="700" fontSize="0.8rem" color="#1A1F36">Digital Signature</Typography>
+        <Chip label="Visible on Employee List" size="small" sx={{ ml: 'auto', bgcolor: '#F0F4FF', color: '#3F6FE8', fontWeight: 600, fontSize: '0.64rem', height: 20, borderRadius: '4px' }} />
       </Box>
       <Box sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
         <Box sx={{
@@ -888,7 +888,7 @@ function SignatureCard({ signature, employeeId, onUploaded }: {
           {signature?.driveFileId ? (
             <img src={buildSignatureThumbnailUrl(signature.driveFileId)} alt="Your signature" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
           ) : (
-            <Typography fontSize="0.75rem" color="#9CA3AF">No signature uploaded</Typography>
+            <Typography fontSize="0.7rem" color="#9CA3AF">No signature uploaded</Typography>
           )}
         </Box>
         <Box sx={{ flex: 1, minWidth: 200 }}>
@@ -898,7 +898,7 @@ function SignatureCard({ signature, employeeId, onUploaded }: {
               : 'Upload a clear image of your signature (JPG or PNG, max 3MB). HR will see it on the Employee List.')}
           </Typography>
           {!employeeId && (
-            <Alert severity="info" sx={{ mb: 1.5, fontSize: '0.76rem' }}>
+            <Alert severity="info" sx={{ mb: 1.5, fontSize: '0.7rem' }}>
               No onboarding record is linked to this account yet — uploads can't be saved until one exists.
             </Alert>
           )}
@@ -906,7 +906,7 @@ function SignatureCard({ signature, employeeId, onUploaded }: {
           <Button
             size="small" variant="outlined" disabled={uploading || !employeeId} onClick={() => inputRef.current?.click()}
             startIcon={uploading ? <CircularProgress size={12} color="inherit" /> : <UploadIcon sx={{ fontSize: 14 }} />}
-            sx={{ borderRadius: '8px', textTransform: 'none', fontSize: '0.75rem', fontWeight: 700, borderColor: '#3F6FE8', color: '#3F6FE8' }}>
+            sx={{ borderRadius: '8px', textTransform: 'none', fontSize: '0.7rem', fontWeight: 700, borderColor: '#3F6FE8', color: '#3F6FE8' }}>
             {uploading ? 'Uploading…' : signature ? 'Replace Signature' : 'Upload Signature'}
           </Button>
         </Box>
@@ -952,21 +952,21 @@ function CompanyAssetsCard({ assets, employeeId, defaultDate, onSaved }: {
 
   return (
     <SectionCard title="Company Assets" icon={<AssetIcon sx={{ fontSize: 17 }} />}>
-      {error && <Alert severity="error" sx={{ mb: 1.5, fontSize: '0.76rem' }}>{error}</Alert>}
+      {error && <Alert severity="error" sx={{ mb: 1.5, fontSize: '0.7rem' }}>{error}</Alert>}
       {!employeeId && (
-        <Alert severity="info" sx={{ mb: 1.5, fontSize: '0.76rem' }}>
+        <Alert severity="info" sx={{ mb: 1.5, fontSize: '0.7rem' }}>
           No onboarding record is linked to this account yet — this checklist can't be saved until one exists.
         </Alert>
       )}
       <Box sx={{ display: 'flex', alignItems: 'center', py: 1.2, gap: 1.5, borderBottom: '1px solid #F5F6F8' }}>
-        <Typography sx={{ width: '45%', color: '#6B7280', fontSize: '0.82rem', fontWeight: 500 }}>Date Issued</Typography>
+        <Typography sx={{ width: '45%', color: '#6B7280', fontSize: '0.75rem', fontWeight: 500 }}>Date Issued</Typography>
         <TextField
           type="date" size="small" fullWidth value={dateIssued} disabled={!!savingKey || !employeeId}
           onChange={e => save({ dateIssued: e.target.value }, 'dateIssued')}
-          InputLabelProps={{ shrink: true }} sx={{ '& .MuiInputBase-input': { fontSize: '0.82rem', py: 0.8 } }}
+          InputLabelProps={{ shrink: true }} sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem', py: 0.8 } }}
         />
       </Box>
-      <Typography sx={{ color: '#6B7280', fontSize: '0.82rem', fontWeight: 500, mt: 2, mb: 0.5 }}>
+      <Typography sx={{ color: '#6B7280', fontSize: '0.75rem', fontWeight: 500, mt: 2, mb: 0.5 }}>
         Items received on joining
       </Typography>
       <Stack spacing={0.3}>
@@ -983,7 +983,7 @@ function CompanyAssetsCard({ assets, employeeId, defaultDate, onSaved }: {
             }
             label={
               <Stack direction="row" alignItems="center" spacing={1}>
-                <Typography fontSize="0.85rem" fontWeight={600} color="#1A1F36">{item.label}</Typography>
+                <Typography fontSize="0.78rem" fontWeight={600} color="#1A1F36">{item.label}</Typography>
                 {savingKey === item.key && <CircularProgress size={10} />}
               </Stack>
             }
@@ -1021,10 +1021,10 @@ function ProfileProgressBadge({ profile }: { profile: UserProfile | null }) {
   return (
     <Box sx={{ position: 'absolute', top: { xs: 12, md: 20 }, right: { xs: 12, md: 32 }, display: 'flex', alignItems: 'center', gap: 1.2 }}>
       <Box sx={{ textAlign: 'right', display: { xs: 'none', sm: 'block' } }}>
-        <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.64rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
           Profile
         </Typography>
-        <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.68rem' }}>
+        <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.64rem' }}>
           {pct === 100 ? 'Complete' : 'Strength'}
         </Typography>
       </Box>
@@ -1035,7 +1035,7 @@ function ProfileProgressBadge({ profile }: { profile: UserProfile | null }) {
           sx={{ color, position: 'absolute', left: 0, '& .MuiCircularProgress-circle': { strokeLinecap: 'round' } }}
         />
         <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '0.72rem' }}>{pct}%</Typography>
+          <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '0.68rem' }}>{pct}%</Typography>
         </Box>
       </Box>
     </Box>
@@ -1061,7 +1061,7 @@ function ProfileCompletion({ profile }: { profile: UserProfile | null }) {
         {fields.map(f => (
           <Stack key={f.label} direction="row" spacing={1} alignItems="center">
             {f.filled ? <CheckCircleIcon sx={{ fontSize: 15, color: '#059669' }} /> : <EmptyCircleIcon sx={{ fontSize: 15, color: '#D1D5DB' }} />}
-            <Typography fontSize="0.82rem" color={f.filled ? '#374151' : '#9CA3AF'} fontWeight={f.filled ? 600 : 500}>{f.label}</Typography>
+            <Typography fontSize="0.75rem" color={f.filled ? '#374151' : '#9CA3AF'} fontWeight={f.filled ? 600 : 500}>{f.label}</Typography>
           </Stack>
         ))}
       </Stack>
@@ -1227,7 +1227,7 @@ export default function Profile() {
         <main className="flex-1 flex items-center justify-center pt-16 md:pt-10">
           <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 2 }}>
             <CircularProgress size={40} thickness={5} sx={{ color: '#3F6FE8' }} />
-            <Typography color="#6B7280" fontSize="0.85rem">Loading your profile...</Typography>
+            <Typography color="#6B7280" fontSize="0.78rem">Loading your profile...</Typography>
           </Box>
         </main>
       </div>
@@ -1261,7 +1261,7 @@ export default function Profile() {
 
       {/* ── Status Banner ── */}
       {errorMsg && (
-        <Alert severity="warning" sx={{ borderRadius: 0, fontSize: '0.82rem' }}>
+        <Alert severity="warning" sx={{ borderRadius: 0, fontSize: '0.75rem' }}>
           {errorMsg}
         </Alert>
       )}
@@ -1277,17 +1277,17 @@ export default function Profile() {
           <Box sx={{ pb: '32px' }}>
             <Typography variant="h6" fontWeight="800" color="white" sx={{ lineHeight: 1.2 }}>{userProfile?.full_name}</Typography>
             <Stack direction="row" spacing={1} alignItems="center" mt={0.5} flexWrap="wrap">
-              <Chip label={currentRole} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.18)', color: 'white', fontWeight: 700, fontSize: '0.72rem', border: '1px solid rgba(255,255,255,0.3)' }} />
+              <Chip label={currentRole} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.18)', color: 'white', fontWeight: 700, fontSize: '0.68rem', border: '1px solid rgba(255,255,255,0.3)' }} />
               {userProfile?.empId && (
-                <Chip label={`ID: ${userProfile.empId}`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.9)', fontWeight: 700, fontSize: '0.72rem', border: '1px solid rgba(255,255,255,0.25)' }} />
+                <Chip label={`ID: ${userProfile.empId}`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.9)', fontWeight: 700, fontSize: '0.68rem', border: '1px solid rgba(255,255,255,0.25)' }} />
               )}
-              <Typography fontSize="0.82rem" color="rgba(255,255,255,0.85)" fontWeight={500}>{userProfile?.designation} &bull; {userProfile?.department}</Typography>
+              <Typography fontSize="0.75rem" color="rgba(255,255,255,0.85)" fontWeight={500}>{userProfile?.designation} &bull; {userProfile?.department}</Typography>
             </Stack>
           </Box>
         </Stack>
         <Box sx={{ mt: 3, ml: '110px' }}>
           <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} TabIndicatorProps={{ style: { backgroundColor: '#fff', height: 3, borderRadius: '3px 3px 0 0' } }}
-            sx={{ '& .MuiTab-root': { color: 'rgba(255,255,255,0.6)', textTransform: 'none', fontWeight: 700, fontSize: '0.85rem', minWidth: 0, mr: 1, px: 1.5, '&:hover': { color: 'rgba(255,255,255,0.9)' } }, '& .Mui-selected': { color: '#fff !important' } }}>
+            sx={{ '& .MuiTab-root': { color: 'rgba(255,255,255,0.6)', textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', minWidth: 0, mr: 1, px: 1.5, '&:hover': { color: 'rgba(255,255,255,0.9)' } }, '& .Mui-selected': { color: '#fff !important' } }}>
             {tabs.map((t, i) => <Tab key={i} icon={t.icon} iconPosition="start" label={t.label} />)}
           </Tabs>
         </Box>
@@ -1336,12 +1336,12 @@ export default function Profile() {
                   </SectionCard>
                   <SectionCard title="Reporting" icon={<TeamIcon sx={{ fontSize: 17 }} />}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1 }}>
-                      <Avatar sx={{ width: 40, height: 40, bgcolor: '#3F6FE8', fontSize: '0.9rem', fontWeight: 700 }}>
+                      <Avatar sx={{ width: 40, height: 40, bgcolor: '#3F6FE8', fontSize: '0.8rem', fontWeight: 700 }}>
                         {(userProfile?.reporting_head || 'M')[0]}
                       </Avatar>
                       <Box>
-                        <Typography fontWeight="700" fontSize="0.85rem" color="#1A1F36">{userProfile?.reporting_head || '—'}</Typography>
-                        <Typography fontSize="0.75rem" color="#6B7280">Reporting Manager</Typography>
+                        <Typography fontWeight="700" fontSize="0.78rem" color="#1A1F36">{userProfile?.reporting_head || '—'}</Typography>
+                        <Typography fontSize="0.7rem" color="#6B7280">Reporting Manager</Typography>
                       </Box>
                     </Box>
                   </SectionCard>
@@ -1376,11 +1376,11 @@ export default function Profile() {
                 <Box>
                   <SectionCard title="Personal Documents" icon={<OnboardingIcon sx={{ fontSize: 17 }} />}>
                     {!userProfile?._id && (
-                      <Alert severity="info" sx={{ mb: 1.5, fontSize: '0.76rem' }}>
+                      <Alert severity="info" sx={{ mb: 1.5, fontSize: '0.7rem' }}>
                         No onboarding record is linked to this account yet — uploads can't be saved until one exists.
                       </Alert>
                     )}
-                    <Typography variant="caption" color="#9CA3AF" sx={{ display: 'block', mb: 1 }}>
+                    <Typography variant="caption" color="#9CA3AF" sx={{ display: 'block', mb: 1, fontSize: '0.66rem' }}>
                       Max file size: 10MB per document (PDF, DOC, DOCX, JPG, or PNG)
                     </Typography>
                     <List disablePadding sx={{ mx: -3, mb: -2.5 }}>
@@ -1402,23 +1402,23 @@ export default function Profile() {
                         doc={latestDocFor(userProfile?.documents, 'panCard')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
                       <DocumentItem docType="uanCard" title="UAN Card" subtitle="Universal Account Number card" requiredTag="Optional" requiredTagColor="#6B7280"
                         doc={latestDocFor(userProfile?.documents, 'uanCard')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
+                      <MultiDocumentItem docType="experienceLetter" title="Previous Company Experience Letter / Relieving Letter" subtitle="From your previous employer, if applicable — add as many as you need"
+                        docs={allDocsFor(userProfile?.documents, 'experienceLetter')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
+                      <MultiDocumentItem docType="previousSalarySlips" title="Last 3 Months' Salary Slips" subtitle="From your previous employer, if applicable — add one file per month"
+                        docs={allDocsFor(userProfile?.documents, 'previousSalarySlips')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
                     </List>
                   </SectionCard>
                 </Box>
                 <Box>
                   <SectionCard title="Employment Documents" icon={<LetterIcon sx={{ fontSize: 17 }} />}>
-                    <Typography variant="caption" color="#9CA3AF" sx={{ display: 'block', mb: 1 }}>
-                      Official letters are generated live from your record — only the ones that actually apply to you are listed. The two upload rows below accept multiple files (10MB max each).
+                    <Typography variant="caption" color="#9CA3AF" sx={{ display: 'block', mb: 1, fontSize: '0.66rem' }}>
+                      Official letters are generated live from your record — only the ones that actually apply to you are listed.
                     </Typography>
                     <List disablePadding sx={{ mx: -3, mb: -2.5 }}>
                       {OFFICIAL_LETTER_TYPES.filter(lt => lt.isAvailable(userProfile)).map(lt => (
                         <DocumentItem key={lt.type} title={lt.label} subtitle={lt.subtitle}
                           staticHref={lt.directLink || `/letter?type=${encodeURIComponent(lt.type)}&empId=${encodeURIComponent(userProfile?._id || '')}`} />
                       ))}
-                      <MultiDocumentItem docType="experienceLetter" title="Previous Company Experience Letter / Relieving Letter" subtitle="From your previous employer, if applicable — add as many as you need"
-                        docs={allDocsFor(userProfile?.documents, 'experienceLetter')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
-                      <MultiDocumentItem docType="previousSalarySlips" title="Last 3 Months' Salary Slips" subtitle="From your previous employer, if applicable — add one file per month"
-                        docs={allDocsFor(userProfile?.documents, 'previousSalarySlips')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
                       <DocumentItem title="Payslips" subtitle="Not set up yet" requiredTag="Not available" requiredTagColor="#9CA3AF" />
                     </List>
                   </SectionCard>

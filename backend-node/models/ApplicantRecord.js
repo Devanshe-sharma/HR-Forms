@@ -11,24 +11,29 @@ const mongoose = require('mongoose');
 const interviewRoundSchema = new mongoose.Schema(
   {
     roundNumber: { type: Number, required: true },
+    // '' means "HR hasn't actually chosen one yet" — a brand new round
+    // must not silently default to a real value here (see 2026-10-07
+    // "candidate management" fixes: stage/schedulingStatus/mode used to
+    // pre-fill as if HR had already decided).
     stage: {
       type: String,
       enum: [
+        '',
         'Technical Round 1',
         'Technical Round 2',
         'Assessment (if any)',
         'CEO Round',
         'MD Round',
       ],
-      default: 'Technical Round 1',
+      default: '',
     },
     // Logistics state of this round — a round can be rescheduled/cancelled
     // without that implying anything about how the candidate performed;
     // the actual outcome now lives one level up as interviewFinalStatus.
     schedulingStatus: {
       type: String,
-      enum: ['Scheduled', 'Rescheduled', 'Done', 'Cancelled'],
-      default: 'Scheduled',
+      enum: ['', 'Scheduled', 'Rescheduled', 'Done', 'Cancelled'],
+      default: '',
     },
     cancellationReason: { type: String, default: '' },   // shown/edited only when schedulingStatus === 'Cancelled'
     scheduledDate:  { type: Date,   default: null },
@@ -36,8 +41,8 @@ const interviewRoundSchema = new mongoose.Schema(
     interviewer:    { type: String, default: '' },
     mode: {
       type: String,
-      enum: ['Virtual', 'Face-to-Face (F2F)', 'Phone Call', 'Not Decided Yet'],
-      default: 'Not Decided Yet',
+      enum: ['', 'Virtual', 'Face-to-Face (F2F)', 'Phone Call', 'Not Decided Yet'],
+      default: '',
     },
     meetingLink: { type: String, default: '' },   // meeting URL or physical location text
     // Set either manually by HR, or by the candidate clicking the

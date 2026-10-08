@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import toast from "react-hot-toast";
 import Navbar from "../../components/Navbar";
 import Sidebar from "../../components/Sidebar";
+import { FiltersMenuButton, GroupByMenuButton, FavoritesMenuButton, GroupByOption } from "../../components/FilterBar";
 import dayjs from "dayjs";
 import {
-  Box, Typography, Button, TextField, IconButton,
+  Box, Typography, Button, TextField, IconButton, Stack,
   InputAdornment, TablePagination, CircularProgress, Tooltip, Chip,
 } from "@mui/material";
 import {
@@ -164,6 +165,9 @@ const OnboardingDashboard: React.FC = () => {
   const [dateTo, setDateTo]       = useState("");
   const [page, setPage]           = useState(0);
   const [rpp, setRpp]             = useState(25);
+  // Odoo-style Group By — when set, pagination is bypassed and the full
+  // filtered list renders as grouped sections instead.
+  const [groupByField, setGroupByField] = useState<string | null>(null);
   const [viewModal, setViewModal] = useState<{ row: OnboardingRow; lists: CheckList[] } | null>(null);
   const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
 
@@ -256,6 +260,201 @@ const OnboardingDashboard: React.FC = () => {
   });
   const paginated = filtered.slice(page * rpp, page * rpp + rpp);
 
+  const GROUP_BY_OPTIONS: GroupByOption[] = [
+    { key: "dept", label: "Department" },
+    { key: "designation", label: "Designation" },
+    { key: "joiningStatus", label: "Joining Status" },
+    { key: "fmsStatus", label: "FMS Status" },
+    { key: "employeeCategory", label: "Employee Category" },
+  ];
+  const groupedFiltered = useMemo(() => {
+    if (!groupByField) return null;
+    const groups: Record<string, OnboardingRow[]> = {};
+    for (const r of filtered) {
+      const key = (r as any)[groupByField] || "Unassigned";
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(r);
+    }
+    return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [filtered, groupByField]);
+
+  interface OnboardingFilterSnapshot {
+    search: string; fmsFilter: "All" | "Open" | "Closed";
+    employmentFilter: "All" | "Current" | "Exited";
+    dateFrom: string; dateTo: string; groupByField: string | null;
+  }
+  const currentFilterSnapshot: OnboardingFilterSnapshot = {
+    search, fmsFilter, employmentFilter, dateFrom, dateTo, groupByField,
+  };
+  const applyFilterSnapshot = (s: OnboardingFilterSnapshot) => {
+    setSearch(s.search ?? "");
+    setFmsFilter(s.fmsFilter ?? "All");
+    setEmploymentFilter(s.employmentFilter ?? "All");
+    setDateFrom(s.dateFrom ?? "");
+    setDateTo(s.dateTo ?? "");
+    setGroupByField(s.groupByField ?? null);
+    setPage(0);
+  };
+  const activeFilterCount = (fmsFilter !== "All" ? 1 : 0) + (employmentFilter !== "All" ? 1 : 0) + (dateFrom || dateTo ? 1 : 0);
+
+  // Pulled out so both the flat (paginated) list and the grouped-by list can
+  // reuse the same row markup.
+  const renderRow = (row: OnboardingRow, isLast: boolean) => {
+    const jsStyle = JOINING_STATUS_STYLE[row.joiningStatus ?? ""] ?? { bg: "#f8fafc", color: "#64748b" };
+    const progress = pct(row);
+    const isLoadingThis = loadingDetail === row._id;
+    const isClosed = row.fmsStatus === "Closed";
+
+    return (
+      <Box
+        key={row._id}
+        onClick={() => openViewModal(row)}
+        sx={{
+          display: "grid",
+          gridTemplateColumns: "2fr 1fr 1fr 90px 120px 90px",
+          gap: 1, px: 2, py: 1.5,
+          borderBottom: isLast ? "none" : "1px solid #f1f5f9",
+          alignItems: "center",
+          bgcolor: isClosed ? "#f8fafc" : "transparent",
+          opacity: isClosed ? 0.6 : 1,
+          cursor: "pointer",
+          "&:hover": { bgcolor: isClosed ? "#f1f5f9" : "#fafbff" },
+          transition: "background 0.1s",
+        }}
+      >
+        {/* Employee */}
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.4, minWidth: 0 }}>
+          <Typography fontSize="0.8rem" fontWeight={600} color={isClosed ? "#64748b" : "#0f172a"}
+            noWrap sx={{ lineHeight: 1.3 }}>
+            {row.name}
+          </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.8, flexWrap: "wrap" }}>
+            <Typography fontSize="0.65rem" color="#64748b" noWrap>
+              {row.designation || "—"}
+            </Typography>
+            {row.employeeCategory && (
+              <Pill label={row.employeeCategory} bg="#f1f5f9" color="#475569" />
+            )}
+          </Box>
+          <Typography fontSize="0.62rem" color="#94a3b8" noWrap>
+            {row.persEmail || row.officialEmail || "—"}
+          </Typography>
+        </Box>
+
+        {/* Department */}
+        <Box>
+          <Typography fontSize="0.75rem" color={isClosed ? "#64748b" : "#334155"} noWrap fontWeight={500}>
+            {row.dept || "—"}
+          </Typography>
+          <Typography fontSize="0.62rem" color="#94a3b8" noWrap sx={{ mt: 0.2 }}>
+            {fmtY(row.plannedJoiningDate) !== "—"
+              ? `Joining: ${fmtY(row.plannedJoiningDate)}`
+              : row.joinedDate ? `Joined: ${fmtY(row.joinedDate)}` : ""}
+          </Typography>
+        </Box>
+
+        {/* Status */}
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+          <Pill
+            label={row.joiningStatus || "—"}
+            bg={isClosed ? "#f1f5f9" : jsStyle.bg}
+            color={isClosed ? "#94a3b8" : jsStyle.color}
+          />
+          {row.exitStatus && (
+            <Pill
+              label={row.exitStatus}
+              bg={EXIT_STATUS_STYLE[row.exitStatus]?.bg ?? "#f8fafc"}
+              color={EXIT_STATUS_STYLE[row.exitStatus]?.color ?? "#64748b"}
+            />
+          )}
+          {(row.fmsScore ?? 0) !== 0 && (
+            <Typography fontSize="0.62rem"
+              color={isClosed ? "#94a3b8" : (row.fmsScore ?? 0) < 0 ? "#dc2626" : "#15803d"} fontWeight={700}>
+              Score: {row.fmsScore}
+            </Typography>
+          )}
+        </Box>
+
+        {/* FMS */}
+        <Box>
+          <Pill
+            label={row.fmsStatus || "—"}
+            bg={isClosed ? "#e2e8f0" : "#fffbeb"}
+            color={isClosed ? "#64748b" : "#d97706"}
+          />
+        </Box>
+
+        {/* Progress */}
+        <Box>
+          <ProgressBar value={progress} />
+          <Box sx={{ display: "flex", gap: 1, mt: 0.5 }}>
+            {!isClosed && (row.tasksOverdue ?? 0) > 0 && (
+              <Typography fontSize="0.6rem" color="#dc2626" fontWeight={700}>
+                {row.tasksOverdue} overdue
+              </Typography>
+            )}
+            {!isClosed && (row.tasksDue ?? 0) > 0 && (
+              <Typography fontSize="0.6rem" color="#d97706" fontWeight={700}>
+                {row.tasksDue} pending
+              </Typography>
+            )}
+          </Box>
+        </Box>
+
+        {/* Actions */}
+        <Box sx={{ display: "flex", gap: 0.7 }} onClick={(e) => e.stopPropagation()}>
+          <Tooltip title="View all details">
+            <button
+              onClick={() => openViewModal(row)}
+              disabled={isLoadingThis}
+              style={{
+                display: "flex", alignItems: "center", gap: 3,
+                fontSize: "0.61rem", padding: "4px 8px",
+                background: "#eef2ff", color: "#4f46e5",
+                border: "none", borderRadius: 6, cursor: "pointer",
+                fontWeight: 600, opacity: isLoadingThis ? 0.6 : 1,
+              }}
+            >
+              {isLoadingThis
+                ? <CircularProgress size={10} sx={{ color: "#4f46e5" }} />
+                : <Visibility sx={{ fontSize: "11px !important" }} />
+              }
+              View
+            </button>
+          </Tooltip>
+          <Tooltip title="Edit onboarding">
+            <button
+              onClick={() => navigate(`/onboarding/update/${row._id}`)}
+              style={{
+                display: "flex", alignItems: "center", gap: 3,
+                fontSize: "0.61rem", padding: "4px 8px",
+                background: "#f8fafc", color: "#64748b",
+                border: "1px solid #e2e8f0", borderRadius: 6, cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              <Edit sx={{ fontSize: "11px !important" }} /> Edit
+            </button>
+          </Tooltip>
+        </Box>
+      </Box>
+    );
+  };
+
+  const columnHeader = (
+    <Box sx={{
+      display: "grid",
+      gridTemplateColumns: "2fr 1fr 1fr 90px 120px 90px",
+      gap: 1, px: 2, py: 1,
+      bgcolor: "#f8fafc", borderBottom: "1px solid #e2e8f0",
+    }}>
+      {["Employee", "Department", "Status", "FMS", "Progress", "Actions"].map(h => (
+        <Typography key={h} fontSize="0.6rem" fontWeight={700} color="#94a3b8"
+          textTransform="uppercase" letterSpacing="0.06em">{h}</Typography>
+      ))}
+    </Box>
+  );
+
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "#f8fafc" }}>
@@ -332,78 +531,12 @@ const OnboardingDashboard: React.FC = () => {
             ))}
           </Box>
 
-          {/* Search + count */}
-          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1.5, gap: 1.5, flexWrap: "wrap" }}>
-            <Typography variant="caption" color="#94a3b8">
-              {filtered.length} records{filtered.length !== total ? ` of ${total}` : ""}
-            </Typography>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
-              <Box sx={{ display: "flex", border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden" }}>
-                {([
-                  { key: "All" as const, label: `All (${total})` },
-                  { key: "Current" as const, label: `Current (${currentCount})` },
-                  { key: "Exited" as const, label: `Exited (${exitedCount})` },
-                ]).map(({ key, label }) => (
-                  <button
-                    key={key}
-                    onClick={() => { setEmploymentFilter(key); setPage(0); }}
-                    style={{
-                      border: "none", cursor: "pointer", padding: "6px 12px",
-                      fontSize: "0.75rem", fontWeight: 600, whiteSpace: "nowrap",
-                      background: employmentFilter === key ? "#dc2626" : "#fff",
-                      color: employmentFilter === key ? "#fff" : "#64748b",
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </Box>
-              <Box sx={{ display: "flex", border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden" }}>
-                {(["All", "Open", "Closed"] as const).map((f) => (
-                  <button
-                    key={f}
-                    onClick={() => { setFmsFilter(f); setPage(0); }}
-                    style={{
-                      border: "none", cursor: "pointer", padding: "6px 12px",
-                      fontSize: "0.75rem", fontWeight: 600,
-                      background: fmsFilter === f ? "#4f46e5" : "#fff",
-                      color: fmsFilter === f ? "#fff" : "#64748b",
-                    }}
-                  >
-                    {f}
-                  </button>
-                ))}
-              </Box>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.6 }}>
-                <TextField size="small" type="date" label="Joining from" InputLabelProps={{ shrink: true }}
-                  value={dateFrom}
-                  onChange={e => { setDateFrom(e.target.value); setPage(0); }}
-                  sx={{ width: 148,
-                    "& .MuiOutlinedInput-root": { borderRadius: "8px", fontSize: "0.72rem",
-                      "& fieldset": { borderColor: "#e2e8f0" },
-                      "&.Mui-focused fieldset": { borderColor: "#6366f1" },
-                    },
-                    "& .MuiInputBase-input": { py: "5px" },
-                  }} />
-                <Typography fontSize="0.7rem" color="#94a3b8">to</Typography>
-                <TextField size="small" type="date" label="Joining to" InputLabelProps={{ shrink: true }}
-                  value={dateTo}
-                  onChange={e => { setDateTo(e.target.value); setPage(0); }}
-                  sx={{ width: 148,
-                    "& .MuiOutlinedInput-root": { borderRadius: "8px", fontSize: "0.72rem",
-                      "& fieldset": { borderColor: "#e2e8f0" },
-                      "&.Mui-focused fieldset": { borderColor: "#6366f1" },
-                    },
-                    "& .MuiInputBase-input": { py: "5px" },
-                  }} />
-                {(dateFrom || dateTo) && (
-                  <Tooltip title="Clear date filter">
-                    <IconButton size="small" onClick={() => { setDateFrom(""); setDateTo(""); setPage(0); }}>
-                      <Close sx={{ fontSize: 14, color: "#94a3b8" }} />
-                    </IconButton>
-                  </Tooltip>
-                )}
-              </Box>
+          {/* ── Filters / Group By / Favorites — Odoo-style toolbar ── */}
+          <Box sx={{
+            mb: 2, p: 1.25, borderRadius: "12px",
+            border: "1px solid #e2e8f0", bgcolor: "#f8fafc",
+          }}>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }} flexWrap="wrap" useFlexGap>
               <TextField size="small" placeholder="Search name, dept, email…"
                 value={search}
                 onChange={e => { setSearch(e.target.value); setPage(0); }}
@@ -412,14 +545,113 @@ const OnboardingDashboard: React.FC = () => {
                     <Search sx={{ fontSize: 14, color: "#94a3b8" }} />
                   </InputAdornment>,
                 }}
-                sx={{ width: 240,
+                sx={{ flex: "1 1 220px", minWidth: 180,
                   "& .MuiOutlinedInput-root": { borderRadius: "8px", fontSize: "0.76rem",
                     "& fieldset": { borderColor: "#e2e8f0" },
                     "&.Mui-focused fieldset": { borderColor: "#6366f1" },
                   },
                   "& .MuiInputBase-input": { py: "5px" },
                 }} />
-            </Box>
+
+              <FiltersMenuButton activeCount={activeFilterCount}>
+                <Box>
+                  <Typography variant="caption" color="#94a3b8" fontWeight={600} sx={{ fontSize: "0.71rem", display: "block", mb: 0.5 }}>
+                    Employment
+                  </Typography>
+                  <Box sx={{ display: "flex", border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden" }}>
+                    {([
+                      { key: "All" as const, label: `All (${total})` },
+                      { key: "Current" as const, label: `Current (${currentCount})` },
+                      { key: "Exited" as const, label: `Exited (${exitedCount})` },
+                    ]).map(({ key, label }) => (
+                      <button
+                        key={key}
+                        onClick={() => { setEmploymentFilter(key); setPage(0); }}
+                        style={{
+                          border: "none", cursor: "pointer", padding: "6px 12px", flex: 1,
+                          fontSize: "0.75rem", fontWeight: 600, whiteSpace: "nowrap",
+                          background: employmentFilter === key ? "#dc2626" : "#fff",
+                          color: employmentFilter === key ? "#fff" : "#64748b",
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </Box>
+                </Box>
+
+                <Box>
+                  <Typography variant="caption" color="#94a3b8" fontWeight={600} sx={{ fontSize: "0.71rem", display: "block", mb: 0.5 }}>
+                    FMS Status
+                  </Typography>
+                  <Box sx={{ display: "flex", border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden" }}>
+                    {(["All", "Open", "Closed"] as const).map((f) => (
+                      <button
+                        key={f}
+                        onClick={() => { setFmsFilter(f); setPage(0); }}
+                        style={{
+                          border: "none", cursor: "pointer", padding: "6px 12px", flex: 1,
+                          fontSize: "0.75rem", fontWeight: 600,
+                          background: fmsFilter === f ? "#4f46e5" : "#fff",
+                          color: fmsFilter === f ? "#fff" : "#64748b",
+                        }}
+                      >
+                        {f}
+                      </button>
+                    ))}
+                  </Box>
+                </Box>
+
+                <Box>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.6, mb: 0.5 }}>
+                    <Typography variant="caption" color="#94a3b8" fontWeight={600} sx={{ fontSize: "0.71rem" }}>
+                      Joining Date
+                    </Typography>
+                    {(dateFrom || dateTo) && (
+                      <Tooltip title="Clear date filter">
+                        <IconButton size="small" onClick={() => { setDateFrom(""); setDateTo(""); setPage(0); }}>
+                          <Close sx={{ fontSize: 14, color: "#94a3b8" }} />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                  </Box>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <TextField size="small" type="date" label="From" InputLabelProps={{ shrink: true }}
+                      value={dateFrom}
+                      onChange={e => { setDateFrom(e.target.value); setPage(0); }}
+                      sx={{ flex: 1,
+                        "& .MuiOutlinedInput-root": { borderRadius: "8px", fontSize: "0.72rem",
+                          "& fieldset": { borderColor: "#e2e8f0" },
+                          "&.Mui-focused fieldset": { borderColor: "#6366f1" },
+                        },
+                        "& .MuiInputBase-input": { py: "5px" },
+                      }} />
+                    <TextField size="small" type="date" label="To" InputLabelProps={{ shrink: true }}
+                      value={dateTo}
+                      onChange={e => { setDateTo(e.target.value); setPage(0); }}
+                      sx={{ flex: 1,
+                        "& .MuiOutlinedInput-root": { borderRadius: "8px", fontSize: "0.72rem",
+                          "& fieldset": { borderColor: "#e2e8f0" },
+                          "&.Mui-focused fieldset": { borderColor: "#6366f1" },
+                        },
+                        "& .MuiInputBase-input": { py: "5px" },
+                      }} />
+                  </Stack>
+                </Box>
+              </FiltersMenuButton>
+
+              <GroupByMenuButton options={GROUP_BY_OPTIONS} value={groupByField} onChange={setGroupByField} />
+
+              <FavoritesMenuButton
+                storageKey="filters:onboarding-dashboard"
+                currentState={currentFilterSnapshot}
+                onApply={applyFilterSnapshot}
+              />
+
+              <Typography variant="caption" color="#94a3b8" sx={{ ml: { sm: "auto" }, whiteSpace: "nowrap" }}>
+                {filtered.length} records{filtered.length !== total ? ` of ${total}` : ""}
+              </Typography>
+            </Stack>
           </Box>
 
           {/* Card list */}
@@ -431,168 +663,27 @@ const OnboardingDashboard: React.FC = () => {
               <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
                 <CircularProgress size={26} sx={{ color: "#4f46e5" }} />
               </Box>
-            ) : paginated.length === 0 ? (
+            ) : filtered.length === 0 ? (
               <Box sx={{ textAlign: "center", py: 8, color: "#94a3b8", fontSize: "0.85rem" }}>
                 {rows.length === 0 ? "No onboardings yet. Add one to get started."
                   : (dateFrom || dateTo) ? "No results in this date range." : "No results match your search."}
               </Box>
+            ) : groupedFiltered ? (
+              <>
+                {groupedFiltered.map(([groupLabel, groupRows], gi) => (
+                  <Box key={groupLabel} sx={{ borderBottom: gi < groupedFiltered.length - 1 ? "1px solid #e2e8f0" : "none" }}>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 2, py: 1, bgcolor: "#f1f5f9" }}>
+                      <Typography fontWeight={700} fontSize="0.78rem" color="#0f172a">{groupLabel}</Typography>
+                      <Chip label={groupRows.length} size="small" sx={{ fontSize: "0.65rem", height: 18, bgcolor: "#e2e8f0" }} />
+                    </Box>
+                    {groupRows.map((row, idx) => renderRow(row, idx === groupRows.length - 1))}
+                  </Box>
+                ))}
+              </>
             ) : (
               <>
-                {/* Column header */}
-                <Box sx={{
-                  display: "grid",
-                  gridTemplateColumns: "2fr 1fr 1fr 90px 120px 90px",
-                  gap: 1, px: 2, py: 1,
-                  bgcolor: "#f8fafc", borderBottom: "1px solid #e2e8f0",
-                }}>
-                  {["Employee", "Department", "Status", "FMS", "Progress", "Actions"].map(h => (
-                    <Typography key={h} fontSize="0.6rem" fontWeight={700} color="#94a3b8"
-                      textTransform="uppercase" letterSpacing="0.06em">{h}</Typography>
-                  ))}
-                </Box>
-
-                {/* Rows */}
-                {paginated.map((row, idx) => {
-                  const jsStyle = JOINING_STATUS_STYLE[row.joiningStatus ?? ""] ?? { bg: "#f8fafc", color: "#64748b" };
-                  const progress = pct(row);
-                  const isLoadingThis = loadingDetail === row._id;
-                  const isClosed = row.fmsStatus === "Closed";
-
-                  return (
-                    <Box
-                      key={row._id}
-                      onClick={() => openViewModal(row)}
-                      sx={{
-                        display: "grid",
-                        gridTemplateColumns: "2fr 1fr 1fr 90px 120px 90px",
-                        gap: 1, px: 2, py: 1.5,
-                        borderBottom: idx < paginated.length - 1 ? "1px solid #f1f5f9" : "none",
-                        alignItems: "center",
-                        bgcolor: isClosed ? "#f8fafc" : "transparent",
-                        opacity: isClosed ? 0.6 : 1,
-                        cursor: "pointer",
-                        "&:hover": { bgcolor: isClosed ? "#f1f5f9" : "#fafbff" },
-                        transition: "background 0.1s",
-                      }}
-                    >
-                      {/* Employee */}
-                      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.4, minWidth: 0 }}>
-                        <Typography fontSize="0.8rem" fontWeight={600} color={isClosed ? "#64748b" : "#0f172a"}
-                          noWrap sx={{ lineHeight: 1.3 }}>
-                          {row.name}
-                        </Typography>
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 0.8, flexWrap: "wrap" }}>
-                          <Typography fontSize="0.65rem" color="#64748b" noWrap>
-                            {row.designation || "—"}
-                          </Typography>
-                          {row.employeeCategory && (
-                            <Pill label={row.employeeCategory} bg="#f1f5f9" color="#475569" />
-                          )}
-                        </Box>
-                        <Typography fontSize="0.62rem" color="#94a3b8" noWrap>
-                          {row.persEmail || row.officialEmail || "—"}
-                        </Typography>
-                      </Box>
-
-                      {/* Department */}
-                      <Box>
-                        <Typography fontSize="0.75rem" color={isClosed ? "#64748b" : "#334155"} noWrap fontWeight={500}>
-                          {row.dept || "—"}
-                        </Typography>
-                        <Typography fontSize="0.62rem" color="#94a3b8" noWrap sx={{ mt: 0.2 }}>
-                          {fmtY(row.plannedJoiningDate) !== "—"
-                            ? `Joining: ${fmtY(row.plannedJoiningDate)}`
-                            : row.joinedDate ? `Joined: ${fmtY(row.joinedDate)}` : ""}
-                        </Typography>
-                      </Box>
-
-                      {/* Status */}
-                      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-                        <Pill
-                          label={row.joiningStatus || "—"}
-                          bg={isClosed ? "#f1f5f9" : jsStyle.bg}
-                          color={isClosed ? "#94a3b8" : jsStyle.color}
-                        />
-                        {row.exitStatus && (
-                          <Pill
-                            label={row.exitStatus}
-                            bg={EXIT_STATUS_STYLE[row.exitStatus]?.bg ?? "#f8fafc"}
-                            color={EXIT_STATUS_STYLE[row.exitStatus]?.color ?? "#64748b"}
-                          />
-                        )}
-                        {(row.fmsScore ?? 0) !== 0 && (
-                          <Typography fontSize="0.62rem"
-                            color={isClosed ? "#94a3b8" : (row.fmsScore ?? 0) < 0 ? "#dc2626" : "#15803d"} fontWeight={700}>
-                            Score: {row.fmsScore}
-                          </Typography>
-                        )}
-                      </Box>
-
-                      {/* FMS */}
-                      <Box>
-                        <Pill
-                          label={row.fmsStatus || "—"}
-                          bg={isClosed ? "#e2e8f0" : "#fffbeb"}
-                          color={isClosed ? "#64748b" : "#d97706"}
-                        />
-                      </Box>
-
-                      {/* Progress */}
-                      <Box>
-                        <ProgressBar value={progress} />
-                        <Box sx={{ display: "flex", gap: 1, mt: 0.5 }}>
-                          {!isClosed && (row.tasksOverdue ?? 0) > 0 && (
-                            <Typography fontSize="0.6rem" color="#dc2626" fontWeight={700}>
-                              {row.tasksOverdue} overdue
-                            </Typography>
-                          )}
-                          {!isClosed && (row.tasksDue ?? 0) > 0 && (
-                            <Typography fontSize="0.6rem" color="#d97706" fontWeight={700}>
-                              {row.tasksDue} pending
-                            </Typography>
-                          )}
-                        </Box>
-                      </Box>
-
-                      {/* Actions */}
-                      <Box sx={{ display: "flex", gap: 0.7 }} onClick={(e) => e.stopPropagation()}>
-                        <Tooltip title="View all details">
-                          <button
-                            onClick={() => openViewModal(row)}
-                            disabled={isLoadingThis}
-                            style={{
-                              display: "flex", alignItems: "center", gap: 3,
-                              fontSize: "0.61rem", padding: "4px 8px",
-                              background: "#eef2ff", color: "#4f46e5",
-                              border: "none", borderRadius: 6, cursor: "pointer",
-                              fontWeight: 600, opacity: isLoadingThis ? 0.6 : 1,
-                            }}
-                          >
-                            {isLoadingThis
-                              ? <CircularProgress size={10} sx={{ color: "#4f46e5" }} />
-                              : <Visibility sx={{ fontSize: "11px !important" }} />
-                            }
-                            View
-                          </button>
-                        </Tooltip>
-                        <Tooltip title="Edit onboarding">
-                          <button
-                            onClick={() => navigate(`/onboarding/update/${row._id}`)}
-                            style={{
-                              display: "flex", alignItems: "center", gap: 3,
-                              fontSize: "0.61rem", padding: "4px 8px",
-                              background: "#f8fafc", color: "#64748b",
-                              border: "1px solid #e2e8f0", borderRadius: 6, cursor: "pointer",
-                              fontWeight: 600,
-                            }}
-                          >
-                            <Edit sx={{ fontSize: "11px !important" }} /> Edit
-                          </button>
-                        </Tooltip>
-                      </Box>
-                    </Box>
-                  );
-                })}
+                {columnHeader}
+                {paginated.map((row, idx) => renderRow(row, idx === paginated.length - 1))}
 
                 <TablePagination
                   component="div"

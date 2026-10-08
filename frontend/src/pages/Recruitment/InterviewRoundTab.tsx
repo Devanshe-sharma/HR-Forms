@@ -6,15 +6,34 @@ import {
   X, Send, Check, Ban, CheckCircle2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { EditField, EditSelect } from './ApplicantFieldComponents';
+import { FIELD_PLACEHOLDER_CLASS } from './ApplicantFieldComponents';
 import { TemplateModal } from './FeedbackTemplate';
 import {
   ApplicantRecord, InterviewRound, API_BASE,
   STAGE_OPTIONS, MODE_OPTIONS,
-  SCHEDULING_STATUS_OPTIONS, SCHEDULING_STATUS_COLORS,
+  SCHEDULING_STATUS_COLORS,
   CANDIDATE_CONFIRMATION_COLORS,
-  INTERVIEWER_FEEDBACK_STATUS_OPTIONS, INTERVIEWER_FEEDBACK_STATUS_COLORS,
+  INTERVIEWER_FEEDBACK_STATUS_COLORS,
 } from './applicantTypes';
+
+// "14:30" -> "02:30 PM" — the round list/detail view always shows time in
+// 12-hour format, regardless of what the native time input produces.
+function formatTime12h(time24?: string): string {
+  if (!time24) return '';
+  const [hStr, mStr] = time24.split(':');
+  const h = parseInt(hStr, 10);
+  if (isNaN(h)) return time24;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${String(h12).padStart(2, '0')}:${mStr || '00'} ${period}`;
+}
+
+function formatDateTime12h(date?: string | null, time?: string): string {
+  if (!date) return 'Date & Time TBD';
+  const d = new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  const t = formatTime12h(time);
+  return t ? `${d}, ${t}` : d;
+}
 
 function resolveResumeUrl(resume?: string): string {
   if (!resume) return '';
@@ -25,15 +44,19 @@ function resolveResumeUrl(resume?: string): string {
 
 type EmployeeOption = { name: string; designation: string };
 
+// Default CC on every candidate-management mail (interview round + rejection) —
+// HR previously had to type this in by hand on every single send.
+const DEFAULT_HR_CC = 'hr@briskolive.com';
+
 const emptyRound = (): Omit<InterviewRound, '_id'> => ({
   roundNumber:           1,
-  stage:                 'Technical Round 1',
-  schedulingStatus:      'Scheduled',
+  stage:                 '',
+  schedulingStatus:      '',
   cancellationReason:    '',
   scheduledDate:         '',
   scheduledTime:         '',
   interviewer:           '',
-  mode:                  'Not Decided Yet',
+  mode:                  '',
   meetingLink:           '',
   candidateConfirmation: 'Pending',
   note:                  '',
@@ -41,17 +64,27 @@ const emptyRound = (): Omit<InterviewRound, '_id'> => ({
   interviewerFeedbackStatus: '',
 });
 
-// Label/value row for the read-only detail table
+// Label/value row for the read-only detail table — compact (small font,
+// tight padding) so a round's full details fit on screen without scrolling;
+// bold headings, black data text, per explicit design feedback.
 const DetailRow = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <div className="grid grid-cols-[minmax(120px,35%)_1fr] border-b border-gray-100 last:border-b-0">
-    <div className="bg-slate-50 px-3 py-2 text-xs font-semibold text-gray-600">{label}</div>
-    <div className="px-3 py-2 text-sm text-gray-800 break-words">{children}</div>
+  <div className="grid grid-cols-[minmax(110px,35%)_1fr] border-b border-gray-100 last:border-b-0">
+    <div className="bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-gray-600">{label}</div>
+    <div className="px-2.5 py-1 text-xs text-black break-words">{children}</div>
   </div>
 );
 
+// Boxed input styling for a DetailRow's value cell — a real bordered field
+// (not the flush/no-border look HR found undefined and hard to see) so
+// every editable control reads clearly as a field you can click into.
+const rowControlClass = 'w-full border border-gray-300 rounded-md bg-white px-2.5 py-1.5 text-xs text-black focus:outline-none focus:ring-2 focus:ring-lime-400 focus:border-lime-400';
+// Multi-line fields (Remarks, Cancellation Reason) keep a light border —
+// free text benefits from a visible boundary even in an otherwise flush table.
+const rowTextareaClass = `w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-xs text-black bg-white focus:outline-none focus:ring-2 focus:ring-lime-400 resize-none ${FIELD_PLACEHOLDER_CLASS}`;
+
 const RoundForm = ({
   data, onChange, onSave, onCancel, saving, interviewers, loadingInterviewers,
-  existingRound, onSchedule, onReschedule, onCancelRound, onMarkDone,
+  existingRound, onSchedule, onReschedule, onCancelRound, onMarkDone, jdLink, resumeUrl, linkedin,
 }: {
   data: Partial<InterviewRound>;
   onChange: (f: string, v: string) => void;
@@ -68,6 +101,9 @@ const RoundForm = ({
   onReschedule?: () => void;
   onCancelRound?: () => void;
   onMarkDone?: () => void;
+  jdLink?: string | null;
+  resumeUrl?: string;
+  linkedin?: string;
 }) => {
   // Keep the currently-saved interviewer selectable even if they've since
   // left the employee master list, so editing an old round doesn't blank it.
@@ -78,36 +114,26 @@ const RoundForm = ({
   const [templateOpen, setTemplateOpen] = useState(false);
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-3 bg-gray-50 border-t border-dashed border-gray-200">
-      {existingRound && existingRound.schedulingStatus !== 'Cancelled' && (
-        <div className="col-span-2 md:col-span-3 flex items-center gap-2 flex-wrap pb-3 mb-1 border-b border-dashed border-gray-300">
-          <button onClick={onSchedule} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition">
-            <CalendarClock size={13} /> Schedule
-          </button>
-          <button onClick={onReschedule} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg transition">
-            <RefreshCw size={13} /> Reschedule
-          </button>
-          <button onClick={onMarkDone} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-green-700 bg-green-50 hover:bg-green-100 rounded-lg transition">
-            <CheckCircle2 size={13} /> Mark Done
-          </button>
-          <button onClick={onCancelRound} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition ml-auto">
-            <Ban size={13} /> Cancel Round
-          </button>
-        </div>
-      )}
+    <div className="border-t border-dashed border-gray-200">
+      {/* Field order and layout match the read-only detail table exactly
+          (shared DetailRow component) — Stage, Interviewer (2nd), Date &
+          Time (combined, 12-hour display), Mode, Meeting Link, then the
+          non-editable context rows (JD Link/Resume/Candidate Confirmation)
+          inline for reference, then Note/Remarks/Cancellation Reason/
+          Interviewer Feedback. Scheduling Status and Interviewer Feedback
+          Status are deliberately NOT editable here — scheduling status only
+          changes via the Schedule/Reschedule/Mark Done/Cancel actions below
+          (shown once the round is saved), and interviewer feedback status
+          is set only by the interviewer's own submission. */}
+      <DetailRow label="Stage">
+        <select value={data.stage || ''} onChange={(e) => onChange('stage', e.target.value)} className={rowControlClass}>
+          <option value="">— Select stage —</option>
+          {STAGE_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+      </DetailRow>
 
-      <EditSelect label="Stage"                    name="stage"                 value={data.stage || ''}                 options={STAGE_OPTIONS}               onChange={(_, v) => onChange('stage', v)} />
-      <EditSelect label="Scheduling Status"        name="schedulingStatus"      value={data.schedulingStatus || ''}      options={SCHEDULING_STATUS_OPTIONS}   onChange={(_, v) => onChange('schedulingStatus', v)} />
-      <EditSelect label="Interviewer Feedback Status" name="interviewerFeedbackStatus" value={data.interviewerFeedbackStatus || ''} options={INTERVIEWER_FEEDBACK_STATUS_OPTIONS} onChange={(_, v) => onChange('interviewerFeedbackStatus', v)} />
-      <EditField  label="Date"                     name="scheduledDate"         value={data.scheduledDate || ''}         onChange={(_, v) => onChange('scheduledDate', v)} type="date" inputClassName="text-base py-2.5" />
-      <EditField  label="Time"                     name="scheduledTime"         value={data.scheduledTime || ''}         onChange={(_, v) => onChange('scheduledTime', v)} type="time" inputClassName="text-base py-2.5" />
-      <div>
-        <label className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">Interviewer Name</label>
-        <select
-          value={data.interviewer || ''}
-          onChange={(e) => onChange('interviewer', e.target.value)}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-lime-400 bg-white"
-        >
+      <DetailRow label="Interviewer Name">
+        <select value={data.interviewer || ''} onChange={(e) => onChange('interviewer', e.target.value)} className={rowControlClass}>
           <option value="">— Select interviewer —</option>
           {loadingInterviewers
             ? <option disabled>Loading…</option>
@@ -117,40 +143,76 @@ const RoundForm = ({
               </option>
             ))}
         </select>
-      </div>
-      <EditSelect label="Mode"                     name="mode"                  value={data.mode || ''}                  options={MODE_OPTIONS}                onChange={(_, v) => onChange('mode', v)} />
-      <EditField  label="Meeting Link / Location"  name="meetingLink"           value={data.meetingLink || ''}           onChange={(_, v) => onChange('meetingLink', v)} />
+      </DetailRow>
 
-      {data.schedulingStatus === 'Cancelled' && (
-        <div className="col-span-2 md:col-span-3">
-          <label className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">Cancellation Reason</label>
-          <textarea
-            value={data.cancellationReason || ''}
-            onChange={(e) => onChange('cancellationReason', e.target.value)}
-            rows={2}
-            placeholder="Why was this round cancelled?"
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lime-400 resize-none"
+      <DetailRow label="Date & Time">
+        <div className="flex items-center gap-3 flex-wrap">
+          <input
+            type="datetime-local"
+            value={data.scheduledDate && data.scheduledTime ? `${String(data.scheduledDate).slice(0, 10)}T${data.scheduledTime}` : ''}
+            onChange={(e) => {
+              const [d, t] = e.target.value.split('T');
+              onChange('scheduledDate', d || '');
+              onChange('scheduledTime', t || '');
+            }}
+            className={rowControlClass}
           />
+          {data.scheduledDate && data.scheduledTime && (
+            <span className="text-xs text-gray-400">{formatDateTime12h(data.scheduledDate, data.scheduledTime)}</span>
+          )}
         </div>
-      )}
+      </DetailRow>
 
-      <div className="col-span-2 md:col-span-3">
-        <label className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">Note (if any)</label>
+      <DetailRow label="Mode">
+        <select value={data.mode || ''} onChange={(e) => onChange('mode', e.target.value)} className={rowControlClass}>
+          <option value="">— Select mode —</option>
+          {MODE_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+      </DetailRow>
+
+      <DetailRow label="Meeting Link / Location">
+        <input
+          value={data.meetingLink || ''}
+          onChange={(e) => onChange('meetingLink', e.target.value)}
+          placeholder="URL or physical location"
+          className={`${rowControlClass} ${FIELD_PLACEHOLDER_CLASS}`}
+        />
+      </DetailRow>
+
+      <DetailRow label="JD Link">
+        {jdLink
+          ? <a href={jdLink} target="_blank" rel="noreferrer" className="text-blue-600 underline inline-flex items-center gap-1">Open JD <ExternalLink size={12} /></a>
+          : <span className="text-gray-400 italic">Not available</span>}
+      </DetailRow>
+
+      <DetailRow label="Resume">
+        {resumeUrl
+          ? <a href={resumeUrl} target="_blank" rel="noreferrer" className="text-blue-600 underline inline-flex items-center gap-1">Open CV <ExternalLink size={12} /></a>
+          : <span className="text-gray-400 italic">Not available</span>}
+      </DetailRow>
+
+      <DetailRow label="Candidate Confirmation">
+        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${CANDIDATE_CONFIRMATION_COLORS[data.candidateConfirmation || ''] || 'bg-gray-100 text-gray-600'}`}>
+          {data.candidateConfirmation || 'Pending'}
+        </span>
+      </DetailRow>
+
+      <DetailRow label="Note (if any)">
         <input
           value={data.note || ''}
           onChange={(e) => onChange('note', e.target.value)}
           placeholder="Any note about this round…"
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lime-400"
+          className={`${rowControlClass} ${FIELD_PLACEHOLDER_CLASS}`}
         />
-      </div>
+      </DetailRow>
 
-      <div className="col-span-2 md:col-span-3 mt-4 pt-4 border-t border-dashed border-gray-200">
-        <div className="flex items-center justify-between mb-1">
-          <label className="text-xs text-gray-400 font-medium uppercase tracking-wide block">Remarks</label>
+      <DetailRow label="Remarks">
+        <div className="flex items-start justify-between gap-2 mb-1.5">
+          <span />
           <button
             type="button"
             onClick={() => setTemplateOpen(true)}
-            className="text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition"
+            className="flex-shrink-0 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition"
           >
             {data.feedback ? 'Edit via template' : 'Use template'}
           </button>
@@ -160,7 +222,7 @@ const RoundForm = ({
           onChange={(e) => onChange('feedback', e.target.value)}
           rows={4}
           placeholder="Enter interview remarks…"
-          className="w-full text-sm text-gray-800 bg-white border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-lime-400 resize-none"
+          className={rowTextareaClass}
         />
         <TemplateModal
           open={templateOpen}
@@ -170,10 +232,49 @@ const RoundForm = ({
           existingText={data.feedback || ''}
           defaultRound={data.stage || 'Interview Round'}
           title="Interview Feedback Template"
+          defaultResume={resumeUrl}
+          defaultLinkedin={linkedin}
         />
-      </div>
+      </DetailRow>
 
-      <div className="col-span-2 md:col-span-3 flex gap-2 justify-end">
+      {data.schedulingStatus === 'Cancelled' && (
+        <DetailRow label="Cancellation Reason">
+          <textarea
+            value={data.cancellationReason || ''}
+            onChange={(e) => onChange('cancellationReason', e.target.value)}
+            rows={2}
+            placeholder="Why was this round cancelled?"
+            className={rowTextareaClass}
+          />
+        </DetailRow>
+      )}
+
+      <DetailRow label="Interviewer Feedback">
+        {data.interviewerFeedbackStatus
+          ? <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${INTERVIEWER_FEEDBACK_STATUS_COLORS[data.interviewerFeedbackStatus] || 'bg-gray-100 text-gray-600'}`}>
+              {data.interviewerFeedbackStatus}
+            </span>
+          : <span className="text-gray-400 italic">—</span>}
+      </DetailRow>
+
+      {existingRound && existingRound.schedulingStatus !== 'Cancelled' && existingRound.schedulingStatus !== 'Done' && (
+        <div className="flex items-center gap-2 flex-wrap px-3 py-3 bg-gray-50 border-t border-gray-100">
+          <button onClick={onSchedule} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 border border-blue-200 bg-white hover:bg-blue-50 rounded-lg transition">
+            <CalendarClock size={13} /> Schedule
+          </button>
+          <button onClick={onReschedule} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-700 border border-amber-200 bg-white hover:bg-amber-50 rounded-lg transition">
+            <RefreshCw size={13} /> Reschedule
+          </button>
+          <button onClick={onMarkDone} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-green-600 hover:bg-green-700 rounded-lg transition">
+            <CheckCircle2 size={13} /> Mark Done
+          </button>
+          <button onClick={onCancelRound} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-700 border border-red-200 bg-white hover:bg-red-50 rounded-lg transition ml-auto">
+            <Ban size={13} /> Cancel Round
+          </button>
+        </div>
+      )}
+
+      <div className="flex gap-2 justify-end px-3 py-3 bg-gray-50 border-t border-gray-100">
         <button onClick={onCancel} className="px-3 py-1.5 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition">Cancel</button>
         <button
           onClick={onSave}
@@ -204,7 +305,12 @@ const InterviewRoundTab = ({
   const [jdLink,    setJdLink]    = useState<string | null>(null);
   const [interviewers,        setInterviewers]        = useState<EmployeeOption[]>([]);
   const [loadingInterviewers, setLoadingInterviewers]  = useState(true);
-  type MailContent = { to: string; cc: string; subject: string; body: string };
+  type PreviousRoundFeedback = { stage: string; interviewer: string; interviewerFeedbackStatus: string; feedback: string };
+  type PreviousFeedback = { screener: { name: string; status: string; notes: string } | null; previousRounds: PreviousRoundFeedback[] } | null;
+  type MailContent = {
+    to: string; cc: string; subject: string; body: string;
+    previousFeedback: PreviousFeedback; willIncludeFeedbackLink: boolean;
+  };
   const [mailModal, setMailModal] = useState<{
     open: boolean; type: 'schedule' | 'reschedule' | 'cancel'; round: InterviewRound | null;
     tab: 'interviewer' | 'candidate'; sentTabs: string[]; sending: boolean; reason: string;
@@ -214,6 +320,7 @@ const InterviewRoundTab = ({
     open: false, type: 'schedule', round: null, tab: 'interviewer', sentTabs: [], sending: false, reason: '',
     content: {}, loadingPreview: false, previewError: null,
   });
+  const [previousFeedbackOpen, setPreviousFeedbackOpen] = useState(false);
 
   const [rejectionModal, setRejectionModal] = useState<{
     open: boolean; to: string; cc: string; subject: string; body: string;
@@ -308,14 +415,14 @@ const InterviewRoundTab = ({
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(drafts[id]),
       });
-      if (!res.ok) throw new Error();
       const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || `Server returned ${res.status}`);
       setRounds(json.data.interviewRounds);
       onUpdate(json.data);
       setEditingId(null);
       toast.success('Round updated');
-    } catch {
-      toast.error('Failed to save round');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to save round');
     } finally {
       setSaving(false);
     }
@@ -329,27 +436,29 @@ const InterviewRoundTab = ({
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(newRound),
       });
-      if (!res.ok) throw new Error();
       const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || `Server returned ${res.status}`);
       setRounds(json.data.interviewRounds);
       onUpdate(json.data);
       setAdding(false);
       setNewRound(emptyRound());
       toast.success('Round added');
-    } catch {
-      toast.error('Failed to add round');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to add round');
     } finally {
       setSaving(false);
     }
   };
 
   // ── Schedule / Reschedule / Cancel mail dialog ─────────────────────────
-  const openMailModal = (type: 'schedule' | 'reschedule' | 'cancel', round: InterviewRound) =>
+  const openMailModal = (type: 'schedule' | 'reschedule' | 'cancel', round: InterviewRound) => {
     setMailModal({
       open: true, type, round, tab: 'interviewer', sentTabs: [],
       sending: false, reason: type === 'cancel' ? (round.cancellationReason || '') : '',
       content: {}, loadingPreview: false, previewError: null,
     });
+    setPreviousFeedbackOpen(false);
+  };
 
   const closeMailModal = () => setMailModal((m) => ({ ...m, open: false }));
 
@@ -377,7 +486,11 @@ const InterviewRoundTab = ({
         content: {
           ...m.content,
           // Regenerating keeps whatever CC HR already typed — only To/Subject/Body reset to the fresh default.
-          [tab]: { to: json.data.to || '', cc: m.content[tab]?.cc || '', subject: json.data.subject, body: json.data.body },
+          [tab]: {
+            to: json.data.to || '', cc: m.content[tab]?.cc ?? DEFAULT_HR_CC, subject: json.data.subject, body: json.data.body,
+            previousFeedback: json.data.previousFeedback || null,
+            willIncludeFeedbackLink: !!json.data.willIncludeFeedbackLink,
+          },
         },
       }));
     } catch (e: any) {
@@ -395,10 +508,16 @@ const InterviewRoundTab = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mailModal.open, mailModal.tab, mailModal.round?._id]);
 
-  const updateMailContent = (tab: 'interviewer' | 'candidate', field: keyof MailContent, value: string) =>
+  const updateMailContent = (tab: 'interviewer' | 'candidate', field: 'to' | 'cc' | 'subject' | 'body', value: string) =>
     setMailModal((m) => ({
       ...m,
-      content: { ...m.content, [tab]: { to: '', cc: '', subject: '', body: '', ...m.content[tab], [field]: value } },
+      content: {
+        ...m.content,
+        [tab]: {
+          to: '', cc: '', subject: '', body: '', previousFeedback: null, willIncludeFeedbackLink: false,
+          ...m.content[tab], [field]: value,
+        },
+      },
     }));
 
   const patchRound = async (id: string, body: Partial<InterviewRound>) => {
@@ -511,26 +630,34 @@ const InterviewRoundTab = ({
         </div>
       )}
 
-      {rounds.map((r) => {
+      {[...rounds].reverse().map((r, idx) => {
         const isEditing   = editingId === r._id;
-        const isCollapsed = !!collapsed[r._id];
+        const isLatest    = idx === 0;
+        // Default contracted — HR explicitly expands a round to see its
+        // full info; only a round the user has clicked gets an entry here.
+        const isCollapsed = collapsed[r._id] === undefined ? true : collapsed[r._id];
 
         return (
           <div key={r._id} className="border border-gray-200 rounded-xl overflow-hidden hover:border-gray-300 transition">
             {/* ── Header bar — click anywhere on it to collapse/expand ── */}
             <div
               onClick={() => toggleCollapse(r._id)}
-              className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 bg-blue-50/60 border-b border-blue-100 cursor-pointer hover:bg-blue-50 transition"
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 bg-blue-50/60 border-b border-blue-100 cursor-pointer hover:bg-blue-50 transition"
             >
-              <span className="flex-shrink-0 text-[11px] font-bold text-white bg-slate-800 px-2.5 py-1 rounded">
+              <span className="flex-shrink-0 text-[11px] font-bold text-white bg-slate-800 px-2 py-0.5 rounded">
                 Round {r.roundNumber}
               </span>
-              <span className="text-xs text-gray-600"><span className="font-semibold text-gray-500">Interviewer:</span> {r.interviewer || '—'}</span>
-              <span className="text-xs text-gray-600"><span className="font-semibold text-gray-500">Date:</span> {r.scheduledDate ? new Date(r.scheduledDate).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'TBD'}</span>
-              <span className="text-xs text-gray-600"><span className="font-semibold text-gray-500">Mode:</span> {r.mode || '—'}</span>
+              {isLatest && (
+                <span className="flex-shrink-0 text-[11px] font-bold text-white bg-orange-500 px-2 py-0.5 rounded">
+                  Latest
+                </span>
+              )}
+              <span className="text-xs text-black"><span className="font-bold text-gray-600">Interviewer:</span> {r.interviewer || '—'}</span>
+              <span className="text-xs text-black"><span className="font-bold text-gray-600">Date &amp; Time:</span> {formatDateTime12h(r.scheduledDate, r.scheduledTime)}</span>
+              <span className="text-xs text-black"><span className="font-bold text-gray-600">Mode:</span> {r.mode || '—'}</span>
 
-              <span className={`flex-shrink-0 text-[11px] font-bold px-2 py-1 rounded-full ${SCHEDULING_STATUS_COLORS[r.schedulingStatus] || 'bg-gray-100 text-gray-600'}`}>
-                {r.schedulingStatus || 'Scheduled'}
+              <span className={`flex-shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-full ${SCHEDULING_STATUS_COLORS[r.schedulingStatus] || 'bg-gray-100 text-gray-600'}`}>
+                {r.schedulingStatus || 'Not Scheduled'}
               </span>
 
               <div className="flex items-center gap-1 flex-shrink-0 ml-auto text-gray-400">
@@ -544,7 +671,7 @@ const InterviewRoundTab = ({
                 <DetailRow label="Stage">{r.stage || '—'}</DetailRow>
                 <DetailRow label="Scheduling Status">
                   <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${SCHEDULING_STATUS_COLORS[r.schedulingStatus] || 'bg-gray-100 text-gray-600'}`}>
-                    {r.schedulingStatus || 'Scheduled'}
+                    {r.schedulingStatus || 'Not Scheduled'}
                   </span>
                 </DetailRow>
                 {r.schedulingStatus === 'Cancelled' && (
@@ -553,10 +680,7 @@ const InterviewRoundTab = ({
                   </DetailRow>
                 )}
                 <DetailRow label="Interviewer Name">{r.interviewer || '—'}</DetailRow>
-                <DetailRow label="Date">
-                  {r.scheduledDate ? new Date(r.scheduledDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Date TBD'}
-                </DetailRow>
-                <DetailRow label="Time">{r.scheduledTime || '—'}</DetailRow>
+                <DetailRow label="Date & Time">{formatDateTime12h(r.scheduledDate, r.scheduledTime)}</DetailRow>
                 <DetailRow label="Mode">{r.mode || '—'}</DetailRow>
                 <DetailRow label="Meeting Link / Location">
                   {r.meetingLink
@@ -592,13 +716,19 @@ const InterviewRoundTab = ({
                   <p className="whitespace-pre-wrap font-bold text-black">{r.feedback || <span className="font-normal text-gray-400 italic">No remarks recorded</span>}</p>
                 </DetailRow>
 
-                <div className="flex justify-end px-3 py-2.5 bg-gray-50">
-                  <button
-                    onClick={() => startEdit(r)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-lime-600 hover:bg-lime-700 rounded-lg transition"
-                  >
-                    <Edit2 size={13} /> Edit
-                  </button>
+                <div className="flex justify-end items-center px-3 py-2.5 bg-gray-50">
+                  {r.schedulingStatus === 'Done' ? (
+                    <span className="text-xs font-semibold text-gray-400">
+                      This round is marked Done and cannot be edited.
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => startEdit(r)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-lime-600 hover:bg-lime-700 rounded-lg transition"
+                    >
+                      <Edit2 size={13} /> Edit
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -618,6 +748,9 @@ const InterviewRoundTab = ({
                 onReschedule={() => openMailModal('reschedule', r)}
                 onCancelRound={() => openMailModal('cancel', r)}
                 onMarkDone={() => markRoundDone(r)}
+                jdLink={jdLink}
+                resumeUrl={resumeUrl}
+                linkedin={record.linkedin}
               />
             )}
           </div>
@@ -636,6 +769,9 @@ const InterviewRoundTab = ({
             saving={saving}
             interviewers={interviewers}
             loadingInterviewers={loadingInterviewers}
+            jdLink={jdLink}
+            resumeUrl={resumeUrl}
+            linkedin={record.linkedin}
           />
         </div>
       )}
@@ -675,7 +811,7 @@ const InterviewRoundTab = ({
             <div className="p-5 space-y-3">
               {mailModal.type === 'cancel' && (
                 <div>
-                  <label className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">
+                  <label className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-0.5 block">
                     Cancellation Reason <span className="text-red-500">*</span>
                   </label>
                   <textarea
@@ -683,7 +819,7 @@ const InterviewRoundTab = ({
                     onChange={(e) => setMailModal((m) => ({ ...m, reason: e.target.value }))}
                     rows={2}
                     placeholder="Why is this interview being cancelled?"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none placeholder:text-gray-400 placeholder:font-normal"
                   />
                 </div>
               )}
@@ -709,7 +845,7 @@ const InterviewRoundTab = ({
                 const isDone = ['Done', 'Cancelled'].includes(mailModal.round.schedulingStatus);
                 const current = mailModal.content[mailModal.tab];
                 const fieldClass = (editable: boolean) =>
-                  `w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm ${
+                  `w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm placeholder:text-gray-400 placeholder:font-normal ${
                     editable ? 'focus:outline-none focus:ring-2 focus:ring-lime-400' : 'bg-gray-50 text-gray-600'
                   }`;
 
@@ -740,8 +876,46 @@ const InterviewRoundTab = ({
                     )}
                     {current && (
                       <div className="p-3 space-y-2.5 bg-white">
+                        {/* Previous feedback — read-only, contracted (collapsed) by
+                            default, separate from the editable body below so it
+                            can't be accidentally edited away. Only ever present
+                            for the interviewer's schedule/reschedule mail. */}
+                        {current.previousFeedback && (current.previousFeedback.screener || current.previousFeedback.previousRounds.length > 0) && (
+                          <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                            <button
+                              type="button"
+                              onClick={() => setPreviousFeedbackOpen((o) => !o)}
+                              className="w-full flex items-center justify-between px-3 py-2 text-[11px] font-bold text-gray-500 uppercase tracking-wide"
+                            >
+                              Previous Feedback (included in mail)
+                              {previousFeedbackOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                            </button>
+                            {previousFeedbackOpen && (
+                              <div className="px-3 pb-3 space-y-2">
+                                {current.previousFeedback.screener && (
+                                  <div>
+                                    <p className="text-xs font-semibold text-gray-500">
+                                      HR Screening{current.previousFeedback.screener.name ? ` — ${current.previousFeedback.screener.name}` : ''}
+                                      {current.previousFeedback.screener.status ? ` (${current.previousFeedback.screener.status})` : ''}
+                                    </p>
+                                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{current.previousFeedback.screener.notes || '—'}</p>
+                                  </div>
+                                )}
+                                {current.previousFeedback.previousRounds.map((r, i) => (
+                                  <div key={i}>
+                                    <p className="text-xs font-semibold text-gray-500">
+                                      {r.stage}{r.interviewer ? ` — ${r.interviewer}` : ''}{r.interviewerFeedbackStatus ? ` (${r.interviewerFeedbackStatus})` : ''}
+                                    </p>
+                                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{r.feedback || '—'}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         <div>
-                          <label className="text-[11px] text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">To</label>
+                          <label className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5 block">To</label>
                           <input
                             value={current.to}
                             onChange={(e) => updateMailContent(mailModal.tab, 'to', e.target.value)}
@@ -751,7 +925,7 @@ const InterviewRoundTab = ({
                           />
                         </div>
                         <div>
-                          <label className="text-[11px] text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">CC (optional)</label>
+                          <label className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5 block">CC (optional)</label>
                           <input
                             value={current.cc}
                             onChange={(e) => updateMailContent(mailModal.tab, 'cc', e.target.value)}
@@ -761,7 +935,7 @@ const InterviewRoundTab = ({
                           />
                         </div>
                         <div>
-                          <label className="text-[11px] text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">Subject</label>
+                          <label className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5 block">Subject</label>
                           <input
                             value={current.subject}
                             onChange={(e) => updateMailContent(mailModal.tab, 'subject', e.target.value)}
@@ -770,7 +944,7 @@ const InterviewRoundTab = ({
                           />
                         </div>
                         <div>
-                          <label className="text-[11px] text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">Body</label>
+                          <label className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5 block">Body</label>
                           <textarea
                             value={current.body}
                             onChange={(e) => updateMailContent(mailModal.tab, 'body', e.target.value)}
@@ -781,6 +955,11 @@ const InterviewRoundTab = ({
                           {mailModal.tab === 'candidate' && mailModal.type !== 'cancel' && (
                             <p className="text-[11px] text-gray-400 mt-1">
                               A Yes / Maybe / Can't-attend confirmation block is added automatically below this message.
+                            </p>
+                          )}
+                          {mailModal.tab === 'interviewer' && mailModal.type !== 'cancel' && current.willIncludeFeedbackLink && (
+                            <p className="text-[11px] text-gray-400 mt-1">
+                              A "Submit Interview Feedback" button linking to the feedback form is added automatically below this message.
                             </p>
                           )}
                         </div>
@@ -834,37 +1013,37 @@ const InterviewRoundTab = ({
               ) : (
                 <>
                   <div>
-                    <label className="text-[11px] text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">To</label>
+                    <label className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5 block">To</label>
                     <input
                       value={rejectionModal.to}
                       onChange={(e) => setRejectionModal((m) => ({ ...m, to: e.target.value }))}
-                      className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+                      className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 placeholder:text-gray-400 placeholder:font-normal"
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">CC (optional)</label>
+                    <label className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5 block">CC (optional)</label>
                     <input
                       value={rejectionModal.cc}
                       onChange={(e) => setRejectionModal((m) => ({ ...m, cc: e.target.value }))}
                       placeholder="cc1@company.com, cc2@company.com"
-                      className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+                      className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 placeholder:text-gray-400 placeholder:font-normal"
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">Subject</label>
+                    <label className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5 block">Subject</label>
                     <input
                       value={rejectionModal.subject}
                       onChange={(e) => setRejectionModal((m) => ({ ...m, subject: e.target.value }))}
-                      className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+                      className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 placeholder:text-gray-400 placeholder:font-normal"
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">Body</label>
+                    <label className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5 block">Body</label>
                     <textarea
                       value={rejectionModal.body}
                       onChange={(e) => setRejectionModal((m) => ({ ...m, body: e.target.value }))}
                       rows={10}
-                      className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-red-400"
+                      className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-red-400 placeholder:text-gray-400 placeholder:font-normal"
                     />
                   </div>
                 </>
