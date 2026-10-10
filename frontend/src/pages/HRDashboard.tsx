@@ -37,7 +37,7 @@ import CurrencyRupeeIcon from "@mui/icons-material/CurrencyRupeeOutlined";
 // ─── Config ─────────────────────────────────────────────────────────────────
 
 const API = process.env.REACT_APP_REACT_APP_API_BASE_URL ?? "";
-const ACCENT = "#4f46e5";
+const ACCENT = "#16a34a";
 const TEETH_COLOR = "#059669";
 const TAIL_COLOR = "#d97706";
 const UNCAT_COLOR = "#94a3b8";
@@ -603,7 +603,7 @@ const TeethToTailWidget: React.FC = () => {
                 return `${teethPct.toFixed(1)} : ${tailPct.toFixed(1)}`;
               })()}
               color={ACCENT}
-              bg="#eef2ff"
+              bg="#f0fdf4"
               onClick={() => setShowBreakdown((v) => !v)}
               active={showBreakdown}
             />
@@ -832,7 +832,7 @@ const GenderDistributionWidget: React.FC = () => {
               label="Total Employees"
               value={focusedQuarter?.total ?? 0}
               color={ACCENT}
-              bg="#eef2ff"
+              bg="#f0fdf4"
               hint={`As of ${focusedQuarter?.quarter ?? "—"} ${year}`}
             />
             {focusedGenders.map((g, i) => (
@@ -1031,10 +1031,10 @@ const AttritionWidget: React.FC = () => {
               label="Opening Headcount"
               value={focusedQuarter?.opening ?? 0}
               color={ACCENT}
-              bg="#eef2ff"
+              bg="#f0fdf4"
               hint={`As of ${focusedQuarter?.quarter ?? "—"} ${year}`}
             />
-            <StatCard label="Closing Headcount" value={focusedQuarter?.closing ?? 0} color={ACCENT} bg="#eef2ff" />
+            <StatCard label="Closing Headcount" value={focusedQuarter?.closing ?? 0} color={ACCENT} bg="#f0fdf4" />
             <StatCard label="Employees Left" value={focusedQuarter?.employeesLeft ?? 0} color="#dc2626" bg="#fef2f2" />
             <StatCard label="Attrition %" value={`${focusedQuarter?.attritionPct ?? 0}%`} color="#dc2626" bg="#fef2f2" />
             <StatCard label="Retention %" value={focusedQuarter?.retentionPct != null ? `${focusedQuarter.retentionPct}%` : "—"} color="#059669" bg="#f0fdf4" />
@@ -1165,7 +1165,7 @@ const InternsWidget: React.FC = () => {
               label="Total Employees"
               value={focusedQuarter?.total ?? 0}
               color={ACCENT}
-              bg="#eef2ff"
+              bg="#f0fdf4"
               hint={`As of ${focusedQuarter?.quarter ?? "—"} ${year}`}
             />
             <StatCard label="Interns" value={focusedQuarter?.internsCount ?? 0} color={INTERN_COLOR} bg="#f5f3ff" />
@@ -1317,7 +1317,7 @@ const InternConversionsWidget: React.FC = () => {
               label="Total Conversions"
               value={data.total}
               color={ACCENT}
-              bg="#eef2ff"
+              bg="#f0fdf4"
               onClick={() => setShowList((v) => !v)}
               active={showList}
             />
@@ -1515,7 +1515,7 @@ const IncrementAnalyticsWidget: React.FC = () => {
               label="Avg. Increment"
               value={data.avgIncrementPct != null ? `${data.avgIncrementPct}%` : "—"}
               color={ACCENT}
-              bg="#eef2ff"
+              bg="#f0fdf4"
               hint={`Across ${data.total} completed revision${data.total === 1 ? "" : "s"}`}
             />
             <StatCard
@@ -1639,7 +1639,7 @@ const SalaryRevisionTimelinessWidget: React.FC = () => {
               label="On-Time Rate"
               value={data.onTimeRate != null ? `${data.onTimeRate}%` : "—"}
               color={ACCENT}
-              bg="#eef2ff"
+              bg="#f0fdf4"
               hint={`Across ${data.total} completed revision${data.total === 1 ? "" : "s"}`}
             />
             <StatCard
@@ -1709,7 +1709,7 @@ interface CardSummary { value: string; sublabel: string; flag?: string; flagColo
 const NEUTRAL_ICON_COLOR = "#64748b";
 const NEUTRAL_ICON_BG = "#f1f5f9";
 const NEUTRAL_VALUE_COLOR = "#0f172a";
-const NEW_METRIC_NOTE_COLOR = "#4f46e5";
+const NEW_METRIC_NOTE_COLOR = "#16a34a";
 
 const SummaryCard: React.FC<{
   title: string;
@@ -2004,7 +2004,7 @@ const AskedToLeaveWidget: React.FC = () => {
       ) : (
         <>
           <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexWrap: "wrap" }}>
-            <StatCard label="Total Exits" value={qTotalExits} color={ACCENT} bg="#eef2ff" hint={`${focusedQuarter?.quarter ?? "—"} ${year} · all time: ${data.totalExits} exits, ${data.askedToLeaveCount} asked to leave (${data.askedToLeavePct}%)`} />
+            <StatCard label="Total Exits" value={qTotalExits} color={ACCENT} bg="#f0fdf4" hint={`${focusedQuarter?.quarter ?? "—"} ${year} · all time: ${data.totalExits} exits, ${data.askedToLeaveCount} asked to leave (${data.askedToLeavePct}%)`} />
             <StatCard label="Asked to Leave" value={qAskedToLeave} color="#dc2626" bg="#fef2f2" />
             <StatCard label="% Asked to Leave" value={`${qAskedToLeavePct}%`} color="#dc2626" bg="#fef2f2" />
           </Box>
@@ -2132,7 +2132,7 @@ const ReferredWidget: React.FC = () => {
       ) : (
         <>
           <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexWrap: "wrap" }}>
-            <StatCard label="Joined" value={qTotal} color={ACCENT} bg="#eef2ff" hint={`${focusedQuarter?.quarter ?? "—"} ${year} · all time: ${data.total} joined, ${data.referredCount} referred (${data.referredPct}%)`} />
+            <StatCard label="Joined" value={qTotal} color={ACCENT} bg="#f0fdf4" hint={`${focusedQuarter?.quarter ?? "—"} ${year} · all time: ${data.total} joined, ${data.referredCount} referred (${data.referredPct}%)`} />
             <StatCard label="Referred" value={qReferred} color="#0284c7" bg="#eff6ff" />
             <StatCard label="% Referred" value={`${qReferredPct}%`} color="#0284c7" bg="#eff6ff" />
           </Box>
@@ -2256,7 +2256,7 @@ const OfferDropoutWidget: React.FC = () => {
       ) : (
         <>
           <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexWrap: "wrap" }}>
-            <StatCard label="Onboardings" value={qTotal} color={ACCENT} bg="#eef2ff" hint={`${focusedQuarter?.quarter ?? "—"} ${year} · all time: ${data.total} onboardings, ${data.dropoutCount} not joining (${data.dropoutPct}%)`} />
+            <StatCard label="Onboardings" value={qTotal} color={ACCENT} bg="#f0fdf4" hint={`${focusedQuarter?.quarter ?? "—"} ${year} · all time: ${data.total} onboardings, ${data.dropoutCount} not joining (${data.dropoutPct}%)`} />
             <StatCard label="Not Joining" value={qDropout} color="#db2777" bg="#fdf2f8" />
             <StatCard label="% Dropout" value={`${qDropoutPct}%`} color="#db2777" bg="#fdf2f8" />
           </Box>
@@ -2402,7 +2402,7 @@ const DaysToHireWidget: React.FC = () => {
               label="Overall — Avg Days to Hire"
               value={focusedOverall.avgDays != null ? `${focusedOverall.avgDays}d` : "—"}
               color={ACCENT}
-              bg="#eef2ff"
+              bg="#f0fdf4"
               hint={focusedOverall.count > 0 ? `${focusedOverall.count} closed in ${focusedQuarterRaw?.quarter ?? "—"} ${year} · all-time: ${data.overall.avgDays ?? "—"}d over ${data.overall.count}` : "No closed requisitions this quarter"}
             />
             <StatCard
@@ -2805,7 +2805,7 @@ const HRAnalyticsDashboard: React.FC = () => {
     {
       title: "Workforce Composition",
       cards: [
-        { key: "teeth", title: "Delivery : Support Ratio", icon: <BalanceIcon />, color: ACCENT, bg: "#eef2ff", fetchSummary: fetchTeethToTailSummary },
+        { key: "teeth", title: "Delivery : Support Ratio", icon: <BalanceIcon />, color: ACCENT, bg: "#f0fdf4", fetchSummary: fetchTeethToTailSummary },
         { key: "gender", title: "Gender Ratio (Female)", icon: <WcIcon />, color: "#db2777", bg: "#fdf2f8", fetchSummary: fetchGenderSummary },
         // Interns (%) + Intern→Employee conversions merged into one card.
         { key: "interns", title: "Interns (%)", icon: <SchoolIcon />, color: INTERN_COLOR, bg: "#f5f3ff", fetchSummary: fetchInternsCombinedSummary },
@@ -2820,7 +2820,7 @@ const HRAnalyticsDashboard: React.FC = () => {
       title: "Recruitment",
       cards: [
         { key: "recruitment", title: "Recruitment On-Time (%)", icon: <WorkIcon />, color: "#0284c7", bg: "#eff6ff", fetchSummary: fetchRecruitmentOnTimeSummary },
-        { key: "daysToHireOverall", title: "Avg Days to Hire", icon: <TimelineIcon />, color: ACCENT, bg: "#eef2ff", fetchSummary: () => fetchDaysToHireSummary("overall") },
+        { key: "daysToHireOverall", title: "Avg Days to Hire", icon: <TimelineIcon />, color: ACCENT, bg: "#f0fdf4", fetchSummary: () => fetchDaysToHireSummary("overall") },
         // Offer dropout + referred-hire rate merged into one "funnel" card.
         { key: "offerDropout", title: "Recruitment Funnel", icon: <CancelIcon />, color: "#db2777", bg: "#fdf2f8", fetchSummary: fetchRecruitmentFunnelSummary },
         { key: "costPerHire", title: "Cost per Hire", icon: <CurrencyRupeeIcon />, color: "#7c3aed", bg: "#f5f3ff", fetchSummary: fetchCostPerHireSummary, clickable: false, note: "New — suggested addition" },
@@ -2840,7 +2840,7 @@ const HRAnalyticsDashboard: React.FC = () => {
       cards: [
         { key: "onboarding", title: "Onboarding On-Time (%)", icon: <HowToRegIcon />, color: "#059669", bg: "#f0fdf4", fetchSummary: () => fetchKpiSummary("onboarding") },
         { key: "exit", title: "Exit On-Time (%)", icon: <ExitToAppIcon />, color: "#d97706", bg: "#fffbeb", fetchSummary: () => fetchKpiSummary("exit") },
-        { key: "salaryRevisionTimeliness", title: "Salary Revision Timeliness Rate (%)", icon: <PaidIcon />, color: ACCENT, bg: "#eef2ff", fetchSummary: fetchSalaryRevisionTimelinessSummary },
+        { key: "salaryRevisionTimeliness", title: "Salary Revision Timeliness Rate (%)", icon: <PaidIcon />, color: ACCENT, bg: "#f0fdf4", fetchSummary: fetchSalaryRevisionTimelinessSummary },
         // Not wired to data yet — rendered as a "coming soon" placeholder,
         // but still clickable: opens the same detail dialog as any other
         // card, just with nothing inside it yet (no case for these keys

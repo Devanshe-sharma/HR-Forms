@@ -62,6 +62,7 @@ type Outing = {
   reason?: string;
   remark?: string;
   eventType?: EventType | '';
+  category?: 'Internal' | 'External';
   projectService?: string;
   projectName?: string;
   department?: string;
@@ -113,6 +114,7 @@ const Outing: React.FC = () => {
     tentativeDate: '',
     priority: 'P3' as 'P1' | 'P2' | 'P3',
     eventType: '' as EventType | '',
+    category: 'Internal' as 'Internal' | 'External',
     projectService: '',
     projectName: '',
     department: '',
@@ -126,6 +128,7 @@ const Outing: React.FC = () => {
   const [quarterFilter, setQuarterFilter] = useState('');
   const [fyFilter, setFyFilter] = useState('');
   const [archivedFilter, setArchivedFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<'' | 'Internal' | 'External'>('');
 
   // NEW: Global + Details Modal
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -147,6 +150,10 @@ const Outing: React.FC = () => {
       list = list.filter(o => o.financialYear === fyFilter);
     }
 
+    if (categoryFilter) {
+      list = list.filter(o => (o.category || 'Internal') === categoryFilter);
+    }
+
     // Handle archivedFilter differently for outings-view tab
     if (currentTab === 'outings-view') {
       if (archivedFilter === 'scheduled') {
@@ -165,7 +172,7 @@ const Outing: React.FC = () => {
     }
 
     return list;
-  }, [outingList, outingNameFilter, quarterFilter, fyFilter, archivedFilter, currentTab]);
+  }, [outingList, outingNameFilter, quarterFilter, fyFilter, archivedFilter, categoryFilter, currentTab]);
 
   // Management: Reject Modal
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
@@ -183,6 +190,7 @@ const Outing: React.FC = () => {
     reason: '',
     priority: '' as 'P1' | 'P2' | 'P3',
     eventType: '' as EventType | '',
+    category: 'Internal' as 'Internal' | 'External',
     projectService: '',
     projectName: '',
     department: '',
@@ -263,6 +271,7 @@ const Outing: React.FC = () => {
         reason: '',
         priority: 'P3',
         eventType: '',
+        category: 'Internal',
         projectService: '',
         projectName: '',
         department: '',
@@ -276,6 +285,7 @@ const Outing: React.FC = () => {
         tentativeDate: '',
         priority: 'P3',
         eventType: '',
+        category: 'Internal',
         projectService: '',
         projectName: '',
         department: '',
@@ -354,6 +364,7 @@ const Outing: React.FC = () => {
       status: 'Proposed',
       priority,
       eventType: formData.eventType || undefined,
+      category: formData.category,
       projectService: formData.eventType === 'Project' ? formData.projectService || undefined : undefined,
       projectName: formData.eventType === 'Project' ? formData.projectName || undefined : undefined,
       department: formData.eventType === 'Department' ? formData.department || undefined : undefined,
@@ -372,6 +383,7 @@ const Outing: React.FC = () => {
           tentativeDate: '',
           priority: 'P3',
           eventType: '',
+          category: 'Internal',
           projectService: '',
           projectName: '',
           department: '',
@@ -486,6 +498,7 @@ const Outing: React.FC = () => {
       proposedByName: 'Management User',
       status: 'Suggested',
       eventType: suggestForm.eventType || undefined,
+      category: suggestForm.category,
       projectService: suggestForm.eventType === 'Project' ? suggestForm.projectService || undefined : undefined,
       projectName: suggestForm.eventType === 'Project' ? suggestForm.projectName || undefined : undefined,
       department: suggestForm.eventType === 'Department' ? suggestForm.department || undefined : undefined,
@@ -505,6 +518,7 @@ const Outing: React.FC = () => {
           reason: '',
           priority: 'P3',
           eventType: '',
+          category: 'Internal',
           projectService: '',
           projectName: '',
           department: '',
@@ -607,9 +621,16 @@ const Outing: React.FC = () => {
                     ) : (
                       <h4 className="font-bold text-lg text-gray-800 leading-tight pr-4">{o.topic || 'Unnamed Outing'}</h4>
                     )}
-                    <span className={`status-pill self-start shrink-0 text-[10px] ${o.status?.toLowerCase().replace(' ', '-') || ''}`}>
-                      {o.status || '—'}
-                    </span>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className={`status-pill self-end shrink-0 text-[10px] ${o.status?.toLowerCase().replace(' ', '-') || ''}`}>
+                        {o.status || '—'}
+                      </span>
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                        o.category === 'External' ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {o.category || 'Internal'}
+                      </span>
+                    </div>
                   </div>
 
                   {isEditing ? (
@@ -763,7 +784,7 @@ const Outing: React.FC = () => {
             <div className="space-y-8">
               {/* Filters */}
               <div className="bg-white p-4 sm:p-6 rounded-xl shadow border border-gray-200">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Outing Name</label>
                     <input placeholder="Search outing topics..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={outingNameFilter} onChange={(e) => setOutingNameFilter(e.target.value)} />
@@ -795,8 +816,16 @@ const Outing: React.FC = () => {
                       <option value="yes">Yes</option>
                     </select>
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value as '' | 'Internal' | 'External')}>
+                      <option value="">All Categories</option>
+                      <option value="Internal">Internal</option>
+                      <option value="External">External</option>
+                    </select>
+                  </div>
                   <div className="flex items-end">
-                    <button onClick={() => { setOutingNameFilter(''); setQuarterFilter(''); setFyFilter(''); setArchivedFilter(''); }} className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium transition">Clear Filters</button>
+                    <button onClick={() => { setOutingNameFilter(''); setQuarterFilter(''); setFyFilter(''); setArchivedFilter(''); setCategoryFilter(''); }} className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium transition">Clear Filters</button>
                   </div>
                 </div>
               </div>
@@ -965,7 +994,7 @@ const Outing: React.FC = () => {
             <div className="space-y-8">
               {/* Filters */}
               <div className="bg-white p-4 sm:p-6 rounded-xl shadow border border-gray-200">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Outing Name</label>
                     <input placeholder="Search outing topics..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={outingNameFilter} onChange={(e) => setOutingNameFilter(e.target.value)} />
@@ -998,8 +1027,16 @@ const Outing: React.FC = () => {
                       <option value="archived">Archived</option>
                     </select>
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value as '' | 'Internal' | 'External')}>
+                      <option value="">All Categories</option>
+                      <option value="Internal">Internal</option>
+                      <option value="External">External</option>
+                    </select>
+                  </div>
                   <div className="flex items-end">
-                    <button onClick={() => { setOutingNameFilter(''); setQuarterFilter(''); setFyFilter(''); setArchivedFilter(''); }} className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium transition">Clear Filters</button>
+                    <button onClick={() => { setOutingNameFilter(''); setQuarterFilter(''); setFyFilter(''); setArchivedFilter(''); setCategoryFilter(''); }} className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium transition">Clear Filters</button>
                   </div>
                 </div>
               </div>
@@ -1073,7 +1110,7 @@ const Outing: React.FC = () => {
           {currentTab === 'global' && (
             <div className="space-y-8">
               <div className="bg-white p-6 rounded-xl shadow border border-gray-200">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Outing Name</label>
                     <input placeholder="Search outing topics..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={outingNameFilter} onChange={(e) => setOutingNameFilter(e.target.value)} />
@@ -1105,8 +1142,16 @@ const Outing: React.FC = () => {
                       <option value="yes">Yes</option>
                     </select>
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value as '' | 'Internal' | 'External')}>
+                      <option value="">All Categories</option>
+                      <option value="Internal">Internal</option>
+                      <option value="External">External</option>
+                    </select>
+                  </div>
                   <div className="flex items-end">
-                    <button onClick={() => { setOutingNameFilter(''); setQuarterFilter(''); setFyFilter(''); setArchivedFilter(''); }} className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium transition">Clear Filters</button>
+                    <button onClick={() => { setOutingNameFilter(''); setQuarterFilter(''); setFyFilter(''); setArchivedFilter(''); setCategoryFilter(''); }} className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium transition">Clear Filters</button>
                   </div>
                 </div>
               </div>
@@ -1299,6 +1344,7 @@ const Outing: React.FC = () => {
                   reason: '',
                   priority: 'P3',
                   eventType: '',
+                  category: 'Internal',
                   projectService: '',
                   projectName: '',
                   department: '',
@@ -1325,6 +1371,7 @@ const Outing: React.FC = () => {
                         reason: '',
                         priority: 'P3',
                         eventType: '',
+                        category: 'Internal',
                         projectService: '',
                         projectName: '',
                         department: '',
@@ -1379,18 +1426,31 @@ const Outing: React.FC = () => {
                     </div>
 
                     {/* Type */}
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1">Type</label>
-                      <select
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                        value={suggestForm.eventType}
-                        onChange={(e) => setSuggestForm({ ...suggestForm, eventType: e.target.value as EventType | '', projectService: '', projectName: '', department: '' })}
-                      >
-                        <option value="">Select Type</option>
-                        <option value="Project">Project</option>
-                        <option value="Department">Department</option>
-                        <option value="Briskolive">Briskolive</option>
-                      </select>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Type</label>
+                        <select
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                          value={suggestForm.eventType}
+                          onChange={(e) => setSuggestForm({ ...suggestForm, eventType: e.target.value as EventType | '', projectService: '', projectName: '', department: '' })}
+                        >
+                          <option value="">Select Type</option>
+                          <option value="Project">Project</option>
+                          <option value="Department">Department</option>
+                          <option value="Briskolive">Briskolive</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Category</label>
+                        <select
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                          value={suggestForm.category}
+                          onChange={(e) => setSuggestForm({ ...suggestForm, category: e.target.value as 'Internal' | 'External' })}
+                        >
+                          <option value="Internal">Internal</option>
+                          <option value="External">External</option>
+                        </select>
+                      </div>
                     </div>
 
                     {suggestForm.eventType === 'Project' && (
@@ -1504,6 +1564,7 @@ const Outing: React.FC = () => {
                             reason: '',
                             priority: 'P3',
                             eventType: '',
+                            category: 'Internal',
                             projectService: '',
                             projectName: '',
                             department: '',
@@ -1546,18 +1607,31 @@ const Outing: React.FC = () => {
                       <textarea required className="w-full border rounded-lg px-3 py-2 text-sm h-16 resize-none" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} />
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1">Type</label>
-                      <select
-                        className="w-full border rounded-lg px-3 py-2 text-sm"
-                        value={formData.eventType}
-                        onChange={e => setFormData({ ...formData, eventType: e.target.value as EventType | '', projectService: '', projectName: '', department: '' })}
-                      >
-                        <option value="">Select Type</option>
-                        <option value="Project">Project</option>
-                        <option value="Department">Department</option>
-                        <option value="Briskolive">Briskolive</option>
-                      </select>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Type</label>
+                        <select
+                          className="w-full border rounded-lg px-3 py-2 text-sm"
+                          value={formData.eventType}
+                          onChange={e => setFormData({ ...formData, eventType: e.target.value as EventType | '', projectService: '', projectName: '', department: '' })}
+                        >
+                          <option value="">Select Type</option>
+                          <option value="Project">Project</option>
+                          <option value="Department">Department</option>
+                          <option value="Briskolive">Briskolive</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Category</label>
+                        <select
+                          className="w-full border rounded-lg px-3 py-2 text-sm"
+                          value={formData.category}
+                          onChange={e => setFormData({ ...formData, category: e.target.value as 'Internal' | 'External' })}
+                        >
+                          <option value="Internal">Internal</option>
+                          <option value="External">External</option>
+                        </select>
+                      </div>
                     </div>
 
                     {formData.eventType === 'Project' && (
@@ -1689,6 +1763,12 @@ const Outing: React.FC = () => {
                       <div className="text-xs text-gray-600 font-medium mb-2 flex items-center gap-1"><Tag size={12} /> Category</div>
                       <div className="text-sm font-medium text-gray-800">
                         {selectedOuting.proposedByRole === 'HR' ? 'HR Initiative' : selectedOuting.proposedByRole === 'Management' ? 'Management Suggestion' : 'Employee Proposal'}
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-lg border">
+                      <div className="text-xs text-gray-600 font-medium mb-2 flex items-center gap-1"><Tag size={12} /> Scope</div>
+                      <div className="text-sm font-medium text-gray-800">
+                        {selectedOuting.category || 'Internal'}
                       </div>
                     </div>
                     {selectedOuting.eventType && (

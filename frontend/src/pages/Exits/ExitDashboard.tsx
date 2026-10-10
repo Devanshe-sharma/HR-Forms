@@ -453,6 +453,17 @@ const ExitDashboard: React.FC = () => {
                   Refresh
                 </Button>
               </Tooltip>
+              <Tooltip title="Find and update an existing exit record">
+                <Button
+                  variant="outlined"
+                  startIcon={<Edit sx={{ fontSize: 16 }} />}
+                  onClick={() => navigate("/exits/update")}
+                  sx={{ borderColor: "#e2e8f0", color: "#475569",
+                    borderRadius: "8px", textTransform: "none", fontWeight: 600, fontSize: "0.8rem" }}
+                >
+                  Update Record
+                </Button>
+              </Tooltip>
               <Button variant="contained" startIcon={<AddCircle />}
                 onClick={() => navigate("/new-exit")}
                 sx={{ bgcolor: "#dc2626", "&:hover": { bgcolor: "#b91c1c" },

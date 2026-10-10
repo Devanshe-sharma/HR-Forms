@@ -42,6 +42,14 @@ const OutingSchema = new Schema(
       enum: ['Project', 'Department', 'Briskolive'],
       required: false,
     },
+    // Internal (employees only) vs External (clients/vendors/public involved) —
+    // a separate axis from eventType, which describes what the event is tied to.
+    category: {
+      type: String,
+      enum: ['Internal', 'External'],
+      default: 'Internal',
+      index: true,
+    },
     projectService: {
       type: String,
       trim: true,

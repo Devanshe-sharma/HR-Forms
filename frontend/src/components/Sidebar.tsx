@@ -84,8 +84,6 @@ export default function Sidebar() {
   const [openOuting, setOpenOuting] = useState(false);
   const [openPMS, setOpenPMS] = useState(false);
   const [openRecruitment, setOpenRecruitment] = useState(false);
-  const [openExit, setOpenExit] = useState(false);
-  const [openOnboarding, setOpenOnboarding] = useState(false);
   const [openEscalations, setOpenEscalations] = useState(false);
 
   const isActive = (path: string): boolean => {
@@ -136,22 +134,6 @@ export default function Sidebar() {
       '/applicants'
     ].some(path => isActive(path));
 
-    // Check if any exit sub-item is active
-    const exitActive = [
-      '/exits',
-      '/exits/dashboard',
-      '/new-exit',
-      '/exits/update'
-    ].some(path => isActive(path));
-
-    // Check if any onboarding sub-item is active
-    const onboardingActive = [
-      '/onboarding',
-      '/onboarding/dashboard',
-      '/new-onboarding',
-      '/onboarding/update'
-    ].some(path => isActive(path));
-
     // Check if any escalations/grievances sub-item is active
     const escalationsActive = ['/escalations', '/grievances'].some(path => isActive(path));
 
@@ -160,8 +142,6 @@ export default function Sidebar() {
     setOpenOuting(outingActive);
     setOpenPMS(pmsActive);
     setOpenRecruitment(recruitmentActive);
-    setOpenExit(exitActive);
-    setOpenOnboarding(onboardingActive);
     setOpenEscalations(escalationsActive);
   }, [location.pathname, location.search]);
 
@@ -187,30 +167,8 @@ export default function Sidebar() {
       ],
     },
 
-    {
-      text: 'Onboarding',
-      icon: <BusinessCenterIcon />,
-      onClick: () => setOpenOnboarding(p => !p),
-      open: openOnboarding,
-      pageKey: 'onboarding',
-      subItems: [
-        { to: '/onboarding/dashboard', text: 'Onboarding Dashboard', icon: <DashboardIcon />, pageKey: 'onboarding.dashboard' },
-        { to: '/new-onboarding', text: 'New Onboarding', icon: <PersonAddAltIcon />, pageKey: 'onboarding.new' },
-        { to: '/onboarding/update', text: 'Update Onboarding', icon: <EditNoteIcon />, pageKey: 'onboarding.update' },
-      ],
-    },
-    {
-      text: 'Exit',
-      icon: <ExitToAppIcon />,
-      onClick: () => setOpenExit(p => !p),
-      open: openExit,
-      pageKey: 'exit',
-      subItems: [
-        { to: '/exits', text: 'Exit Dashboard', icon: <DashboardIcon />, pageKey: 'exit.dashboard' },
-        { to: '/new-exit', text: 'New Exit', icon: <PersonAddAltIcon />, pageKey: 'exit.new' },
-        { to: '/exits/update', text: 'Update Exit', icon: <EditNoteIcon />, pageKey: 'exit.update' },
-      ],
-    },
+    { to: '/onboarding/dashboard', text: 'Onboarding', icon: <BusinessCenterIcon />, pageKey: 'onboarding.dashboard' },
+    { to: '/exits', text: 'Exit', icon: <ExitToAppIcon />, pageKey: 'exit.dashboard' },
     { to: '/dept-designation-master', text: 'Dept & Designation Master', icon: <BusinessCenterIcon />, pageKey: 'deptDesignationMaster' },
 
 

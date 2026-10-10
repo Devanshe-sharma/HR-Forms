@@ -117,6 +117,11 @@ const onboardingSchema = new mongoose.Schema(
       ],
       default: "",
     },
+    officeLocation: {
+      type: String,
+      enum: ["", "Noida Sector 63", "Noida Sector 80"],
+      default: "",
+    },
     nameOfBuddy: String,
     empId: { type: String, default: "" },
 

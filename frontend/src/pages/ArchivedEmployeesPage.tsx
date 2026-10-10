@@ -22,6 +22,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
+import { FiltersMenuButton, FavoritesMenuButton } from '../components/FilterBar';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types — sourced from Onboarding's employee-master endpoint, the single
@@ -299,26 +300,34 @@ const ArchivedEmployeesPage: React.FC = () => {
                 }}
               />
 
-              <TextField select label="Department" size="small"
-                value={filterDept}
-                onChange={e => { setFilterDept(e.target.value); setFilterDesig(''); }}
-                sx={filterSx}
-              >
-                <MenuItem value="" sx={{ fontSize: '0.78rem', color: 'text.secondary' }}>All Departments</MenuItem>
-                {departments.map(d => (
-                  <MenuItem key={d} value={d} sx={{ fontSize: '0.78rem' }}>{d}</MenuItem>
-                ))}
-              </TextField>
+              <FiltersMenuButton activeCount={(filterDept ? 1 : 0) + (filterDesig ? 1 : 0)}>
+                <TextField select label="Department" size="small" fullWidth
+                  value={filterDept}
+                  onChange={e => { setFilterDept(e.target.value); setFilterDesig(''); }}
+                  sx={{ ...filterSx, flex: 'unset', minWidth: 'unset', width: '100%' }}
+                >
+                  <MenuItem value="" sx={{ fontSize: '0.78rem', color: 'text.secondary' }}>All Departments</MenuItem>
+                  {departments.map(d => (
+                    <MenuItem key={d} value={d} sx={{ fontSize: '0.78rem' }}>{d}</MenuItem>
+                  ))}
+                </TextField>
 
-              <TextField select label="Designation" size="small"
-                value={filterDesig} onChange={e => setFilterDesig(e.target.value)}
-                sx={filterSx}
-              >
-                <MenuItem value="" sx={{ fontSize: '0.78rem', color: 'text.secondary' }}>All Designations</MenuItem>
-                {designations.map(d => (
-                  <MenuItem key={d} value={d} sx={{ fontSize: '0.78rem' }}>{d}</MenuItem>
-                ))}
-              </TextField>
+                <TextField select label="Designation" size="small" fullWidth
+                  value={filterDesig} onChange={e => setFilterDesig(e.target.value)}
+                  sx={{ ...filterSx, flex: 'unset', minWidth: 'unset', width: '100%' }}
+                >
+                  <MenuItem value="" sx={{ fontSize: '0.78rem', color: 'text.secondary' }}>All Designations</MenuItem>
+                  {designations.map(d => (
+                    <MenuItem key={d} value={d} sx={{ fontSize: '0.78rem' }}>{d}</MenuItem>
+                  ))}
+                </TextField>
+              </FiltersMenuButton>
+
+              <FavoritesMenuButton
+                storageKey="filters:archived-employees"
+                currentState={{ search, filterDept, filterDesig }}
+                onApply={(s) => { setSearch(s.search ?? ''); setFilterDept(s.filterDept ?? ''); setFilterDesig(s.filterDesig ?? ''); }}
+              />
 
               <Stack direction="row" alignItems="center" spacing={0.75} sx={{ ml: { sm: 'auto' } }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>

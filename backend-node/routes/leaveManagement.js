@@ -698,9 +698,19 @@ router.put('/requests/:id/approve', authenticate, asyncHandler(async (req, res) 
   const fromStatus = request.status;
   let nextStatus;
 
+  // Whether this is a genuine manager-level decision (-> second_approval for
+  // manager_then_hr) vs. a true HR override that finalizes immediately
+  // hinges on whether the caller IS the reporting manager — not on their
+  // platform role. Plenty of managers in this org log in with an Admin/HR
+  // account (e.g. Tanisha Sharma), so checking `caller.isHr` first was
+  // wrongly treating their own manager-level approval as an HR override
+  // and collapsing the two-step flow to one step. HR/Admin who are NOT the
+  // reporting manager still get the override, same as before.
+  const { isReportingManager } = callerRelation(request, caller);
+
   if (request.status === 'to_approve') {
     request.managerDecision = { by, at: new Date(), comment };
-    if (leaveType.approvalMode === 'manager_then_hr' && !caller.isHr) {
+    if (leaveType.approvalMode === 'manager_then_hr' && isReportingManager) {
       nextStatus = 'second_approval';
     } else {
       nextStatus = 'approved';

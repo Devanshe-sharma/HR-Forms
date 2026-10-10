@@ -2,7 +2,6 @@ import React from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { usePageVisibility } from '../contexts/PageVisibilityContext';
-import AiAssistant from './ai/AiAssistant';
 
 function ProtectedRoute() {
   const { user, isAuthenticated, isLoading } = useAuth();
@@ -31,12 +30,7 @@ function ProtectedRoute() {
     return <Navigate to="/profile" replace />;
   }
 
-  return (
-    <>
-      <Outlet />
-      {location.pathname !== '/force-change-password' && <AiAssistant />}
-    </>
-  );
+  return <Outlet />;
 }
 
 export default ProtectedRoute;

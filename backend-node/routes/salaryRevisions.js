@@ -461,6 +461,32 @@ router.get('/history/:employeeCode', authenticate, asyncHandler(async (req, res)
   res.status(200).json({ success: true, data: revisions });
 }));
 
+// ─── GET /api/salary-revisions/pip-status?ids=a,b,c ──────────────────────────
+// Batch lookup for the Employees List cards — which of these employeeCodes
+// (Onboarding _ids) currently have an open, management-approved PIP. Gated
+// to the same roles allowed to see salary/PIP data elsewhere in this file.
+router.get('/pip-status', authenticate, requireRole(FULL_ACCESS_ROLES), asyncHandler(async (req, res) => {
+  const idsParam = req.query.ids;
+  if (!idsParam) return res.json({ success: true, data: {} });
+
+  const ids = String(idsParam).split(',').map((s) => s.trim()).filter(Boolean);
+  if (!ids.length) return res.json({ success: true, data: {} });
+
+  const openPip = await SalaryRevision.find({
+    employeeCode: { $in: ids },
+    stage: 'on_hold',
+    'managementDecision.pipApproved': true,
+    pipOutcome: null,
+  }).select('employeeCode reviewDate').lean();
+
+  const data = {};
+  openPip.forEach((r) => {
+    data[r.employeeCode] = { status: 'ongoing', reviewDate: r.reviewDate };
+  });
+
+  res.json({ success: true, data });
+}));
+
 // ─── GET /api/salary-revisions/:id ───────────────────────────────────────────
 
 router.get('/:id', authenticate, requireRole([...FULL_ACCESS_ROLES, 'Manager']), asyncHandler(async (req, res) => {

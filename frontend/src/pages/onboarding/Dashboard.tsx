@@ -49,6 +49,7 @@ interface OnboardingRow {
   dept?: string;
   designation?: string;
   employeeCategory?: string;
+  officeLocation?: string;
   joiningStatus?: string;
   exitStatus?: string;
   fmsStatus?: string;
@@ -266,6 +267,7 @@ const OnboardingDashboard: React.FC = () => {
     { key: "joiningStatus", label: "Joining Status" },
     { key: "fmsStatus", label: "FMS Status" },
     { key: "employeeCategory", label: "Employee Category" },
+    { key: "officeLocation", label: "Office Location" },
   ];
   const groupedFiltered = useMemo(() => {
     if (!groupByField) return null;
@@ -498,6 +500,17 @@ const OnboardingDashboard: React.FC = () => {
                     borderRadius: "8px", textTransform: "none", fontWeight: 600, fontSize: "0.8rem" }}
                 >
                   Refresh
+                </Button>
+              </Tooltip>
+              <Tooltip title="Find and update an existing onboarding record">
+                <Button
+                  variant="outlined"
+                  startIcon={<Edit sx={{ fontSize: 16 }} />}
+                  onClick={() => navigate("/onboarding/update")}
+                  sx={{ borderColor: "#e2e8f0", color: "#475569",
+                    borderRadius: "8px", textTransform: "none", fontWeight: 600, fontSize: "0.8rem" }}
+                >
+                  Update Record
                 </Button>
               </Tooltip>
               <Button variant="contained" startIcon={<AddCircle />}
@@ -815,6 +828,7 @@ const OnboardingDashboard: React.FC = () => {
                   <DetailField label="Department" value={viewModal.row.dept} />
                   <DetailField label="Designation" value={viewModal.row.designation} />
                   <DetailField label="Category" value={viewModal.row.employeeCategory} />
+                  <DetailField label="Office Location" value={viewModal.row.officeLocation} />
                   <DetailField label="Exit Status" value={viewModal.row.exitStatus} />
                   <DetailField label="Annual CTC"
                     value={viewModal.row.annualCtc

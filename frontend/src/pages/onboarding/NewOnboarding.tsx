@@ -48,6 +48,7 @@ const schema = z.object({
     "Senior Management",
     "Apex Management (C Level)",
   ]).optional(),
+  officeLocation: z.enum(["Noida Sector 63", "Noida Sector 80"]).optional(),
   remarks: z.string().optional(),
 
   // Salary
@@ -662,6 +663,14 @@ const NewOnboarding: React.FC = () => {
                       {MANAGEMENT_LEVEL_OPTIONS.map((lvl) => (
                         <option key={lvl} value={lvl}>{lvl}</option>
                       ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Office Location</label>
+                    <select {...register("officeLocation")} className={inputClass}>
+                      <option value="">Select office location</option>
+                      <option value="Noida Sector 63">Noida Sector 63</option>
+                      <option value="Noida Sector 80">Noida Sector 80</option>
                     </select>
                   </div>
                   <div>

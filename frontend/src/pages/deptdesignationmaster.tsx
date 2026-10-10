@@ -19,6 +19,7 @@ import {
 } from '@mui/icons-material';
 import Navbar from '../components/Navbar';
 import Sidebar from '../components/Sidebar';
+import { FiltersMenuButton, FavoritesMenuButton } from '../components/FilterBar';
 
 const BRAND_BLUE = '#1976d2';
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
@@ -484,7 +485,7 @@ export default function DeptDesignationMaster() {
         </Box>
 
         {/* Filter row */}
-        <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
           <TextField
             size="small"
             placeholder="Search department, designation, manager…"
@@ -499,20 +500,29 @@ export default function DeptDesignationMaster() {
               ),
             }}
           />
-          <FormControl size="small" sx={{ minWidth: 130 }}>
-            <InputLabel>Type</InputLabel>
-            <Select value={filterType} label="Type" onChange={e => setFilterType(e.target.value)}>
-              <MenuItem value="">All types</MenuItem>
-              {DEPT_TYPES.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 170 }}>
-            <InputLabel>Level</InputLabel>
-            <Select value={filterLevel} label="Level" onChange={e => setFilterLevel(e.target.value)}>
-              <MenuItem value="">All levels</MenuItem>
-              {MGMT_LEVELS.map(l => <MenuItem key={l} value={l}>{l}</MenuItem>)}
-            </Select>
-          </FormControl>
+
+          <FiltersMenuButton activeCount={(filterType ? 1 : 0) + (filterLevel ? 1 : 0)}>
+            <FormControl size="small" fullWidth>
+              <InputLabel>Type</InputLabel>
+              <Select value={filterType} label="Type" onChange={e => setFilterType(e.target.value)}>
+                <MenuItem value="">All types</MenuItem>
+                {DEPT_TYPES.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <FormControl size="small" fullWidth>
+              <InputLabel>Level</InputLabel>
+              <Select value={filterLevel} label="Level" onChange={e => setFilterLevel(e.target.value)}>
+                <MenuItem value="">All levels</MenuItem>
+                {MGMT_LEVELS.map(l => <MenuItem key={l} value={l}>{l}</MenuItem>)}
+              </Select>
+            </FormControl>
+          </FiltersMenuButton>
+
+          <FavoritesMenuButton
+            storageKey="filters:dept-designation-master"
+            currentState={{ search, filterType, filterLevel }}
+            onApply={(s) => { setSearch(s.search ?? ''); setFilterType(s.filterType ?? ''); setFilterLevel(s.filterLevel ?? ''); }}
+          />
         </Box>
 
         {/* Table */}

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Mail, Phone, ExternalLink, Search } from 'lucide-react';
+import { FiltersMenuButton, FavoritesMenuButton } from '../../components/FilterBar';
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
 
@@ -86,14 +87,22 @@ export default function ReferralsTab() {
                 className="pl-9 pr-3 py-2 border rounded-lg text-sm w-72"
               />
             </div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="border rounded-lg text-sm px-3 py-2"
-            >
-              <option value="">All statuses</option>
-              {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
+            <FiltersMenuButton activeCount={statusFilter ? 1 : 0}>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="border rounded-lg text-sm px-3 py-2 w-full"
+              >
+                <option value="">All statuses</option>
+                {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </FiltersMenuButton>
+
+            <FavoritesMenuButton
+              storageKey="filters:referrals"
+              currentState={{ search, statusFilter }}
+              onApply={(s) => { setSearch(s.search ?? ''); setStatusFilter(s.statusFilter ?? ''); }}
+            />
           </div>
 
           <div className="bg-white rounded-xl shadow overflow-x-auto">

@@ -53,7 +53,7 @@ const FilterPillRow: React.FC<{
   active: string;
   onChange: (key: string) => void;
   color?: string;
-}> = ({ options, active, onChange, color = "#4f46e5" }) => (
+}> = ({ options, active, onChange, color = "#16a34a" }) => (
   <Box sx={{ display: "flex", border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden" }}>
     {options.map(({ key, label }) => (
       <button
@@ -190,7 +190,7 @@ export const ModuleKpiRow: React.FC<{ moduleKey: string; label: string }> = ({ m
 
       {loading || !data ? (
         <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
-          <CircularProgress size={26} sx={{ color: "#4f46e5" }} />
+          <CircularProgress size={26} sx={{ color: "#16a34a" }} />
         </Box>
       ) : (
         <>

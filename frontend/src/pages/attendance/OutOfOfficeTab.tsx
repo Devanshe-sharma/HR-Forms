@@ -11,6 +11,7 @@ import {
 import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { Employee, API, EMP_API, ACCENT, TH, TD, ELLIPSIS, fmtDate, fmtTime24, fmtDateTime24, fmtDayMonth, Toast, DetailRow } from './shared';
+import { FiltersMenuButton, FavoritesMenuButton } from '../../components/FilterBar';
 
 interface CcEmployee { employeeId: string; name: string; email: string }
 
@@ -184,26 +185,35 @@ function OutOfOfficeDashboard({ records, loading, onAdd }: {
           InputProps={{ startAdornment: <SearchIcon sx={{ fontSize: 18, color: 'text.secondary', mr: 0.75 }} /> }}
           sx={{ minWidth: 240, bgcolor: 'white' }}
         />
-        <TextField
-          type="date"
-          size="small"
-          label="From"
-          value={dateFrom}
-          onChange={e => setDateFrom(e.target.value)}
-          InputLabelProps={{ shrink: true }}
-          inputProps={{ max: dateTo || undefined }}
-          sx={{ bgcolor: 'white' }}
+        <FiltersMenuButton activeCount={(dateFrom ? 1 : 0) + (dateTo ? 1 : 0)}>
+          <TextField
+            type="date"
+            size="small"
+            label="From"
+            fullWidth
+            value={dateFrom}
+            onChange={e => setDateFrom(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            inputProps={{ max: dateTo || undefined }}
+          />
+          <TextField
+            type="date"
+            size="small"
+            label="To"
+            fullWidth
+            value={dateTo}
+            onChange={e => setDateTo(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+            inputProps={{ min: dateFrom || undefined }}
+          />
+        </FiltersMenuButton>
+
+        <FavoritesMenuButton
+          storageKey="filters:out-of-office"
+          currentState={{ search, dateFrom, dateTo }}
+          onApply={(s) => { setSearch(s.search ?? ''); setDateFrom(s.dateFrom ?? ''); setDateTo(s.dateTo ?? ''); }}
         />
-        <TextField
-          type="date"
-          size="small"
-          label="To"
-          value={dateTo}
-          onChange={e => setDateTo(e.target.value)}
-          InputLabelProps={{ shrink: true }}
-          inputProps={{ min: dateFrom || undefined }}
-          sx={{ bgcolor: 'white' }}
-        />
+
         {hasActiveFilters && (
           <Button size="small" startIcon={<RestartAltIcon />} onClick={resetFilters}
             sx={{ textTransform: 'none', fontWeight: 600, color: 'text.secondary' }}>

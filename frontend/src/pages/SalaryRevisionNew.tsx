@@ -27,6 +27,7 @@ import {
 import axios from 'axios';
 import Sidebar from '../components/Sidebar';
 import Navbar  from '../components/Navbar';
+import { FiltersMenuButton, FavoritesMenuButton } from '../components/FilterBar';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1492,7 +1493,7 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onOpenCtc
         </Box>
       )}
 
-      {mainTab!=='history'&&(
+      {mainTab!=='history'&&mainTab!=='mail'&&(
         <Box sx={{ mb:2 }}>
           <Box sx={{ display:'flex', alignItems:'center', gap:1, flexWrap:'wrap',
             bgcolor:'var(--surface-1)', borderRadius:1.5, px:1.5, py:0.75 }}>
@@ -1510,28 +1511,44 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onOpenCtc
             <TextField size="small" placeholder="Search name…" value={search}
               onChange={e=>setSearch(e.target.value)} sx={{ minWidth:170, ...compactFieldSx }}/>
 
-            <FormControl size="small" sx={{ minWidth:140, ...compactFieldSx }}>
-              <Select value={dept} onChange={e=>setDept(e.target.value)}>
-                {depts.map(d=><MenuItem key={d} value={d} sx={{ fontSize:12 }}>{d==='All'?'All Departments':d}</MenuItem>)}
-              </Select>
-            </FormControl>
+            <FiltersMenuButton activeCount={(dept!=='All'?1:0)+(status!=='All'?1:0)+(stageFilter!=='All'?1:0)}>
+              <FormControl size="small" fullWidth>
+                <InputLabel sx={{ fontSize:12 }}>Department</InputLabel>
+                <Select value={dept} label="Department" onChange={e=>setDept(e.target.value)} sx={{ fontSize:12 }}>
+                  {depts.map(d=><MenuItem key={d} value={d} sx={{ fontSize:12 }}>{d==='All'?'All Departments':d}</MenuItem>)}
+                </Select>
+              </FormControl>
 
-            <FormControl size="small" sx={{ minWidth:150, ...compactFieldSx }}>
-              <Select value={status} onChange={e=>setStatus(e.target.value)}>
-                {[['All','All Statuses'],['not_yet_due','Not Yet Due'],['pending','Pending'],
-                  ['due','Due'],['overdue','Overdue'],['done','Done'],['done_delayed','Done Delayed'],
-                ].map(([v,l])=><MenuItem key={v} value={v} sx={{ fontSize:12 }}>{l}</MenuItem>)}
-              </Select>
-            </FormControl>
+              <FormControl size="small" fullWidth>
+                <InputLabel sx={{ fontSize:12 }}>Status</InputLabel>
+                <Select value={status} label="Status" onChange={e=>setStatus(e.target.value)} sx={{ fontSize:12 }}>
+                  {[['All','All Statuses'],['not_yet_due','Not Yet Due'],['pending','Pending'],
+                    ['due','Due'],['overdue','Overdue'],['done','Done'],['done_delayed','Done Delayed'],
+                  ].map(([v,l])=><MenuItem key={v} value={v} sx={{ fontSize:12 }}>{l}</MenuItem>)}
+                </Select>
+              </FormControl>
 
-            <FormControl size="small" sx={{ minWidth:170, ...compactFieldSx }}>
-              <Select value={stageFilter} onChange={e=>setStageFilter(e.target.value as typeof stageFilter)}>
-                {[['All','All Stages'],['no_revision','No Revision'],
-                  ['pending_manager','Pending Manager'],['pending_management','Pending Management'],
-                  ['pending_hr','Pending HR'],['on_hold','On Hold'],['completed','Completed'],
-                ].map(([v,l])=><MenuItem key={v} value={v} sx={{ fontSize:12 }}>{l}</MenuItem>)}
-              </Select>
-            </FormControl>
+              <FormControl size="small" fullWidth>
+                <InputLabel sx={{ fontSize:12 }}>Stage</InputLabel>
+                <Select value={stageFilter} label="Stage" onChange={e=>setStageFilter(e.target.value as typeof stageFilter)} sx={{ fontSize:12 }}>
+                  {[['All','All Stages'],['no_revision','No Revision'],
+                    ['pending_manager','Pending Manager'],['pending_management','Pending Management'],
+                    ['pending_hr','Pending HR'],['on_hold','On Hold'],['completed','Completed'],
+                  ].map(([v,l])=><MenuItem key={v} value={v} sx={{ fontSize:12 }}>{l}</MenuItem>)}
+                </Select>
+              </FormControl>
+            </FiltersMenuButton>
+
+            <FavoritesMenuButton
+              storageKey="filters:salary-revision-action"
+              currentState={{ search, dept, status, stageFilter, period, selFY, selQ, customFrom, customTo }}
+              onApply={(s)=>{
+                setSearch(s.search ?? ''); setDept(s.dept ?? 'All'); setStatus(s.status ?? 'All');
+                setStageFilter(s.stageFilter ?? 'All'); setPeriod(s.period ?? 'quarter');
+                setSelFY(s.selFY ?? fiscalYearOf(now)); setSelQ(s.selQ ?? fiscalQuarterOf(now));
+                setCustomFrom(s.customFrom ?? ''); setCustomTo(s.customTo ?? '');
+              }}
+            />
           </Box>
 
           {mainTab==='action'&&(
@@ -1587,15 +1604,25 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onOpenCtc
           bgcolor:'var(--surface-1)', borderRadius:1.5, px:1.5, py:0.75 }}>
           <TextField size="small" placeholder="Search name…" value={search}
             onChange={e=>setSearch(e.target.value)} sx={{ minWidth:170, ...compactFieldSx }}/>
-          <FormControl size="small" sx={{ minWidth:140, ...compactFieldSx }}>
-            <Select value={dept} onChange={e=>setDept(e.target.value)}>
-              {depts.map(d=><MenuItem key={d} value={d} sx={{ fontSize:12 }}>{d==='All'?'All Departments':d}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <FormControlLabel
-            control={<Checkbox size="small" checked={ppoOnly} onChange={e=>setPpoOnly(e.target.checked)}
-              sx={{ color:'var(--text-accent)', '&.Mui-checked':{ color:'var(--text-accent)' } }}/>}
-            label={<Typography fontSize={12} color="var(--text-secondary)">PPO conversions only</Typography>}/>
+
+          <FiltersMenuButton activeCount={(dept!=='All'?1:0)+(ppoOnly?1:0)}>
+            <FormControl size="small" fullWidth>
+              <InputLabel sx={{ fontSize:12 }}>Department</InputLabel>
+              <Select value={dept} label="Department" onChange={e=>setDept(e.target.value)} sx={{ fontSize:12 }}>
+                {depts.map(d=><MenuItem key={d} value={d} sx={{ fontSize:12 }}>{d==='All'?'All Departments':d}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <FormControlLabel
+              control={<Checkbox size="small" checked={ppoOnly} onChange={e=>setPpoOnly(e.target.checked)}
+                sx={{ color:'var(--text-accent)', '&.Mui-checked':{ color:'var(--text-accent)' } }}/>}
+              label={<Typography fontSize={12} color="var(--text-secondary)">PPO conversions only</Typography>}/>
+          </FiltersMenuButton>
+
+          <FavoritesMenuButton
+            storageKey="filters:salary-revision-history"
+            currentState={{ search, dept, ppoOnly }}
+            onApply={(s)=>{ setSearch(s.search ?? ''); setDept(s.dept ?? 'All'); setPpoOnly(!!s.ppoOnly); }}
+          />
         </Box>
       )}
 
@@ -1967,11 +1994,20 @@ function SentMailHistory() {
       <Box sx={{ display:'flex', gap:1.5, mb:2, flexWrap:'wrap' }}>
         <TextField size="small" placeholder="Search employee, recipient, or subject…" value={search}
           onChange={e=>setSearch(e.target.value)} sx={{ minWidth: 260 }}/>
-        <FormControl size="small" sx={{ minWidth: 200 }}>
-          <Select value={typeFilter} onChange={e=>setTypeFilter(e.target.value)}>
-            {types.map(t => <MenuItem key={t} value={t}>{t === 'All' ? 'All mail types' : (MAIL_TYPE_LABEL[t] || t)}</MenuItem>)}
-          </Select>
-        </FormControl>
+
+        <FiltersMenuButton activeCount={typeFilter!=='All'?1:0}>
+          <FormControl size="small" fullWidth>
+            <Select value={typeFilter} onChange={e=>setTypeFilter(e.target.value)}>
+              {types.map(t => <MenuItem key={t} value={t}>{t === 'All' ? 'All mail types' : (MAIL_TYPE_LABEL[t] || t)}</MenuItem>)}
+            </Select>
+          </FormControl>
+        </FiltersMenuButton>
+
+        <FavoritesMenuButton
+          storageKey="filters:salary-revision-mail"
+          currentState={{ search, typeFilter }}
+          onApply={(s)=>{ setSearch(s.search ?? ''); setTypeFilter(s.typeFilter ?? 'All'); }}
+        />
       </Box>
 
       <Box sx={{ bgcolor:'white', borderRadius:2, border:'1px solid var(--border)', overflow:'hidden' }}>

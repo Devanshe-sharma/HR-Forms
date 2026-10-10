@@ -24,6 +24,7 @@ import {
   CalendarMonthOutlined as CalendarIcon,
   DownloadOutlined as DownloadIcon,
   Close as CloseIcon,
+  WarningAmberOutlined as PipIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -52,6 +53,9 @@ interface EmployeeEntry {
   exit_status: string;
   is_current: boolean;
   is_exited: boolean;
+  // Populated separately from /salary-revisions/pip-status, only for
+  // Admin/HR/Management (see PIP_VISIBLE_ROLES) — absent for everyone else.
+  pipStatus?: 'ongoing' | null;
 }
 
 type DateMode = 'all' | 'quarter' | 'year' | 'custom';
@@ -823,7 +827,25 @@ const EmployeesPage: React.FC = () => {
         if (!res.ok) throw new Error(`HTTP ${res.status} — ${res.statusText}`);
         const data = await res.json();
         const all: EmployeeEntry[] = data?.data?.employees ?? [];
-        setEntries(all.filter(e => e.is_current));
+        const current = all.filter(e => e.is_current);
+        setEntries(current);
+
+        // PIP status is sensitive — fetched only for roles allowed to see
+        // it (the backend route also enforces this ACL) — and chained
+        // right after, in the same load(), rather than a separate effect
+        // keyed on entries.length: React 18 StrictMode double-invokes this
+        // effect in dev, and a second employee-master response landing
+        // after a split-out PIP-merge effect would silently wipe it out.
+        if (current.length && hasAnyRole(['Admin', 'HR', 'Management'])) {
+          try {
+            const ids = current.map(e => e._id).join(',');
+            const pipRes = await axios.get(`${API_BASE}/salary-revisions/pip-status`, { params: { ids } });
+            const map: Record<string, { status: 'ongoing' }> = pipRes.data?.data ?? {};
+            setEntries(current.map(e => ({ ...e, pipStatus: map[e._id]?.status ?? null })));
+          } catch {
+            // non-critical — cards just render without the badge
+          }
+        }
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to load employees');
       } finally {
@@ -1010,6 +1032,11 @@ const EmployeesPage: React.FC = () => {
         </Box>
 
         <Stack direction="row" flexWrap="wrap" sx={{ gap: '5px', mb: 1.75 }}>
+          {emp.pipStatus === 'ongoing' && (
+            <Tooltip title="Currently on an active Performance Improvement Plan" arrow>
+              <Chip icon={<PipIcon />} label="On PIP" size="small" sx={chipSx(P.rose, isLight)} />
+            </Tooltip>
+          )}
           {emp.designation && (
             <Tooltip title={`Designation: ${emp.designation}`} arrow>
               <Chip icon={<RoleIcon />} label={emp.designation} size="small" sx={chipSx(P.gray, isLight)} />

@@ -17,6 +17,9 @@ const { getEmployeeMasterList } = require('../utils/employeeMaster');
 const { getEmployeeSalaryList } = require('../utils/employeeSalary');
 const Escalation = require('../models/Escalation');
 const AttendancePunch = require('../models/AttendancePunch');
+const HiringRequisition = require('../models/HiringRequisition');
+const Onboarding = require('../models/onboardingModel');
+const Exit = require('../models/exitModel');
 const { nameForCode } = require('../utils/attendanceEmployees');
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -85,6 +88,37 @@ router.get(
   asyncHandler(async (req, res) => {
     const data = await Escalation.find().sort({ createdAt: -1 });
     res.json({ success: true, data });
+  })
+);
+
+// GET /api/external/scores — x-api-key: <EXTERNAL_SCORES_API_KEY>
+// FMS scoring for Recruitment (Hiring Requisitions), Onboarding, and Exit,
+// combined into one response under one key — same fields each dashboard
+// itself uses for checklist progress/health. Field naming is NOT consistent
+// between recruitment and the other two: Hiring Requisition uses
+// snake_case (fms_score, total_tasks, ...), Onboarding/Exit use camelCase
+// (fmsScore, totalTasks, ...) — that's each model's own existing
+// convention, not something unified here. Exit has no empId field — link
+// back to Onboarding by name if needed.
+router.get(
+  '/scores',
+  requireApiKey('EXTERNAL_SCORES_API_KEY'),
+  asyncHandler(async (req, res) => {
+    const [recruitment, onboarding, exit] = await Promise.all([
+      HiringRequisition.find()
+        .select('serial_no designation hiring_dept hiring_status fmsStatus fms_score total_tasks tasks_due tasks_overdue done_in_time done_but_delayed not_yet_due closed_at')
+        .sort({ serial_no: 1 })
+        .lean(),
+      Onboarding.find()
+        .select('empId name employeeCategory joiningStatus fmsStatus fmsScore totalTasks tasksDue tasksOverdue doneInTime doneButDelayed notYetDue')
+        .sort({ name: 1 })
+        .lean(),
+      Exit.find()
+        .select('name exitStatus exitType fmsStatus fmsScore totalTasks tasksDue tasksOverdue doneInTime doneButDelayed notYetDue')
+        .sort({ name: 1 })
+        .lean(),
+    ]);
+    res.json({ success: true, data: { recruitment, onboarding, exit } });
   })
 );
 

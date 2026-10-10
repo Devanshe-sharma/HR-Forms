@@ -15,6 +15,7 @@ import axios from 'axios';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
 import { useAuth } from '../contexts/AuthContext';
+import { FiltersMenuButton, FavoritesMenuButton } from '../components/FilterBar';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -359,20 +360,29 @@ function DashboardView({ records, employees, loading, onAdd, onSelect }: {
       <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
         <TextField size="small" placeholder="Search case #, name, or description…" value={search}
           onChange={e => setSearch(e.target.value)} sx={{ minWidth: 200 }} InputProps={{ sx: { fontSize: 13 } }} />
-        <FormControl size="small" sx={{ minWidth: 170 }}>
-          <InputLabel sx={{ fontSize: 12 }}>Mode</InputLabel>
-          <Select value={mode} label="Mode" onChange={e => setMode(e.target.value)} sx={{ fontSize: 12 }}>
-            <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
-            {MODE_OPTIONS.map(o => <MenuItem key={o.value} value={o.value} sx={{ fontSize: 12 }}>{o.label}</MenuItem>)}
-          </Select>
-        </FormControl>
-        <FormControl size="small" sx={{ minWidth: 200 }}>
-          <InputLabel sx={{ fontSize: 12 }}>Category</InputLabel>
-          <Select value={category} label="Category" onChange={e => setCategory(e.target.value)} sx={{ fontSize: 12 }}>
-            <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
-            {CATEGORIES.map(c => <MenuItem key={c.code} value={c.code} sx={{ fontSize: 12 }}>{c.code} — {c.name}</MenuItem>)}
-          </Select>
-        </FormControl>
+
+        <FiltersMenuButton activeCount={(mode !== 'All' ? 1 : 0) + (category !== 'All' ? 1 : 0)}>
+          <FormControl size="small" fullWidth>
+            <InputLabel sx={{ fontSize: 12 }}>Mode</InputLabel>
+            <Select value={mode} label="Mode" onChange={e => setMode(e.target.value)} sx={{ fontSize: 12 }}>
+              <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
+              {MODE_OPTIONS.map(o => <MenuItem key={o.value} value={o.value} sx={{ fontSize: 12 }}>{o.label}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small" fullWidth>
+            <InputLabel sx={{ fontSize: 12 }}>Category</InputLabel>
+            <Select value={category} label="Category" onChange={e => setCategory(e.target.value)} sx={{ fontSize: 12 }}>
+              <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
+              {CATEGORIES.map(c => <MenuItem key={c.code} value={c.code} sx={{ fontSize: 12 }}>{c.code} — {c.name}</MenuItem>)}
+            </Select>
+          </FormControl>
+        </FiltersMenuButton>
+
+        <FavoritesMenuButton
+          storageKey="filters:escalations"
+          currentState={{ search, category, mode }}
+          onApply={(s) => { setSearch(s.search ?? ''); setCategory(s.category ?? 'All'); setMode(s.mode ?? 'All'); }}
+        />
       </Box>
 
       <Box sx={{ bgcolor: 'white', borderRadius: 2, border: '1px solid #e2e8f0', overflow: 'hidden' }}>

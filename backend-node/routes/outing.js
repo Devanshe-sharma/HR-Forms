@@ -49,7 +49,7 @@ router.post('/', async (req, res) => {
 // 2. GET all outings (with filters)
 router.get('/', async (req, res) => {
   try {
-    const { status, quarter, financialYear, archived, outingName, limit = 20, page = 1 } = req.query;
+    const { status, quarter, financialYear, archived, outingName, category, limit = 20, page = 1 } = req.query;
 
     const filter = {};
 
@@ -57,6 +57,7 @@ router.get('/', async (req, res) => {
     if (quarter) filter.quarter = quarter;
     if (financialYear) filter.financialYear = financialYear;
     if (outingName) filter.topic = { $regex: outingName, $options: 'i' };
+    if (category) filter.category = category;
     if (archived === 'true') filter.status = 'Archived';
     if (archived === 'false') filter.status = { $ne: 'Archived' };
 

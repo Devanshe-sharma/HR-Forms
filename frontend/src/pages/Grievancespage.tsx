@@ -15,6 +15,7 @@ import axios from 'axios';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
 import { useAuth } from '../contexts/AuthContext';
+import { FiltersMenuButton, FavoritesMenuButton } from '../components/FilterBar';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -195,20 +196,29 @@ function DashboardView({ records, loading, isHr, onAdd, onSelect }: {
       <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
         <TextField size="small" placeholder="Search case #, name, or category…" value={search}
           onChange={e => setSearch(e.target.value)} sx={{ minWidth: 200 }} InputProps={{ sx: { fontSize: 13 } }} />
-        <FormControl size="small" sx={{ minWidth: 150 }}>
-          <InputLabel sx={{ fontSize: 12 }}>Status</InputLabel>
-          <Select value={status} label="Status" onChange={e => setStatus(e.target.value)} sx={{ fontSize: 12 }}>
-            <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
-            {STATUS_OPTIONS.map(o => <MenuItem key={o} value={o} sx={{ fontSize: 12 }}>{o}</MenuItem>)}
-          </Select>
-        </FormControl>
-        <FormControl size="small" sx={{ minWidth: 150 }}>
-          <InputLabel sx={{ fontSize: 12 }}>Severity</InputLabel>
-          <Select value={severity} label="Severity" onChange={e => setSeverity(e.target.value)} sx={{ fontSize: 12 }}>
-            <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
-            {SEVERITY_OPTIONS.map(o => <MenuItem key={o.value} value={o.value} sx={{ fontSize: 12 }}>{o.value}</MenuItem>)}
-          </Select>
-        </FormControl>
+
+        <FiltersMenuButton activeCount={(status !== 'All' ? 1 : 0) + (severity !== 'All' ? 1 : 0)}>
+          <FormControl size="small" fullWidth>
+            <InputLabel sx={{ fontSize: 12 }}>Status</InputLabel>
+            <Select value={status} label="Status" onChange={e => setStatus(e.target.value)} sx={{ fontSize: 12 }}>
+              <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
+              {STATUS_OPTIONS.map(o => <MenuItem key={o} value={o} sx={{ fontSize: 12 }}>{o}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small" fullWidth>
+            <InputLabel sx={{ fontSize: 12 }}>Severity</InputLabel>
+            <Select value={severity} label="Severity" onChange={e => setSeverity(e.target.value)} sx={{ fontSize: 12 }}>
+              <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
+              {SEVERITY_OPTIONS.map(o => <MenuItem key={o.value} value={o.value} sx={{ fontSize: 12 }}>{o.value}</MenuItem>)}
+            </Select>
+          </FormControl>
+        </FiltersMenuButton>
+
+        <FavoritesMenuButton
+          storageKey="filters:grievances"
+          currentState={{ search, status, severity }}
+          onApply={(s) => { setSearch(s.search ?? ''); setStatus(s.status ?? 'All'); setSeverity(s.severity ?? 'All'); }}
+        />
       </Box>
 
       <Box sx={{ bgcolor: 'white', borderRadius: 2, border: '1px solid #e2e8f0', overflow: 'hidden' }}>

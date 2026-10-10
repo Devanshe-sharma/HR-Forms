@@ -14,6 +14,7 @@ import axios              from 'axios';
 
 import Sidebar from '../components/Sidebar';
 import Navbar   from '../components/Navbar';
+import { FiltersMenuButton, FavoritesMenuButton } from '../components/FilterBar';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -745,20 +746,6 @@ function DashboardView({
 
       {/* ── Filters ── */}
       <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center', flexWrap: 'wrap' }}>
-        
-        <FormControl size="small" sx={{ minWidth: 200 }}>
-          <InputLabel sx={{ fontSize: 13 }}>Time Filter</InputLabel>
-          <Select
-            value={quarterFilter}
-            label="Time Filter"
-            onChange={e => setQuarterFilter(e.target.value)}
-            sx={{ fontSize: 13 }}
-          >
-            <MenuItem value="current" sx={{ fontSize: 13 }}>Last 6 Months</MenuItem>
-            <MenuItem value="all" sx={{ fontSize: 13 }}>All Employees</MenuItem>
-          </Select>
-        </FormControl>
-
         <TextField
           size="small"
           placeholder="Search by name or ID…"
@@ -766,6 +753,27 @@ function DashboardView({
           onChange={e => setSearch(e.target.value)}
           sx={{ minWidth: 200 }}
           InputProps={{ sx: { fontSize: 13 } }}
+        />
+
+        <FiltersMenuButton activeCount={quarterFilter !== 'current' ? 1 : 0}>
+          <FormControl size="small" fullWidth>
+            <InputLabel sx={{ fontSize: 13 }}>Time Filter</InputLabel>
+            <Select
+              value={quarterFilter}
+              label="Time Filter"
+              onChange={e => setQuarterFilter(e.target.value)}
+              sx={{ fontSize: 13 }}
+            >
+              <MenuItem value="current" sx={{ fontSize: 13 }}>Last 6 Months</MenuItem>
+              <MenuItem value="all" sx={{ fontSize: 13 }}>All Employees</MenuItem>
+            </Select>
+          </FormControl>
+        </FiltersMenuButton>
+
+        <FavoritesMenuButton
+          storageKey="filters:confirmations"
+          currentState={{ search, quarterFilter }}
+          onApply={(s) => { setSearch(s.search ?? ''); setQuarterFilter(s.quarterFilter ?? 'current'); }}
         />
 
         <Button

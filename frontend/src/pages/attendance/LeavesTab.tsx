@@ -14,6 +14,7 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import { LEAVE_API, ACCENT, TH, TD, fmtDate, Toast, DetailRow, ComingSoonTab } from './shared';
+import { FiltersMenuButton, FavoritesMenuButton } from '../../components/FilterBar';
 
 interface LeaveType {
   _id: string;
@@ -891,7 +892,16 @@ function ApprovalsTab({ requests, leaveTypes, summary, loading, onSelect, onAppr
           onChange={e => setSearch(e.target.value)}
           InputProps={{ startAdornment: <SearchIcon sx={{ fontSize: 18, color: 'text.secondary', mr: 0.75 }} /> }}
           sx={{ minWidth: 260, bgcolor: 'white' }} />
-        <SourceFilterSelect value={sourceFilter} onChange={setSourceFilter} />
+
+        <FiltersMenuButton activeCount={sourceFilter !== 'all' ? 1 : 0}>
+          <SourceFilterSelect value={sourceFilter} onChange={setSourceFilter} />
+        </FiltersMenuButton>
+
+        <FavoritesMenuButton
+          storageKey="filters:leaves-approvals"
+          currentState={{ search, sourceFilter }}
+          onApply={(s) => { setSearch(s.search ?? ''); setSourceFilter(s.sourceFilter ?? 'all'); }}
+        />
       </Box>
 
       <Box sx={{ bgcolor: 'white', borderRadius: 2, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
