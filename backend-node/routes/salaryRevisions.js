@@ -1,5 +1,6 @@
 const express      = require('express');
 const router       = express.Router();
+const mongoose     = require('mongoose');
 const SalaryRevision = require('../models/SalaryRevision');
 const asyncHandler = require('express-async-handler');
 const Onboarding   = require('../models/onboardingModel');
@@ -439,7 +440,19 @@ router.get('/analytics/timeliness', authenticate, requireRole(FULL_ACCESS_ROLES)
 // (employeeCode === their own Onboarding _id) even without an HR-ish role.
 
 router.get('/history/:employeeCode', authenticate, asyncHandler(async (req, res) => {
-  const revisions = await SalaryRevision.find({ employeeCode: req.params.employeeCode })
+  const { employeeCode } = req.params;
+  const onboardingId = mongoose.Types.ObjectId.isValid(employeeCode) ? employeeCode : null;
+  const onboarding = onboardingId
+    ? await Onboarding.findById(onboardingId).select('empId').lean()
+    : null;
+  const employeeCodes = [...new Set([employeeCode, onboarding?.empId].filter(Boolean))];
+  const revisionMatch = {
+    $or: [
+      { employeeCode: { $in: employeeCodes } },
+      ...(onboardingId ? [{ onboardingId }] : []),
+    ],
+  };
+  const revisions = await SalaryRevision.find(revisionMatch)
     .sort({ createdAt: -1 });
 
   if (!FULL_ACCESS_ROLES.includes(req.role)) {
@@ -462,9 +475,9 @@ router.get('/history/:employeeCode', authenticate, asyncHandler(async (req, res)
 }));
 
 // ─── GET /api/salary-revisions/pip-status?ids=a,b,c ──────────────────────────
-// Batch lookup for the Employees List cards — which of these employeeCodes
-// (Onboarding _ids) currently have an open, management-approved PIP. Gated
-// to the same roles allowed to see salary/PIP data elsewhere in this file.
+// Batch lookup for the Employees List cards — include both active and
+// historical, management-approved PIPs. `ids` may contain Onboarding _ids
+// or employee IDs because older revisions used the latter as employeeCode.
 router.get('/pip-status', authenticate, requireRole(FULL_ACCESS_ROLES), asyncHandler(async (req, res) => {
   const idsParam = req.query.ids;
   if (!idsParam) return res.json({ success: true, data: {} });
@@ -472,16 +485,26 @@ router.get('/pip-status', authenticate, requireRole(FULL_ACCESS_ROLES), asyncHan
   const ids = String(idsParam).split(',').map((s) => s.trim()).filter(Boolean);
   if (!ids.length) return res.json({ success: true, data: {} });
 
-  const openPip = await SalaryRevision.find({
-    employeeCode: { $in: ids },
-    stage: 'on_hold',
-    'managementDecision.pipApproved': true,
-    pipOutcome: null,
-  }).select('employeeCode reviewDate').lean();
+  const onboardingIds = ids.filter((id) => mongoose.Types.ObjectId.isValid(id));
+  const pipRevisions = await SalaryRevision.find({
+    $and: [
+      { 'managementDecision.pipApproved': true },
+      {
+        $or: [
+          { employeeCode: { $in: ids } },
+          ...(onboardingIds.length ? [{ onboardingId: { $in: onboardingIds } }] : []),
+        ],
+      },
+    ],
+  }).select('employeeCode onboardingId stage pipOutcome').lean();
 
   const data = {};
-  openPip.forEach((r) => {
-    data[r.employeeCode] = { status: 'ongoing', reviewDate: r.reviewDate };
+  pipRevisions.forEach((r) => {
+    const status = r.stage === 'on_hold' && !r.pipOutcome ? 'ongoing' : 'previous';
+    const employeeKeys = [r.employeeCode, r.onboardingId ? String(r.onboardingId) : null].filter(Boolean);
+    employeeKeys.forEach((key) => {
+      if (data[key]?.status !== 'ongoing' || status === 'ongoing') data[key] = { status };
+    });
   });
 
   res.json({ success: true, data });

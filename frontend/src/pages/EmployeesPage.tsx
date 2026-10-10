@@ -55,7 +55,7 @@ interface EmployeeEntry {
   is_exited: boolean;
   // Populated separately from /salary-revisions/pip-status, only for
   // Admin/HR/Management (see PIP_VISIBLE_ROLES) — absent for everyone else.
-  pipStatus?: 'ongoing' | null;
+  pipStatus?: 'ongoing' | 'previous' | null;
 }
 
 type DateMode = 'all' | 'quarter' | 'year' | 'custom';
@@ -118,8 +118,8 @@ interface EmployeeFullRecord {
 }
 
 // One past Salary Revision cycle for this employee — see
-// backend-node/models/SalaryRevision.js. Fetched by employeeCode, which is
-// kept as the Onboarding _id (same as EmployeeEntry._id here).
+// backend-node/models/SalaryRevision.js. History lookup accepts both the
+// Onboarding _id and older employee-number identifiers.
 interface SalaryRevisionHistoryItem {
   _id: string;
   previousCtc: number;
@@ -127,6 +127,10 @@ interface SalaryRevisionHistoryItem {
   applicableDate: string | null;
   stage: string;
   createdAt: string;
+  managerDecision?: { decision?: 'increment' | 'pip' | null };
+  managementDecision?: { pipApproved?: boolean | null; submittedAt?: string | null };
+  pipOutcome?: 'improved' | 'not_improved' | null;
+  pipOutcomeDate?: string | null;
 }
 
 interface ConfirmationHistoryItem {
@@ -358,9 +362,16 @@ const formatStage = (stage?: string) =>
 
 // One row in Contract History / Salary Revision History — a compact
 // date-range-or-date + amount(s) + optional status tag.
-const HistoryRow: React.FC<{ primary: string; secondary?: string; tag?: string }> = ({ primary, secondary, tag }) => (
+const HistoryRow: React.FC<{ primary: string; secondary?: string; tag?: string; details?: string[] }> = ({ primary, secondary, tag, details }) => (
   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, py: 0.75 }}>
-    <Typography sx={{ fontSize: '0.78rem', color: 'text.primary' }}>{primary}</Typography>
+    <Box sx={{ minWidth: 0 }}>
+      <Typography sx={{ fontSize: '0.78rem', color: 'text.primary' }}>{primary}</Typography>
+      {details?.map(detail => (
+        <Typography key={detail} sx={{ fontSize: '0.68rem', color: 'text.secondary', mt: 0.25 }}>
+          {detail}
+        </Typography>
+      ))}
+    </Box>
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
       {secondary && <Typography sx={{ fontSize: '0.78rem', fontWeight: 600, color: 'text.secondary' }}>{secondary}</Typography>}
       {tag && <Chip label={tag} size="small" sx={{ fontSize: '0.62rem', height: 18, bgcolor: 'action.selected' }} />}
@@ -644,7 +655,14 @@ const EmployeeDetailDialog: React.FC<{
                       <HistoryRow key={r._id}
                         primary={formatDateOnly(r.applicableDate) || formatDateOnly(r.createdAt) || '—'}
                         secondary={`${formatCtc(r.previousCtc) ?? '—'} → ${r.newCtc != null ? formatCtc(r.newCtc) : '—'}`}
-                        tag={formatStage(r.stage)}
+                        tag={r.managementDecision?.pipApproved === true
+                          ? `${formatStage(r.stage)} · ${r.stage === 'on_hold' && !r.pipOutcome ? 'On PIP' : 'Previous PIP'}`
+                          : formatStage(r.stage)}
+                        details={r.managementDecision?.pipApproved === true ? [
+                          `Revision created: ${formatDateOnly(r.createdAt) || 'Not recorded'}`,
+                          `PIP started: ${formatDateOnly(r.managementDecision.submittedAt) || 'Not recorded'}`,
+                          `Removed from PIP: ${formatDateOnly(r.pipOutcomeDate) || 'Not recorded'}`,
+                        ] : undefined}
                       />
                     ))}
                   </Stack>
@@ -778,7 +796,14 @@ const EmployeeDetailDialog: React.FC<{
                       <HistoryRow key={r._id}
                         primary={formatDateOnly(r.applicableDate) || formatDateOnly(r.createdAt) || '—'}
                         secondary={`${formatCtc(r.previousCtc) ?? '—'} → ${r.newCtc != null ? formatCtc(r.newCtc) : '—'}`}
-                        tag={formatStage(r.stage)}
+                        tag={r.managementDecision?.pipApproved === true
+                          ? `${formatStage(r.stage)} · ${r.stage === 'on_hold' && !r.pipOutcome ? 'On PIP' : 'Previous PIP'}`
+                          : formatStage(r.stage)}
+                        details={r.managementDecision?.pipApproved === true ? [
+                          `Revision created: ${formatDateOnly(r.createdAt) || 'Not recorded'}`,
+                          `PIP started: ${formatDateOnly(r.managementDecision.submittedAt) || 'Not recorded'}`,
+                          `Removed from PIP: ${formatDateOnly(r.pipOutcomeDate) || 'Not recorded'}`,
+                        ] : undefined}
                       />
                     ))}
                   </Stack>
@@ -893,10 +918,13 @@ const EmployeesPage: React.FC = () => {
         // after a split-out PIP-merge effect would silently wipe it out.
         if (current.length && hasAnyRole(['Admin', 'HR', 'Management'])) {
           try {
-            const ids = current.map(e => e._id).join(',');
+            const ids = [...new Set(current.flatMap(e => [e._id, e.employee_id]).filter(Boolean))].join(',');
             const pipRes = await axios.get(`${API_BASE}/salary-revisions/pip-status`, { params: { ids } });
-            const map: Record<string, { status: 'ongoing' }> = pipRes.data?.data ?? {};
-            setEntries(current.map(e => ({ ...e, pipStatus: map[e._id]?.status ?? null })));
+            const map: Record<string, { status: 'ongoing' | 'previous' }> = pipRes.data?.data ?? {};
+            setEntries(current.map(e => ({
+              ...e,
+              pipStatus: map[e._id]?.status ?? map[e.employee_id]?.status ?? null,
+            })));
           } catch {
             // non-critical — cards just render without the badge
           }
@@ -1089,9 +1117,19 @@ const EmployeesPage: React.FC = () => {
         </Box>
 
         <Stack direction="row" flexWrap="wrap" sx={{ gap: '5px', mb: 1.75 }}>
-          {emp.pipStatus === 'ongoing' && (
-            <Tooltip title="Currently on an active Performance Improvement Plan" arrow>
-              <Chip icon={<PipIcon />} label="On PIP" size="small" sx={chipSx(P.rose, isLight)} />
+          {emp.pipStatus && (
+            <Tooltip
+              title={emp.pipStatus === 'ongoing'
+                ? 'Currently on an active Performance Improvement Plan'
+                : 'Has a previous approved Performance Improvement Plan'}
+              arrow
+            >
+              <Chip
+                icon={<PipIcon />}
+                label={emp.pipStatus === 'ongoing' ? 'On PIP' : 'Previous PIP'}
+                size="small"
+                sx={chipSx(emp.pipStatus === 'ongoing' ? P.rose : P.gray, isLight)}
+              />
             </Tooltip>
           )}
           {emp.designation && (
