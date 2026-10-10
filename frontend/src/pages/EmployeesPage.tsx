@@ -616,8 +616,44 @@ const EmployeeDetailDialog: React.FC<{
               </Box>
             </TabPanel>
 
-            {canViewPersonal && (
+            {canViewWork && (
               <TabPanel active={tab === 1}>
+                <SectionLabel>Confirmation History</SectionLabel>
+                {confirmationHistory.length === 0 ? (
+                  <Typography sx={{ fontSize: '0.8rem', color: 'text.disabled' }}>No confirmation history recorded</Typography>
+                ) : (
+                  <Stack divider={<Divider />}>
+                    {confirmationHistory.map((h, i) => (
+                      <HistoryRow key={`${h.date || 'confirmation'}-${i}`}
+                        primary={formatDateOnly(h.date) || '—'}
+                        secondary={h.reason || h.changedByName || h.changedBy || undefined}
+                        tag={`${formatStage(h.status)}${h.monthsExtended ? ` (${h.monthsExtended} mo)` : ''}`}
+                      />
+                    ))}
+                  </Stack>
+                )}
+
+                <Divider />
+
+                <SectionLabel>Salary Revision History</SectionLabel>
+                {salaryHistory.length === 0 ? (
+                  <Typography sx={{ fontSize: '0.8rem', color: 'text.disabled' }}>No salary revisions recorded</Typography>
+                ) : (
+                  <Stack divider={<Divider />}>
+                    {salaryHistory.map(r => (
+                      <HistoryRow key={r._id}
+                        primary={formatDateOnly(r.applicableDate) || formatDateOnly(r.createdAt) || '—'}
+                        secondary={`${formatCtc(r.previousCtc) ?? '—'} → ${r.newCtc != null ? formatCtc(r.newCtc) : '—'}`}
+                        tag={formatStage(r.stage)}
+                      />
+                    ))}
+                  </Stack>
+                )}
+              </TabPanel>
+            )}
+
+            {canViewPersonal && (
+              <TabPanel active={tab === 2}>
                 <SectionLabel>Citizenship Details</SectionLabel>
                 <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2 }}>
                   <InfoField label="Citizenship" value={full?.citizenship} />
@@ -751,7 +787,7 @@ const EmployeeDetailDialog: React.FC<{
             )}
 
             {canViewPersonal && (
-              <TabPanel active={tab === 2} fill>
+              <TabPanel active={tab === 3} fill>
                 <Box sx={{
                   display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gridAutoRows: '1fr',
                   gap: 3, height: '100%', minHeight: 0,
@@ -790,7 +826,7 @@ const EmployeeDetailDialog: React.FC<{
             )}
 
             {canViewClientView && (
-              <TabPanel active={tab === 3}>
+              <TabPanel active={tab === 4}>
                 <Box sx={{ textAlign: 'center', py: 5 }}>
                   <Typography color="text.secondary" fontWeight={600} mb={0.5}>Coming soon</Typography>
                   <Typography variant="body2" color="text.disabled">
