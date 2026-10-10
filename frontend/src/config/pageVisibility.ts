@@ -35,12 +35,14 @@ export const PAGES: PageDef[] = [
   {
     key: 'recruitment',
     label: 'Recruitment',
-    paths: ['/recruitment', '/new-hiring-requisition', '/applicants', '/referrals'],
+    paths: ['/recruitment', '/new-hiring-requisition', '/applicants', '/referrals', '/offer-joining', '/timeline-history'],
     subPages: [
       { key: 'recruitment.dashboard', label: 'Recruitment Dashboard', path: '/recruitment' },
       { key: 'recruitment.newRequisition', label: 'New Requisition', path: '/new-hiring-requisition' },
       { key: 'recruitment.candidates', label: 'Candidate Management', path: '/applicants' },
       { key: 'recruitment.referrals', label: 'Referrals', path: '/referrals' },
+      { key: 'recruitment.offerJoining', label: 'Offer & Joining', path: '/offer-joining' },
+      { key: 'recruitment.timelineHistory', label: 'Timeline & History', path: '/timeline-history' },
     ],
   },
   {

@@ -1,6 +1,6 @@
 import { Fragment, useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Edit2, Eye, Plus, RefreshCw, ExternalLink } from 'lucide-react';
+import { Search, Edit2, Eye, Plus, RefreshCw, ExternalLink, Users, Share2 } from 'lucide-react';
 import dayjs from 'dayjs';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
@@ -264,6 +264,22 @@ export default function RequisitionDashboard() {
                   <ExternalLink size={16} />
                   Careers Page
                 </a>
+                <button
+                  onClick={() => navigate('/applicants')}
+                  title="Candidate Management"
+                  className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-md hover:bg-gray-100 transition"
+                >
+                  <Users size={16} />
+                  Candidate Management
+                </button>
+                <button
+                  onClick={() => navigate('/referrals')}
+                  title="Referrals"
+                  className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-md hover:bg-gray-100 transition"
+                >
+                  <Share2 size={16} />
+                  Referrals
+                </button>
                 <button
                   onClick={openNew}
                   className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition"

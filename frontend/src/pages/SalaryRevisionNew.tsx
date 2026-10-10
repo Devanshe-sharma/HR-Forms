@@ -18,7 +18,6 @@ import {
   Edit           as EditIcon,
   Delete         as DeleteIcon,
   Save           as SaveIcon,
-  ExpandMore     as ExpandMoreIcon,
   Visibility     as VisibilityIcon,
   MailOutline    as MailIcon,
   Settings       as SettingsIcon,
@@ -1068,9 +1067,6 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onOpenCtc
   const [stageEditValue, setStageEditValue] = useState<RevisionStage>('pending_manager');
   const [stageEditBusy, setStageEditBusy] = useState(false);
   const [stageEditError, setStageEditError] = useState('');
-  // Period/Year/Quarter (or the custom range) live inside a popover behind
-  // one compound "Period" button instead of three separate selects.
-  const [periodAnchorEl, setPeriodAnchorEl] = useState<HTMLElement|null>(null);
 
   // Every revision an employee has ever had, newest first (records already
   // arrive sorted that way) — NOT collapsed to just the latest, because a
@@ -1398,10 +1394,6 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onOpenCtc
     }).length,
   };
 
-  const periodLabel = period==='all' ? 'All Time'
-    : period==='custom' ? (customFrom&&customTo ? `${fmtDate(customFrom)} – ${fmtDate(customTo)}` : 'Custom Range')
-    : `Q${selQ} ${fiscalYearLabel(selFY)}`;
-
   const compactFieldSx = { bgcolor:'white', '& .MuiInputBase-root':{ height:34, fontSize:12 }, '& .MuiSelect-select':{ display:'flex', alignItems:'center' } };
 
   return (
@@ -1495,23 +1487,53 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onOpenCtc
 
       {mainTab!=='history'&&mainTab!=='mail'&&(
         <Box sx={{ mb:2 }}>
-          <Box sx={{ display:'flex', alignItems:'center', gap:1, flexWrap:'wrap',
+          <Box sx={{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:1, flexWrap:'wrap',
             bgcolor:'var(--surface-1)', borderRadius:1.5, px:1.5, py:0.75 }}>
-            {mainTab==='action'&&(
-              <Button
-                size="small" variant="outlined" onClick={e=>setPeriodAnchorEl(e.currentTarget)}
-                endIcon={<ExpandMoreIcon sx={{ fontSize:16 }}/>}
-                sx={{ height:34, textTransform:'none', fontSize:12, fontWeight:600,
-                  borderColor:'var(--border)', color:'var(--text-primary)', bgcolor:'white',
-                  '&:hover':{ borderColor:'var(--text-accent)', bgcolor:'white' } }}>
-                {periodLabel}
-              </Button>
-            )}
-
             <TextField size="small" placeholder="Search name…" value={search}
               onChange={e=>setSearch(e.target.value)} sx={{ minWidth:170, ...compactFieldSx }}/>
 
-            <FiltersMenuButton activeCount={(dept!=='All'?1:0)+(status!=='All'?1:0)+(stageFilter!=='All'?1:0)}>
+            <FiltersMenuButton activeCount={
+              (mainTab==='action'&&period!=='quarter'?1:0)+(dept!=='All'?1:0)+(status!=='All'?1:0)+(stageFilter!=='All'?1:0)
+            }>
+              {mainTab==='action'&&(
+                <Box>
+                  <FormControl size="small" fullWidth sx={{ mb: period!=='all' ? 1.5 : 0 }}>
+                    <InputLabel sx={{ fontSize:12 }}>Period</InputLabel>
+                    <Select value={period} label="Period" onChange={e=>setPeriod(e.target.value as typeof period)} sx={{ fontSize:12 }}>
+                      <MenuItem value="quarter" sx={{ fontSize:12 }}>This Quarter</MenuItem>
+                      <MenuItem value="all" sx={{ fontSize:12 }}>All Time</MenuItem>
+                      <MenuItem value="custom" sx={{ fontSize:12 }}>Custom Range</MenuItem>
+                    </Select>
+                  </FormControl>
+                  {period==='quarter'&&(
+                    <Box sx={{ display:'flex', gap:1.5 }}>
+                      <FormControl size="small" sx={{ minWidth:130 }}>
+                        <InputLabel sx={{ fontSize:12 }}>Year</InputLabel>
+                        <Select value={selFY} label="Year" onChange={e=>setSelFY(Number(e.target.value))} sx={{ fontSize:12 }}>
+                          {Array.from({ length:6 }, (_,i)=>fiscalYearOf(now)-4+i).map(fy=>(
+                            <MenuItem key={fy} value={fy} sx={{ fontSize:12 }}>{fiscalYearLabel(fy)}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      <FormControl size="small" sx={{ minWidth:100 }}>
+                        <InputLabel sx={{ fontSize:12 }}>Quarter</InputLabel>
+                        <Select value={selQ} label="Quarter" onChange={e=>setSelQ(Number(e.target.value))} sx={{ fontSize:12 }}>
+                          {[1,2,3,4].map(q=><MenuItem key={q} value={q} sx={{ fontSize:12 }}>{`Q${q}`}</MenuItem>)}
+                        </Select>
+                      </FormControl>
+                    </Box>
+                  )}
+                  {period==='custom'&&(
+                    <Box sx={{ display:'flex', gap:1.5 }}>
+                      <TextField label="From" type="date" size="small" value={customFrom}
+                        onChange={e=>setCustomFrom(e.target.value)} InputLabelProps={{ shrink:true }} sx={{ minWidth:150 }}/>
+                      <TextField label="To" type="date" size="small" value={customTo}
+                        onChange={e=>setCustomTo(e.target.value)} InputLabelProps={{ shrink:true }} sx={{ minWidth:150 }}/>
+                    </Box>
+                  )}
+                </Box>
+              )}
+
               <FormControl size="small" fullWidth>
                 <InputLabel sx={{ fontSize:12 }}>Department</InputLabel>
                 <Select value={dept} label="Department" onChange={e=>setDept(e.target.value)} sx={{ fontSize:12 }}>
@@ -1550,52 +1572,6 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onOpenCtc
               }}
             />
           </Box>
-
-          {mainTab==='action'&&(
-            <Popover
-              open={!!periodAnchorEl}
-              anchorEl={periodAnchorEl}
-              onClose={()=>setPeriodAnchorEl(null)}
-              anchorOrigin={{ vertical:'bottom', horizontal:'left' }}
-            >
-              <Box sx={{ p:2, minWidth:250 }}>
-                <FormControl size="small" fullWidth sx={{ mb: period!=='all' ? 1.5 : 0 }}>
-                  <InputLabel sx={{ fontSize:12 }}>Period</InputLabel>
-                  <Select value={period} label="Period" onChange={e=>setPeriod(e.target.value as typeof period)} sx={{ fontSize:12 }}>
-                    <MenuItem value="quarter" sx={{ fontSize:12 }}>This Quarter</MenuItem>
-                    <MenuItem value="all" sx={{ fontSize:12 }}>All Time</MenuItem>
-                    <MenuItem value="custom" sx={{ fontSize:12 }}>Custom Range</MenuItem>
-                  </Select>
-                </FormControl>
-                {period==='quarter'&&(
-                  <Box sx={{ display:'flex', gap:1.5 }}>
-                    <FormControl size="small" sx={{ minWidth:130 }}>
-                      <InputLabel sx={{ fontSize:12 }}>Year</InputLabel>
-                      <Select value={selFY} label="Year" onChange={e=>setSelFY(Number(e.target.value))} sx={{ fontSize:12 }}>
-                        {Array.from({ length:6 }, (_,i)=>fiscalYearOf(now)-4+i).map(fy=>(
-                          <MenuItem key={fy} value={fy} sx={{ fontSize:12 }}>{fiscalYearLabel(fy)}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                    <FormControl size="small" sx={{ minWidth:100 }}>
-                      <InputLabel sx={{ fontSize:12 }}>Quarter</InputLabel>
-                      <Select value={selQ} label="Quarter" onChange={e=>setSelQ(Number(e.target.value))} sx={{ fontSize:12 }}>
-                        {[1,2,3,4].map(q=><MenuItem key={q} value={q} sx={{ fontSize:12 }}>{`Q${q}`}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                  </Box>
-                )}
-                {period==='custom'&&(
-                  <Box sx={{ display:'flex', gap:1.5 }}>
-                    <TextField label="From" type="date" size="small" value={customFrom}
-                      onChange={e=>setCustomFrom(e.target.value)} InputLabelProps={{ shrink:true }} sx={{ minWidth:150 }}/>
-                    <TextField label="To" type="date" size="small" value={customTo}
-                      onChange={e=>setCustomTo(e.target.value)} InputLabelProps={{ shrink:true }} sx={{ minWidth:150 }}/>
-                  </Box>
-                )}
-              </Box>
-            </Popover>
-          )}
         </Box>
       )}
 

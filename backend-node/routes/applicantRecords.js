@@ -20,6 +20,11 @@ const { signCandidateUpload, verifyCandidateUpload } = require('../utils/candida
 const { uploadFileToDrive, createDriveFolder } = require('../utils/googleDrive');
 const sendOfferLetter = require('../emails/senders/sendOfferLetter');
 const REQUIRED_CANDIDATE_DOCUMENTS = require('../utils/requiredCandidateDocuments');
+const { addEvent } = require('../utils/candidateEvents');
+const { ROUND_TYPE_ORDER, ROUND_TYPE_LABELS, roundLabel, hasPassedRound, previousRoundType, canAddRound } = require('../utils/roundPipeline');
+const { computeAtsMatchScore } = require('../utils/atsMatchScore');
+const { EXCEL_QUESTIONS, DISC_QUESTIONS, scoreDisc } = require('../utils/assessmentBank');
+const { sendMail } = require('../emails/mailer');
 
 // Backend is reverse-proxied under the same domain as the frontend at
 // /api (see frontend/.env.production) — same FRONTEND_URL convention
@@ -89,6 +94,22 @@ function maybeAdvanceInterviewStatus(record) {
   if (record.interviewFinalStatus !== 'New') return;
   const hasDoneRound = (record.interviewRounds || []).some((r) => r.schedulingStatus === 'Done');
   if (hasDoneRound) record.interviewFinalStatus = 'In Progress';
+}
+
+// Recomputes and sets atsMatchScore on a (Mongoose document) record — call
+// after any edit to a field the score depends on (skills, experience,
+// location, notice period) or right after creation. Best-effort: a missing/
+// unmatched requisition just means the "no requirement on file" neutral
+// defaults in utils/atsMatchScore.js apply, never a hard failure.
+async function recomputeAtsScore(record) {
+  try {
+    const requisition = record.job_id
+      ? await HiringRequisition.findOne({ serial_no: record.job_id }).lean()
+      : null;
+    record.atsMatchScore = computeAtsMatchScore(record, requisition);
+  } catch (e) {
+    console.error('[recomputeAtsScore] error:', e.message);
+  }
 }
 
 // Candidate-detail fields that HR is allowed to edit
@@ -228,6 +249,10 @@ router.get('/:id', async (req, res) => {
 // PATCH /api/applicant-records/:id
 // Update candidate details + status + internalNotes in one call
 // ─────────────────────────────────────────────────────────────────────────────
+// Fields that feed atsMatchScore — an edit to any of these means the score
+// is now stale and needs recomputing (see recomputeAtsScore above).
+const ATS_SCORE_INPUT_FIELDS = ['total_experience', 'notice_period', 'relocation', 'city', 'state', 'experience', 'designation', 'designation_id'];
+
 router.patch('/:id', async (req, res) => {
   try {
     const allowed = {};
@@ -235,13 +260,24 @@ router.patch('/:id', async (req, res) => {
       if (req.body[field] !== undefined) allowed[field] = req.body[field];
     }
 
-    const record = await ApplicantRecord.findByIdAndUpdate(
-      req.params.id,
-      { $set: allowed },
-      { new: true, runValidators: true },
-    ).lean();
+    const needsRescore = ATS_SCORE_INPUT_FIELDS.some((f) => req.body[f] !== undefined);
+    let record;
+    if (needsRescore) {
+      record = await ApplicantRecord.findById(req.params.id);
+      if (!record) return err(res, 'Record not found', 404);
+      Object.assign(record, allowed);
+      await recomputeAtsScore(record);
+      await record.save();
+      record = record.toObject();
+    } else {
+      record = await ApplicantRecord.findByIdAndUpdate(
+        req.params.id,
+        { $set: allowed },
+        { new: true, runValidators: true },
+      ).lean();
+      if (!record) return err(res, 'Record not found', 404);
+    }
 
-    if (!record) return err(res, 'Record not found', 404);
     ok(res, record);
   } catch (e) {
     console.error(e);
@@ -387,47 +423,6 @@ Based on the job description above, evaluate how well this candidate fits the ro
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PATCH /api/applicant-records/:id/screener-round
-// Stage 1 — HR Screener Round. Mirrors the /final-decision pattern below:
-// Shortlisted/Rejected here also sync the top-level status, same reasoning
-// as a final decision syncing it — "Candidate On Hold"/"Profile On Hold"
-// have no matching value in the status enum, so those only affect this
-// stage's own screenerStatus and leave the top-level status untouched.
-// ─────────────────────────────────────────────────────────────────────────────
-router.patch('/:id/screener-round', async (req, res) => {
-  try {
-    const existing = await ApplicantRecord.findById(req.params.id).lean();
-    if (!existing) return err(res, 'Record not found', 404);
-
-    // Shortlisted/Rejected used to be locked permanently once set — per
-    // explicit "candidate management" instruction (2026-10-07), HR can now
-    // edit the screener decision at any time, even after finalizing it.
-
-    const { screenerName, screenerStatus, screenerNotes } = req.body;
-
-    const update = {};
-    if (screenerName   !== undefined) update.screenerName   = screenerName;
-    if (screenerStatus !== undefined) update.screenerStatus = screenerStatus;
-    if (screenerNotes  !== undefined) update.screenerNotes  = screenerNotes;
-
-    if (screenerStatus === 'Shortlisted')      update.status = 'Shortlisted';
-    else if (screenerStatus === 'Rejected')    update.status = 'Rejected';
-
-    const record = await ApplicantRecord.findByIdAndUpdate(
-      req.params.id,
-      { $set: update },
-      { new: true, runValidators: true },
-    ).lean();
-
-    if (!record) return err(res, 'Record not found', 404);
-    ok(res, record);
-  } catch (e) {
-    console.error(e);
-    err(res, 'Failed to update screener round');
-  }
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
 // PATCH /api/applicant-records/:id/interview-final-status
 // Overall outcome of the interview stage. Constrained server-side (not
 // just disabled in the UI) by what interviewers have recommended on
@@ -467,6 +462,8 @@ router.patch('/:id/interview-final-status', async (req, res) => {
     // it takes precedence here.
     if (interviewFinalStatus === 'Shortlisted')    record.status = 'Shortlisted';
     else if (interviewFinalStatus === 'Rejected')  record.status = 'Rejected';
+
+    addEvent(record, 'interview-final-status', `Interview Stage: ${interviewFinalStatus}`);
 
     await record.save();
     ok(res, record.toObject());
@@ -525,6 +522,7 @@ router.post('/:id/rejection-mail/send', async (req, res) => {
     });
 
     record.rejectionMailSentAt = new Date();
+    addEvent(record, 'rejection-mail-sent', 'Rejection Mail Sent');
     await record.save();
 
     ok(res, { sentTo: to, record: record.toObject() });
@@ -536,24 +534,31 @@ router.post('/:id/rejection-mail/send', async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/applicant-records/:id/interview-rounds
-// Add a new interview round
+// Add a new interview round, in the fixed HR -> Technical -> Management
+// pipeline (see utils/roundPipeline.js). `roundType` is required; a round
+// can only be added once the round before it in the pipeline has passed.
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/:id/interview-rounds', async (req, res) => {
   try {
+    const { roundType } = req.body;
+    if (!['hr', 'tech', 'mgmt'].includes(roundType)) {
+      return err(res, 'roundType must be one of: hr, tech, mgmt', 400);
+    }
+
     const record = await ApplicantRecord.findById(req.params.id);
     if (!record) return err(res, 'Record not found', 404);
 
-    // Interview rounds can only start once the screening decision is
-    // Shortlisted — same gate the Interview Round tab enforces in the UI.
-    if (record.screenerStatus !== 'Shortlisted') {
-      return err(res, 'The screening round must be marked Shortlisted before adding interview rounds.', 400);
+    if (!canAddRound(record, roundType)) {
+      const prev = previousRoundType(roundType);
+      return err(res, `The ${ROUND_TYPE_LABELS[prev]} must be passed (Done, with a positive recommendation) before adding a ${ROUND_TYPE_LABELS[roundType]}.`, 400);
     }
 
-    const nextRoundNumber = (record.interviewRounds.length ?? 0) + 1;
+    const nextRoundNumber = record.interviewRounds.filter((r) => r.roundType === roundType).length + 1;
 
     const newRound = {
+      roundType,
       roundNumber:   nextRoundNumber,
-      stage:         req.body.stage         || '',
+      stage:         roundLabel(roundType, nextRoundNumber),
       schedulingStatus:      req.body.schedulingStatus      || '',
       cancellationReason:    req.body.cancellationReason    || '',
       scheduledDate:         req.body.scheduledDate         || null,
@@ -565,6 +570,7 @@ router.post('/:id/interview-rounds', async (req, res) => {
       note:                  req.body.note                  || '',
       feedback:              req.body.feedback              || '',
       interviewerFeedbackStatus: req.body.interviewerFeedbackStatus || '',
+      bond:                  req.body.bond                  || '',
     };
 
     record.interviewRounds.push(newRound);
@@ -599,12 +605,26 @@ router.patch('/:id/interview-rounds/:roundId', async (req, res) => {
     }
 
     const updatable = [
-      'stage', 'schedulingStatus', 'cancellationReason', 'scheduledDate', 'scheduledTime',
+      'schedulingStatus', 'cancellationReason', 'scheduledDate', 'scheduledTime',
       'interviewer', 'mode', 'meetingLink', 'candidateConfirmation',
-      'note', 'feedback', 'interviewerFeedbackStatus',
+      'note', 'feedback', 'interviewerFeedbackStatus', 'bond',
     ];
     for (const field of updatable) {
       if (req.body[field] !== undefined) round[field] = req.body[field];
+    }
+    // hrBackground is the one nested-object field — merged key by key so a
+    // partial save (editing just one of the 17 fields) doesn't blank the rest.
+    if (req.body.hrBackground && typeof req.body.hrBackground === 'object') {
+      Object.assign(round.hrBackground, req.body.hrBackground);
+    }
+
+    if (req.body.schedulingStatus) {
+      const label = round.stage || `Round ${round.roundNumber}`;
+      addEvent(record, `round-${round._id}-${req.body.schedulingStatus}`, `${label}: ${req.body.schedulingStatus}`, round.interviewer ? `With ${round.interviewer}` : '');
+    }
+    if (req.body.feedback !== undefined || req.body.interviewerFeedbackStatus !== undefined) {
+      const label = round.stage || `Round ${round.roundNumber}`;
+      addEvent(record, `round-${round._id}-feedback`, `${label}: Feedback Submitted`, round.interviewerFeedbackStatus || '');
     }
 
     maybeAdvanceInterviewStatus(record);
@@ -857,13 +877,17 @@ router.get('/:id/interview-rounds/:roundId/feedback-context', async (req, res) =
 
     const { jdLink } = await resolveJdLink(record.job_id);
 
-    // Prior-round context — screener's (HR recruiter's) notes plus every
-    // earlier interview round's feedback — so the next interviewer isn't
-    // starting from zero. "Earlier" is by roundNumber, not array position,
-    // since rounds are always appended but roundNumber is the real order.
+    // Prior-round context — every earlier round's feedback (HR included, now
+    // that it's a round in the pipeline rather than a separate screener
+    // step) — so the next interviewer isn't starting from zero. "Earlier"
+    // means earlier in the HR -> Technical -> Management pipeline order,
+    // then by roundNumber within that type (roundNumber only counts
+    // instances of the SAME type, so it can't be compared directly across
+    // different round types).
+    const pipelineRank = (r) => ROUND_TYPE_ORDER.indexOf(r.roundType) * 1000 + (r.roundNumber ?? 0);
     const previousRounds = allRounds
-      .filter((r) => (r.roundNumber ?? 0) < (round.roundNumber ?? 0) && (r.feedback || r.interviewerFeedbackStatus))
-      .sort((a, b) => (a.roundNumber ?? 0) - (b.roundNumber ?? 0))
+      .filter((r) => pipelineRank(r) < pipelineRank(round) && (r.feedback || r.interviewerFeedbackStatus))
+      .sort((a, b) => pipelineRank(a) - pipelineRank(b))
       .map((r) => ({
         stage: r.stage || `Round ${r.roundNumber}`,
         interviewer: r.interviewer || '',
@@ -879,12 +903,9 @@ router.get('/:id/interview-rounds/:roundId/feedback-context', async (req, res) =
         linkedin:    record.linkedin || '',
       },
       jdLink: jdLink || '',
-      round: { stage: round.stage, scheduledDate: round.scheduledDate, scheduledTime: round.scheduledTime, interviewer: round.interviewer || '' },
+      round: { stage: round.stage, roundType: round.roundType, scheduledDate: round.scheduledDate, scheduledTime: round.scheduledTime, interviewer: round.interviewer || '' },
       interviewerFeedbackStatus: round.interviewerFeedbackStatus || '',
       feedback: round.feedback || '',
-      screener: record.screenerNotes || record.screenerStatus
-        ? { name: record.screenerName || '', status: record.screenerStatus || '', notes: record.screenerNotes || '' }
-        : null,
       previousRounds,
     });
   } catch (e) {
@@ -914,6 +935,10 @@ router.post('/:id/interview-rounds/:roundId/feedback', async (req, res) => {
 
     if (interviewerFeedbackStatus !== undefined) round.interviewerFeedbackStatus = interviewerFeedbackStatus;
     if (feedback !== undefined) round.feedback = feedback;
+
+    const label = round.stage || `Round ${round.roundNumber}`;
+    addEvent(record, `round-${round._id}-feedback`, `${label}: Feedback Submitted`, interviewerFeedbackStatus || '');
+
     await record.save();
 
     ok(res, { saved: true });
@@ -935,8 +960,15 @@ router.delete('/:id/interview-rounds/:roundId', async (req, res) => {
       (r) => r._id.toString() !== req.params.roundId,
     );
 
-    // Re-number rounds after deletion
-    record.interviewRounds.forEach((r, i) => { r.roundNumber = i + 1; });
+    // Re-number each roundType's own instances after deletion — roundNumber
+    // counts occurrences within a type (HR Round, HR Round 2, ...), not
+    // position in the overall array.
+    ['hr', 'tech', 'mgmt'].forEach((type) => {
+      record.interviewRounds.filter((r) => r.roundType === type).forEach((r, i) => {
+        r.roundNumber = i + 1;
+        r.stage = roundLabel(type, i + 1);
+      });
+    });
 
     await record.save();
     ok(res, record.toObject());
@@ -951,33 +983,34 @@ router.delete('/:id/interview-rounds/:roundId', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.patch('/:id/final-decision', async (req, res) => {
   try {
-    const existing = await ApplicantRecord.findById(req.params.id).lean();
-    if (!existing) return err(res, 'Record not found', 404);
-    if (existing.screenerStatus !== 'Shortlisted') {
-      return err(res, 'The screening round must be marked Shortlisted before Offer & Placement can be used.', 400);
+    const record = await ApplicantRecord.findById(req.params.id);
+    if (!record) return err(res, 'Record not found', 404);
+    if (!hasPassedRound(record, 'mgmt')) {
+      return err(res, 'The Management Round must be passed (Select / Select with Conditions) before Offer & Placement can be used.', 400);
     }
 
     const { decision, offeredCTC, joiningDate, decisionDate, notes } = req.body;
 
-    const update = {};
-    if (decision     !== undefined) update['finalDecision.decision']     = decision;
-    if (offeredCTC   !== undefined) update['finalDecision.offeredCTC']   = offeredCTC;
-    if (joiningDate  !== undefined) update['finalDecision.joiningDate']  = joiningDate || null;
-    if (decisionDate !== undefined) update['finalDecision.decisionDate'] = decisionDate || null;
-    if (notes        !== undefined) update['finalDecision.notes']        = notes;
+    if (decision     !== undefined) record.finalDecision.decision     = decision;
+    if (offeredCTC   !== undefined) record.finalDecision.offeredCTC   = offeredCTC;
+    if (joiningDate  !== undefined) record.finalDecision.joiningDate  = joiningDate || null;
+    if (decisionDate !== undefined) record.finalDecision.decisionDate = decisionDate || null;
+    if (notes        !== undefined) record.finalDecision.notes        = notes;
 
     // If a real decision is being set, sync the top-level status too
-    if (decision === 'Offer Made')           update.status = 'Hired';
-    else if (decision === 'Rejected')        update.status = 'Rejected';
+    if (decision === 'Offer Made')           record.status = 'Hired';
+    else if (decision === 'Rejected')        record.status = 'Rejected';
 
-    const record = await ApplicantRecord.findByIdAndUpdate(
-      req.params.id,
-      { $set: update },
-      { new: true, runValidators: true },
-    ).lean();
+    if (decision) {
+      addEvent(record, 'final-decision', `Offer Decision: ${decision}`, offeredCTC ? `Offered CTC: ${offeredCTC}` : '');
+      // Offer Made kicks off joining tracking, if it hasn't started already.
+      if (decision === 'Offer Made' && !record.joining.status) {
+        record.joining.status = 'Joining Pending';
+      }
+    }
 
-    if (!record) return err(res, 'Record not found', 404);
-    ok(res, record);
+    await record.save();
+    ok(res, record.toObject());
   } catch (e) {
     console.error(e);
     err(res, 'Failed to update final decision');
@@ -1013,6 +1046,7 @@ router.post('/:id/send-offer-letter', async (req, res) => {
     });
 
     record.offerLetterSentAt = new Date();
+    addEvent(record, 'offer-letter-sent', 'Offer Letter Sent');
     await record.save();
 
     ok(res, record.toObject());
@@ -1110,6 +1144,287 @@ router.post('/:id/upload-documents', uploadCandidateDocs, async (req, res) => {
   } catch (e) {
     console.error('[upload-documents] error:', e);
     err(res, 'Failed to upload documents');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/applicant-records/:id/assessments/:kind/send  (kind = excel|disc)
+// HR-triggered — emails the candidate a signed link to the public
+// assessment page. Reuses the interview-confirm signing pattern with `kind`
+// standing in for the roundId slot, and a dedicated 'assessment' purpose so
+// this link can't be reconstructed from any interview-confirm/feedback link
+// already issued for the same record.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/assessments/:kind/send', async (req, res) => {
+  try {
+    const { kind } = req.params;
+    if (!['excel', 'disc'].includes(kind)) return err(res, 'Unknown assessment type', 400);
+    const record = await ApplicantRecord.findById(req.params.id);
+    if (!record) return err(res, 'Record not found', 404);
+    if (!record.email) return err(res, 'This candidate has no email on file.', 400);
+
+    const sig = signInterviewConfirm(String(record._id), kind, 'assessment');
+    const link = `${FRONTEND_URL}/candidate-assessment/${record._id}/${kind}?sig=${sig}`;
+    const label = kind === 'excel' ? 'Excel Test' : 'DISC Assessment';
+
+    await sendMail({
+      to: record.email,
+      subject: `${label} — ${record.full_name}`,
+      html: `<p>Dear ${record.full_name},</p><p>Please complete your ${label} using the link below:</p><p><a href="${link}">${link}</a></p>`,
+    });
+
+    if (kind === 'excel') {
+      record.excelTest.sentAt = new Date();
+      record.excelTest.status = 'Sent';
+    } else {
+      record.discAssessment.sentAt = new Date();
+      record.discAssessment.status = 'Sent';
+    }
+    addEvent(record, `assessment-${kind}-sent`, `${label} Sent`);
+    await record.save();
+    ok(res, record.toObject());
+  } catch (e) {
+    console.error('[assessments/send] error:', e);
+    err(res, 'Failed to send assessment');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/applicant-records/:id/assessments/:kind/context?sig=...
+// Public, unauthenticated — feeds the candidate's assessment page.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/:id/assessments/:kind/context', async (req, res) => {
+  try {
+    const { kind } = req.params;
+    const { sig } = req.query;
+    if (!['excel', 'disc'].includes(kind)) return err(res, 'Unknown assessment type', 400);
+    if (!verifyInterviewConfirm(req.params.id, kind, sig, 'assessment')) {
+      return err(res, "This link couldn't be verified.", 403);
+    }
+    const record = await ApplicantRecord.findById(req.params.id).lean();
+    if (!record) return err(res, 'Record not found', 404);
+
+    if (kind === 'excel') {
+      ok(res, {
+        full_name: record.full_name,
+        questions: EXCEL_QUESTIONS,
+        status: record.excelTest?.status || '',
+        answers: record.excelTest?.answers || [],
+      });
+    } else {
+      ok(res, {
+        full_name: record.full_name,
+        questions: DISC_QUESTIONS,
+        status: record.discAssessment?.status || '',
+      });
+    }
+  } catch (e) {
+    console.error('[assessments/context] error:', e);
+    err(res, 'Failed to load the assessment');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/applicant-records/:id/assessments/:kind/submit?sig=...
+// Public, unauthenticated — the candidate's assessment page submits here.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/assessments/:kind/submit', async (req, res) => {
+  try {
+    const { kind } = req.params;
+    const { sig } = req.query;
+    if (!['excel', 'disc'].includes(kind)) return err(res, 'Unknown assessment type', 400);
+    if (!verifyInterviewConfirm(req.params.id, kind, sig, 'assessment')) {
+      return err(res, "This link couldn't be verified.", 403);
+    }
+    const record = await ApplicantRecord.findById(req.params.id);
+    if (!record) return err(res, 'Record not found', 404);
+
+    if (kind === 'excel') {
+      const { answers } = req.body; // array of strings, same order as EXCEL_QUESTIONS
+      if (!Array.isArray(answers)) return err(res, 'Answers are required.', 400);
+      record.excelTest.answers = EXCEL_QUESTIONS.map((question, i) => ({ question, answer: answers[i] || '' }));
+      record.excelTest.status = 'Submitted';
+      addEvent(record, 'assessment-excel-submitted', 'Excel Test Submitted');
+    } else {
+      const { answers } = req.body; // array of 12 single-letter picks, same order as DISC_QUESTIONS
+      if (!Array.isArray(answers) || answers.length !== DISC_QUESTIONS.length) {
+        return err(res, 'All DISC answers are required.', 400);
+      }
+      const { scores, primary } = scoreDisc(answers);
+      record.discAssessment.scores = scores;
+      record.discAssessment.primary = primary;
+      record.discAssessment.status = 'Completed';
+      addEvent(record, 'assessment-disc-submitted', 'DISC Assessment Completed', `Primary: ${primary}`);
+    }
+
+    await record.save();
+    ok(res, { saved: true });
+  } catch (e) {
+    console.error('[assessments/submit] error:', e);
+    err(res, 'Failed to submit assessment');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/applicant-records/:id/assessments/excel/grade
+// HR-triggered — marks each submitted answer correct/incorrect; score is
+// derived from the marks, never auto-graded (free-text formula answers
+// can't be reliably auto-graded).
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/assessments/excel/grade', async (req, res) => {
+  try {
+    const { marks } = req.body; // array of booleans, same order as excelTest.answers
+    if (!Array.isArray(marks)) return err(res, 'Marks are required.', 400);
+    const record = await ApplicantRecord.findById(req.params.id);
+    if (!record) return err(res, 'Record not found', 404);
+    if (!record.excelTest.answers.length) return err(res, 'No submitted answers to grade.', 400);
+
+    record.excelTest.marks = marks;
+    const correct = marks.filter(Boolean).length;
+    record.excelTest.score = Math.round((correct / record.excelTest.answers.length) * 100);
+    record.excelTest.status = 'Graded';
+    addEvent(record, 'assessment-excel-graded', 'Excel Test Graded', `Score: ${record.excelTest.score}%`);
+
+    await record.save();
+    ok(res, record.toObject());
+  } catch (e) {
+    console.error('[assessments/excel/grade] error:', e);
+    err(res, 'Failed to grade the test');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/applicant-records/:id/link-application
+// Attaches a new CandidateApplication to an existing profile instead of
+// creating a second one — the "link to existing" resolution of the
+// duplicate-candidate check in routes/candidateApplications.js / referrals.js.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/link-application', async (req, res) => {
+  try {
+    const { applicationRef, position, date, source } = req.body;
+    if (!applicationRef) return err(res, 'applicationRef is required.', 400);
+    const record = await ApplicantRecord.findById(req.params.id);
+    if (!record) return err(res, 'Record not found', 404);
+
+    record.applications.push({ position: position || '', date: date || new Date(), source: source || '', applicationRef });
+    addEvent(record, `application-linked-${applicationRef}`, `Application Linked${position ? `: ${position}` : ''}`);
+    await record.save();
+    ok(res, record.toObject());
+  } catch (e) {
+    console.error('[link-application] error:', e);
+    err(res, 'Failed to link application');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Offer letter — "Generate" renders an HTML preview from a template (no real
+// PDF engine); HR can separately upload the actually-signed file via Drive.
+// Not mutually exclusive — see offerLetterSchema comment in the model.
+// ─────────────────────────────────────────────────────────────────────────────
+function buildOfferLetterHtml(record) {
+  const fd = record.finalDecision || {};
+  const joiningDate = fd.joiningDate
+    ? new Date(fd.joiningDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+    : 'to be confirmed';
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; padding: 24px; border: 1px solid #ddd;">
+      <h2>Offer Letter</h2>
+      <p>Dear ${record.full_name},</p>
+      <p>We are pleased to offer you the position of <strong>${record.designation || 'the discussed role'}</strong> at Brisk Olive, with an annual CTC of <strong>${fd.offeredCTC || 'as discussed'}</strong>.</p>
+      <p>Your tentative joining date is <strong>${joiningDate}</strong>.</p>
+      <p>We look forward to having you on board.</p>
+      <p>Regards,<br/>Brisk Olive HR Team</p>
+    </div>
+  `;
+}
+
+router.post('/:id/offer-letter/generate', async (req, res) => {
+  try {
+    const record = await ApplicantRecord.findById(req.params.id);
+    if (!record) return err(res, 'Record not found', 404);
+    if (record.finalDecision?.decision !== 'Offer Made') {
+      return err(res, 'The Offer & Placement decision must be "Offer Made" before generating the Offer Letter.', 400);
+    }
+
+    record.finalDecision.offerLetter.source = 'generated';
+    record.finalDecision.offerLetter.generatedHtml = buildOfferLetterHtml(record);
+    record.finalDecision.offerLetter.updatedAt = new Date();
+    addEvent(record, 'offer-letter-generated', 'Offer Letter Generated (Preview)');
+    await record.save();
+    ok(res, { offerLetter: record.finalDecision.offerLetter });
+  } catch (e) {
+    console.error('[offer-letter/generate] error:', e);
+    err(res, 'Failed to generate offer letter');
+  }
+});
+
+const uploadOfferLetter = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+}).single('file');
+
+router.post('/:id/offer-letter/upload', uploadOfferLetter, async (req, res) => {
+  try {
+    const record = await ApplicantRecord.findById(req.params.id);
+    if (!record) return err(res, 'Record not found', 404);
+    if (!req.file) return err(res, 'No file was selected.', 400);
+
+    // Reuses the candidate's own Drive folder (created lazily here if this
+    // is the very first upload of any kind for them) — same folder the
+    // candidate's own document uploads land in.
+    if (!record.documentsUploadFolderId) {
+      const parentFolderId = process.env.GOOGLE_DRIVE_CANDIDATE_DOCS_PARENT_FOLDER_ID || process.env.GOOGLE_DRIVE_RESUME_FOLDER_ID;
+      const folder = await createDriveFolder(`${record.full_name} - ${record._id}`, parentFolderId);
+      record.documentsUploadFolderId = folder.id;
+      record.documentsUploadFolderLink = folder.webViewLink;
+    }
+
+    // makePublic: false — an offer letter carries salary/CTC details.
+    const driveLink = await uploadFileToDrive(req.file.buffer, req.file.originalname, req.file.mimetype, record.documentsUploadFolderId, { makePublic: false });
+
+    record.finalDecision.offerLetter.source = 'uploaded';
+    record.finalDecision.offerLetter.fileName = req.file.originalname;
+    record.finalDecision.offerLetter.driveLink = driveLink;
+    record.finalDecision.offerLetter.updatedAt = new Date();
+    addEvent(record, 'offer-letter-uploaded', 'Offer Letter Uploaded', req.file.originalname);
+
+    await record.save();
+    ok(res, { offerLetter: record.finalDecision.offerLetter });
+  } catch (e) {
+    console.error('[offer-letter/upload] error:', e);
+    err(res, 'Failed to upload offer letter');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/applicant-records/:id/joining
+// Post-acceptance tracking up to the candidate's actual first day — distinct
+// from finalDecision.joiningDate (the originally planned date agreed at
+// offer time). See joiningSchema comment in the model.
+// ─────────────────────────────────────────────────────────────────────────────
+router.patch('/:id/joining', async (req, res) => {
+  try {
+    const record = await ApplicantRecord.findById(req.params.id);
+    if (!record) return err(res, 'Record not found', 404);
+
+    const { confirmedDate, actualDate, status, docsStatus, bgvStatus, remarks } = req.body;
+    if (confirmedDate !== undefined) record.joining.confirmedDate = confirmedDate || null;
+    if (actualDate    !== undefined) record.joining.actualDate    = actualDate || null;
+    if (status        !== undefined) record.joining.status        = status;
+    if (docsStatus    !== undefined) record.joining.docsStatus    = docsStatus;
+    if (bgvStatus     !== undefined) record.joining.bgvStatus     = bgvStatus;
+    if (remarks       !== undefined) record.joining.remarks       = remarks;
+
+    if (status) {
+      addEvent(record, 'joining-status', `Joining Status: ${status}`);
+      if (status === 'Joined') record.status = 'Hired';
+    }
+
+    await record.save();
+    ok(res, record.toObject());
+  } catch (e) {
+    console.error('[joining] error:', e);
+    err(res, 'Failed to update joining details');
   }
 });
 

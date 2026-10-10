@@ -30,6 +30,8 @@ const PAGE_KEYS = Object.freeze([
   'recruitment.newRequisition',
   'recruitment.candidates',
   'recruitment.referrals',
+  'recruitment.offerJoining',
+  'recruitment.timelineHistory',
   'onboarding.dashboard',
   'onboarding.new',
   'onboarding.update',

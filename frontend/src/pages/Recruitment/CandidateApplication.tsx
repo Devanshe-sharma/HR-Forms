@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useSearchParams, Link } from 'react-router-dom';
@@ -226,6 +226,10 @@ export default function CandidateApplicationPage() {
   const [screeningAnswers, setScreeningAnswers] = useState<Record<string, string>>({});
   const [screeningErrors,  setScreeningErrors]  = useState<Record<string, string>>({});
   const [stepError, setStepError] = useState<string | null>(null);
+  const pendingFormDataRef = useRef<globalThis.FormData | null>(null);
+  const [duplicateInfo, setDuplicateInfo] = useState<{
+    _id: string; full_name: string; email: string; phone: string; designation: string; status: string;
+  } | null>(null);
   const sourceAutoCaptured = !!(srcParam && SOURCE_PARAM_MAP[srcParam.toLowerCase()]);
 
   const {
@@ -514,22 +518,48 @@ export default function CandidateApplicationPage() {
       formData.append('consentGiven', String(data.consentGiven));
       formData.append('resume', resumeFile);
 
+      pendingFormDataRef.current = formData;
+      await submitFormData(formData);
+    } catch {
+      alert('Network error. Please try again.');
+      setIsSubmitting(false);
+    }
+  };
+
+  // Shared by the first submit attempt and the "Submit Anyway" duplicate
+  // resolution — both post the same FormData, the latter with
+  // confirmDuplicate appended so the backend skips the lookup it already
+  // surfaced once.
+  const submitFormData = async (formData: globalThis.FormData) => {
+    try {
       const res = await fetch(`${API_BASE}/candidate-applications`, {
         method: 'POST',
         body: formData,
       });
+      const json = await res.json().catch(() => null);
 
-      if (res.ok) {
-        setSubmitted(true);
-      } else {
-        const errJson = await res.json().catch(() => null);
-        alert('Submission failed: ' + (errJson?.message || 'Please try again.'));
+      if (res.ok && json?.duplicate) {
+        setDuplicateInfo(json.existing);
+        return;
       }
+      if (res.ok && json?.success) {
+        setDuplicateInfo(null);
+        setSubmitted(true);
+        return;
+      }
+      alert('Submission failed: ' + (json?.message || 'Please try again.'));
     } catch {
       alert('Network error. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSubmitAnyway = () => {
+    if (!pendingFormDataRef.current) return;
+    pendingFormDataRef.current.set('confirmDuplicate', 'true');
+    setIsSubmitting(true);
+    submitFormData(pendingFormDataRef.current);
   };
 
   const inputCls  = 'w-full px-4 py-3 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-lime-400 focus:border-lime-500 text-sm transition';
@@ -562,6 +592,37 @@ export default function CandidateApplicationPage() {
           <div className="text-6xl mb-4">🎉</div>
           <h2 className="text-3xl font-bold text-lime-700 mb-2">Application Submitted!</h2>
           <p className="text-gray-600">Thank you. Our team will be in touch with you shortly.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (duplicateInfo) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="bg-white rounded-xl shadow p-6 max-w-md w-full space-y-4">
+          <h2 className="text-lg font-bold text-amber-700">A matching application already exists</h2>
+          <div className="text-sm text-gray-600 bg-amber-50 border border-amber-100 rounded-lg p-3">
+            <p><b>{duplicateInfo.full_name}</b> — {duplicateInfo.designation || 'No role on file'}</p>
+            <p className="text-xs text-gray-500 mt-1">{duplicateInfo.email} · {duplicateInfo.phone}</p>
+            <p className="text-xs text-gray-500 mt-1">Current status: {duplicateInfo.status || 'New'}</p>
+          </div>
+          <p className="text-sm text-gray-600">You can still submit this as a separate application if this is a genuinely new application for the same person, or cancel.</p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => { setDuplicateInfo(null); pendingFormDataRef.current = null; }}
+              className="flex-1 border border-gray-200 text-gray-600 font-semibold py-2 rounded-lg hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmitAnyway}
+              disabled={isSubmitting}
+              className="flex-1 bg-lime-600 hover:bg-lime-700 disabled:opacity-50 text-white font-semibold py-2 rounded-lg"
+            >
+              {isSubmitting ? 'Submitting…' : 'Submit Anyway'}
+            </button>
+          </div>
         </div>
       </div>
     );

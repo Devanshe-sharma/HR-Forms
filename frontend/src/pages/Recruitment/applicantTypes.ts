@@ -7,8 +7,41 @@
 
 export type StatusType = 'New' | 'Reviewed' | 'Shortlisted' | 'Rejected' | 'Hired';
 
+// The fixed HR -> Technical -> Management pipeline (see backend's
+// utils/roundPipeline.js) — a round can only be added once the round before
+// it in this order has passed.
+export type RoundType = 'hr' | 'tech' | 'mgmt';
+export const ROUND_TYPE_ORDER: RoundType[] = ['hr', 'tech', 'mgmt'];
+export const ROUND_TYPE_LABELS: Record<RoundType, string> = {
+  hr: 'HR Round', tech: 'Technical Round', mgmt: 'Management Round',
+};
+
+// HR Round only — candidate-background subform, prefilled from the
+// candidate's profile the first time the round is opened, then
+// independently editable.
+export interface HrBackground {
+  nativePlace:         string;
+  residingIn:          string;
+  commuteType:         string;
+  age:                 string;
+  family:              string;
+  education:           string;
+  hobbies:             string;
+  experienceSummary:   string;
+  currentCtc:          string;
+  pfApplicable:        string;
+  expectedCtc:         string;
+  recommendedCtc:      string;
+  currentCompany:      string;
+  noticePeriodSummary: string;
+  whenCanJoin:         string;
+  reasonForLeaving:    string;
+  skillsSummary:       string;
+}
+
 export interface InterviewRound {
   _id:                   string;
+  roundType:             RoundType;
   roundNumber:           number;
   stage:                 string;
   schedulingStatus:      string;
@@ -22,6 +55,40 @@ export interface InterviewRound {
   note:                  string;
   feedback:              string;
   interviewerFeedbackStatus: string;
+  hrBackground?:         HrBackground;
+  bond?:                 string;
+}
+
+// A round "passes" once Done with a positive recommendation for its type —
+// mirrors backend's hasPassedRound(). Technical can't be scheduled until HR
+// passes; Management can't be scheduled until Technical passes.
+const POSITIVE_FEEDBACK_BY_TYPE: Record<RoundType, string[]> = {
+  hr:   ['Recommended as P1', 'Recommended as P2'],
+  tech: ['Recommended as P1', 'Recommended as P2'],
+  mgmt: ['Select', 'Select with Conditions'],
+};
+export function hasPassedRound(rounds: InterviewRound[] | undefined, roundType: RoundType): boolean {
+  return (rounds || []).some(
+    (r) => r.roundType === roundType && r.schedulingStatus === 'Done' && POSITIVE_FEEDBACK_BY_TYPE[roundType].includes(r.interviewerFeedbackStatus),
+  );
+}
+export function roundLabel(roundType: RoundType, roundNumber: number): string {
+  const base = ROUND_TYPE_LABELS[roundType];
+  return roundNumber > 1 ? `${base} ${roundNumber}` : base;
+}
+
+export const HR_RECOMMENDATION_OPTIONS = ['Recommended as P1', 'Recommended as P2', 'Not Recommended', 'Candidate on Hold'];
+export const TECH_RECOMMENDATION_OPTIONS = ['Recommended as P1', 'Recommended as P2', 'Not Recommended', 'Candidate on Hold'];
+export const MGMT_RECOMMENDATION_OPTIONS = ['Select', 'Select with Conditions', 'Hold', 'Reject'];
+export const BOND_OPTIONS = ['Not discussed', 'Willing to sign bond', 'Negotiable', 'Not willing'];
+export const RATING_OPTIONS = ['Poor', 'Below Expectations', 'Meets Expectations', 'Good', 'Excellent'];
+
+export interface OfferLetter {
+  source:        '' | 'generated' | 'uploaded';
+  generatedHtml: string;
+  fileName:      string;
+  driveLink:     string;
+  updatedAt:     string | null;
 }
 
 export interface FinalDecision {
@@ -30,6 +97,49 @@ export interface FinalDecision {
   joiningDate:  string;
   decisionDate: string;
   notes:        string;
+  offerLetter?: OfferLetter;
+}
+
+// Post-acceptance tracking up to the candidate's actual first day — distinct
+// from finalDecision.joiningDate (the originally planned date agreed at
+// offer time).
+export interface Joining {
+  confirmedDate: string | null;
+  actualDate:    string | null;
+  status:        '' | 'Joining Pending' | 'Joined' | 'Did Not Join' | 'Offer Withdrawn';
+  docsStatus:    'Pending' | 'Partially Received' | 'Complete';
+  bgvStatus:     'Not Applicable' | 'Pending' | 'In Progress' | 'Cleared' | 'Adverse';
+  remarks:       string;
+}
+
+export interface ExcelTestAnswer { question: string; answer: string }
+export interface ExcelTest {
+  sentAt:  string | null;
+  status:  '' | 'Sent' | 'Submitted' | 'Graded';
+  answers: ExcelTestAnswer[];
+  marks:   boolean[];
+  score:   number | null;
+}
+
+export interface DiscAssessment {
+  sentAt:  string | null;
+  status:  '' | 'Sent' | 'Completed';
+  scores:  { D: number; I: number; S: number; C: number };
+  primary: '' | 'D' | 'I' | 'S' | 'C';
+}
+
+export interface LinkedApplication {
+  position:       string;
+  date:           string | null;
+  source:         string;
+  applicationRef: string | null;
+}
+
+export interface CandidateEvent {
+  key:    string;
+  label:  string;
+  when:   string;
+  detail: string;
 }
 
 export interface UploadedDocument {
@@ -96,6 +206,14 @@ export interface ApplicantRecord {
   documentsUploadFolderLink?: string;
   uploadedDocuments?:         UploadedDocument[];
   createdAt:       string;
+  // ── ATS-style additions ──────────────────────────────────────────────
+  job_id?:          number | null;
+  atsMatchScore?:   number | null;
+  excelTest?:       ExcelTest;
+  discAssessment?:  DiscAssessment;
+  applications?:    LinkedApplication[];
+  events?:          CandidateEvent[];
+  joining?:         Joining;
 }
 
 export const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
@@ -182,4 +300,32 @@ export const DECISION_COLORS: Record<string, string> = {
   Rejected:             'bg-red-100     text-red-700',
   'On Hold':            'bg-yellow-100  text-yellow-700',
   'Candidate Withdrew': 'bg-orange-100  text-orange-700',
+};
+
+export const JOINING_STATUS_OPTIONS = ['Joining Pending', 'Joined', 'Did Not Join', 'Offer Withdrawn'];
+
+export const JOINING_STATUS_COLORS: Record<string, string> = {
+  '':                   'bg-gray-100   text-gray-500',
+  'Joining Pending':    'bg-blue-100   text-blue-700',
+  Joined:               'bg-green-100  text-green-700',
+  'Did Not Join':       'bg-red-100    text-red-700',
+  'Offer Withdrawn':    'bg-orange-100 text-orange-700',
+};
+
+export const DOCS_STATUS_OPTIONS = ['Pending', 'Partially Received', 'Complete'];
+export const BGV_STATUS_OPTIONS  = ['Not Applicable', 'Pending', 'In Progress', 'Cleared', 'Adverse'];
+
+export const ASSESSMENT_STATUS_COLORS: Record<string, string> = {
+  '':          'bg-gray-100   text-gray-500',
+  Sent:        'bg-blue-100   text-blue-700',
+  Submitted:   'bg-amber-100  text-amber-700',
+  Completed:   'bg-green-100  text-green-700',
+  Graded:      'bg-green-100  text-green-700',
+};
+
+export const DISC_TRAIT_LABELS: Record<'D' | 'I' | 'S' | 'C', string> = {
+  D: 'Dominance',
+  I: 'Influence',
+  S: 'Steadiness',
+  C: 'Conscientiousness',
 };

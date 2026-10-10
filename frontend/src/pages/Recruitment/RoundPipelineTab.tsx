@@ -1,23 +1,38 @@
-// pages/Recruitment/InterviewRoundTab.tsx
+// pages/Recruitment/RoundPipelineTab.tsx
+// ─────────────────────────────────────────────────────────────────────────────
+// One component, parameterized by roundType ('hr' | 'tech' | 'mgmt'), used for
+// all three tabs of the fixed HR -> Technical -> Management pipeline (see
+// backend utils/roundPipeline.js). Replaces the old free-text-stage
+// InterviewRoundTab + the separate ScreenerRoundTab — HR Round is now just
+// roundType='hr' through this same component, not a distinct screening step.
+//
+// The structured "17-field HR background" the mockup shows is already
+// available in this app via FeedbackTemplate.tsx's TemplateModal (Native,
+// Residing, Commute, Age, Family, Experience, CTC/ECTC/Recommended CTC,
+// Reason, Notice Period, When Can Join, Skills, Communication, Stability,
+// Attitude/DISC, Education, Hobbies, Bond, Remarks — a superset of the
+// mockup's fields) — it composes into the one `feedback` text field via the
+// "Use template" button below, the same for every round type, so no separate
+// structured form was rebuilt here.
+// ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect } from 'react';
 import {
   Loader2, Edit2, Save, Plus, ClipboardList,
   ChevronDown, ChevronUp, ExternalLink, CalendarClock, RefreshCw,
-  X, Send, Check, Ban, CheckCircle2, AlertTriangle,
+  X, Send, Check, Ban, CheckCircle2, AlertTriangle, FileText,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { FIELD_PLACEHOLDER_CLASS } from './ApplicantFieldComponents';
 import { TemplateModal } from './FeedbackTemplate';
 import {
-  ApplicantRecord, InterviewRound, API_BASE,
-  STAGE_OPTIONS, MODE_OPTIONS,
+  ApplicantRecord, InterviewRound, RoundType, API_BASE,
+  ROUND_TYPE_LABELS, hasPassedRound, roundLabel,
+  MODE_OPTIONS,
   SCHEDULING_STATUS_COLORS,
   CANDIDATE_CONFIRMATION_COLORS,
   INTERVIEWER_FEEDBACK_STATUS_COLORS,
 } from './applicantTypes';
 
-// "14:30" -> "02:30 PM" — the round list/detail view always shows time in
-// 12-hour format, regardless of what the native time input produces.
 function formatTime12h(time24?: string): string {
   if (!time24) return '';
   const [hStr, mStr] = time24.split(':');
@@ -44,29 +59,9 @@ function resolveResumeUrl(resume?: string): string {
 
 type EmployeeOption = { name: string; designation: string };
 
-// Default CC on every candidate-management mail (interview round + rejection) —
-// HR previously had to type this in by hand on every single send.
 const DEFAULT_HR_CC = 'hr@briskolive.com';
 
-const emptyRound = (): Omit<InterviewRound, '_id'> => ({
-  roundNumber:           1,
-  stage:                 '',
-  schedulingStatus:      '',
-  cancellationReason:    '',
-  scheduledDate:         '',
-  scheduledTime:         '',
-  interviewer:           '',
-  mode:                  '',
-  meetingLink:           '',
-  candidateConfirmation: 'Pending',
-  note:                  '',
-  feedback:              '',
-  interviewerFeedbackStatus: '',
-});
-
-// Label/value row for the read-only detail table — compact (small font,
-// tight padding) so a round's full details fit on screen without scrolling;
-// bold headings, black data text, per explicit design feedback.
+// Label/value row for the read-only detail table.
 const DetailRow = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div className="grid grid-cols-[minmax(110px,35%)_1fr] border-b border-gray-100 last:border-b-0">
     <div className="bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-gray-600">{label}</div>
@@ -74,28 +69,21 @@ const DetailRow = ({ label, children }: { label: string; children: React.ReactNo
   </div>
 );
 
-// Boxed input styling for a DetailRow's value cell — a real bordered field
-// (not the flush/no-border look HR found undefined and hard to see) so
-// every editable control reads clearly as a field you can click into.
 const rowControlClass = 'w-full border border-gray-300 rounded-md bg-white px-2.5 py-1.5 text-xs text-black focus:outline-none focus:ring-2 focus:ring-lime-400 focus:border-lime-400';
-// Multi-line fields (Remarks, Cancellation Reason) keep a light border —
-// free text benefits from a visible boundary even in an otherwise flush table.
 const rowTextareaClass = `w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-xs text-black bg-white focus:outline-none focus:ring-2 focus:ring-lime-400 resize-none ${FIELD_PLACEHOLDER_CLASS}`;
 
 const RoundForm = ({
-  data, onChange, onSave, onCancel, saving, interviewers, loadingInterviewers,
+  data, roundLabelText, onChange, onSave, onCancel, saving, interviewers, loadingInterviewers,
   existingRound, onSchedule, onReschedule, onCancelRound, onMarkDone, jdLink, resumeUrl, linkedin,
 }: {
   data: Partial<InterviewRound>;
+  roundLabelText: string;
   onChange: (f: string, v: string) => void;
   onSave: () => void;
   onCancel: () => void;
   saving: boolean;
   interviewers: EmployeeOption[];
   loadingInterviewers: boolean;
-  // Only present when editing an already-saved round — a brand new round
-  // has no _id yet, so there's nothing for Schedule/Reschedule/Done/Cancel
-  // to act on until it's been saved once.
   existingRound?: InterviewRound;
   onSchedule?: () => void;
   onReschedule?: () => void;
@@ -105,8 +93,6 @@ const RoundForm = ({
   resumeUrl?: string;
   linkedin?: string;
 }) => {
-  // Keep the currently-saved interviewer selectable even if they've since
-  // left the employee master list, so editing an old round doesn't blank it.
   const interviewerOptions = data.interviewer && !interviewers.some((e) => e.name === data.interviewer)
     ? [{ name: data.interviewer, designation: '' }, ...interviewers]
     : interviewers;
@@ -115,21 +101,8 @@ const RoundForm = ({
 
   return (
     <div className="border-t border-dashed border-gray-200">
-      {/* Field order and layout match the read-only detail table exactly
-          (shared DetailRow component) — Stage, Interviewer (2nd), Date &
-          Time (combined, 12-hour display), Mode, Meeting Link, then the
-          non-editable context rows (JD Link/Resume/Candidate Confirmation)
-          inline for reference, then Note/Remarks/Cancellation Reason/
-          Interviewer Feedback. Scheduling Status and Interviewer Feedback
-          Status are deliberately NOT editable here — scheduling status only
-          changes via the Schedule/Reschedule/Mark Done/Cancel actions below
-          (shown once the round is saved), and interviewer feedback status
-          is set only by the interviewer's own submission. */}
-      <DetailRow label="Stage">
-        <select value={data.stage || ''} onChange={(e) => onChange('stage', e.target.value)} className={rowControlClass}>
-          <option value="">— Select stage —</option>
-          {STAGE_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
+      <DetailRow label="Round">
+        <span className="font-bold text-black">{roundLabelText}</span>
       </DetailRow>
 
       <DetailRow label="Interviewer Name">
@@ -230,8 +203,8 @@ const RoundForm = ({
           onInsert={(text: string) => onChange('feedback', text)}
           screenerName={data.interviewer || ''}
           existingText={data.feedback || ''}
-          defaultRound={data.stage || 'Interview Round'}
-          title="Interview Feedback Template"
+          defaultRound={roundLabelText}
+          title={`${roundLabelText} Evaluation Template`}
           defaultResume={resumeUrl}
           defaultLinkedin={linkedin}
         />
@@ -249,12 +222,12 @@ const RoundForm = ({
         </DetailRow>
       )}
 
-      <DetailRow label="Interviewer Feedback">
+      <DetailRow label="Recommendation">
         {data.interviewerFeedbackStatus
           ? <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${INTERVIEWER_FEEDBACK_STATUS_COLORS[data.interviewerFeedbackStatus] || 'bg-gray-100 text-gray-600'}`}>
               {data.interviewerFeedbackStatus}
             </span>
-          : <span className="text-gray-400 italic">—</span>}
+          : <span className="text-gray-400 italic">Set by the interviewer via their feedback link</span>}
       </DetailRow>
 
       {existingRound && existingRound.schedulingStatus !== 'Cancelled' && existingRound.schedulingStatus !== 'Done' && (
@@ -288,18 +261,25 @@ const RoundForm = ({
   );
 };
 
-const InterviewRoundTab = ({
+const RoundPipelineTab = ({
   record,
+  roundType,
   onUpdate,
+  canEdit = true,
 }: {
   record: ApplicantRecord;
+  roundType: RoundType;
   onUpdate: (updated: ApplicantRecord) => void;
+  canEdit?: boolean;
 }) => {
-  const [rounds,    setRounds]    = useState<InterviewRound[]>(record.interviewRounds ?? []);
+  const allRounds = record.interviewRounds ?? [];
+  const rounds = allRounds.filter((r) => r.roundType === roundType);
+  const typeLabel = ROUND_TYPE_LABELS[roundType];
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [drafts,    setDrafts]    = useState<Record<string, Partial<InterviewRound>>>({});
   const [adding,    setAdding]    = useState(false);
-  const [newRound,  setNewRound]  = useState(emptyRound());
+  const [newRound,  setNewRound]  = useState<Partial<InterviewRound>>({});
   const [saving,    setSaving]    = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [jdLink,    setJdLink]    = useState<string | null>(null);
@@ -324,13 +304,14 @@ const InterviewRoundTab = ({
     loading: boolean; sending: boolean; error: string;
   }>({ open: false, to: '', cc: '', subject: '', body: '', loading: false, sending: false, error: '' });
 
-  useEffect(() => { setRounds(record.interviewRounds ?? []); }, [record]);
+  // Whether this round type's prerequisite has passed — HR has none;
+  // Technical needs HR passed; Management needs Technical passed.
+  const prevType: RoundType | null = roundType === 'hr' ? null : roundType === 'tech' ? 'hr' : 'tech';
+  const gateMessage = prevType && !hasPassedRound(allRounds, prevType)
+    ? `The ${ROUND_TYPE_LABELS[prevType]} must be passed (Done, with a positive recommendation) before the ${typeLabel} can start.`
+    : null;
 
-  // Whether any round an interviewer already gave feedback on was Not
-  // Recommended — the overall Final Status dropdown (in the candidate
-  // modal header) is constrained by this too; here it just gates the
-  // rejection-mail action.
-  const hasNotRecommended = rounds.some((r) => r.interviewerFeedbackStatus === 'Not Recommended');
+  const hasNotRecommended = rounds.some((r) => ['Not Recommended', 'Reject'].includes(r.interviewerFeedbackStatus));
 
   const openRejectionModal = async () => {
     setRejectionModal((m) => ({ ...m, open: true, loading: true, error: '' }));
@@ -367,8 +348,6 @@ const InterviewRoundTab = ({
     }
   };
 
-  // JD Link and Resume are per-candidate/per-job, not per-round — pulled
-  // once here instead of asking HR to paste them into every round.
   useEffect(() => {
     fetch(`${API_BASE}/applicant-records/${record._id}/jd-link`)
       .then((r) => r.json())
@@ -376,8 +355,6 @@ const InterviewRoundTab = ({
       .catch(() => setJdLink(null));
   }, [record._id]);
 
-  // All current employees, with designation, for the Interviewer Name dropdown —
-  // not just HR, since interviewers can come from any department.
   useEffect(() => {
     setLoadingInterviewers(true);
     fetch(`${API_BASE}/onboarding/employee-master`)
@@ -414,7 +391,6 @@ const InterviewRoundTab = ({
       });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.message || `Server returned ${res.status}`);
-      setRounds(json.data.interviewRounds);
       onUpdate(json.data);
       setEditingId(null);
       toast.success('Round updated');
@@ -431,15 +407,14 @@ const InterviewRoundTab = ({
       const res = await fetch(`${API_BASE}/applicant-records/${record._id}/interview-rounds`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(newRound),
+        body:    JSON.stringify({ ...newRound, roundType }),
       });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.message || `Server returned ${res.status}`);
-      setRounds(json.data.interviewRounds);
       onUpdate(json.data);
       setAdding(false);
-      setNewRound(emptyRound());
-      toast.success('Round added');
+      setNewRound({});
+      toast.success(`${typeLabel} added`);
     } catch (e: any) {
       toast.error(e.message || 'Failed to add round');
     } finally {
@@ -447,7 +422,6 @@ const InterviewRoundTab = ({
     }
   };
 
-  // ── Schedule / Reschedule / Cancel mail dialog ─────────────────────────
   const openMailModal = (type: 'schedule' | 'reschedule' | 'cancel', round: InterviewRound) => {
     setMailModal({
       open: true, type, round, tab: 'interviewer', sentTabs: [],
@@ -458,9 +432,6 @@ const InterviewRoundTab = ({
 
   const closeMailModal = () => setMailModal((m) => ({ ...m, open: false }));
 
-  // Pulls the exact subject/html the send-mail route would generate, so HR
-  // sees (and, for the interviewer's copy, can edit) the real content before
-  // it goes out — rather than sending blind based on the metadata summary alone.
   const fetchPreview = async (
     tab: 'interviewer' | 'candidate', round: InterviewRound,
     type: 'schedule' | 'reschedule' | 'cancel', reason: string,
@@ -481,7 +452,6 @@ const InterviewRoundTab = ({
         loadingPreview: false,
         content: {
           ...m.content,
-          // Regenerating keeps whatever CC HR already typed — only To/Subject/Body reset to the fresh default.
           [tab]: {
             to: json.data.to || '', cc: m.content[tab]?.cc ?? DEFAULT_HR_CC, subject: json.data.subject, body: json.data.body,
             willIncludeFeedbackLink: !!json.data.willIncludeFeedbackLink,
@@ -494,11 +464,6 @@ const InterviewRoundTab = ({
     }
   };
 
-  // Fetches the preview for whichever tab is active, once per tab per
-  // modal-open — a manual "Regenerate" button (near the editor) re-fetches
-  // on demand, e.g. after the cancellation reason text changes. Cancel mail
-  // shows both recipients' rows at once (not tab-gated), so both previews
-  // are fetched up front instead of lazily per active tab.
   useEffect(() => {
     if (!mailModal.open || !mailModal.round) return;
     if (mailModal.type === 'cancel') {
@@ -532,7 +497,6 @@ const InterviewRoundTab = ({
     });
     if (!res.ok) throw new Error();
     const json = await res.json();
-    setRounds(json.data.interviewRounds);
     onUpdate(json.data);
   };
 
@@ -565,8 +529,6 @@ const InterviewRoundTab = ({
       toast.success(`Mail sent to ${tab === 'interviewer' ? 'interviewer' : 'candidate'} (${json.data.sentTo})`);
       setMailModal((m) => ({ ...m, sentTabs: [...m.sentTabs, tab] }));
 
-      // Schedule/Reschedule: a successful send also reflects the new status.
-      // Cancel is finalized separately via "Finalize Cancellation" below.
       if (mailModal.type !== 'cancel') {
         const newStatus = mailModal.type === 'schedule' ? 'Scheduled' : 'Rescheduled';
         if (round.schedulingStatus !== newStatus) {
@@ -580,8 +542,6 @@ const InterviewRoundTab = ({
     }
   };
 
-  // Marking a round Done is a plain status update — no mail involved,
-  // since it just records that the interview already happened.
   const markRoundDone = async (round: InterviewRound) => {
     try {
       await patchRound(round._id, { schedulingStatus: 'Done' });
@@ -609,14 +569,57 @@ const InterviewRoundTab = ({
 
   const resumeUrl = resolveResumeUrl(record.resume);
 
+  // Excel Test status — shown on the Technical round's read-only Candidate
+  // Summary, since a tech interviewer benefits from seeing it before/during
+  // the interview, same placement as the mockup.
+  const excelTest = (record as any).excelTest;
+
+  if (!canEdit && rounds.length === 0) {
+    return (
+      <div className="text-center py-12 text-gray-400">
+        <ClipboardList size={36} className="mx-auto mb-3 opacity-40" />
+        <p className="text-sm">No {typeLabel.toLowerCase()} activity yet. Only the relevant interviewer or HR can schedule this round.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      {/* The overall Interview Final Status dropdown now lives in the
-          candidate modal header (AllApplicants.tsx) — this tab only
-          surfaces the rejection-mail action once it's relevant. */}
+      {gateMessage && (
+        <div className="p-3 rounded-xl border border-amber-100 bg-amber-50 text-sm text-amber-800">
+          {gateMessage}
+        </div>
+      )}
+
+      {!canEdit && (
+        <div className="p-2.5 rounded-lg border border-gray-100 bg-gray-50 text-xs text-gray-500">
+          Read-only — only HR or the relevant interviewer can edit the {typeLabel}.
+        </div>
+      )}
+
+      {(roundType === 'tech' || roundType === 'mgmt') && (
+        <div className="p-3 rounded-xl border border-gray-100 bg-gray-50">
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Candidate Summary <span className="font-normal normal-case">(read-only)</span></p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            <div><span className="text-gray-400">Education:</span> <span className="font-semibold text-gray-700">{record.highest_qualification || '—'}</span></div>
+            <div><span className="text-gray-400">Experience:</span> <span className="font-semibold text-gray-700">{record.total_experience ? `${record.total_experience} yrs` : '—'}</span></div>
+            <div><span className="text-gray-400">Resume:</span> {resumeUrl ? <a href={resumeUrl} target="_blank" rel="noreferrer" className="text-blue-600 underline">View</a> : <span className="text-gray-700">—</span>}</div>
+            {roundType === 'tech' && (
+              <div className="flex items-center gap-1">
+                <FileText size={12} className="text-gray-400" />
+                <span className="text-gray-400">Excel Test:</span>
+                <span className="font-semibold text-gray-700">
+                  {excelTest?.status === 'Graded' ? `${excelTest.score}%` : excelTest?.status || 'Not sent'}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {hasNotRecommended && (
         <div className="flex items-center justify-between gap-4 p-3 rounded-xl border border-red-100 bg-red-50">
-          <p className="text-xs text-red-700">A round was marked Not Recommended.</p>
+          <p className="text-xs text-red-700">A {typeLabel.toLowerCase()} was marked Not Recommended / Reject.</p>
           <button
             onClick={openRejectionModal}
             className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition"
@@ -626,30 +629,26 @@ const InterviewRoundTab = ({
         </div>
       )}
 
-      {/* Round cards */}
-      {rounds.length === 0 && !adding && (
+      {rounds.length === 0 && !adding && !gateMessage && (
         <div className="text-center py-12 text-gray-400">
           <ClipboardList size={36} className="mx-auto mb-3 opacity-40" />
-          <p className="text-sm">No interview rounds yet.</p>
+          <p className="text-sm">No {typeLabel.toLowerCase()} yet.</p>
         </div>
       )}
 
       {[...rounds].reverse().map((r, idx) => {
         const isEditing   = editingId === r._id;
         const isLatest    = idx === 0;
-        // Default contracted — HR explicitly expands a round to see its
-        // full info; only a round the user has clicked gets an entry here.
         const isCollapsed = collapsed[r._id] === undefined ? true : collapsed[r._id];
 
         return (
           <div key={r._id} className="border border-gray-200 rounded-xl overflow-hidden hover:border-gray-300 transition">
-            {/* ── Header bar — click anywhere on it to collapse/expand ── */}
             <div
               onClick={() => toggleCollapse(r._id)}
               className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 bg-blue-50/60 border-b border-blue-100 cursor-pointer hover:bg-blue-50 transition"
             >
               <span className="flex-shrink-0 text-[11px] font-bold text-white bg-slate-800 px-2 py-0.5 rounded">
-                Round {r.roundNumber}
+                {r.stage || roundLabel(roundType, r.roundNumber)}
               </span>
               {isLatest && (
                 <span className="flex-shrink-0 text-[11px] font-bold text-white bg-orange-500 px-2 py-0.5 rounded">
@@ -669,10 +668,8 @@ const InterviewRoundTab = ({
               </div>
             </div>
 
-            {/* ── Detail table (view mode) ── */}
             {!isEditing && !isCollapsed && (
               <div>
-                <DetailRow label="Stage">{r.stage || '—'}</DetailRow>
                 <DetailRow label="Scheduling Status">
                   <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${SCHEDULING_STATUS_COLORS[r.schedulingStatus] || 'bg-gray-100 text-gray-600'}`}>
                     {r.schedulingStatus || 'Not Scheduled'}
@@ -708,7 +705,7 @@ const InterviewRoundTab = ({
                     {r.candidateConfirmation || 'Pending'}
                   </span>
                 </DetailRow>
-                <DetailRow label="Interviewer Feedback Status">
+                <DetailRow label="Recommendation">
                   {r.interviewerFeedbackStatus
                     ? <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${INTERVIEWER_FEEDBACK_STATUS_COLORS[r.interviewerFeedbackStatus] || 'bg-gray-100 text-gray-600'}`}>
                         {r.interviewerFeedbackStatus}
@@ -720,27 +717,29 @@ const InterviewRoundTab = ({
                   <p className="whitespace-pre-wrap font-bold text-black">{r.feedback || <span className="font-normal text-gray-400 italic">No remarks recorded</span>}</p>
                 </DetailRow>
 
-                <div className="flex justify-end items-center px-3 py-2.5 bg-gray-50">
-                  {r.schedulingStatus === 'Done' ? (
-                    <span className="text-xs font-semibold text-gray-400">
-                      This round is marked Done and cannot be edited.
-                    </span>
-                  ) : (
-                    <button
-                      onClick={() => startEdit(r)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-lime-600 hover:bg-lime-700 rounded-lg transition"
-                    >
-                      <Edit2 size={13} /> Edit
-                    </button>
-                  )}
-                </div>
+                {canEdit && (
+                  <div className="flex justify-end items-center px-3 py-2.5 bg-gray-50">
+                    {r.schedulingStatus === 'Done' ? (
+                      <span className="text-xs font-semibold text-gray-400">
+                        This round is marked Done and cannot be edited.
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => startEdit(r)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-lime-600 hover:bg-lime-700 rounded-lg transition"
+                      >
+                        <Edit2 size={13} /> Edit
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
-            {/* ── Edit mode — Schedule/Reschedule/Done/Cancel now live here too ── */}
             {isEditing && (
               <RoundForm
                 data={drafts[r._id] || r}
+                roundLabelText={r.stage || roundLabel(roundType, r.roundNumber)}
                 onChange={(f, v) => handleDraftChange(r._id, f, v)}
                 onSave={() => saveRound(r._id)}
                 onCancel={() => setEditingId(null)}
@@ -761,15 +760,15 @@ const InterviewRoundTab = ({
         );
       })}
 
-      {/* Add round form */}
       {adding && (
         <div className="border border-lime-200 rounded-xl overflow-hidden bg-lime-50/40">
-          <p className="text-sm font-bold text-gray-700 px-3 pt-3">New Round — #{rounds.length + 1}</p>
+          <p className="text-sm font-bold text-gray-700 px-3 pt-3">New {typeLabel} — #{rounds.length + 1}</p>
           <RoundForm
             data={newRound}
+            roundLabelText={roundLabel(roundType, rounds.length + 1)}
             onChange={(f, v) => setNewRound((p) => ({ ...p, [f]: v }))}
             onSave={addRound}
-            onCancel={() => { setAdding(false); setNewRound(emptyRound()); }}
+            onCancel={() => { setAdding(false); setNewRound({}); }}
             saving={saving}
             interviewers={interviewers}
             loadingInterviewers={loadingInterviewers}
@@ -780,34 +779,30 @@ const InterviewRoundTab = ({
         </div>
       )}
 
-      {!adding && (() => {
+      {canEdit && !adding && !gateMessage && (() => {
         const lastRound = rounds[rounds.length - 1];
-        // A round left Scheduled/Rescheduled is still "open" — the next
-        // round can't start until this one is actually resolved, one way
-        // or the other.
-        const canAddRound = !lastRound || lastRound.schedulingStatus === 'Done' || lastRound.schedulingStatus === 'Cancelled';
+        const canAddAnotherInstance = !lastRound || lastRound.schedulingStatus === 'Done' || lastRound.schedulingStatus === 'Cancelled';
 
-        return canAddRound ? (
+        return canAddAnotherInstance ? (
           <button
             onClick={() => setAdding(true)}
             className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-gray-200 hover:border-lime-400 hover:text-lime-600 rounded-xl text-sm text-gray-400 transition"
           >
-            <Plus size={15} /> Add Interview Round
+            <Plus size={15} /> Add {typeLabel}
           </button>
         ) : (
           <p className="w-full text-center py-3 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-400 italic">
-            Mark Round {lastRound.roundNumber} as Done or Cancelled before adding a new round.
+            Mark {lastRound.stage || roundLabel(roundType, lastRound.roundNumber)} as Done or Cancelled before adding another.
           </p>
         );
       })()}
 
-      {/* ── Schedule / Reschedule / Cancel mail dialog ── */}
       {mailModal.open && mailModal.round && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={closeMailModal}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className={`flex items-center justify-between px-5 py-3.5 border-b rounded-t-2xl flex-shrink-0 ${mailModal.type === 'cancel' ? 'bg-red-700' : 'bg-slate-800'}`}>
               <p className="text-sm font-bold text-white">
-                {mailModal.type === 'schedule' ? 'Schedule Interview' : mailModal.type === 'reschedule' ? 'Reschedule Interview' : 'Cancel Interview'} — Round {mailModal.round.roundNumber}
+                {mailModal.type === 'schedule' ? 'Schedule Interview' : mailModal.type === 'reschedule' ? 'Reschedule Interview' : 'Cancel Interview'} — {mailModal.round.stage || roundLabel(roundType, mailModal.round.roundNumber)}
               </p>
               <button onClick={closeMailModal} className="text-white/70 hover:text-white transition"><X size={16} /></button>
             </div>
@@ -899,8 +894,6 @@ const InterviewRoundTab = ({
                 ))}
               </div>
 
-              {/* ── Edit & Send Mail — To/CC/Subject/Body, all plain text and
-                  editable for either audience, until the round is done. ── */}
               {(() => {
                 const isDone = ['Done', 'Cancelled'].includes(mailModal.round.schedulingStatus);
                 const current = mailModal.content[mailModal.tab];
@@ -920,7 +913,7 @@ const InterviewRoundTab = ({
                         onClick={() => mailModal.round && fetchPreview(mailModal.tab, mailModal.round, mailModal.type, mailModal.reason)}
                         disabled={mailModal.loadingPreview}
                         className="flex items-center gap-1 text-[11px] font-semibold text-gray-500 hover:text-lime-600 disabled:opacity-50 transition"
-                        title="Regenerate from the current round details (e.g. after changing the cancellation reason)"
+                        title="Regenerate from the current round details"
                       >
                         <RefreshCw size={11} className={mailModal.loadingPreview ? 'animate-spin' : ''} /> Regenerate
                       </button>
@@ -998,9 +991,6 @@ const InterviewRoundTab = ({
               <button onClick={closeMailModal} className="px-3 py-1.5 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition">Close</button>
               {mailModal.type === 'cancel' ? (
                 <>
-                  {/* Skips sending anything — just records the cancellation.
-                      Still requires a reason, for the record, even though
-                      nobody gets emailed. */}
                   <button
                     onClick={finalizeCancellation}
                     disabled={!mailModal.reason.trim()}
@@ -1035,7 +1025,6 @@ const InterviewRoundTab = ({
         </div>
       )}
 
-      {/* ── Rejection mail — shown when any round is Not Recommended ── */}
       {rejectionModal.open && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setRejectionModal((m) => ({ ...m, open: false }))}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
@@ -1106,4 +1095,4 @@ const InterviewRoundTab = ({
   );
 };
 
-export default InterviewRoundTab;
+export default RoundPipelineTab;

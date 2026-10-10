@@ -5,8 +5,14 @@ const router  = express.Router();
 
 const Referral           = require('../models/Referral');
 const HiringRequisition  = require('../models/HiringRequisition');
+const ApplicantRecord    = require('../models/ApplicantRecord');
 const { uploadResumeToDrive } = require('../utils/googleDrive');
 const { triggerReferralSubmitted } = require('../emails');
+const { authenticate } = require('../middleware/authenticate');
+
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 // Same shape as routes/candidateApplications.js — memory storage only,
 // buffer goes straight to Google Drive, never touches local disk.
@@ -19,13 +25,18 @@ const uploadResume = multer({
   },
 });
 
-// POST /api/referrals — public, unauthenticated (reached via the
-// referral-invite email link, not a logged-in HR action).
-router.post('/', uploadResume.single('resume'), async (req, res) => {
+// POST /api/referrals — the referrer must be logged in (reached via the
+// employee referral page after authentication, not a public email link);
+// referrerName/referrerEmail come from the authenticated session, never
+// from form input, so a referral can't be submitted under someone else's
+// name.
+router.post('/', authenticate, uploadResume.single('resume'), async (req, res) => {
   try {
-    const { requisitionId, referrerName, referrerEmail, candidateName, candidatePhone, candidateEmail, relationship } = req.body;
+    const { requisitionId, candidateName, candidatePhone, candidateEmail, relationship, confirmDuplicate } = req.body;
+    const referrerName  = req.user.name;
+    const referrerEmail = req.user.email;
 
-    if (!requisitionId || !referrerName || !referrerEmail || !candidateName || !candidatePhone || !candidateEmail) {
+    if (!requisitionId || !candidateName || !candidatePhone || !candidateEmail) {
       return res.status(400).json({ success: false, message: 'Missing required fields.' });
     }
     if (!req.file) {
@@ -38,6 +49,32 @@ router.post('/', uploadResume.single('resume'), async (req, res) => {
     }
     if (requisition.fmsStatus !== 'Open') {
       return res.status(400).json({ success: false, message: 'This position is no longer open for referrals.' });
+    }
+
+    // Duplicate-candidate check against existing ApplicantRecord profiles —
+    // same convention as routes/candidateApplications.js.
+    if (!confirmDuplicate) {
+      const dupOr = [];
+      if (candidateEmail) dupOr.push({ email: new RegExp(`^${escapeRegex(candidateEmail.trim())}$`, 'i') });
+      if (candidatePhone) dupOr.push({ phone: candidatePhone.trim() });
+      if (candidateName)  dupOr.push({ full_name: new RegExp(`^${escapeRegex(candidateName.trim())}$`, 'i') });
+      if (dupOr.length) {
+        const existing = await ApplicantRecord.findOne({ $or: dupOr }).lean();
+        if (existing) {
+          return res.status(200).json({
+            success: true,
+            duplicate: true,
+            existing: {
+              _id: existing._id,
+              full_name: existing.full_name,
+              email: existing.email,
+              phone: existing.phone,
+              designation: existing.designation,
+              status: existing.status,
+            },
+          });
+        }
+      }
     }
 
     const resumeLink = await uploadResumeToDrive(req.file.buffer, req.file.originalname, req.file.mimetype);
@@ -91,6 +128,17 @@ router.get('/', async (req, res) => {
     ]);
 
     res.json({ success: true, data, total, page: Number(page), limit: Number(limit) });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/referrals/mine — the logged-in referrer's own submissions only.
+// Must be declared before GET /:id so "mine" isn't swallowed as an id.
+router.get('/mine', authenticate, async (req, res) => {
+  try {
+    const data = await Referral.find({ referrerEmail: req.user.email }).sort({ createdAt: -1 });
+    res.json({ success: true, data });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

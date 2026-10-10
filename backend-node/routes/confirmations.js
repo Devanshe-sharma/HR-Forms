@@ -23,6 +23,7 @@ const { uploadFileToDrive } = require('../utils/googleDrive');
 const err = (res, code, msg) => res.status(code).json({ success: false, message: msg });
 
 const EXITED_STATUS_VALUES = new Set(['Left', 'Already Left']);
+const WORK_HISTORY_ROLES = ['Admin', 'HR', 'Management'];
 
 // ─── Date calculation helpers ──────────────────────────────────────────────────
 // Safely add months to a date, handling month boundaries correctly
@@ -519,6 +520,37 @@ router.get('/by-employee', async (req, res) => {
 
 // ─── GET /api/confirmations/:id ───────────────────────────────────────────────
 // ⚠️  This must stay AFTER all named GET routes above
+
+router.get('/history/:employeeId', authenticate, requireRole(WORK_HISTORY_ROLES), async (req, res) => {
+  try {
+    const record = await Confirmations.findOne({ employeeId: req.params.employeeId }).lean();
+    if (!record) return res.json({ success: true, data: [] });
+
+    const history = (record.history || [])
+      .map((h) => ({
+        status: h.status || '',
+        stage: record.stage || '',
+        reason: h.reason || '',
+        monthsExtended: h.monthsExtended ?? null,
+        changedBy: h.changedBy || '',
+        changedByName: h.changedByName || '',
+        date: h.date || null,
+      }))
+      .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+
+    res.json({
+      success: true,
+      data: {
+        currentStatus: record.currentStatus,
+        stage: record.stage,
+        history,
+      },
+    });
+  } catch (e) {
+    console.error('[Confirmations] history lookup error:', e.message);
+    err(res, 500, 'Failed to look up confirmation history');
+  }
+});
 
 router.get('/:id', async (req, res) => {
   try {

@@ -13,8 +13,6 @@ import {
   ExitToApp as ExitToAppIcon,
   AccountCircle as AccountCircleIcon,
   Settings as SettingsIcon,
-  Assignment as AssignmentIcon,
-  Score as ScoreIcon,
   ExpandLess as ExpandLessIcon,
   ExpandMore as ExpandMoreIcon,
   School as SchoolIcon,
@@ -28,18 +26,11 @@ import {
   TrendingUp as TrendingUpIcon,
   CheckCircle as CheckCircleIcon,
   Mail as MailIcon,
-  BeachAccess as BeachAccessIcon,
-  WorkOff as WorkOffIcon,
-  Today as TodayIcon,
-  Approval as ApprovalIcon,
-  EmojiEvents as EmojiEventsIcon,
   GpsFixed as KpiIcon,
   HealthAndSafety as HygieneIcon,
   AutoGraph as GrowthIcon,
   Leaderboard as SummaryIcon,
   MonetizationOn as MonetizationOnIcon,
-  PersonAddAlt as PersonAddAltIcon,
-  EditNote as EditNoteIcon,
   ReportProblem as ReportProblemIcon,
   Gavel as GavelIcon,
 } from '@mui/icons-material';
@@ -47,7 +38,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { usePageVisibility } from '../contexts/PageVisibilityContext';
 
 const drawerWidth = 260;
-const BRAND_BLUE = '#1976d2';
+const BRAND_BLUE = '#2b3d14';
 
 // ─── Types ─────────────────────────────────────
 interface SubItem {
@@ -79,12 +70,9 @@ type MenuItem = ParentItem | LeafItem;
 export default function Sidebar() {
   const location = useLocation();
 
-  const [openAttendance, setOpenAttendance] = useState(false);
-  const [openTrainings, setOpenTrainings] = useState(false);
-  const [openOuting, setOpenOuting] = useState(false);
   const [openPMS, setOpenPMS] = useState(false);
-  const [openRecruitment, setOpenRecruitment] = useState(false);
   const [openEscalations, setOpenEscalations] = useState(false);
+  const [openRecruitment, setOpenRecruitment] = useState(false);
 
   const isActive = (path: string): boolean => {
     const current = location.pathname + location.search;
@@ -93,31 +81,6 @@ export default function Sidebar() {
 
   // Auto-expand parent menus if any sub-item is active
   useEffect(() => {
-    // Check if any attendance sub-item is active
-    const attendanceActive = [
-      '/attendance?tab=attendance',
-      '/attendance?tab=leaves', 
-      '/attendance?tab=out-of-office'
-    ].some(path => isActive(path));
-    
-    // Check if any training sub-item is active
-    const trainingActive = [
-      '/training-page?tab=HR',
-      '/training-page?tab=manager',
-      '/training-page?tab=management', 
-      '/training-page?tab=employee',
-      '/training-page?tab=scorecard'
-    ].some(path => isActive(path));
-    
-    // Check if any outing sub-item is active
-    const outingActive = [
-      '/outing?tab=HR',
-      '/outing?tab=management',
-      '/outing?tab=outings-view',
-      '/outing?tab=employee-feedback',
-      '/outing?tab=scorecard'
-    ].some(path => isActive(path));
-    
     // Check if any PMS sub-item is active
     const pmsActive = [
       '/pms?tab=kpi',
@@ -126,23 +89,17 @@ export default function Sidebar() {
       '/pms?tab=summary'
     ].some(path => isActive(path));
     
-    // Check if any recruitment sub-item is active
-    const recruitmentActive = [
-      '/recruitment',
-      '/requisition',
-      '/new-hiring-requisition',
-      '/applicants'
-    ].some(path => isActive(path));
-
     // Check if any escalations/grievances sub-item is active
     const escalationsActive = ['/escalations', '/grievances'].some(path => isActive(path));
 
-    setOpenAttendance(attendanceActive);
-    setOpenTrainings(trainingActive);
-    setOpenOuting(outingActive);
+    // Check if any Recruitment sub-item is active
+    const recruitmentActive = [
+      '/recruitment', '/applicants', '/referrals', '/offer-joining', '/timeline-history',
+    ].some(path => isActive(path));
+
     setOpenPMS(pmsActive);
-    setOpenRecruitment(recruitmentActive);
     setOpenEscalations(escalationsActive);
+    setOpenRecruitment(recruitmentActive);
   }, [location.pathname, location.search]);
 
   const { canViewKey } = usePageVisibility();
@@ -157,51 +114,20 @@ export default function Sidebar() {
       icon: <RequestPageIcon />,
       onClick: () => setOpenRecruitment(p => !p),
       open: openRecruitment,
-      pageKey: 'recruitment',
+      pageKey: 'recruitment.dashboard',
       subItems: [
-        { to: '/recruitment', text: 'Recruitment Dashboard', icon: <DashboardIcon />, pageKey: 'recruitment.dashboard' },
-        // { to: '/requisition', text: 'Requisitions', icon: <AssignmentIcon /> },
-        { to: '/new-hiring-requisition', text: 'New Requisition', icon: <RequestPageIcon />, pageKey: 'recruitment.newRequisition' },
+        { to: '/recruitment', text: 'Recruitment Dashboard', icon: <RequestPageIcon />, pageKey: 'recruitment.dashboard' },
         { to: '/applicants', text: 'Candidate Management', icon: <PeopleIcon />, pageKey: 'recruitment.candidates' },
-        { to: '/referrals', text: 'Referrals', icon: <PeopleIcon />, pageKey: 'recruitment.referrals' },
       ],
     },
-
     { to: '/onboarding/dashboard', text: 'Onboarding', icon: <BusinessCenterIcon />, pageKey: 'onboarding.dashboard' },
     { to: '/exits', text: 'Exit', icon: <ExitToAppIcon />, pageKey: 'exit.dashboard' },
     { to: '/dept-designation-master', text: 'Dept & Designation Master', icon: <BusinessCenterIcon />, pageKey: 'deptDesignationMaster' },
 
 
 
-    {
-      text: 'Trainings',
-      icon: <SchoolIcon />,
-      onClick: () => setOpenTrainings(p => !p),
-      open: openTrainings,
-      pageKey: 'trainings',
-      subItems: [
-        { to: '/training-page?tab=HR', text: 'HR', icon: <PeopleIcon />, pageKey: 'trainings.hr' },
-        { to: '/training-page?tab=manager', text: 'Managers', icon: <AssignmentIcon />, pageKey: 'trainings.manager' },
-        { to: '/training-page?tab=management', text: 'Management', icon: <ApprovalIcon />, pageKey: 'trainings.management' },
-        { to: '/training-page?tab=employee', text: 'Employee', icon: <AssignmentIcon />, pageKey: 'trainings.employee' },
-        { to: '/training-page?tab=scorecard', text: 'Scorecard', icon: <EmojiEventsIcon />, pageKey: 'trainings.scorecard' },
-      ],
-    },
-
-    {
-      text: 'Outings / Events',
-      icon: <EventIcon />,
-      onClick: () => setOpenOuting(p => !p),
-      open: openOuting,
-      pageKey: 'outings',
-      subItems: [
-        { to: '/outing?tab=HR', text: 'HR Outing', icon: <PeopleIcon />, pageKey: 'outings.hr' },
-        { to: '/outing?tab=management', text: 'Management Approvals', icon: <BusinessCenterIcon />, pageKey: 'outings.management' },
-        { to: '/outing?tab=outings-view', text: 'Scheduled & Completed', icon: <EventIcon />, pageKey: 'outings.view' },
-        { to: '/outing?tab=employee-feedback', text: 'Employee Feedback', icon: <AssignmentIcon />, pageKey: 'outings.feedback' },
-        { to: '/outing?tab=scorecard', text: 'Outing Scorecard', icon: <ScoreIcon />, pageKey: 'outings.scorecard' },
-      ],
-    },
+    { to: '/training-page?tab=HR', text: 'Trainings', icon: <SchoolIcon />, pageKey: 'trainings' },
+    { to: '/outing?tab=HR', text: 'Outings / Events', icon: <EventIcon />, pageKey: 'outings' },
 
     { to: '/confirmations', text: 'Confirmations', icon: <CheckCircleIcon />, pageKey: 'confirmations' },
     { to: '/salary-revision', text: 'Salary Revision', icon: <MonetizationOnIcon />, pageKey: 'salaryRevision' },
@@ -219,34 +145,24 @@ export default function Sidebar() {
     },
     // { to: '/salary-sheet', text: 'Salary Sheet', icon: <PaymentsIcon /> },
 
-    {
-      text: 'PMS',
-      icon: <TrendingUpIcon />,
-      onClick: () => setOpenPMS(p => !p),
-      open: openPMS,
-      pageKey: 'pms',
-      subItems: [
-        { to: '/pms?tab=kpi', text: 'KPI & Targets', icon: <KpiIcon />, pageKey: 'pms.kpi' },
-        { to: '/pms?tab=hygiene', text: 'Attendance', icon: <HygieneIcon />, pageKey: 'pms.hygiene' },
-        { to: '/pms?tab=growth', text: 'Growth', icon: <GrowthIcon />, pageKey: 'pms.growth' },
-        { to: '/pms?tab=summary', text: 'Final Performance', icon: <SummaryIcon />, pageKey: 'pms.summary' },
-      ],
-    },
+    // PMS — commented out per request, not deleted (restore by uncommenting).
+    // {
+    //   text: 'PMS',
+    //   icon: <TrendingUpIcon />,
+    //   onClick: () => setOpenPMS(p => !p),
+    //   open: openPMS,
+    //   pageKey: 'pms',
+    //   subItems: [
+    //     { to: '/pms?tab=kpi', text: 'KPI & Targets', icon: <KpiIcon />, pageKey: 'pms.kpi' },
+    //     { to: '/pms?tab=hygiene', text: 'Attendance', icon: <HygieneIcon />, pageKey: 'pms.hygiene' },
+    //     { to: '/pms?tab=growth', text: 'Growth', icon: <GrowthIcon />, pageKey: 'pms.growth' },
+    //     { to: '/pms?tab=summary', text: 'Final Performance', icon: <SummaryIcon />, pageKey: 'pms.summary' },
+    //   ],
+    // },
 
     
 
-    {
-      text: 'Attendance',
-      icon: <AccessTimeIcon />,
-      onClick: () => setOpenAttendance(p => !p),
-      open: openAttendance,
-      pageKey: 'hygieneFactors',
-      subItems: [
-        { to: '/attendance?tab=out-of-office', text: 'Out of Office', icon: <WorkOffIcon />, pageKey: 'hygieneFactors.outOfOffice' },
-        { to: '/attendance?tab=attendance', text: 'Attendance', icon: <TodayIcon />, pageKey: 'hygieneFactors.attendance' },
-        { to: '/attendance?tab=leaves', text: 'Leaves', icon: <BeachAccessIcon />, pageKey: 'hygieneFactors.leaves' },
-      ],
-    },
+    { to: '/attendance?tab=out-of-office', text: 'Attendance', icon: <AccessTimeIcon />, pageKey: 'hygieneFactors' },
 
     // { to: '/checklist-delegation', text: 'Check List & Delegation', icon: <AssignmentTurnedInIcon /> },
     
@@ -265,7 +181,8 @@ export default function Sidebar() {
           height: '100vh',
           display: 'flex',
           flexDirection: 'column',
-          borderRight: '1px solid #e0e0e0',
+          bgcolor: BRAND_BLUE,
+          borderRight: '1px solid rgba(255,255,255,0.08)',
           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         },
       }}
@@ -321,11 +238,11 @@ export default function Sidebar() {
             transition: 'all 0.3s ease',
           },
           '&::-webkit-scrollbar-thumb': {
-            bgcolor: '#e0e0e0',
+            bgcolor: 'rgba(255,255,255,0.18)',
             borderRadius: '4px',
             transition: 'all 0.3s ease',
             '&:hover': {
-              bgcolor: '#d0d0d0',
+              bgcolor: 'rgba(255,255,255,0.3)',
             },
           },
         }}
@@ -340,14 +257,14 @@ export default function Sidebar() {
                   onClick={item.onClick}
                   sx={{
                     borderRadius: '8px',
-                    bgcolor: isParentActive ? BRAND_BLUE : 'transparent',
-                    color: isParentActive ? 'white' : '#212121',
+                    bgcolor: isParentActive ? 'rgba(255,255,255,0.18)' : 'transparent',
+                    color: 'white',
                     transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                     transform: 'translateX(0)',
                     '&:hover': {
-                      bgcolor: isParentActive ? '#1976d2' : '#f8fafc',
+                      bgcolor: isParentActive ? 'rgba(255,255,255,0.26)' : 'rgba(255,255,255,0.08)',
                       transform: 'translateX(2px)',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
                     },
                     '&:active': {
                       transform: 'translateX(1px)',
@@ -407,16 +324,16 @@ export default function Sidebar() {
                           sx={{
                             pl: 6,
                             borderRadius: '6px',
-                            bgcolor: active ? BRAND_BLUE : 'transparent',
-                            color: active ? 'white' : '#4b5563',
+                            bgcolor: active ? 'rgba(255,255,255,0.18)' : 'transparent',
+                            color: 'white',
                             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                             transform: 'translateX(0)',
                             opacity: 1,
                             animation: active ? 'slideIn 0.3s ease' : 'none',
                             '&:hover': {
-                              bgcolor: active ? '#1976d2' : '#f1f5f9',
+                              bgcolor: active ? 'rgba(255,255,255,0.26)' : 'rgba(255,255,255,0.08)',
                               transform: 'translateX(4px)',
-                              boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                              boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
                             },
                             '&:active': {
                               transform: 'translateX(2px)',
@@ -458,7 +375,10 @@ export default function Sidebar() {
             );
           }
 
-          const active = isActive(item.to);
+          // Pathname-only match — so an item linking to one tab of a
+          // multi-tab page (e.g. Trainings -> /training-page?tab=HR) stays
+          // highlighted while on any of that page's other tabs too.
+          const active = location.pathname === item.to.split('?')[0];
           return (
             <ListItemButton
               key={item.text}
@@ -466,14 +386,14 @@ export default function Sidebar() {
               to={item.to}
               sx={{
                 borderRadius: '8px',
-                bgcolor: active ? BRAND_BLUE : 'transparent',
-                color: active ? 'white' : '#212121',
+                bgcolor: active ? 'rgba(255,255,255,0.18)' : 'transparent',
+                color: 'white',
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                 transform: 'translateX(0)',
                 '&:hover': {
-                  bgcolor: active ? '#1976d2' : '#f8fafc',
+                  bgcolor: active ? 'rgba(255,255,255,0.26)' : 'rgba(255,255,255,0.08)',
                   transform: 'translateX(2px)',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
                 },
                 '&:active': {
                   transform: 'translateX(1px)',

@@ -4,8 +4,16 @@ const multer  = require('multer');
 const router  = express.Router();
 const CandidateApplication = require('../models/Candidateapplication');
 const ApplicantRecord      = require('../models/ApplicantRecord');
+const HiringRequisition    = require('../models/HiringRequisition');
 const { triggerCandidateApplication } = require('../emails');
 const { uploadResumeToDrive } = require('../utils/googleDrive');
+const { computeAtsMatchScore } = require('../utils/atsMatchScore');
+
+// Escapes regex metacharacters so user-submitted text can be used safely
+// inside a case-insensitive RegExp (duplicate-candidate lookup below).
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 // Memory storage — no local disk write at all. The file buffer goes
 // straight to Google Drive via uploadResumeToDrive() inside the route
@@ -60,6 +68,37 @@ router.post('/', uploadResume.single('resume'), async (req, res) => {
       }
     }
 
+    // ── Duplicate-candidate check — looked up on ApplicantRecord (where
+    // real candidate profiles live, one per person), not CandidateApplication
+    // (one doc per application). A match on email OR phone OR exact full
+    // name returns the existing profile instead of silently creating a
+    // second one; the frontend then lets HR/the candidate choose to link
+    // this application to it (resubmit with linkToRecordId) or create a
+    // separate profile anyway (resubmit with confirmDuplicate: true).
+    if (!body.confirmDuplicate && !body.linkToRecordId) {
+      const dupOr = [];
+      if (body.email) dupOr.push({ email: new RegExp(`^${escapeRegex(body.email.trim())}$`, 'i') });
+      if (body.phone) dupOr.push({ phone: body.phone.trim() });
+      if (body.full_name) dupOr.push({ full_name: new RegExp(`^${escapeRegex(body.full_name.trim())}$`, 'i') });
+      if (dupOr.length) {
+        const existing = await ApplicantRecord.findOne({ $or: dupOr }).lean();
+        if (existing) {
+          return res.status(200).json({
+            success: true,
+            duplicate: true,
+            existing: {
+              _id: existing._id,
+              full_name: existing.full_name,
+              email: existing.email,
+              phone: existing.phone,
+              designation: existing.designation,
+              status: existing.status,
+            },
+          });
+        }
+      }
+    }
+
     // Upload to Drive first — resume ends up as a real, publicly-viewable
     // Drive link (see uploadResumeToDrive's own comments for exactly how
     // that permission gets set), not a local disk path.
@@ -71,20 +110,49 @@ router.post('/', uploadResume.single('resume'), async (req, res) => {
       consentTimestamp: body.consentGiven ? new Date() : null,
     });
 
-    // Seed an ApplicantRecord for the HR dashboard (fire-and-forget)
-    const recordPayload = { applicationRef: doc._id };
-    for (const field of FIELDS_TO_COPY) {
-      recordPayload[field] = doc[field] ?? '';
-    }
-    // Compatibility mapping onto the two dashboard fields the candidate is
-    // no longer asked directly — derived here, once, rather than duplicated
-    // as a second candidate-facing question.
-    recordPayload.experience = doc.candidateType === 'Fresher' ? 'No' : 'Yes';
-    recordPayload.expected_monthly_ctc = doc.expected_annual_ctc ?? '';
+    if (body.linkToRecordId) {
+      // "Link to existing" resolution of the duplicate check above — this
+      // application attaches to an already-existing profile instead of
+      // seeding a second one.
+      ApplicantRecord.findById(body.linkToRecordId)
+        .then(async (record) => {
+          if (!record) return;
+          record.applications.push({
+            position: doc.designation || '',
+            date: new Date(),
+            source: doc.candidateSource || '',
+            applicationRef: doc._id,
+          });
+          record.events = record.events || [];
+          record.events.push({ key: `application-linked-${doc._id}`, label: `Application Linked${doc.designation ? `: ${doc.designation}` : ''}`, when: new Date() });
+          await record.save();
+        })
+        .catch((e) => console.error('[link-application] failed:', e.message));
+    } else {
+      // Seed an ApplicantRecord for the HR dashboard (fire-and-forget)
+      const recordPayload = { applicationRef: doc._id };
+      for (const field of FIELDS_TO_COPY) {
+        recordPayload[field] = doc[field] ?? '';
+      }
+      // Compatibility mapping onto the two dashboard fields the candidate is
+      // no longer asked directly — derived here, once, rather than duplicated
+      // as a second candidate-facing question.
+      recordPayload.experience = doc.candidateType === 'Fresher' ? 'No' : 'Yes';
+      recordPayload.expected_monthly_ctc = doc.expected_annual_ctc ?? '';
+      recordPayload.events = [{ key: 'application-received', label: 'Application Received', when: new Date(), detail: doc.designation || '' }];
 
-    ApplicantRecord.create(recordPayload).catch((e) =>
-      console.error('[ApplicantRecord seed] failed:', e.message),
-    );
+      (async () => {
+        try {
+          const requisition = recordPayload.job_id
+            ? await HiringRequisition.findOne({ serial_no: recordPayload.job_id }).lean()
+            : null;
+          recordPayload.atsMatchScore = computeAtsMatchScore(recordPayload, requisition);
+        } catch (e) {
+          console.error('[ats score] error:', e.message);
+        }
+        return ApplicantRecord.create(recordPayload);
+      })().catch((e) => console.error('[ApplicantRecord seed] failed:', e.message));
+    }
 
     // Send confirmation + HR notification emails (fire-and-forget)
     triggerCandidateApplication(doc);

@@ -2,6 +2,7 @@ const express           = require('express');
 const { parse: parseCsv } = require('csv-parse/sync');
 const router            = express.Router();
 const HiringRequisition = require('../models/HiringRequisition');
+const ApplicantRecord   = require('../models/ApplicantRecord');
 const { triggerNewRequisition, triggerUpdateRequisition, triggerReferralInvite } = require('../emails');
 const resolveJdAndRoleLinks = require('../utils/resolveJdAndRoleLinks');
 const { fiscalYearOf, fiscalQuarterOf } = require('../utils/fiscalQuarter');
@@ -625,6 +626,62 @@ router.get('/analytics/cost-per-hire', async (req, res) => {
   } catch (err) {
     console.error('[hiringrequisitions] cost-per-hire analytics error:', err.message);
     res.status(500).json({ success: false, error: 'Failed to compute cost-per-hire analytics' });
+  }
+});
+
+// GET /api/hiringrequisitions/analytics/pipeline-summary — the Candidate
+// Management dashboard's KPI cards. "This month" uses calendar-month
+// boundaries in server local time, matching how the rest of this app
+// reports month-scoped figures (no fiscal-quarter logic needed here, unlike
+// days-to-hire above). Average Time to Hire is NOT duplicated here — the
+// frontend already calls GET /analytics/days-to-hire for that card.
+router.get('/analytics/pipeline-summary', async (req, res) => {
+  try {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const [
+      openPositions,
+      pendingPositions,
+      newApplicationsThisMonth,
+      shortlisted,
+      interviewsScheduled,
+      offersReleasedThisMonth,
+      joinedThisMonth,
+    ] = await Promise.all([
+      HiringRequisition.countDocuments({ fmsStatus: 'Open', hr_approved_at: { $ne: null } }),
+      HiringRequisition.countDocuments({ fmsStatus: 'Open', hr_approved_at: null }),
+      ApplicantRecord.countDocuments({ createdAt: { $gte: monthStart, $lt: monthEnd } }),
+      ApplicantRecord.countDocuments({ screenerStatus: 'Shortlisted' }),
+      ApplicantRecord.countDocuments({
+        interviewRounds: {
+          $elemMatch: { schedulingStatus: { $in: ['Scheduled', 'Rescheduled'] }, scheduledDate: { $gte: now } },
+        },
+      }),
+      ApplicantRecord.countDocuments({
+        'finalDecision.decision': 'Offer Made',
+        'finalDecision.decisionDate': { $gte: monthStart, $lt: monthEnd },
+      }),
+      ApplicantRecord.countDocuments({
+        'joining.status': 'Joined',
+        'joining.actualDate': { $gte: monthStart, $lt: monthEnd },
+      }),
+    ]);
+
+    res.json({
+      success: true,
+      openPositions,
+      pendingPositions,
+      newApplicationsThisMonth,
+      shortlisted,
+      interviewsScheduled,
+      offersReleasedThisMonth,
+      joinedThisMonth,
+    });
+  } catch (err) {
+    console.error('[hiringrequisitions] pipeline-summary analytics error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to compute pipeline summary' });
   }
 });
 

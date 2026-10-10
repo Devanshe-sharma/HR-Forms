@@ -1,9 +1,9 @@
 // pages/Recruitment/CandidateInformationTab.tsx
 import React, { useState, useEffect } from 'react';
-import { ExternalLink, Video, Loader2, Edit2, Save, Sparkles, FileText, Linkedin } from 'lucide-react';
+import { Loader2, Sparkles, FileText, Send, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { Field, EditField, EditSelect } from './ApplicantFieldComponents';
-import { ApplicantRecord, API_BASE } from './applicantTypes';
+import { Field } from './ApplicantFieldComponents';
+import { ApplicantRecord, API_BASE, ASSESSMENT_STATUS_COLORS, DISC_TRAIT_LABELS } from './applicantTypes';
 
 type ApplicantRecordWithAI = ApplicantRecord & {
   ai_fit_score?:   number | null;
@@ -17,22 +17,25 @@ function resolveResumeUrl(resume?: string): string {
   return `${origin}${resume.startsWith('/') ? '' : '/'}${resume}`;
 }
 
+// Read-only two-column key-value cards (matches the mockup's Contact &
+// Personal / Professional layout) — editing moved to EditCandidateInfoModal,
+// opened via the "Edit Information" button in the modal header
+// (AllApplicants.tsx), rather than an always-present inline edit form.
 const CandidateInformationTab = ({
-  record, mode, setMode, onSave,
+  record, onSave,
 }: {
   record: ApplicantRecordWithAI;
-  mode: 'view' | 'edit';
-  setMode: (m: 'view' | 'edit') => void;
   onSave: (updated: ApplicantRecord) => void;
 }) => {
-  const [draft,     setDraft]     = useState<ApplicantRecordWithAI>(record);
-  const [saving,    setSaving]    = useState(false);
   const [jdLink,    setJdLink]    = useState<string | null>(null);
   const [jdError,   setJdError]   = useState<string | null>(null);
   const [loadingJd, setLoadingJd] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
+  const [sendingAssessment, setSendingAssessment] = useState<'excel' | 'disc' | null>(null);
+  const [marks, setMarks] = useState<boolean[]>([]);
+  const [grading, setGrading] = useState(false);
 
-  useEffect(() => { setDraft(record); }, [record]);
+  useEffect(() => { setMarks(record.excelTest?.marks?.length ? record.excelTest.marks : (record.excelTest?.answers || []).map(() => true)); }, [record.excelTest]);
 
   useEffect(() => {
     setLoadingJd(true);
@@ -48,26 +51,37 @@ const CandidateInformationTab = ({
       .finally(() => setLoadingJd(false));
   }, [record._id]);
 
-  const handleChange = (name: string, value: string) =>
-    setDraft(p => ({ ...p, [name]: value }));
-
-  const handleSave = async () => {
-    setSaving(true);
+  const sendAssessment = async (kind: 'excel' | 'disc') => {
+    setSendingAssessment(kind);
     try {
-      const res = await fetch(`${API_BASE}/applicant-records/${record._id}`, {
-        method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(draft),
-      });
-      if (!res.ok) throw new Error();
+      const res = await fetch(`${API_BASE}/applicant-records/${record._id}/assessments/${kind}/send`, { method: 'POST' });
       const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to send assessment');
       onSave(json.data);
-      toast.success('Candidate details saved');
-      setMode('view');
-    } catch {
-      toast.error('Failed to save');
+      toast.success(`${kind === 'excel' ? 'Excel Test' : 'DISC Assessment'} sent`);
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to send assessment');
     } finally {
-      setSaving(false);
+      setSendingAssessment(null);
+    }
+  };
+
+  const gradeExcel = async () => {
+    setGrading(true);
+    try {
+      const res = await fetch(`${API_BASE}/applicant-records/${record._id}/assessments/excel/grade`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ marks }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to grade test');
+      onSave(json.data);
+      toast.success(`Graded — score ${json.data.excelTest?.score}%`);
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to grade test');
+    } finally {
+      setGrading(false);
     }
   };
 
@@ -83,7 +97,7 @@ const CandidateInformationTab = ({
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.message || 'Analysis failed');
       onSave(json.data);
-      toast.success(`Fit score: ${json.data.ai_fit_score}/10`);
+      toast.success(`ATS score: ${json.data.ai_fit_score}/10`);
     } catch (e: any) {
       toast.error(e.message || 'Failed to analyze');
     } finally {
@@ -91,7 +105,22 @@ const CandidateInformationTab = ({
     }
   };
 
-  // ─── Section header helper ────────────────────────────────────────────────
+  const handleNotesBlur = async (notes: string) => {
+    if (notes === (record.internalNotes || '')) return;
+    try {
+      const res = await fetch(`${API_BASE}/applicant-records/${record._id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ internalNotes: notes }),
+      });
+      if (!res.ok) throw new Error();
+      const json = await res.json();
+      onSave(json.data);
+    } catch {
+      toast.error('Failed to save notes');
+    }
+  };
+
   const SectionLabel = ({ children }: { children: React.ReactNode }) => (
     <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3">
       {children}
@@ -101,80 +130,9 @@ const CandidateInformationTab = ({
   return (
     <div className="space-y-6">
 
-      {/* ── Top action bar: Resume + LinkedIn + Edit/Save ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-
-        {/* Resume + LinkedIn links — always visible at top */}
-        <div className="flex items-center flex-wrap gap-2">
-          {draft.resume && (
-            <a
-              href={resolveResumeUrl(draft.resume)}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition"
-            >
-              <ExternalLink size={13} />
-              Resume
-            </a>
-          )}
-          {draft.linkedin && (
-            <a
-              href={draft.linkedin}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition"
-            >
-              {/* Lucide doesn't have LinkedIn — ExternalLink with label works cleanly */}
-              <ExternalLink size={13} />
-              LinkedIn
-            </a>
-          )}
-          {draft.short_video_url && (
-            <a
-              href={draft.short_video_url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition"
-            >
-              <Video size={13} />
-              Video
-            </a>
-          )}
-        </div>
-
-        {/* Edit / Save controls */}
-        <div className="flex gap-2 flex-shrink-0">
-          {mode === 'view' ? (
-            <button
-              onClick={() => setMode('edit')}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-lime-700 bg-lime-50 hover:bg-lime-100 rounded-lg transition"
-            >
-              <Edit2 size={13} /> Edit Details
-            </button>
-          ) : (
-            <>
-              <button
-                onClick={() => { setDraft(record); setMode('view'); }}
-                className="px-4 py-2 text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-lime-600 hover:bg-lime-700 disabled:opacity-60 rounded-lg transition"
-              >
-                {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                {saving ? 'Saving…' : 'Save'}
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* ── JD + AI Fit ── */}
+      {/* ── JD + ATS Score ── */}
       <section className="bg-gray-50 border border-gray-100 rounded-xl p-4">
-        <SectionLabel>Job Description &amp; AI Fit</SectionLabel>
+        <SectionLabel>Job Description &amp; ATS Score</SectionLabel>
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2">
             {loadingJd ? (
@@ -192,121 +150,92 @@ const CandidateInformationTab = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {draft.ai_fit_score != null && (
+            {record.ai_fit_score != null && (
               <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                draft.ai_fit_score >= 8 ? 'bg-green-100 text-green-700'
-                  : draft.ai_fit_score >= 5 ? 'bg-amber-100 text-amber-700'
+                record.ai_fit_score >= 8 ? 'bg-green-100 text-green-700'
+                  : record.ai_fit_score >= 5 ? 'bg-amber-100 text-amber-700'
                   : 'bg-red-100 text-red-700'
               }`}>
-                Fit: {draft.ai_fit_score}/10
+                ATS: {record.ai_fit_score}/10
               </span>
             )}
             <button
               onClick={handleAnalyze}
               disabled={!jdLink || analyzing}
-              title={!jdLink ? 'No JD available' : 'Analyze fit'}
+              title={!jdLink ? 'No JD available' : 'Analyze ATS score'}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition"
             >
               {analyzing ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-              {draft.ai_fit_score != null ? 'Re-analyze' : 'Analyze Fit'}
+              {record.ai_fit_score != null ? 'Re-analyze ATS Score' : 'Analyze ATS Score'}
             </button>
           </div>
         </div>
-        {draft.ai_fit_summary && (
+        {record.ai_fit_summary && (
           <p className="text-sm text-gray-600 leading-relaxed mt-3 border-t border-gray-200 pt-3">
-            {draft.ai_fit_summary}
+            {record.ai_fit_summary}
           </p>
         )}
       </section>
 
-      {/* ── Personal ── */}
-      <section>
-        <SectionLabel>Personal</SectionLabel>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
-          {mode === 'view' ? (
-            <>
-              <Field label="Full Name"  value={draft.full_name} />
-              <Field label="Email"      value={draft.email} />
-              <Field label="Phone"      value={draft.phone} />
-              <Field label="WhatsApp"   value={draft.whatsapp_same ? 'Same as phone' : 'Different'} />
-              <Field label="DOB"        value={draft.dob} />
-              <Field label="Country"    value={draft.country} />
-            </>
-          ) : (
-            <>
-              <EditField label="Full Name" name="full_name" value={draft.full_name} onChange={handleChange} />
-              <EditField label="Email"     name="email"     value={draft.email}     onChange={handleChange} type="email" />
-              <EditField label="Phone"     name="phone"     value={draft.phone}     onChange={handleChange} />
-              <EditField label="DOB"       name="dob"       value={draft.dob}       onChange={handleChange} type="date" />
-              <EditField label="Country"   name="country"   value={draft.country}   onChange={handleChange} />
-            </>
-          )}
-        </div>
-      </section>
+      {/* ── Contact & Personal / Professional — two columns, read-only ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <section className="border border-gray-100 rounded-xl p-4">
+          <SectionLabel>Contact &amp; Personal</SectionLabel>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+            <Field label="Full Name"  value={record.full_name} />
+            <Field label="Phone"      value={record.phone} />
+            <Field label="Email"      value={record.email} />
+            <Field label="LinkedIn"   value={record.linkedin} />
+            <Field label="Location"   value={[record.city, record.state].filter(Boolean).join(', ')} />
+            <Field label="Country"    value={record.country} />
+            <Field label="Pin Code"   value={record.pin_code} />
+            <Field label="Relocation" value={record.relocation} />
+            <Field label="Education"  value={record.highest_qualification} />
+          </div>
+        </section>
 
-      {/* ── Location ── */}
-      <section>
-        <SectionLabel>Location</SectionLabel>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
-          {mode === 'view' ? (
-            <>
-              <Field label="State"      value={draft.state} />
-              <Field label="City"       value={draft.city} />
-              <Field label="Pin Code"   value={draft.pin_code} />
-              <Field label="Relocation" value={draft.relocation} />
-            </>
-          ) : (
-            <>
-              <EditField  label="State"      name="state"      value={draft.state}      onChange={handleChange} />
-              <EditField  label="City"       name="city"       value={draft.city}       onChange={handleChange} />
-              <EditField  label="Pin Code"   name="pin_code"   value={draft.pin_code}   onChange={handleChange} />
-              <EditSelect label="Relocation" name="relocation" value={draft.relocation} options={['Yes', 'No']} onChange={handleChange} />
-            </>
-          )}
-        </div>
-      </section>
+        <section className="border border-gray-100 rounded-xl p-4">
+          <SectionLabel>Professional</SectionLabel>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+            <Field label="Designation"   value={record.designation} />
+            <Field label="Experience"    value={record.experience} />
+            <Field label="Total Exp"     value={record.total_experience ? `${record.total_experience} yrs` : undefined} />
+            <Field label="Current CTC"   value={record.current_ctc} />
+            <Field label="Expected CTC"  value={record.expected_monthly_ctc} />
+            <Field label="Notice Period" value={record.notice_period ? `${record.notice_period} days` : undefined} />
+          </div>
+        </section>
+      </div>
 
-      {/* ── Professional ── */}
-      <section>
-        <SectionLabel>Professional</SectionLabel>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
-          {mode === 'view' ? (
-            <>
-              <Field label="Designation"   value={draft.designation} />
-              <Field label="Qualification" value={draft.highest_qualification} />
-              <Field label="Experience"    value={draft.experience} />
-              <Field label="Total Exp"     value={draft.total_experience ? `${draft.total_experience} yrs` : undefined} />
-              <Field label="Current CTC"   value={draft.current_ctc} />
-              <Field label="Notice Period" value={draft.notice_period ? `${draft.notice_period} days` : undefined} />
-              <Field label="Expected CTC"  value={draft.expected_monthly_ctc} />
-            </>
-          ) : (
-            <>
-              <EditField  label="Designation"      name="designation"           value={draft.designation}           onChange={handleChange} />
-              <EditField  label="Qualification"    name="highest_qualification" value={draft.highest_qualification} onChange={handleChange} />
-              <EditSelect label="Experience"       name="experience"            value={draft.experience}            options={['Yes', 'No']}  onChange={handleChange} />
-              <EditField  label="Total Exp (yrs)"  name="total_experience"      value={draft.total_experience}      onChange={handleChange} />
-              <EditField  label="Current CTC"      name="current_ctc"           value={draft.current_ctc}           onChange={handleChange} />
-              <EditField  label="Notice Period"    name="notice_period"         value={draft.notice_period}         onChange={handleChange} />
-              <EditField  label="Expected CTC"     name="expected_monthly_ctc"  value={draft.expected_monthly_ctc}  onChange={handleChange} />
-            </>
-          )}
+      {/* ── Application — full width, read-only ── */}
+      <section className="border border-gray-100 rounded-xl p-4">
+        <SectionLabel>Application</SectionLabel>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-4">
+          <Field label="Position"  value={record.designation} />
+          <Field label="Applied On" value={new Date(record.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} />
+          <Field label="Match Score" value={record.atsMatchScore != null ? `${record.atsMatchScore}%` : undefined} />
+          <Field label="Resume" value={record.resume ? 'On file' : undefined} />
         </div>
+        {record.resume && (
+          <a href={resolveResumeUrl(record.resume)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 mt-3 text-sm font-semibold text-blue-700 underline">
+            View Resume
+          </a>
+        )}
       </section>
 
       {/* ── Languages Known ── */}
       <section>
         <SectionLabel>Languages Known</SectionLabel>
-        {(draft.languagesKnown?.length || draft.otherLanguage) ? (
+        {(record.languagesKnown?.length || record.otherLanguage) ? (
           <div className="flex flex-wrap gap-2">
-            {(draft.languagesKnown || []).map((lang) => (
+            {(record.languagesKnown || []).map((lang) => (
               <span key={lang} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700">
                 {lang}
               </span>
             ))}
-            {draft.otherLanguage && (
+            {record.otherLanguage && (
               <span className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700">
-                {draft.otherLanguage}
+                {record.otherLanguage}
               </span>
             )}
           </div>
@@ -315,63 +244,109 @@ const CandidateInformationTab = ({
         )}
       </section>
 
-      {/* ── Resume (edit fallback) ── */}
-      {mode === 'edit' && (
-        <section>
-          <SectionLabel>Resume Link (override)</SectionLabel>
-          <EditField label="Paste a URL (Google Drive, etc.)" name="resume" value={draft.resume} onChange={handleChange} type="url" />
-        </section>
-      )}
+      {/* ── Assessments — Excel Test (HR-graded) + DISC ── */}
+      <section>
+        <SectionLabel>Assessments</SectionLabel>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-      {/* ── Social & Media links ── */}
-      {(draft.linkedin || draft.facebookLink || draft.short_video_url) && mode === 'view' && (
-        <section>
-          <SectionLabel>Social &amp; Media</SectionLabel>
-          <div className="flex gap-2 flex-wrap">
-            {draft.linkedin && (
-              <a href={draft.linkedin} target="_blank" rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition">
-                <ExternalLink size={12} /> LinkedIn
-              </a>
+          <div className="border border-gray-100 rounded-xl p-4 bg-gray-50 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-bold text-gray-700">Excel Test</p>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ASSESSMENT_STATUS_COLORS[record.excelTest?.status || '']}`}>
+                {record.excelTest?.status || 'Not Sent'}
+              </span>
+            </div>
+            {!record.excelTest?.status && (
+              <button
+                onClick={() => sendAssessment('excel')}
+                disabled={sendingAssessment === 'excel' || !record.email}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-50 rounded-lg transition"
+              >
+                {sendingAssessment === 'excel' ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                Send Test
+              </button>
             )}
-            {draft.facebookLink && (
-              <a href={draft.facebookLink} target="_blank" rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition">
-                <ExternalLink size={12} /> Facebook
-              </a>
-            )}
-            {draft.short_video_url && (
-              <a href={draft.short_video_url} target="_blank" rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-sm font-semibold text-red-600 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition">
-                <Video size={12} /> Resume Video
-              </a>
+            {(record.excelTest?.status === 'Submitted' || record.excelTest?.status === 'Graded') && (
+              <div className="space-y-2">
+                {(record.excelTest.answers || []).map((a, i) => (
+                  <div key={i} className="bg-white border border-gray-100 rounded-lg p-2.5">
+                    <p className="text-xs font-semibold text-gray-600 mb-1">{a.question}</p>
+                    <p className="text-sm text-gray-800 mb-2">{a.answer || '—'}</p>
+                    <label className="inline-flex items-center gap-1.5 text-xs text-gray-600">
+                      <input
+                        type="checkbox"
+                        checked={!!marks[i]}
+                        disabled={record.excelTest?.status === 'Graded'}
+                        onChange={(e) => setMarks((p) => p.map((m, idx) => idx === i ? e.target.checked : m))}
+                      />
+                      Correct
+                    </label>
+                  </div>
+                ))}
+                {record.excelTest.status === 'Submitted' ? (
+                  <button
+                    onClick={gradeExcel}
+                    disabled={grading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-lime-600 hover:bg-lime-700 disabled:opacity-60 rounded-lg transition"
+                  >
+                    {grading ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                    Submit Grading
+                  </button>
+                ) : (
+                  <p className="text-sm font-bold text-gray-700">Score: {record.excelTest.score}%</p>
+                )}
+              </div>
             )}
           </div>
-        </section>
-      )}
 
-      {/* ── Internal Notes ── */}
+          <div className="border border-gray-100 rounded-xl p-4 bg-gray-50 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-bold text-gray-700">DISC Assessment</p>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ASSESSMENT_STATUS_COLORS[record.discAssessment?.status || '']}`}>
+                {record.discAssessment?.status || 'Not Sent'}
+              </span>
+            </div>
+            {!record.discAssessment?.status && (
+              <button
+                onClick={() => sendAssessment('disc')}
+                disabled={sendingAssessment === 'disc' || !record.email}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-50 rounded-lg transition"
+              >
+                {sendingAssessment === 'disc' ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                Send Assessment
+              </button>
+            )}
+            {record.discAssessment?.status === 'Completed' && (
+              <div className="space-y-2">
+                <p className="text-sm font-bold text-gray-700">
+                  Primary trait: {DISC_TRAIT_LABELS[record.discAssessment.primary as 'D' | 'I' | 'S' | 'C']}
+                </p>
+                {(['D', 'I', 'S', 'C'] as const).map((t) => (
+                  <div key={t} className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-gray-500 w-6">{t}</span>
+                    <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-lime-500" style={{ width: `${record.discAssessment?.scores?.[t] ?? 0}%` }} />
+                    </div>
+                    <span className="text-xs text-gray-500 w-10 text-right">{record.discAssessment?.scores?.[t] ?? 0}%</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Internal Notes — HR-only, kept simply editable (no separate
+          view/edit mode now that profile fields moved to EditCandidateInfoModal) ── */}
       <section>
         <SectionLabel>Internal Notes</SectionLabel>
         <textarea
-          value={draft.internalNotes || ''}
-          onChange={e => handleChange('internalNotes', e.target.value)}
+          defaultValue={record.internalNotes || ''}
+          onBlur={(e) => handleNotesBlur(e.target.value)}
           rows={4}
           placeholder="HR-only notes — not visible to the candidate"
           className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-800 leading-relaxed focus:outline-none focus:ring-2 focus:ring-lime-400 focus:border-lime-400 resize-none transition bg-white"
         />
-        {mode === 'edit' && (
-          <div className="flex justify-end mt-2">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-lime-600 hover:bg-lime-700 disabled:opacity-60 rounded-lg transition"
-            >
-              {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-              Save Notes
-            </button>
-          </div>
-        )}
       </section>
 
     </div>

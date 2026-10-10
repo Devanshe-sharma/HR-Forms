@@ -8,6 +8,7 @@ import CandidateApplicationPage from "./pages/Recruitment/CandidateApplication";
 import ReferCandidatePage from "./pages/outsider/ReferCandidate";
 import InterviewFeedbackPage from "./pages/outsider/InterviewFeedback";
 import CandidateDocumentUpload from "./pages/outsider/CandidateDocumentUpload";
+import CandidateAssessmentPage from "./pages/outsider/CandidateAssessment";
 import SalaryRevisionAction from "./pages/outsider/SalaryRevisionAction";
 import ConfirmationAction from "./pages/outsider/ConfirmationAction";
 import ForceChangePasswordPage from "./pages/ForceChangePassword";
@@ -24,6 +25,8 @@ import CTCComponentsDashboard from "./components/CTCComponentsDashboard";
 import LetterTemplate from "./pages/LetterTemplate";
 import ComingSoon from "./pages/ComingSoon";
 import CandidatesReferrals from "./pages/Recruitment/CandidatesReferrals";
+import OfferJoiningPage from "./pages/Recruitment/OfferJoiningPage";
+import TimelineHistoryPage from "./pages/Recruitment/TimelineHistoryPage";
 import NewRequisitionForm from "./pages/Recruitment/new-requisition-form";
 import UpdateRequisition from './pages/Recruitment/UpdateRequisition';
 import TrainingPage from "./pages/TrainingPageNew";
@@ -67,9 +70,9 @@ export default function App() {
         <Route path="/outsider-dashboard" element={<OutsiderDashboard />} />
         <Route path="/careers" element={<CareersPage />} />
         <Route path="/candidate-application" element={<CandidateApplicationPage />} />
-        <Route path="/refer/:requisitionId" element={<ReferCandidatePage />} />
         <Route path="/interview-feedback/:recordId/:roundId" element={<InterviewFeedbackPage />} />
         <Route path="/candidate-upload/:id" element={<CandidateDocumentUpload />} />
+        <Route path="/candidate-assessment/:recordId/:kind" element={<CandidateAssessmentPage />} />
         <Route path="/salary-revision-action/:id" element={<SalaryRevisionAction />} />
         <Route path="/confirmation-action/:id" element={<ConfirmationAction />} />
 
@@ -81,6 +84,7 @@ export default function App() {
           <Route path="/salary-revision" element={<SalaryRevisionNew />} />
           {/* <Route path="/salary-revisions/:id" element={<SalaryRevisionDetail />} /> */}
           <Route path="/recruitment" element={<Recruitment />} />
+          <Route path="/refer/:requisitionId" element={<ReferCandidatePage />} />
      
           <Route path="/ctc-components" element={<CTCComponentsDashboard />} />
           <Route path="/letter" element={<LetterTemplate />} />
@@ -90,6 +94,8 @@ export default function App() {
           <Route path="/applicants" element={<CandidatesReferrals />} />
           <Route path="/recruitment/applicants" element={<CandidatesReferrals />} />
           <Route path="/referrals" element={<CandidatesReferrals />} />
+          <Route path="/offer-joining" element={<OfferJoiningPage />} />
+          <Route path="/timeline-history" element={<TimelineHistoryPage />} />
           <Route path="/new-hiring-requisition" element={<NewRequisitionForm />} />
           <Route path="/recruitment/new" element={<NewRequisitionForm />} />
           <Route path="/recruitment/update/:id" element={<UpdateRequisition />} />

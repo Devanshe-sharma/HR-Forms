@@ -129,6 +129,16 @@ interface SalaryRevisionHistoryItem {
   createdAt: string;
 }
 
+interface ConfirmationHistoryItem {
+  status: string;
+  stage: string;
+  reason: string;
+  monthsExtended: number | null;
+  changedBy: string;
+  changedByName: string;
+  date: string | null;
+}
+
 // One self-uploaded document (Employee model's `documents` array — see
 // backend-node/models/Employee.js and utils/employeeDocumentTypes.js).
 // Fetched separately from the onboarding record below since it lives on
@@ -515,14 +525,16 @@ const EmployeeDetailDialog: React.FC<{
   const [documents, setDocuments] = useState<EmployeeDocument[]>([]);
   const [signature, setSignature] = useState<EmployeeSignature | null>(null);
   const [salaryHistory, setSalaryHistory] = useState<SalaryRevisionHistoryItem[]>([]);
+  const [confirmationHistory, setConfirmationHistory] = useState<ConfirmationHistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Admin/Management/HR only — everyone else never sees these tabs exist.
+  const canViewWork       = hasAnyRole(['Admin', 'Management', 'HR']);
   const canViewPersonal   = hasAnyRole(['Admin', 'Management', 'HR']);
   const canViewClientView = hasAnyRole(['Admin', 'Management', 'HR']);
 
   useEffect(() => {
-    if (!open || !employee) { setFull(null); setDocuments([]); setSignature(null); setSalaryHistory([]); setTab(0); return; }
+    if (!open || !employee) { setFull(null); setDocuments([]); setSignature(null); setSalaryHistory([]); setConfirmationHistory([]); setTab(0); return; }
     setTab(0);
     setLoading(true);
     Promise.all([
@@ -535,17 +547,23 @@ const EmployeeDetailDialog: React.FC<{
       // _id (see SalaryRevision.js comment). Needs axios, not fetch — this
       // route is auth-gated and only axios carries the login's Authorization
       // header (set globally in AuthContext).
-      axios.get(`${API_BASE}/salary-revisions/history/${employee._id}`).then(res => res.data).catch(() => null),
+      canViewWork
+        ? axios.get(`${API_BASE}/salary-revisions/history/${employee._id}`).then(res => res.data).catch(() => null)
+        : Promise.resolve(null),
+      canViewWork
+        ? axios.get(`${API_BASE}/confirmations/history/${employee._id}`).then(res => res.data).catch(() => null)
+        : Promise.resolve(null),
     ])
-      .then(([onboardingJson, revisionJson]) => {
+      .then(([onboardingJson, revisionJson, confirmationJson]) => {
         setFull(onboardingJson?.data || null);
         setDocuments(onboardingJson?.data?.documents || []);
         setSignature(onboardingJson?.data?.signature || null);
         setSalaryHistory(revisionJson?.data || []);
+        setConfirmationHistory(confirmationJson?.data?.history || []);
       })
-      .catch(() => { setFull(null); setDocuments([]); setSalaryHistory([]); })
+      .catch(() => { setFull(null); setDocuments([]); setSalaryHistory([]); setConfirmationHistory([]); })
       .finally(() => setLoading(false));
-  }, [open, employee]);
+  }, [open, employee, canViewWork]);
 
   if (!employee) return null;
   const [bg, fg] = avatarColors(employee.full_name || 'A');
@@ -571,6 +589,7 @@ const EmployeeDetailDialog: React.FC<{
       <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="fullWidth"
         sx={{ minHeight: 40, '& .MuiTab-root': { minHeight: 40, textTransform: 'none', fontSize: '0.8rem', fontWeight: 600 } }}>
         <Tab label="Public Info" />
+        {canViewWork       && <Tab label="Work" />}
         {canViewPersonal   && <Tab label="Personal Info" />}
         {canViewPersonal   && <Tab label="Documents" />}
         {canViewClientView && <Tab label="Client View" />}
@@ -990,15 +1009,17 @@ const EmployeesPage: React.FC = () => {
 
   // Pulled out of the List view below so a Group By section can reuse it
   // without duplicating the whole card.
-  const renderEmployeeCard = (emp: EmployeeEntry) => (
+  const renderEmployeeCard = (emp: EmployeeEntry) => {
+    const onPip = emp.pipStatus === 'ongoing';
+    return (
     <Card key={emp._id} onClick={() => openDetail(emp)} sx={{
       height: '100%', borderRadius: '14px', cursor: 'pointer',
-      backgroundColor: theme.palette.background.paper,
-      border: `1.5px solid ${border}`,
+      backgroundColor: onPip ? (isLight ? P.rose.light.bg : P.rose.dark.bg) : theme.palette.background.paper,
+      border: `1.5px solid ${onPip ? (isLight ? P.rose.light.border : P.rose.dark.border) : border}`,
       boxShadow: isLight ? '0 1px 4px rgba(0,0,0,0.04)' : 'none',
       transition: 'border-color 0.18s, box-shadow 0.18s, transform 0.18s',
       '&:hover': {
-        borderColor: isLight ? '#94A3B8' : '#64748B',
+        borderColor: onPip ? (isLight ? '#FDA4AF' : '#9F1239') : (isLight ? '#94A3B8' : '#64748B'),
         boxShadow: '0 6px 24px rgba(0,0,0,0.08)',
         transform: 'translateY(-2px)',
       },
@@ -1074,7 +1095,8 @@ const EmployeesPage: React.FC = () => {
         </Stack>
       </CardContent>
     </Card>
-  );
+    );
+  };
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
