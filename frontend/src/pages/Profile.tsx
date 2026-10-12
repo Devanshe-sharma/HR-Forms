@@ -1318,7 +1318,7 @@ export default function Profile() {
             {userProfile?.full_name?.[0]}
           </Avatar>
           <Box sx={{ pb: '32px' }}>
-            <Typography variant="h6" fontWeight="800" color="black" sx={{ lineHeight: 1.2 }}>{userProfile?.full_name}</Typography>
+            <Typography variant="h4" fontWeight="700" color="black" sx={{ lineHeight: 1.2 }}>{userProfile?.full_name}</Typography>
             <Stack direction="row" spacing={1} alignItems="center" mt={0.5} flexWrap="wrap">
               <Chip label={currentRole} size="small" sx={{ bgcolor: 'rgba(0,0,0,0.08)', color: 'black', fontWeight: 700, fontSize: '0.9rem', border: '1px solid rgba(0,0,0,0.18)' }} />
               {userProfile?.empId && (
