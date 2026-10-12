@@ -128,7 +128,7 @@ const ProgressBar: React.FC<{ value: number }> = ({ value }) => (
     <Box sx={{ flex: 1, height: 5, borderRadius: 3, bgcolor: "#e2e8f0", overflow: "hidden" }}>
       <Box sx={{
         height: "100%", width: `${value}%`, borderRadius: 3,
-        bgcolor: value === 100 ? "#15803d" : "#6366f1",
+        bgcolor: value === 100 ? "#15803d" : "#2b3d14",
         transition: "width 0.4s ease",
       }} />
     </Box>
@@ -412,13 +412,13 @@ const OnboardingDashboard: React.FC = () => {
               style={{
                 display: "flex", alignItems: "center", gap: 3,
                 fontSize: "0.61rem", padding: "4px 8px",
-                background: "#eef2ff", color: "#4f46e5",
+                background: "#eef1e4", color: "#2b3d14",
                 border: "none", borderRadius: 6, cursor: "pointer",
                 fontWeight: 600, opacity: isLoadingThis ? 0.6 : 1,
               }}
             >
               {isLoadingThis
-                ? <CircularProgress size={10} sx={{ color: "#4f46e5" }} />
+                ? <CircularProgress size={10} sx={{ color: "#2b3d14" }} />
                 : <Visibility sx={{ fontSize: "11px !important" }} />
               }
               View
@@ -459,7 +459,7 @@ const OnboardingDashboard: React.FC = () => {
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "#f8fafc" }}>
+    <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "#E2E0B6" }}>
       <Sidebar />
       <Box sx={{ flexGrow: 1, overflow: "hidden" }}>
         <Navbar />
@@ -494,7 +494,7 @@ const OnboardingDashboard: React.FC = () => {
                   onClick={() => load(true)}
                   disabled={refreshing || loading}
                   startIcon={refreshing
-                    ? <CircularProgress size={14} sx={{ color: "#4f46e5" }} />
+                    ? <CircularProgress size={14} sx={{ color: "#2b3d14" }} />
                     : <Refresh sx={{ fontSize: 16 }} />}
                   sx={{ borderColor: "#e2e8f0", color: "#475569",
                     borderRadius: "8px", textTransform: "none", fontWeight: 600, fontSize: "0.8rem" }}
@@ -515,7 +515,7 @@ const OnboardingDashboard: React.FC = () => {
               </Tooltip>
               <Button variant="contained" startIcon={<AddCircle />}
                 onClick={() => navigate("/new-onboarding")}
-                sx={{ bgcolor: "#4f46e5", "&:hover": { bgcolor: "#4338ca" },
+                sx={{ bgcolor: "#2b3d14", "&:hover": { bgcolor: "#1f2d0e" },
                   borderRadius: "8px", textTransform: "none", fontWeight: 600, fontSize: "0.8rem" }}>
                 New Onboarding
               </Button>
@@ -525,7 +525,7 @@ const OnboardingDashboard: React.FC = () => {
           {/* Stats */}
           <Box sx={{ display: "flex", gap: 1.5, mb: 2.5, flexWrap: "wrap" }}>
             {[
-              { label: "Total",             value: total,        color: "#4f46e5", bg: "#eef2ff", Icon: PeopleAlt },
+              { label: "Total",             value: total,        color: "#2b3d14", bg: "#eef1e4", Icon: PeopleAlt },
               { label: "Current Employees", value: currentCount, color: "#0f172a", bg: "#f8fafc", Icon: PeopleAlt },
               { label: "Exited",            value: exitedCount,  color: "#dc2626", bg: "#fef2f2", Icon: Warning },
               { label: "Open",              value: open,         color: "#d97706", bg: "#fffbeb", Icon: PendingActions },
@@ -561,7 +561,7 @@ const OnboardingDashboard: React.FC = () => {
                 sx={{ flex: "1 1 220px", minWidth: 180,
                   "& .MuiOutlinedInput-root": { borderRadius: "8px", fontSize: "0.76rem",
                     "& fieldset": { borderColor: "#e2e8f0" },
-                    "&.Mui-focused fieldset": { borderColor: "#6366f1" },
+                    "&.Mui-focused fieldset": { borderColor: "#3d5420" },
                   },
                   "& .MuiInputBase-input": { py: "5px" },
                 }} />
@@ -605,7 +605,7 @@ const OnboardingDashboard: React.FC = () => {
                         style={{
                           border: "none", cursor: "pointer", padding: "6px 12px", flex: 1,
                           fontSize: "0.75rem", fontWeight: 600,
-                          background: fmsFilter === f ? "#4f46e5" : "#fff",
+                          background: fmsFilter === f ? "#2b3d14" : "#fff",
                           color: fmsFilter === f ? "#fff" : "#64748b",
                         }}
                       >
@@ -635,7 +635,7 @@ const OnboardingDashboard: React.FC = () => {
                       sx={{ flex: 1,
                         "& .MuiOutlinedInput-root": { borderRadius: "8px", fontSize: "0.72rem",
                           "& fieldset": { borderColor: "#e2e8f0" },
-                          "&.Mui-focused fieldset": { borderColor: "#6366f1" },
+                          "&.Mui-focused fieldset": { borderColor: "#3d5420" },
                         },
                         "& .MuiInputBase-input": { py: "5px" },
                       }} />
@@ -645,7 +645,7 @@ const OnboardingDashboard: React.FC = () => {
                       sx={{ flex: 1,
                         "& .MuiOutlinedInput-root": { borderRadius: "8px", fontSize: "0.72rem",
                           "& fieldset": { borderColor: "#e2e8f0" },
-                          "&.Mui-focused fieldset": { borderColor: "#6366f1" },
+                          "&.Mui-focused fieldset": { borderColor: "#3d5420" },
                         },
                         "& .MuiInputBase-input": { py: "5px" },
                       }} />
@@ -674,7 +674,7 @@ const OnboardingDashboard: React.FC = () => {
 
             {loading ? (
               <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
-                <CircularProgress size={26} sx={{ color: "#4f46e5" }} />
+                <CircularProgress size={26} sx={{ color: "#2b3d14" }} />
               </Box>
             ) : filtered.length === 0 ? (
               <Box sx={{ textAlign: "center", py: 8, color: "#94a3b8", fontSize: "0.85rem" }}>
@@ -743,7 +743,7 @@ const OnboardingDashboard: React.FC = () => {
             {/* Modal header */}
             <Box sx={{
               px: 3, py: 2, flexShrink: 0,
-              background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
+              background: "linear-gradient(135deg, #597e37 0%, #2b3d14 100%)",
               display: "flex", alignItems: "flex-start", justifyContent: "space-between",
             }}>
               <Box>
@@ -882,7 +882,7 @@ const OnboardingDashboard: React.FC = () => {
                     color: (viewModal.row.tasksOverdue ?? 0) > 0 ? "#dc2626" : "#94a3b8",
                     bg: (viewModal.row.tasksOverdue ?? 0) > 0 ? "#fef2f2" : "#f8fafc" },
                   { label: "Pending", value: viewModal.row.tasksDue ?? 0, color: "#d97706", bg: "#fffbeb" },
-                  { label: "Total Tasks", value: viewModal.row.totalTasks ?? 0, color: "#4f46e5", bg: "#eef2ff" },
+                  { label: "Total Tasks", value: viewModal.row.totalTasks ?? 0, color: "#2b3d14", bg: "#eef1e4" },
                 ].map(({ label, value, color, bg }) => (
                   <Box key={label} sx={{ px: 1.5, py: 1, bgcolor: bg,
                     border: `1px solid ${color}25`, borderRadius: "8px", textAlign: "center", minWidth: 80 }}>

@@ -228,7 +228,7 @@ const ArchivedEmployeesPage: React.FC = () => {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen" style={{ background: theme.palette.background.default }}>
+    <div className="min-h-screen" style={{ background: '#E2E0B6' }}>
       <Sidebar />
       <div className="lg:pl-64">
         <Navbar />

@@ -129,13 +129,32 @@ function OutOfOfficeDetailModal({ record, onClose }: { record: OutOfOfficeRecord
 
 // ─── Out of Office: dashboard ──────────────────────────────────────────────────
 
-function OutOfOfficeDashboard({ records, loading, onAdd }: {
-  records: OutOfOfficeRecord[]; loading: boolean; onAdd: () => void;
+function OutOfOfficeDashboard({ records, employees, loading, onAdd }: {
+  records: OutOfOfficeRecord[]; employees: Employee[]; loading: boolean; onAdd: () => void;
 }) {
   const [selected, setSelected] = useState<OutOfOfficeRecord | null>(null);
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [filterDept, setFilterDept] = useState('All');
+  const [filterEmployee, setFilterEmployee] = useState('All');
+  const [filterStatus, setFilterStatus] = useState<'All' | OutOfOfficeRecord['informedStatus']>('All');
+
+  // OutOfOfficeRecord.person only carries name/email/employeeId — department
+  // comes from joining against the Employee list fetched by the parent tab.
+  const deptByEmployeeId = useMemo(() => {
+    const m = new Map<string, string>();
+    employees.forEach(e => { m.set(e._id, e.department); m.set(e.employee_id, e.department); });
+    return m;
+  }, [employees]);
+  const departmentOf = (r: OutOfOfficeRecord) => (r.person.employeeId && deptByEmployeeId.get(r.person.employeeId)) || '';
+
+  const departmentOptions = useMemo(() =>
+    [...new Set(records.map(departmentOf).filter(Boolean))].sort(),
+    [records, deptByEmployeeId]);
+  const employeeOptions = useMemo(() =>
+    [...new Set(records.map(r => r.person.name).filter(Boolean))].sort(),
+    [records]);
 
   // Local-date key (yyyy-mm-dd) so the <input type="date"> filter compares
   // against the same calendar day the table displays, not a UTC-shifted one.
@@ -156,12 +175,17 @@ function OutOfOfficeDashboard({ records, loading, onAdd }: {
         r.submittedByName?.toLowerCase().includes(term);
       const key = dateKey(r.startDateTime);
       const matchesDate = (!dateFrom || key >= dateFrom) && (!dateTo || key <= dateTo);
-      return matchesSearch && matchesDate;
+      const matchesDept = filterDept === 'All' || departmentOf(r) === filterDept;
+      const matchesEmployee = filterEmployee === 'All' || r.person.name === filterEmployee;
+      const matchesStatus = filterStatus === 'All' || r.informedStatus === filterStatus;
+      return matchesSearch && matchesDate && matchesDept && matchesEmployee && matchesStatus;
     });
-  }, [records, search, dateFrom, dateTo]);
+  }, [records, search, dateFrom, dateTo, filterDept, filterEmployee, filterStatus, deptByEmployeeId]);
 
-  const hasActiveFilters = !!(search || dateFrom || dateTo);
-  const resetFilters = () => { setSearch(''); setDateFrom(''); setDateTo(''); };
+  const hasActiveFilters = !!(search || dateFrom || dateTo || filterDept !== 'All' || filterEmployee !== 'All' || filterStatus !== 'All');
+  const resetFilters = () => {
+    setSearch(''); setDateFrom(''); setDateTo(''); setFilterDept('All'); setFilterEmployee('All'); setFilterStatus('All');
+  };
 
   return (
     <Box>
@@ -171,7 +195,7 @@ function OutOfOfficeDashboard({ records, loading, onAdd }: {
           <Typography fontSize={12} color="text.secondary">Advance notice of employees working out of office — click a row for full details</Typography>
         </Box>
         <Button variant="contained" startIcon={<AddIcon />} onClick={onAdd} size="small"
-          sx={{ bgcolor: ACCENT, textTransform: 'none', fontWeight: 600, borderRadius: 1.5, '&:hover': { bgcolor: '#4338ca' } }}>
+          sx={{ bgcolor: ACCENT, textTransform: 'none', fontWeight: 600, borderRadius: 1.5, '&:hover': { bgcolor: '#1f2d0e' } }}>
           Log Out of Office
         </Button>
       </Box>
@@ -185,7 +209,10 @@ function OutOfOfficeDashboard({ records, loading, onAdd }: {
           InputProps={{ startAdornment: <SearchIcon sx={{ fontSize: 18, color: 'text.secondary', mr: 0.75 }} /> }}
           sx={{ minWidth: 240, bgcolor: 'white' }}
         />
-        <FiltersMenuButton activeCount={(dateFrom ? 1 : 0) + (dateTo ? 1 : 0)}>
+        <FiltersMenuButton activeCount={
+          (dateFrom ? 1 : 0) + (dateTo ? 1 : 0) +
+          (filterDept !== 'All' ? 1 : 0) + (filterEmployee !== 'All' ? 1 : 0) + (filterStatus !== 'All' ? 1 : 0)
+        }>
           <TextField
             type="date"
             size="small"
@@ -206,12 +233,38 @@ function OutOfOfficeDashboard({ records, loading, onAdd }: {
             InputLabelProps={{ shrink: true }}
             inputProps={{ min: dateFrom || undefined }}
           />
+          <FormControl size="small" fullWidth>
+            <InputLabel>Department</InputLabel>
+            <Select value={filterDept} label="Department" onChange={e => setFilterDept(e.target.value)}>
+              <MenuItem value="All">All</MenuItem>
+              {departmentOptions.map(d => <MenuItem key={d} value={d}>{d}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small" fullWidth>
+            <InputLabel>Employee</InputLabel>
+            <Select value={filterEmployee} label="Employee" onChange={e => setFilterEmployee(e.target.value)}>
+              <MenuItem value="All">All</MenuItem>
+              {employeeOptions.map(n => <MenuItem key={n} value={n}>{n}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small" fullWidth>
+            <InputLabel>Status</InputLabel>
+            <Select value={filterStatus} label="Status" onChange={e => setFilterStatus(e.target.value as typeof filterStatus)}>
+              <MenuItem value="All">All</MenuItem>
+              <MenuItem value="advance">On time</MenuItem>
+              <MenuItem value="late_before_start">Late (&lt;24h)</MenuItem>
+              <MenuItem value="late_after_start">Late (after start)</MenuItem>
+            </Select>
+          </FormControl>
         </FiltersMenuButton>
 
         <FavoritesMenuButton
           storageKey="filters:out-of-office"
-          currentState={{ search, dateFrom, dateTo }}
-          onApply={(s) => { setSearch(s.search ?? ''); setDateFrom(s.dateFrom ?? ''); setDateTo(s.dateTo ?? ''); }}
+          currentState={{ search, dateFrom, dateTo, filterDept, filterEmployee, filterStatus }}
+          onApply={(s) => {
+            setSearch(s.search ?? ''); setDateFrom(s.dateFrom ?? ''); setDateTo(s.dateTo ?? '');
+            setFilterDept(s.filterDept ?? 'All'); setFilterEmployee(s.filterEmployee ?? 'All'); setFilterStatus(s.filterStatus ?? 'All');
+          }}
         />
 
         {hasActiveFilters && (
@@ -409,8 +462,8 @@ function OutOfOfficeFormModal({ open, employees, onDone, onClose, showToast }: {
         </Box>
 
         {loggedAt && (
-          <Box sx={{ bgcolor: '#eef2ff', border: '1px solid #e0e7ff', borderRadius: 1.5, px: 1.5, py: 1, mb: 2.5 }}>
-            <Typography fontSize={12} color="#4338ca">
+          <Box sx={{ bgcolor: '#eef1e4', border: '1px solid #e0e7ff', borderRadius: 1.5, px: 1.5, py: 1, mb: 2.5 }}>
+            <Typography fontSize={12} color="#1f2d0e">
               This entry will be logged at <b>{fmtDateTime24(loggedAt)}</b>
               {submitter && <> by <b>{submitter.full_name}</b></>}
               {person && submitter && person.official_email !== submitter.official_email && person.email !== submitter.email && (
@@ -534,7 +587,7 @@ export function OutOfOfficeTab() {
     <Box sx={{ maxWidth: 1300, mx: 'auto' }}>
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
 
-      <OutOfOfficeDashboard records={records} loading={loading} onAdd={() => setFormOpen(true)} />
+      <OutOfOfficeDashboard records={records} employees={employees} loading={loading} onAdd={() => setFormOpen(true)} />
 
       <OutOfOfficeFormModal open={formOpen} employees={employees}
         onClose={() => setFormOpen(false)}

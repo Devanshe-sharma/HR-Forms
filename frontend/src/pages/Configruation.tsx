@@ -4,7 +4,8 @@
  * Drop this file in place of your existing frontend/src/pages/Configuration.tsx
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import {
   Box,
@@ -32,7 +33,6 @@ import {
   Security as SecurityIcon,
   Notifications as NotificationsIcon,
   Palette as PaletteIcon,
-  Language as LanguageIcon,
   Settings as SettingsIcon,
   AdminPanelSettings as AdminIcon,
   Group as UserManagementIcon,
@@ -69,10 +69,22 @@ function TabPanel(props: TabPanelProps) {
 }
 
 export default function Configuration() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [tabValue, setTabValue] = useState(0);
   const [emailNotifications, setEmailNotifications] = useState(true);
-  const [language, setLanguage] = useState('english');
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+
+  // Reached via the Navbar profile menu's "Change Password" item
+  // (?openPassword=1) — opens the dialog immediately instead of making
+  // the user hunt for it in the Account tab.
+  useEffect(() => {
+    if (searchParams.get('openPassword') === '1') {
+      setPasswordDialogOpen(true);
+      searchParams.delete('openPassword');
+      setSearchParams(searchParams, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -112,12 +124,12 @@ export default function Configuration() {
   };
 
   const handleSaveSettings = () => {
-    console.log('Configuration saved:', { emailNotifications, language });
+    console.log('Configuration saved:', { emailNotifications });
     alert('Configuration saved successfully!');
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen" style={{ background: '#E2E0B6' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col">
         <Navbar />
@@ -149,20 +161,6 @@ export default function Configuration() {
                   <ListItemIcon><PaletteIcon color="primary" /></ListItemIcon>
                   <ListItemText primary="Dark Mode" secondary="Toggle dark/light theme" />
                   <Switch checked={darkMode} onChange={toggleDarkMode} />
-                </ListItem>
-                <ListItem>
-                  <ListItemIcon><LanguageIcon color="primary" /></ListItemIcon>
-                  <ListItemText primary="Language" secondary="Choose your preferred language" />
-                  <TextField
-                    select
-                    value={language}
-                    onChange={(e) => setLanguage(e.target.value)}
-                    size="small"
-                    sx={{ minWidth: 120 }}
-                  >
-                    <option value="english">English</option>
-                    <option value="hindi">हिंदी</option>
-                  </TextField>
                 </ListItem>
               </List>
             </CardContent>

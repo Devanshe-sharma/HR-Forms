@@ -98,7 +98,7 @@ const LEAVE_STATUS_STYLE: Record<LeaveStatus, { label: string; bg: string; color
   draft:           { label: 'Draft',           bg: '#f1f5f9', color: '#64748b' },
   to_approve:      { label: 'To Approve',      bg: '#fef9c3', color: '#854d0e' },
   second_approval: { label: 'Second Approval', bg: '#fef3c7', color: '#92400e' },
-  approved:        { label: 'Approved',        bg: '#dcfce7', color: '#166534' },
+  approved:        { label: 'Approved',        bg: '#e3e9d5', color: '#166534' },
   refused:         { label: 'Refused',         bg: '#fee2e2', color: '#991b1b' },
   cancelled:       { label: 'Cancelled',       bg: '#f1f5f9', color: '#64748b' },
 };
@@ -472,7 +472,7 @@ function MailComposerDialog({ open, requestId, mailType, onClose, onSent, showTo
               <Stack direction="row" spacing={1} justifyContent="flex-end">
                 <Button onClick={onClose} disabled={sending} sx={{ textTransform: 'none', fontWeight: 600 }}>Cancel</Button>
                 <Button variant="contained" onClick={handleSend} disabled={sending}
-                  sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', fontWeight: 600 }}>
+                  sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#1f2d0e' }, textTransform: 'none', fontWeight: 600 }}>
                   {sending ? <CircularProgress size={18} sx={{ color: 'white' }} /> : 'Send'}
                 </Button>
               </Stack>
@@ -820,7 +820,7 @@ function NewTimeOffModal({ open, leaveTypes, balance, onClose, onDone, showToast
                 {busy === 'draft' ? <CircularProgress size={18} /> : 'Save as draft'}
               </Button>
               <Button variant="contained" fullWidth disabled={!!busy} onClick={() => submitRequest(false)}
-                sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', fontWeight: 600 }}>
+                sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#1f2d0e' }, textTransform: 'none', fontWeight: 600 }}>
                 {busy === 'submit' ? <CircularProgress size={18} sx={{ color: 'white' }} /> : 'Submit request'}
               </Button>
             </Stack>
@@ -943,7 +943,7 @@ function ApprovalsTab({ requests, leaveTypes, summary, loading, onSelect, onAppr
                           <Stack direction="row" spacing={0.5}>
                             <Tooltip title="Approve">
                               <IconButton size="small" onClick={() => handleApprove(r._id)}
-                                sx={{ color: '#059669', border: '1px solid #bbf7d0', borderRadius: 1 }}>
+                                sx={{ color: '#059669', border: '1px solid #c9d4ae', borderRadius: 1 }}>
                                 <CheckIcon sx={{ fontSize: 16 }} />
                               </IconButton>
                             </Tooltip>
@@ -1081,7 +1081,7 @@ export function LeavesTab() {
           <Typography fontSize={12} color="text.secondary">Your leave balances and requests</Typography>
         </Box>
         <Button variant="contained" startIcon={<AddIcon />} onClick={() => setFormOpen(true)} size="small"
-          sx={{ bgcolor: ACCENT, textTransform: 'none', fontWeight: 600, borderRadius: 1.5, '&:hover': { bgcolor: '#4338ca' } }}>
+          sx={{ bgcolor: ACCENT, textTransform: 'none', fontWeight: 600, borderRadius: 1.5, '&:hover': { bgcolor: '#1f2d0e' } }}>
           New Time Off
         </Button>
       </Box>
@@ -1093,7 +1093,7 @@ export function LeavesTab() {
           <Button key={t.id} size="small" variant={subTab === t.id ? 'contained' : 'outlined'} onClick={() => setSubTab(t.id)}
             sx={{ textTransform: 'none', fontWeight: 600, borderRadius: 1.5,
               bgcolor: subTab === t.id ? ACCENT : 'transparent', borderColor: ACCENT,
-              color: subTab === t.id ? 'white' : ACCENT, '&:hover': { bgcolor: subTab === t.id ? '#4338ca' : '#eef2ff' } }}>
+              color: subTab === t.id ? 'white' : ACCENT, '&:hover': { bgcolor: subTab === t.id ? '#1f2d0e' : '#eef1e4' } }}>
             {t.id === 'approvals' && summary && summary.pending > 0 ? (
               <Badge badgeContent={summary.pending} color="error" sx={{ '& .MuiBadge-badge': { right: -10, top: 2 } }}>
                 {t.label}

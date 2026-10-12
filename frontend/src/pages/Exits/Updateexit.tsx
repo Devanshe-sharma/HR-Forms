@@ -327,7 +327,7 @@ const UpdateExit: React.FC = () => {
 
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen" style={{ background: '#E2E0B6' }}>
 
         {/* Header */}
         <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">

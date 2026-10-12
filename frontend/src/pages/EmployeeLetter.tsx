@@ -207,7 +207,7 @@ export default function EmployeeContractsPage() {
   ];
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
+    <div className="flex h-screen overflow-hidden" style={{ background: '#E2E0B6' }}>
       <div className="fixed inset-y-0 left-0 w-64 bg-white shadow-sm overflow-y-auto z-10">
         <Sidebar />
       </div>

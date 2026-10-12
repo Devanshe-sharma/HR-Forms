@@ -276,7 +276,7 @@ export const TemplateModal = ({ open, onClose, onInsert, screenerName, existingT
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth
       PaperProps={{ sx: { borderRadius: 2, maxHeight: "90vh" } }}>
       <DialogTitle sx={{
-        background: "linear-gradient(135deg, #1976d2 0%, #0d4d99 100%)",
+        background: "linear-gradient(135deg, #597e37 0%, #3d5420 100%)",
         color: "#fff", py: 1.5, fontSize: "0.9rem", fontWeight: 700,
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
@@ -498,7 +498,7 @@ export const TemplateModal = ({ open, onClose, onInsert, screenerName, existingT
           onClick={handleInsert}
           sx={{
             fontSize: "0.75rem", textTransform: "none",
-            background: "linear-gradient(135deg, #1976d2 0%, #0d4d99 100%)",
+            background: "linear-gradient(135deg, #597e37 0%, #3d5420 100%)",
           }}>
           Insert into feedback
         </Button>

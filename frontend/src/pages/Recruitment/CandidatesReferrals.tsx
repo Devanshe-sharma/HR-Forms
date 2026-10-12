@@ -58,7 +58,7 @@ const CandidatesReferrals: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-100 overflow-hidden">
+    <div className="flex h-screen overflow-hidden" style={{ background: '#E2E0B6' }}>
       <div className="w-64 flex-shrink-0 z-10 bg-white border-r">
         <Sidebar />
       </div>
@@ -76,7 +76,7 @@ const CandidatesReferrals: React.FC = () => {
                 onClick={() => handleTabChange(id)}
                 className={`flex items-center gap-1.5 px-4 py-3 text-sm font-semibold border-b-2 transition -mb-px ${
                   activeTab === id
-                    ? 'border-lime-500 text-lime-700'
+                    ? 'border-[#eef3e6]0 text-[#3d5420]'
                     : 'border-transparent text-gray-400 hover:text-gray-600'
                 }`}
               >

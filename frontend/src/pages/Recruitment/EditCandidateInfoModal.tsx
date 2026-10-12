@@ -97,7 +97,7 @@ const EditCandidateInfoModal = ({
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-lime-600 hover:bg-lime-700 disabled:opacity-60 rounded-lg transition"
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-[#597e37] hover:bg-[#3d5420] disabled:opacity-60 rounded-lg transition"
           >
             {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
             {saving ? 'Saving…' : 'Save Changes'}

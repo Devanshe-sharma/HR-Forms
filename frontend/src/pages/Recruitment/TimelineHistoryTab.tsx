@@ -34,7 +34,7 @@ const TimelineHistoryTab: React.FC<{ record: ApplicantRecord }> = ({ record }) =
           <div className="relative pl-5 border-l-2 border-gray-100 space-y-5">
             {events.map((ev, i) => (
               <div key={`${ev.key}-${i}`} className="relative">
-                <span className="absolute -left-[26px] top-1 w-3 h-3 rounded-full bg-lime-400 border-2 border-white" />
+                <span className="absolute -left-[26px] top-1 w-3 h-3 rounded-full bg-[#7a9c56] border-2 border-white" />
                 <p className="text-sm font-semibold text-gray-800">{ev.label}</p>
                 {ev.detail && <p className="text-xs text-gray-500 mt-0.5">{ev.detail}</p>}
                 <p className="text-[11px] text-gray-400 mt-0.5">

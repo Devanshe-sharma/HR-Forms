@@ -4,6 +4,7 @@ import {
   Chip, TextField, InputAdornment, Stack, Button, MenuItem,
   Divider, useTheme, Tooltip, Dialog, DialogTitle, DialogContent,
   IconButton, Tabs, Tab,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -881,18 +882,18 @@ const EmployeesPage: React.FC = () => {
   const [error,    setError]    = useState('');
   const [exporting, setExporting] = useState(false);
 
-  const [search,      setSearch]      = useState('');
-  const [filterDept,  setFilterDept]  = useState('');
-  const [filterDesig, setFilterDesig] = useState('');
-  const [view,        setView]        = useState<'list' | 'kanban'>('list');
+  const [search,        setSearch]        = useState('');
+  const [filterDept,    setFilterDept]    = useState('');
+  const [filterDesig,   setFilterDesig]   = useState('');
+  const [filterManager, setFilterManager] = useState('');
+  const [view,          setView]          = useState<'list' | 'kanban'>('kanban');
 
   const [dateMode,    setDateMode]    = useState<DateMode>('all');
   const [customFrom,  setCustomFrom]  = useState('');
   const [customTo,    setCustomTo]    = useState('');
 
-  // Odoo-style Group By — only affects the List view's layout (Kanban
-  // already groups by department unconditionally; changing that too is a
-  // separate, bigger change). null = flat grid, same as before.
+  // Odoo-style Group By — shared by both List (table) and Kanban (cards).
+  // null = flat, no grouping.
   const [groupByField, setGroupByField] = useState<string | null>(null);
 
   const [detailEmployee, setDetailEmployee] = useState<EmployeeEntry | null>(null);
@@ -946,6 +947,9 @@ const EmployeesPage: React.FC = () => {
       .map(e => e.designation).filter(Boolean))].sort(),
     [entries, filterDept]);
 
+  const reportingManagers = useMemo(() =>
+    [...new Set(entries.map(e => e.reporting_head).filter(Boolean))].sort(), [entries]);
+
   const activeDateRange = useMemo((): [Date | null, Date | null] => {
     if (dateMode === 'quarter') return getQuarterRange();
     if (dateMode === 'year')    return getYearRange();
@@ -964,6 +968,7 @@ const EmployeesPage: React.FC = () => {
         const matchSearch = !q || [e.full_name, e.designation, e.department, e.official_email, e.personal_email, e.reporting_head].some(v => v?.toLowerCase().includes(q));
         const matchDept   = !filterDept  || e.department  === filterDept;
         const matchDesig  = !filterDesig || e.designation === filterDesig;
+        const matchManager = !filterManager || e.reporting_head === filterManager;
         let matchDate = true;
         if (rangeFrom || rangeTo) {
           if (!e.joining_date) { matchDate = false; }
@@ -973,26 +978,16 @@ const EmployeesPage: React.FC = () => {
             if (rangeTo   && joined > rangeTo)   matchDate = false;
           }
         }
-        return matchSearch && matchDept && matchDesig && matchDate;
+        return matchSearch && matchDept && matchDesig && matchManager && matchDate;
       })
       .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
-  }, [entries, search, filterDept, filterDesig, activeDateRange]);
+  }, [entries, search, filterDept, filterDesig, filterManager, activeDateRange]);
 
-  const byDepartment = useMemo(() => {
-    const groups: Record<string, EmployeeEntry[]> = {};
-    for (const e of filtered) {
-      const dept = e.department || 'Unassigned';
-      if (!groups[dept]) groups[dept] = [];
-      groups[dept].push(e);
-    }
-    return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]));
-  }, [filtered]);
+  const hasFilters = !!(search || filterDept || filterDesig || filterManager || dateMode !== 'all');
+  const clearAll   = () => { setSearch(''); setFilterDept(''); setFilterDesig(''); setFilterManager(''); setDateMode('all'); setCustomFrom(''); setCustomTo(''); setGroupByField(null); };
 
-  const hasFilters = !!(search || filterDept || filterDesig || dateMode !== 'all');
-  const clearAll   = () => { setSearch(''); setFilterDept(''); setFilterDesig(''); setDateMode('all'); setCustomFrom(''); setCustomTo(''); setGroupByField(null); };
-
-  // Generalized version of byDepartment above, for whichever field Group By
-  // is currently set to (List view only — see groupByField's own comment).
+  // Generalized grouping for whichever field Group By is currently set to —
+  // shared by both List (table) and Kanban (cards) views.
   const GROUP_BY_OPTIONS: GroupByOption[] = [
     { key: 'department', label: 'Department' },
     { key: 'designation', label: 'Designation' },
@@ -1014,23 +1009,24 @@ const EmployeesPage: React.FC = () => {
   // control, named and reapplied later. Scoped to this page in localStorage
   // via the storageKey FavoritesMenuButton is given below.
   interface EmployeeFilterSnapshot {
-    search: string; filterDept: string; filterDesig: string;
+    search: string; filterDept: string; filterDesig: string; filterManager: string;
     dateMode: DateMode; customFrom: string; customTo: string;
     groupByField: string | null;
   }
   const currentFilterSnapshot: EmployeeFilterSnapshot = {
-    search, filterDept, filterDesig, dateMode, customFrom, customTo, groupByField,
+    search, filterDept, filterDesig, filterManager, dateMode, customFrom, customTo, groupByField,
   };
   const applyFilterSnapshot = (s: EmployeeFilterSnapshot) => {
     setSearch(s.search ?? '');
     setFilterDept(s.filterDept ?? '');
     setFilterDesig(s.filterDesig ?? '');
+    setFilterManager(s.filterManager ?? '');
     setDateMode(s.dateMode ?? 'all');
     setCustomFrom(s.customFrom ?? '');
     setCustomTo(s.customTo ?? '');
     setGroupByField(s.groupByField ?? null);
   };
-  const activeFilterCount = (filterDept ? 1 : 0) + (filterDesig ? 1 : 0) + (dateMode !== 'all' ? 1 : 0);
+  const activeFilterCount = (filterDept ? 1 : 0) + (filterDesig ? 1 : 0) + (filterManager ? 1 : 0) + (dateMode !== 'all' ? 1 : 0);
 
   // ── Export handler ──────────────────────────────────────────────────────────
   const handleExport = useCallback(() => {
@@ -1172,9 +1168,80 @@ const EmployeesPage: React.FC = () => {
     );
   };
 
+  // Odoo-style table row for the List view (Kanban keeps using the card
+  // above). One row per employee — click opens the same detail modal.
+  const renderEmployeeRow = (emp: EmployeeEntry) => {
+    const onPip = emp.pipStatus === 'ongoing';
+    return (
+      <TableRow key={emp._id} hover onClick={() => openDetail(emp)}
+        sx={{
+          cursor: 'pointer',
+          backgroundColor: onPip ? (isLight ? P.rose.light.bg : P.rose.dark.bg) : 'inherit',
+          '&:hover': { backgroundColor: onPip ? (isLight ? '#FEE2E2' : '#4C0519') : undefined },
+        }}>
+        <TableCell sx={{ py: 1 }}>
+          <Stack direction="row" alignItems="center" spacing={1.25}>
+            <Avatar sx={{
+              width: 34, height: 34, flexShrink: 0, fontSize: '0.72rem', fontWeight: 700,
+              bgcolor: isLight ? '#F1F5F9' : 'rgba(255,255,255,0.08)',
+              color: isLight ? '#475569' : '#CBD5E1',
+            }}>
+              {initials(emp.full_name)}
+            </Avatar>
+            <Box sx={{ minWidth: 0 }}>
+              <Stack direction="row" alignItems="center" spacing={0.6}>
+                <Typography fontWeight={600} noWrap sx={{ fontSize: '0.82rem' }}>
+                  {emp.full_name || 'Unnamed Employee'}
+                </Typography>
+                {onPip && (
+                  <Tooltip title="Currently on an active Performance Improvement Plan" arrow>
+                    <Chip icon={<PipIcon />} label="PIP" size="small" sx={{ ...chipSx(P.rose, isLight), height: '18px' }} />
+                  </Tooltip>
+                )}
+              </Stack>
+              <Typography sx={{ fontSize: '0.68rem', color: 'text.disabled' }} noWrap>
+                {emp.employee_id ? `ID: ${emp.employee_id}` : ''}
+              </Typography>
+            </Box>
+          </Stack>
+        </TableCell>
+        <TableCell sx={{ py: 1, fontSize: '0.78rem' }}>{emp.department || '—'}</TableCell>
+        <TableCell sx={{ py: 1, fontSize: '0.78rem' }}>{emp.designation || '—'}</TableCell>
+        <TableCell sx={{ py: 1, fontSize: '0.78rem' }}>{emp.management_level || '—'}</TableCell>
+        <TableCell sx={{ py: 1, fontSize: '0.78rem' }}>{emp.reporting_head || '—'}</TableCell>
+        <TableCell sx={{ py: 1, fontSize: '0.78rem' }}>
+          <Typography noWrap sx={{ fontSize: '0.78rem', maxWidth: 200 }}>{emp.official_email || '—'}</Typography>
+        </TableCell>
+        <TableCell sx={{ py: 1, fontSize: '0.78rem' }}>{emp.mobile || '—'}</TableCell>
+        <TableCell sx={{ py: 1, fontSize: '0.78rem' }}>
+          {emp.joining_date
+            ? new Date(emp.joining_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+            : '—'}
+        </TableCell>
+      </TableRow>
+    );
+  };
+
+  const employeeTableHeader = (
+    <TableHead>
+      <TableRow>
+        {['Employee', 'Department', 'Designation', 'Management Level', 'Reporting Manager', 'Official Email', 'Phone', 'Joining Date'].map(h => (
+          <TableCell key={h} sx={{
+            fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.04em',
+            color: 'text.secondary', whiteSpace: 'nowrap',
+            backgroundColor: isLight ? '#F8FAFC' : 'rgba(255,255,255,0.03)',
+            borderBottom: `1px solid ${border}`,
+          }}>
+            {h}
+          </TableCell>
+        ))}
+      </TableRow>
+    </TableHead>
+  );
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen" style={{ background: theme.palette.background.default }}>
+    <div className="min-h-screen" style={{ background: '#E2E0B6' }}>
       <Sidebar />
       <div className="lg:pl-64">
         <Navbar />
@@ -1277,6 +1344,12 @@ const EmployeesPage: React.FC = () => {
                   onChange={e => setFilterDesig(e.target.value)} sx={{ ...filterSx, flex: 'unset', minWidth: 'unset', width: '100%' }}>
                   <MenuItem value="" sx={{ fontSize: '0.78rem', color: 'text.secondary' }}>All Designations</MenuItem>
                   {designations.map(d => <MenuItem key={d} value={d} sx={{ fontSize: '0.78rem' }}>{d}</MenuItem>)}
+                </TextField>
+
+                <TextField select label="Reporting Manager" size="small" fullWidth value={filterManager}
+                  onChange={e => setFilterManager(e.target.value)} sx={{ ...filterSx, flex: 'unset', minWidth: 'unset', width: '100%' }}>
+                  <MenuItem value="" sx={{ fontSize: '0.78rem', color: 'text.secondary' }}>All Managers</MenuItem>
+                  {reportingManagers.map(m => <MenuItem key={m} value={m} sx={{ fontSize: '0.78rem' }}>{m}</MenuItem>)}
                 </TextField>
 
                 <Box>
@@ -1399,28 +1472,73 @@ const EmployeesPage: React.FC = () => {
             </Box>
           )}
 
-          {/* ── List view ── */}
+          {/* ── List view — Odoo-style table (or horizontal-scroll grouped
+               columns, one mini-table per group, when Group By is set) ── */}
           {!loading && !error && view === 'list' && filtered.length > 0 && (
             groupedFiltered ? (
-              <Stack spacing={2.5}>
+              <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', pb: 1, alignItems: 'flex-start' }}>
                 {groupedFiltered.map(([groupLabel, emps]) => (
-                  <Box key={groupLabel}>
-                    <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
-                      <Typography fontWeight={700} sx={{ fontSize: '0.85rem' }} color="text.primary">
+                  <Box key={groupLabel} sx={{
+                    flex: '0 0 360px', minWidth: 360,
+                    borderRadius: '12px', border: `1px solid ${border}`,
+                    backgroundColor: theme.palette.background.paper, overflow: 'hidden',
+                  }}>
+                    <Box sx={{
+                      px: 1.5, py: 1, display: 'flex', alignItems: 'center', gap: 1,
+                      backgroundColor: isLight ? '#F1F5F9' : 'rgba(255,255,255,0.05)',
+                      borderBottom: `1px solid ${border}`,
+                    }}>
+                      <Typography fontWeight={700} sx={{ fontSize: '0.8rem' }} color="text.primary" noWrap>
+                        {groupLabel}
+                      </Typography>
+                      <Chip label={emps.length} size="small" sx={{ fontSize: '0.65rem', height: 18, bgcolor: 'action.selected' }} />
+                    </Box>
+                    <Table size="small">
+                      <TableBody>
+                        {emps.map(renderEmployeeRow)}
+                      </TableBody>
+                    </Table>
+                  </Box>
+                ))}
+              </Box>
+            ) : (
+              <TableContainer sx={{
+                borderRadius: '12px', border: `1px solid ${border}`,
+                backgroundColor: theme.palette.background.paper,
+              }}>
+                <Table size="small" stickyHeader={false}>
+                  {employeeTableHeader}
+                  <TableBody>
+                    {filtered.map(renderEmployeeRow)}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )
+          )}
+
+          {/* ── Kanban view — the original free-form card grid; grouped
+               columns scroll horizontally like a board when Group By is set ── */}
+          {!loading && !error && view === 'kanban' && filtered.length > 0 && (
+            groupedFiltered ? (
+              <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', pb: 1, alignItems: 'flex-start' }}>
+                {groupedFiltered.map(([groupLabel, emps]) => (
+                  <Box key={groupLabel} sx={{
+                    flex: '0 0 300px', minWidth: 300,
+                    bgcolor: isLight ? '#F8FAFC' : 'rgba(255,255,255,0.02)',
+                    borderRadius: '12px', border: `1px solid ${border}`, p: 1.5,
+                  }}>
+                    <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5, px: 0.5 }}>
+                      <Typography fontWeight={700} sx={{ fontSize: '0.82rem' }} color="text.primary" noWrap>
                         {groupLabel}
                       </Typography>
                       <Chip label={emps.length} size="small" sx={{ fontSize: '0.68rem', height: 18, bgcolor: 'action.selected' }} />
                     </Stack>
-                    <Box sx={{
-                      display: 'grid',
-                      gridTemplateColumns: { xs: '1fr', sm: 'repeat(2,1fr)', md: 'repeat(3,1fr)', xl: 'repeat(4,1fr)' },
-                      gap: 2,
-                    }}>
+                    <Stack spacing={1.5}>
                       {emps.map(renderEmployeeCard)}
-                    </Box>
+                    </Stack>
                   </Box>
                 ))}
-              </Stack>
+              </Box>
             ) : (
               <Box sx={{
                 display: 'grid',
@@ -1430,57 +1548,6 @@ const EmployeesPage: React.FC = () => {
                 {filtered.map(renderEmployeeCard)}
               </Box>
             )
-          )}
-
-          {/* ── Kanban view ── */}
-          {!loading && !error && view === 'kanban' && filtered.length > 0 && (
-            <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', pb: 2, alignItems: 'flex-start' }}>
-              {byDepartment.map(([dept, emps]) => (
-                <Box key={dept} sx={{
-                  flex: '0 0 280px', minWidth: 280,
-                  bgcolor: isLight ? '#F8FAFC' : 'rgba(255,255,255,0.02)',
-                  borderRadius: '12px', border: `1px solid ${border}`, p: 1.5,
-                }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5, px: 0.5 }}>
-                    <Typography fontWeight={700} fontSize="0.82rem" color="text.primary" noWrap>{dept}</Typography>
-                    <Chip label={emps.length} size="small" sx={{ height: 20, fontSize: '0.68rem', fontWeight: 700, bgcolor: theme.palette.primary.main, color: '#fff' }} />
-                  </Box>
-                  <Stack spacing={1}>
-                    {emps.map(emp => {
-                      const [bg, fg] = avatarColors(emp.full_name || 'A');
-                      return (
-                        <Card key={emp._id} onClick={() => openDetail(emp)} sx={{
-                          borderRadius: '10px', border: `1px solid ${border}`, cursor: 'pointer',
-                          boxShadow: 'none', bgcolor: theme.palette.background.paper,
-                          '&:hover': { borderColor: theme.palette.primary.main },
-                        }}>
-                          <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
-                              <Avatar sx={{ width: 30, height: 30, bgcolor: bg, color: fg, fontSize: '0.7rem', fontWeight: 700 }}>
-                                {initials(emp.full_name)}
-                              </Avatar>
-                              <Box sx={{ minWidth: 0, flex: 1 }}>
-                                <Typography fontWeight={600} fontSize="0.78rem" color="text.primary" noWrap>
-                                  {emp.full_name || 'Unnamed'}
-                                </Typography>
-                                {emp.employee_id && (
-                                  <Typography fontSize="0.65rem" color="text.disabled" noWrap>
-                                    ID: {emp.employee_id}
-                                  </Typography>
-                                )}
-                              </Box>
-                            </Box>
-                            {emp.designation && (
-                              <Chip icon={<RoleIcon />} label={emp.designation} size="small" sx={chipSx(P.blue, isLight)} />
-                            )}
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
-                  </Stack>
-                </Box>
-              ))}
-            </Box>
           )}
 
           {/* ── Empty state ── */}

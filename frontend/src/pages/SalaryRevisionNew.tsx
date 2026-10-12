@@ -221,7 +221,7 @@ const EMP_API  = `${API_URL}/onboarding/eligible-employees`;
 // truth for CTC component definitions, edited from either place.
 const CTC_API  = `${API_URL}/ctc-components/`;
 
-const ACCENT = '#4f46e5';
+const ACCENT = '#2b3d14';
 
 // Design tokens for the dashboard table/filter redesign — scoped as CSS custom
 // properties on the DashboardView root (see ROOT_TOKENS) rather than adopted
@@ -788,7 +788,7 @@ function AddRevisionModal({ open, onClose, onAdded, showToast, employees, record
             </Box>
             <Box sx={{ display:'flex', gap:2 }}>
               <Button variant="contained" onClick={submit} disabled={saving||!sel}
-                sx={{ flex:1, bgcolor:ACCENT, '&:hover':{ bgcolor:'#4338ca' }, textTransform:'none', fontWeight:600 }}>
+                sx={{ flex:1, bgcolor:ACCENT, '&:hover':{ bgcolor:'#1f2d0e' }, textTransform:'none', fontWeight:600 }}>
                 {saving?<CircularProgress size={20} sx={{ color:'white' }}/>:'Create Revision'}
               </Button>
               <Button variant="outlined" onClick={onClose} sx={{ textTransform:'none' }}>Cancel</Button>
@@ -911,7 +911,7 @@ function CtcComponentsView({ onBack, showToast }: {
           </Typography>
         </Box>
         <Button variant="contained" startIcon={<AddIcon />} onClick={startAdd} size="small"
-          sx={{ bgcolor: ACCENT, textTransform: 'none', fontWeight: 600, borderRadius: 1.5, '&:hover': { bgcolor: '#4338ca' } }}>
+          sx={{ bgcolor: ACCENT, textTransform: 'none', fontWeight: 600, borderRadius: 1.5, '&:hover': { bgcolor: '#1f2d0e' } }}>
           Add Component
         </Button>
       </Box>
@@ -950,7 +950,7 @@ function CtcComponentsView({ onBack, showToast }: {
             <Button size="small" onClick={resetForm} sx={{ textTransform: 'none' }}>Cancel</Button>
             <Button size="small" variant="contained" startIcon={saving ? <CircularProgress size={14} sx={{ color: 'white' }} /> : <SaveIcon sx={{ fontSize: 15 }} />}
               onClick={saveComponent} disabled={saving}
-              sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', fontWeight: 600 }}>
+              sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#1f2d0e' }, textTransform: 'none', fontWeight: 600 }}>
               {editingId ? 'Update' : 'Add'}
             </Button>
           </Box>
@@ -989,7 +989,7 @@ function CtcComponentsView({ onBack, showToast }: {
                     </TableCell>
                     <TableCell>
                       <Chip size="small" label={comp.is_active ? 'Active' : 'Inactive'}
-                        sx={{ fontSize: 10, height: 20, bgcolor: comp.is_active ? '#f0fdf4' : '#fef2f2', color: comp.is_active ? '#059669' : '#dc2626' }} />
+                        sx={{ fontSize: 10, height: 20, bgcolor: comp.is_active ? '#eef1e4' : '#fef2f2', color: comp.is_active ? '#059669' : '#dc2626' }} />
                     </TableCell>
                     <TableCell align="center" sx={{ fontSize: 13 }}>{comp.show_in_documents ? '✓' : '—'}</TableCell>
                     <TableCell align="center">
@@ -1418,7 +1418,7 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onOpenCtc
             CTC Components
           </Button>
           <Button variant="contained" startIcon={<AddIcon/>} onClick={onAdd} size="small"
-            sx={{ bgcolor:ACCENT, textTransform:'none', fontWeight:600, borderRadius: 1.5, '&:hover':{ bgcolor:'#4338ca' } }}>
+            sx={{ bgcolor:ACCENT, textTransform:'none', fontWeight:600, borderRadius: 1.5, '&:hover':{ bgcolor:'#1f2d0e' } }}>
             Add Revision
           </Button>
         </Stack>
@@ -1703,7 +1703,7 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onOpenCtc
                           <Box sx={{ display:'flex', alignItems:'center', justifyContent:'center', gap:0.5 }}>
                             <Tooltip title="View">
                               <IconButton size="small" onClick={e=>{ e.stopPropagation(); setViewRow({ emp, rec }); }}
-                                sx={{ p:0.5, bgcolor:'#eef2ff', color:'#4f46e5', '&:hover':{ bgcolor:'#e0e7ff' } }}>
+                                sx={{ p:0.5, bgcolor:'#eef1e4', color:'#2b3d14', '&:hover':{ bgcolor:'#e3e9d5' } }}>
                                 <VisibilityIcon sx={{ fontSize:14 }}/>
                               </IconButton>
                             </Tooltip>
@@ -1742,7 +1742,7 @@ function DashboardView({ records, employees, loading, onSelect, onAdd, onOpenCtc
               const isLatest=i===arr.length-1;
               return (
                 <Box key={i} sx={{ display:'flex', justifyContent:'space-between', gap:2, p:0.75,
-                  bgcolor:isLatest?'#f0fdf4':'var(--surface-1)', borderRadius:1 }}>
+                  bgcolor:isLatest?'#eef1e4':'var(--surface-1)', borderRadius:1 }}>
                   <Typography fontSize={11} color={isLatest?'#059669':'text.secondary'} fontWeight={isLatest?600:400}>
                     Contract {i+1}{isLatest?' (current)':''}
                   </Typography>
@@ -2146,7 +2146,7 @@ function OpenQuarterButton() {
               {error && <Alert severity="error" sx={{ mb:1.5, fontSize:12 }} onClose={()=>setError('')}>{error}</Alert>}
               <Box sx={{ display:'flex', gap:1.5 }}>
                 <Button variant="contained" onClick={run} disabled={busy}
-                  sx={{ bgcolor:ACCENT, '&:hover':{ bgcolor:'#4338ca' }, textTransform:'none', fontWeight:600 }}>
+                  sx={{ bgcolor:ACCENT, '&:hover':{ bgcolor:'#1f2d0e' }, textTransform:'none', fontWeight:600 }}>
                   {busy ? <CircularProgress size={18} sx={{ color:'white' }}/> : 'Open All Due This Quarter'}
                 </Button>
                 <Button variant="outlined" onClick={close} disabled={busy} sx={{ textTransform:'none' }}>Cancel</Button>
@@ -2312,7 +2312,7 @@ function CompanyMailButton() {
                             ) : draft.status === 'sent' ? (
                               <Chip size="small" icon={<CheckCircleIcon sx={{ fontSize:'12px !important' }}/>}
                                 label={`Sent${draft.sentBy ? ` · ${draft.sentBy}` : ''}${draft.sentAt ? ` · ${fmtDate(draft.sentAt)}` : ''}`}
-                                sx={{ fontSize:10, height:20, flexShrink:0, bgcolor:'#f0fdf4', color:'#059669', '& .MuiChip-icon':{ color:'inherit' } }}/>
+                                sx={{ fontSize:10, height:20, flexShrink:0, bgcolor:'#eef1e4', color:'#059669', '& .MuiChip-icon':{ color:'inherit' } }}/>
                             ) : (
                               <Chip size="small" label="Discarded" sx={{ fontSize:10, height:20, flexShrink:0, bgcolor:'#f8fafc', color:'#94a3b8' }}/>
                             )}
@@ -2459,7 +2459,7 @@ function RevisionMailButtons({ revisionId, mailTypes }: { revisionId?: string; m
             ) : d.status==='sent' ? (
               <Chip size="small" icon={<CheckCircleIcon sx={{ fontSize:'12px !important' }}/>}
                 label={`Sent${d.sentBy?` · ${d.sentBy}`:''}`}
-                sx={{ fontSize:10, height:20, bgcolor:'#f0fdf4', color:'#059669', '& .MuiChip-icon':{ color:'inherit' } }}/>
+                sx={{ fontSize:10, height:20, bgcolor:'#eef1e4', color:'#059669', '& .MuiChip-icon':{ color:'inherit' } }}/>
             ) : (
               <Chip size="small" label="Discarded" sx={{ fontSize:10, height:20, bgcolor:'#f8fafc', color:'#94a3b8' }}/>
             )}
@@ -2782,12 +2782,12 @@ function HistoryPanel({ employeeCode }: { employeeCode: string }) {
                 return (
                   <TableRow key={h._id}
                     onClick={() => setSelectedRevision(h)}
-                    sx={{ cursor: 'pointer', bgcolor: i === 0 ? '#f8fafc' : 'transparent', '&:hover': { bgcolor: '#eef2ff' } }}>
+                    sx={{ cursor: 'pointer', bgcolor: i === 0 ? '#f8fafc' : 'transparent', '&:hover': { bgcolor: '#eef1e4' } }}>
                     <TableCell sx={{ fontSize: 12 }}>
                       {contractStart
                         ? <>{fmtDate(contractStart)} → {contractEnd ? fmtDate(contractEnd) : 'Ongoing'}</>
                         : <span style={{ color: '#94a3b8' }}>—</span>}
-                      {i === 0 && <Chip label="Latest" size="small" sx={{ ml: 0.7, fontSize: 9, height: 16, bgcolor: '#eef2ff', color: ACCENT }}/> }
+                      {i === 0 && <Chip label="Latest" size="small" sx={{ ml: 0.7, fontSize: 9, height: 16, bgcolor: '#eef1e4', color: ACCENT }}/> }
                     </TableCell>
                     <TableCell><DecisionChip decision={h.managerDecision?.decision} isPpo={isPpoRevision(h)}/></TableCell>
                     <TableCell sx={{ fontSize: 12 }}>
@@ -3531,7 +3531,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
               value={pipOutcomeReason} onChange={e=>setPipOutcomeReason(e.target.value)} fullWidth/>
             <Box>
               <Button variant="contained" onClick={postPipOutcome} disabled={busy||!pipOutcomeReason.trim()}
-                sx={{ bgcolor:ACCENT, '&:hover':{ bgcolor:'#4338ca' }, textTransform:'none', fontWeight:600 }}>
+                sx={{ bgcolor:ACCENT, '&:hover':{ bgcolor:'#1f2d0e' }, textTransform:'none', fontWeight:600 }}>
                 {busy?<CircularProgress size={20} sx={{ color:'white' }}/>:'Submit PIP Outcome'}
               </Button>
             </Box>
@@ -3614,7 +3614,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                   const isLatest = i===emp.contract_history!.length-1;
                   return (
                     <Box key={i} sx={{ display:'flex', justifyContent:'space-between', gap:2, p:0.75,
-                      bgcolor: isLatest?'#f0fdf4':'#f8fafc', borderRadius:1 }}>
+                      bgcolor: isLatest?'#eef1e4':'#f8fafc', borderRadius:1 }}>
                       <Typography fontSize={12} color={isLatest?'#059669':'text.secondary'} fontWeight={isLatest?600:400}>
                         Contract {i+1}{isLatest?' (current)':''}
                       </Typography>
@@ -3930,7 +3930,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                       </Typography>
                       <Box sx={{ display:'flex', gap:1 }}>
                         <Button size="small" variant="contained" onClick={saveMgmtDecisionEdit} disabled={mgmtEditBusy}
-                          sx={{ bgcolor:ACCENT, '&:hover':{ bgcolor:'#4338ca' }, textTransform:'none' }}>
+                          sx={{ bgcolor:ACCENT, '&:hover':{ bgcolor:'#1f2d0e' }, textTransform:'none' }}>
                           {mgmtEditBusy?<CircularProgress size={14} sx={{ color:'white' }}/>:'Save'}
                         </Button>
                         <Button size="small" variant="outlined" disabled={mgmtEditBusy}
@@ -3974,7 +3974,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                           </Box>
                         )}
                         {mgrDecision==='increment'&&(
-                          <Box sx={{ mt:1.5, p:1.5, bgcolor:'#f0fdf4', borderRadius:1.5, border:'1px solid #bbf7d0' }}>
+                          <Box sx={{ mt:1.5, p:1.5, bgcolor:'#eef1e4', borderRadius:1.5, border:'1px solid #c9d4ae' }}>
                             <Box sx={{ display:'flex', gap:2, alignItems:'center', flexWrap:'wrap' }}>
                               <Typography fontSize={12}>{fmtCurrency(prevCtc)}</Typography>
                               <Typography fontSize={11} color="text.secondary">→</Typography>
@@ -4007,7 +4007,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
 
                 {isMgmt&&(
                   <Button variant="contained" onClick={postManagement} disabled={busy||!mgmtReason.trim()}
-                    sx={{ bgcolor:ACCENT, '&:hover':{ bgcolor:'#4338ca' }, textTransform:'none', fontWeight:600 }}>
+                    sx={{ bgcolor:ACCENT, '&:hover':{ bgcolor:'#1f2d0e' }, textTransform:'none', fontWeight:600 }}>
                     {busy?<CircularProgress size={20} sx={{ color:'white' }}/>:'Submit Management Decision'}
                   </Button>
                 )}
@@ -4198,7 +4198,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
                 )}
 
                 {isCompleted&&(
-                  <Box sx={{ p:1.5, bgcolor:'#f0fdf4', borderRadius:1.5, border:'1px solid #bbf7d0' }}>
+                  <Box sx={{ p:1.5, bgcolor:'#eef1e4', borderRadius:1.5, border:'1px solid #c9d4ae' }}>
                     <Typography fontSize={12} fontWeight={700} color="#059669">Revision Completed</Typography>
                     <Typography fontSize={11} color="text.secondary" mt={0.5}>
                       Applicable from {fmtDate(rec?.hrDecision?.applicableDate||rec?.applicableDate)}. Onboarding record updated with latest values.
@@ -4343,7 +4343,7 @@ export default function SalaryRevisionPage() {
   };
 
   if (loading&&initialLoad) return (
-    <div className="flex min-h-screen bg-gray-50/70">
+    <div className="flex min-h-screen" style={{ background: '#E2E0B6' }}>
       <Sidebar/><div className="flex-1 flex flex-col"><Navbar/>
         <main className="flex-1 flex items-center justify-center  ">
           <CircularProgress size={40}/>
@@ -4353,7 +4353,7 @@ export default function SalaryRevisionPage() {
   );
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen" style={{ background: '#E2E0B6' }}>
       <Sidebar/>
       <div className="flex-1 flex flex-col">
         <Navbar/>

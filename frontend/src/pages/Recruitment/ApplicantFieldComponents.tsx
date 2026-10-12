@@ -30,7 +30,7 @@ export const EditField = ({
       value={value || ''}
       onChange={(e) => onChange(name, e.target.value)}
       placeholder={placeholder}
-      className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lime-400 ${FIELD_PLACEHOLDER_CLASS} ${inputClassName}`}
+      className={`w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a9c56] ${FIELD_PLACEHOLDER_CLASS} ${inputClassName}`}
     />
   </div>
 );
@@ -49,7 +49,7 @@ export const EditSelect = ({
     <select
       value={value || ''}
       onChange={(e) => onChange(name, e.target.value)}
-      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lime-400"
+      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a9c56]"
     >
       {placeholder && <option value="">{placeholder}</option>}
       {options.map((o) => <option key={o}>{o}</option>)}

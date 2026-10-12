@@ -175,7 +175,7 @@ const OfferPlacementTab = ({
           {editMode === 'view' ? (
             <button
               onClick={() => setEditMode('edit')}
-              className="px-4 py-2 text-sm font-semibold text-lime-700 bg-lime-50 hover:bg-lime-100 rounded-xl transition"
+              className="px-4 py-2 text-sm font-semibold text-[#3d5420] bg-[#eef3e6] hover:bg-[#dce8c9] rounded-xl transition"
             >
               Edit Decision
             </button>
@@ -191,7 +191,7 @@ const OfferPlacementTab = ({
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-lime-600 hover:bg-lime-700 disabled:opacity-60 rounded-xl transition"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#597e37] hover:bg-[#3d5420] disabled:opacity-60 rounded-xl transition"
               >
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 Save Decision
@@ -249,7 +249,7 @@ const OfferPlacementTab = ({
               onChange={(e) => handleChange('notes', e.target.value)}
               rows={3}
               placeholder="Any additional notes about the hiring decision..."
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lime-400 resize-none"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a9c56] resize-none"
             />
           </div>
         </>
@@ -313,11 +313,11 @@ const OfferPlacementTab = ({
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Joining Management</p>
             {!joiningEdit ? (
-              <button onClick={() => setJoiningEdit(true)} className="text-xs font-semibold text-lime-700 hover:underline">Edit</button>
+              <button onClick={() => setJoiningEdit(true)} className="text-xs font-semibold text-[#3d5420] hover:underline">Edit</button>
             ) : (
               <div className="flex gap-2">
                 <button onClick={() => { setJoiningDraft(record.joining ?? {} as Joining); setJoiningEdit(false); }} className="text-xs font-semibold text-gray-500 hover:underline">Cancel</button>
-                <button onClick={handleSaveJoining} disabled={savingJoining} className="text-xs font-semibold text-lime-700 hover:underline">
+                <button onClick={handleSaveJoining} disabled={savingJoining} className="text-xs font-semibold text-[#3d5420] hover:underline">
                   {savingJoining ? 'Saving…' : 'Save'}
                 </button>
               </div>
@@ -351,7 +351,7 @@ const OfferPlacementTab = ({
                   value={joiningDraft.remarks || ''}
                   onChange={(e) => handleJoiningChange('remarks', e.target.value)}
                   rows={2}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lime-400 resize-none"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a9c56] resize-none"
                 />
               </div>
             </div>
@@ -405,7 +405,7 @@ const OfferPlacementTab = ({
             <p className="text-sm text-gray-500 text-center">Offer &amp; Placement details have been updated.</p>
             <button
               onClick={() => setShowSaved(false)}
-              className="mt-2 px-5 py-2 text-sm font-semibold text-white bg-lime-600 hover:bg-lime-700 rounded-lg transition"
+              className="mt-2 px-5 py-2 text-sm font-semibold text-white bg-[#597e37] hover:bg-[#3d5420] rounded-lg transition"
             >
               OK
             </button>

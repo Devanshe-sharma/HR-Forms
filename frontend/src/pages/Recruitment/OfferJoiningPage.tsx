@@ -65,7 +65,7 @@ export const OfferJoiningTab: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {records.map((r) => (
-                      <tr key={r._id} className={r._id === selectedId ? 'bg-lime-50/60' : 'hover:bg-gray-50'}>
+                      <tr key={r._id} className={r._id === selectedId ? 'bg-[#eef3e6]/60' : 'hover:bg-gray-50'}>
                         <td className="p-3 font-semibold text-gray-800">{r.full_name}</td>
                         <td className="p-3 text-gray-500">{r.designation}</td>
                         <td className="p-3">
@@ -76,7 +76,7 @@ export const OfferJoiningTab: React.FC = () => {
                         <td className="p-3 text-right">
                           <button
                             onClick={() => setSelectedId(r._id)}
-                            className="text-xs font-semibold text-lime-700 bg-lime-50 hover:bg-lime-100 px-3 py-1.5 rounded-lg transition"
+                            className="text-xs font-semibold text-[#3d5420] bg-[#eef3e6] hover:bg-[#dce8c9] px-3 py-1.5 rounded-lg transition"
                           >
                             Open
                           </button>
@@ -102,7 +102,7 @@ export const OfferJoiningTab: React.FC = () => {
 
 const OfferJoiningPage: React.FC = () => {
   return (
-    <div className="flex h-screen bg-gray-100 overflow-hidden">
+    <div className="flex h-screen overflow-hidden" style={{ background: '#E2E0B6' }}>
       <div className="w-64 flex-shrink-0 z-10 bg-white border-r">
         <Sidebar />
       </div>

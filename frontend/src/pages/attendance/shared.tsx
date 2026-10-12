@@ -20,7 +20,7 @@ export const API = `${API_URL}/out-of-office`;
 export const EMP_API = `${API_URL}/onboarding/eligible-employees`;
 export const LEAVE_API = `${API_URL}/leave-management`;
 
-export const ACCENT = '#4f46e5';
+export const ACCENT = '#2b3d14';
 export const TH = { fontWeight: 600, fontSize: 11, color: '#64748b', bgcolor: '#f8fafc', whiteSpace: 'nowrap' as const, py: '10px', borderBottom: '1px solid #e2e8f0' };
 export const TD = { fontSize: 12, py: '10px', verticalAlign: 'top' as const };
 export const ELLIPSIS = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, display: 'block' as const };

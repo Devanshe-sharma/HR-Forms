@@ -1,6 +1,7 @@
-import { AppBar, Toolbar, Typography, Tabs, Tab, Box, Button } from '@mui/material';
+import { AppBar, Toolbar, Typography, Tabs, Tab, Box, Button, IconButton, Avatar, Menu, MenuItem, ListItemIcon, Divider } from '@mui/material';
 
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -9,6 +10,9 @@ import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import ArchiveOutlined from '@mui/icons-material/ArchiveOutlined';
 import LogoutIcon from '@mui/icons-material/Logout';
+import PersonIcon from '@mui/icons-material/Person';
+import SettingsIcon from '@mui/icons-material/Settings';
+import LockResetIcon from '@mui/icons-material/LockReset';
 
 
 
@@ -235,6 +239,16 @@ export default function Navbar() {
     nav('/login', { replace: true });
   };
 
+  const [profileMenuAnchor, setProfileMenuAnchor] = useState<null | HTMLElement>(null);
+  const profileMenuOpen = Boolean(profileMenuAnchor);
+  const closeProfileMenu = () => setProfileMenuAnchor(null);
+  const initials = (user?.name || '?')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((n) => n[0]?.toUpperCase())
+    .join('');
+
 
 
   const sp           = new URLSearchParams(loc.search);
@@ -335,7 +349,7 @@ export default function Navbar() {
 
         textColor="inherit"
 
-        TabIndicatorProps={{ style: { backgroundColor: '#2b3d14', height: 3 } }}
+        TabIndicatorProps={{ style: { backgroundColor: '#4A6427', height: 3 } }}
 
         sx={WHITE_TAB_STYLES}
 
@@ -367,7 +381,7 @@ export default function Navbar() {
 
         width: `calc(100% - ${drawerWidth}px)`, ml: `${drawerWidth}px`,
 
-        backgroundColor: '#2b3d14', boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+        backgroundColor: '#4A6427', boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
 
         height: TOOLBAR_H,
 
@@ -396,17 +410,51 @@ export default function Navbar() {
             )}
           </Box>
 
-          <Button
-            onClick={handleLogout}
-            title={user ? `Logout (${user.name})` : 'Logout'}
-            variant="contained"
-            color="error"
-            size="small"
-            startIcon={<LogoutIcon sx={{ fontSize: 18 }} />}
-            sx={{ textTransform: 'none', fontWeight: 600, boxShadow: 'none', '&:hover': { boxShadow: 'none' } }}
+          <IconButton
+            onClick={(e) => setProfileMenuAnchor(e.currentTarget)}
+            title={user ? user.name : 'Account'}
+            sx={{ p: 0.5 }}
           >
-            Logout
-          </Button>
+            <Avatar sx={{
+              width: 34, height: 34, fontSize: 13, fontWeight: 700,
+              bgcolor: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)',
+            }}>
+              {initials}
+            </Avatar>
+          </IconButton>
+
+          <Menu
+            anchorEl={profileMenuAnchor}
+            open={profileMenuOpen}
+            onClose={closeProfileMenu}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+          >
+            {user && (
+              <Box sx={{ px: 2, py: 1, minWidth: 180 }}>
+                <Typography sx={{ fontWeight: 700, fontSize: 14 }}>{user.name}</Typography>
+                <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>{user.email}</Typography>
+              </Box>
+            )}
+            <Divider />
+            <MenuItem onClick={() => { closeProfileMenu(); nav('/profile'); }}>
+              <ListItemIcon><PersonIcon fontSize="small" /></ListItemIcon>
+              Profile
+            </MenuItem>
+            <MenuItem onClick={() => { closeProfileMenu(); nav('/configuration'); }}>
+              <ListItemIcon><SettingsIcon fontSize="small" /></ListItemIcon>
+              Configuration
+            </MenuItem>
+            <MenuItem onClick={() => { closeProfileMenu(); nav('/configuration?openPassword=1'); }}>
+              <ListItemIcon><LockResetIcon fontSize="small" /></ListItemIcon>
+              Change Password
+            </MenuItem>
+            <Divider />
+            <MenuItem onClick={() => { closeProfileMenu(); handleLogout(); }}>
+              <ListItemIcon><LogoutIcon fontSize="small" color="error" /></ListItemIcon>
+              Logout
+            </MenuItem>
+          </Menu>
 
         </Toolbar>
 

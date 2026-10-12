@@ -6,12 +6,12 @@ import {
   Briefcase, TrendingUp, Clock, Hourglass, ChevronDown, ChevronRight,
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
-import { useNavigate } from 'react-router-dom';
 
 import CandidateInformationTab from './CandidateInformationTab';
 import RoundPipelineTab from './RoundPipelineTab';
 import EditCandidateInfoModal from './EditCandidateInfoModal';
 import { hasAnyRole, getRole } from '../../config/rbac';
+import { FavoritesMenuButton } from '../../components/FilterBar';
 
 import {
   ApplicantRecord, API_BASE,
@@ -286,7 +286,7 @@ const ApplicantModal = ({
                 value={localRec.interviewFinalStatus || 'New'}
                 onChange={(e) => handleFinalStatusChange(e.target.value)}
                 disabled={statusBusy}
-                className={`text-xs font-bold px-2 py-1 rounded-full border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-lime-400 ${
+                className={`text-xs font-bold px-2 py-1 rounded-full border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#7a9c56] ${
                   INTERVIEW_FINAL_STATUS_COLORS[localRec.interviewFinalStatus] || INTERVIEW_FINAL_STATUS_COLORS['New']
                 }`}
               >
@@ -304,7 +304,7 @@ const ApplicantModal = ({
             {canEditInfo && (
               <button
                 onClick={() => setEditInfoOpen(true)}
-                className="text-xs font-semibold text-lime-700 bg-lime-50 hover:bg-lime-100 px-2.5 py-1.5 rounded-lg transition"
+                className="text-xs font-semibold text-[#3d5420] bg-[#eef3e6] hover:bg-[#dce8c9] px-2.5 py-1.5 rounded-lg transition"
               >
                 Edit Information
               </button>
@@ -333,29 +333,18 @@ const ApplicantModal = ({
           {!localRec.resume && !localRec.linkedin && <span className="text-xs text-gray-400">No resume or LinkedIn on file</span>}
         </div>
 
-        {/* AI fit summary banner — only shown once analyzed */}
-        {localRec.ai_fit_score != null && (
-          <div className={`px-6 py-3 text-sm border-b flex items-start gap-2 ${
-            localRec.ai_fit_score >= 8 ? 'bg-green-50 border-green-100 text-green-800'
-              : localRec.ai_fit_score >= 5 ? 'bg-amber-50 border-amber-100 text-amber-800'
-              : 'bg-red-50 border-red-100 text-red-800'
-          }`}>
-            <Sparkles size={15} className="flex-shrink-0 mt-0.5" />
-            <div>
-              <span className="font-bold">ATS Score: {localRec.ai_fit_score}/10</span>
-              {localRec.ai_fit_summary && <p className="mt-0.5 opacity-90">{localRec.ai_fit_summary}</p>}
-            </div>
-          </div>
-        )}
-
-        {/* ── Tabs — pill style, matching the mockup ── */}
-        <div className="flex items-center gap-1.5 border-b px-4 py-2 overflow-x-auto">
+        {/* ── Tabs — flat underline style, matching the mockup's .pt/.tb
+            (not pill buttons — a plain bottom-border highlight on the
+            active tab, same convention as the top-level nav tabs). Uses
+            px-6 to line up with the header/links row above and the tab
+            content below, all of which share that same left edge. ── */}
+        <div className="flex items-center gap-2 border-b px-6 overflow-x-auto">
           {visibleTabs.map(({ id, label }) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
-              className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-semibold transition ${
-                activeTab === id ? 'bg-lime-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              className={`flex-shrink-0 px-8 py-3 text-sm font-semibold border-b-[3px] transition -mb-px ${
+                activeTab === id ? 'border-[#597e37] text-[#3d5420]' : 'border-transparent text-gray-400 hover:text-gray-600'
               }`}
             >
               {label}
@@ -622,7 +611,7 @@ const FilterTreeRow: React.FC<{
             type="checkbox"
             checked={selected.has(node.id)}
             onChange={() => onToggle(node.id)}
-            className="rounded border-gray-300 text-lime-600 focus:ring-lime-400 flex-shrink-0"
+            className="rounded border-gray-300 text-[#597e37] focus:ring-[#7a9c56] flex-shrink-0"
           />
           <span className="truncate">{node.label}</span>
         </label>
@@ -644,6 +633,13 @@ const FiltersDropdown = ({
   onToggle: (group: FilterGroupKey, id: string) => void;
 }) => {
   const [open, setOpen] = useState(false);
+  // Each group section starts collapsed — Profile alone can list 100s of
+  // raw designations, which used to dump every single one into view the
+  // moment the dropdown opened, burying the CTC/Location/Experience
+  // groups below it. Now every group is its own accordion.
+  const [openGroups, setOpenGroups] = useState<Record<FilterGroupKey, boolean>>({
+    profile: false, ctc: false, location: false, experience: false,
+  });
   const ref = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -661,13 +657,13 @@ const FiltersDropdown = ({
       <button
         onClick={() => setOpen((p) => !p)}
         className={`flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg border transition ${
-          activeCount > 0 ? 'border-lime-300 bg-lime-50 text-lime-700' : 'border-gray-200 text-gray-600 bg-white hover:border-gray-300'
+          activeCount > 0 ? 'border-[#a9c08a] bg-[#eef3e6] text-[#3d5420]' : 'border-gray-200 text-gray-600 bg-white hover:border-gray-300'
         }`}
       >
         <SlidersHorizontal size={14} />
         Filters
         {activeCount > 0 && (
-          <span className="bg-lime-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{activeCount}</span>
+          <span className="bg-[#597e37] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{activeCount}</span>
         )}
       </button>
 
@@ -677,16 +673,31 @@ const FiltersDropdown = ({
             const nodes = trees[group];
             if (!nodes.length) return null;
             const selectedSet = new Set(active[group]);
+            const groupActiveCount = active[group].length;
+            const isGroupOpen = openGroups[group];
             return (
-              <div key={group} className="border-b border-gray-100 last:border-b-0 py-2">
-                <p className="px-3 pb-1 text-[11px] font-bold text-gray-400 uppercase tracking-wide">
-                  {FILTER_GROUP_LABELS[group]}
-                </p>
-                <div className="px-2">
-                  {nodes.map((n) => (
-                    <FilterTreeRow key={n.id} node={n} depth={0} selected={selectedSet} onToggle={(id) => onToggle(group, id)} />
-                  ))}
-                </div>
+              <div key={group} className="border-b border-gray-100 last:border-b-0">
+                <button
+                  type="button"
+                  onClick={() => setOpenGroups((p) => ({ ...p, [group]: !p[group] }))}
+                  className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-gray-50 transition"
+                >
+                  <span className="flex items-center gap-1.5 text-[11px] font-bold text-gray-500 uppercase tracking-wide">
+                    {isGroupOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                    {FILTER_GROUP_LABELS[group]}
+                    <span className="font-normal normal-case text-gray-400">({nodes.length})</span>
+                  </span>
+                  {groupActiveCount > 0 && (
+                    <span className="bg-[#597e37] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{groupActiveCount}</span>
+                  )}
+                </button>
+                {isGroupOpen && (
+                  <div className="px-2 pb-2 max-h-64 overflow-y-auto">
+                    {nodes.map((n) => (
+                      <FilterTreeRow key={n.id} node={n} depth={0} selected={selectedSet} onToggle={(id) => onToggle(group, id)} />
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -701,8 +712,10 @@ const FilterBar = ({
   trees, nodeIndex, active, onToggle,
   sortBy, setSortBy,
   onReset, hasActiveFilters,
+  onApplyFavorite,
 }: {
   search: string; setSearch: (v: string) => void;
+  onApplyFavorite: (state: { search: string; filters: Record<FilterGroupKey, string[]> }) => void;
   trees: Record<FilterGroupKey, FilterNode[]>;
   nodeIndex: Record<FilterGroupKey, Map<string, FilterNode>>;
   active: Record<FilterGroupKey, string[]>;
@@ -724,11 +737,17 @@ const FilterBar = ({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search name, email, phone..."
-            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-lime-400 focus:border-transparent"
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7a9c56] focus:border-transparent"
           />
         </div>
 
         <FiltersDropdown trees={trees} active={active} onToggle={onToggle} />
+
+        <FavoritesMenuButton
+          storageKey="filters:candidate-management"
+          currentState={{ search, filters: active }}
+          onApply={onApplyFavorite}
+        />
 
         {/* Sort */}
         <div className="flex items-center gap-1.5 ml-auto">
@@ -736,7 +755,7 @@ const FilterBar = ({
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as SortOption)}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-600 focus:outline-none focus:ring-2 focus:ring-lime-400 bg-white"
+            className="text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-600 focus:outline-none focus:ring-2 focus:ring-[#7a9c56] bg-white"
           >
             {(Object.keys(SORT_LABELS) as SortOption[]).map((key) => (
               <option key={key} value={key}>{SORT_LABELS[key]}</option>
@@ -761,11 +780,11 @@ const FilterBar = ({
           {chips.map(({ group, id, path }) => (
             <span
               key={`${group}-${id}`}
-              className="flex items-center gap-1.5 bg-lime-50 border border-lime-200 text-lime-700 text-xs font-semibold pl-2.5 pr-1.5 py-1 rounded-full"
+              className="flex items-center gap-1.5 bg-[#eef3e6] border border-[#cddcb8] text-[#3d5420] text-xs font-semibold pl-2.5 pr-1.5 py-1 rounded-full"
             >
-              <span className="text-lime-500">{FILTER_GROUP_LABELS[group]}:</span>
+              <span className="text-[#eef3e6]0">{FILTER_GROUP_LABELS[group]}:</span>
               {path}
-              <button onClick={() => onToggle(group, id)} className="hover:bg-lime-100 rounded-full p-0.5 transition">
+              <button onClick={() => onToggle(group, id)} className="hover:bg-[#dce8c9] rounded-full p-0.5 transition">
                 <X size={11} />
               </button>
             </span>
@@ -780,7 +799,6 @@ const FilterBar = ({
 // Main page — Applicant Records table
 // ─────────────────────────────────────────────────────────────────────────────
 const CandidatesTab: React.FC = () => {
-  const navigate = useNavigate();
   const [records,    setRecords]    = useState<ApplicantRecordWithAI[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [selected,   setSelected]   = useState<ApplicantRecordWithAI | null>(null);
@@ -983,6 +1001,7 @@ const CandidatesTab: React.FC = () => {
               trees={filterTrees} nodeIndex={filterNodeIndex}
               active={filters} onToggle={toggleFilter}
               sortBy={sortBy} setSortBy={setSortBy}
+              onApplyFavorite={(state) => { setSearch(state.search); setFilters(state.filters); }}
               onReset={resetFilters} hasActiveFilters={hasActiveFilters}
             />
           )}
@@ -1069,34 +1088,13 @@ const CandidatesTab: React.FC = () => {
                           </div>
                         </td>
                         <td className="p-4 text-center">
-                          <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
                             <button
                               onClick={() => openModal(r, 'details')}
-                              className="p-1.5 text-gray-400 hover:text-lime-600 hover:bg-lime-50 rounded-lg transition"
-                              title="View / Edit"
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-[#597e37] hover:bg-[#3d5420] rounded-lg transition"
+                              title="View candidate"
                             >
-                              <Eye size={15} />
-                            </button>
-                            <button
-                              onClick={() => openModal(r, 'hr')}
-                              className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition"
-                              title="HR Round"
-                            >
-                              <UserCheck size={15} />
-                            </button>
-                            <button
-                              onClick={() => openModal(r, 'tech')}
-                              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                              title="Technical Round"
-                            >
-                              <ClipboardList size={15} />
-                            </button>
-                            <button
-                              onClick={() => navigate('/applicants?tab=offerJoining')}
-                              className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition"
-                              title="Offer & Joining"
-                            >
-                              <CheckSquare size={15} />
+                              <Eye size={14} /> View
                             </button>
                           </div>
                         </td>

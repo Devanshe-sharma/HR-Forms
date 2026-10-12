@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
-import { Plus, X, CheckCircle, XCircle, Edit, Trash2, Save, Archive, Calendar, MapPin, IndianRupee, AlignLeft, Tag, Eye, Star } from 'lucide-react';
+import { Plus, X, CheckCircle, XCircle, Edit, Trash2, Save, Archive, Calendar, MapPin, IndianRupee, AlignLeft, Tag, Eye, Star, Search, SlidersHorizontal, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
 axios.defaults.headers.common['x-user-role'] = localStorage.getItem('role') || 'Admin';
 
 
@@ -19,6 +19,180 @@ const formatDate = (date?: string | Date | null): string => {
   const year = d.getFullYear();
 
   return `${day}-${month}-${year}`;
+};
+
+// ─── Odoo-style filters bar — one compact search box + a "Filters" button
+// to its right that opens a panel of collapsible single-choice groups
+// (Quarter / Financial Year / Archived-or-Status / Category), replacing
+// the previous row of five separate always-visible dropdowns. Shared by
+// all three tabs below (HR / outings-view / global) via a `statusMode`
+// prop, since only that one group's label/options differ between them.
+type OutingFilterGroup = { key: string; label: string; options: { value: string; label: string }[] };
+
+const OutingFiltersBar = ({
+  search, onSearch,
+  quarter, onQuarter,
+  fy, onFy,
+  status, onStatus,
+  category, onCategory,
+  statusMode,
+  onClear,
+}: {
+  search: string; onSearch: (v: string) => void;
+  quarter: string; onQuarter: (v: string) => void;
+  fy: string; onFy: (v: string) => void;
+  status: string; onStatus: (v: string) => void;
+  category: string; onCategory: (v: string) => void;
+  statusMode: 'archived' | 'status';
+  onClear: () => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
+
+  const groups: OutingFilterGroup[] = [
+    { key: 'quarter', label: 'Quarter', options: [
+      { value: 'Q1', label: 'Q1 (Apr–Jun)' }, { value: 'Q2', label: 'Q2 (Jul–Sep)' },
+      { value: 'Q3', label: 'Q3 (Oct–Dec)' }, { value: 'Q4', label: 'Q4 (Jan–Mar)' },
+    ] },
+    { key: 'fy', label: 'Financial Year', options: [
+      { value: 'FY 2025-2026', label: 'FY 2025-2026' }, { value: 'FY 2024-2025', label: 'FY 2024-2025' },
+      { value: 'FY 2023-2024', label: 'FY 2023-2024' },
+    ] },
+    statusMode === 'status'
+      ? { key: 'status', label: 'Status', options: [
+          { value: 'scheduled', label: 'Scheduled' }, { value: 'completed', label: 'Completed' }, { value: 'archived', label: 'Archived' },
+        ] }
+      : { key: 'status', label: 'Archived', options: [{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }] },
+    { key: 'category', label: 'Category', options: [{ value: 'Internal', label: 'Internal' }, { value: 'External', label: 'External' }] },
+  ];
+
+  const valueFor = (key: string) => (key === 'quarter' ? quarter : key === 'fy' ? fy : key === 'status' ? status : category);
+  const setFor = (key: string, v: string) => {
+    if (key === 'quarter') onQuarter(v);
+    else if (key === 'fy') onFy(v);
+    else if (key === 'status') onStatus(v);
+    else onCategory(v);
+  };
+
+  const activeChips = groups
+    .map((g) => ({ group: g, value: valueFor(g.key) }))
+    .filter((c) => c.value)
+    .map((c) => ({ ...c, optionLabel: c.group.options.find((o) => o.value === c.value)?.label || c.value }));
+
+  const hasActive = activeChips.length > 0 || !!search.trim();
+
+  return (
+    <div className="bg-white p-4 rounded-xl shadow border border-gray-200">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            placeholder="Search outing topics..."
+            value={search}
+            onChange={(e) => onSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#597e37] focus:border-transparent"
+          />
+        </div>
+
+        <div className="relative" ref={ref}>
+          <button
+            type="button"
+            onClick={() => setOpen((p) => !p)}
+            className={`flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg border transition ${
+              activeChips.length > 0 ? 'border-[#a9c08a] bg-[#eef3e6] text-[#3d5420]' : 'border-gray-300 text-gray-600 bg-white hover:border-gray-400'
+            }`}
+          >
+            <SlidersHorizontal size={14} />
+            Filters
+            {activeChips.length > 0 && (
+              <span className="bg-[#597e37] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{activeChips.length}</span>
+            )}
+          </button>
+
+          {open && (
+            <div className="absolute z-20 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg">
+              {groups.map((g) => {
+                const isGroupOpen = !!openGroups[g.key];
+                const current = valueFor(g.key);
+                return (
+                  <div key={g.key} className="border-b border-gray-100 last:border-b-0">
+                    <button
+                      type="button"
+                      onClick={() => setOpenGroups((p) => ({ ...p, [g.key]: !p[g.key] }))}
+                      className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-gray-50 transition"
+                    >
+                      <span className="flex items-center gap-1.5 text-[11px] font-bold text-gray-500 uppercase tracking-wide">
+                        {isGroupOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                        {g.label}
+                      </span>
+                      {current && (
+                        <span className="bg-[#597e37] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">1</span>
+                      )}
+                    </button>
+                    {isGroupOpen && (
+                      <div className="px-3 pb-2 space-y-1">
+                        <label className="flex items-center gap-2 py-1 text-sm text-gray-600 cursor-pointer">
+                          <input type="radio" name={`outing-filter-${g.key}`} checked={!current} onChange={() => setFor(g.key, '')} className="text-[#597e37] focus:ring-[#7a9c56]" />
+                          All
+                        </label>
+                        {g.options.map((o) => (
+                          <label key={o.value} className="flex items-center gap-2 py-1 text-sm text-gray-700 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={`outing-filter-${g.key}`}
+                              checked={current === o.value}
+                              onChange={() => setFor(g.key, o.value)}
+                              className="text-[#597e37] focus:ring-[#7a9c56]"
+                            />
+                            {o.label}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={onClear}
+          disabled={!hasActive}
+          className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 hover:text-red-500 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2 rounded-lg border border-gray-300 hover:border-red-300 transition"
+        >
+          <RotateCcw size={14} /> Clear Filters
+        </button>
+      </div>
+
+      {activeChips.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100">
+          {activeChips.map((c) => (
+            <span
+              key={c.group.key}
+              className="flex items-center gap-1.5 bg-[#eef3e6] border border-[#cddcb8] text-[#3d5420] text-xs font-semibold pl-2.5 pr-1.5 py-1 rounded-full"
+            >
+              <span className="text-[#688a46]">{c.group.label}:</span>
+              {c.optionLabel}
+              <button onClick={() => setFor(c.group.key, '')} className="hover:bg-[#dce8c9] rounded-full p-0.5 transition">
+                <X size={11} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 };
 
 // ─── TYPES ────────────────────────────────────────────────
@@ -743,7 +917,7 @@ const Outing: React.FC = () => {
 
   // ─── RENDER ────────────────────────────────────────────────
   return (
-    <div className="flex min-h-screen bg-[#f4f6f2]">
+    <div className="flex min-h-screen" style={{ background: '#E2E0B6' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col md:ml-0">
         <Navbar />
@@ -782,53 +956,15 @@ const Outing: React.FC = () => {
           {/* ─── HR TAB (detailed control) ─── */}
           {currentTab === 'HR' && (
             <div className="space-y-8">
-              {/* Filters */}
-              <div className="bg-white p-4 sm:p-6 rounded-xl shadow border border-gray-200">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Outing Name</label>
-                    <input placeholder="Search outing topics..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={outingNameFilter} onChange={(e) => setOutingNameFilter(e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Quarter</label>
-                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={quarterFilter} onChange={(e) => setQuarterFilter(e.target.value)}>
-                      <option value="">All Quarters</option>
-                      <option value="Q1">Q1 (Apr–Jun)</option>
-                      <option value="Q2">Q2 (Jul–Sep)</option>
-                      <option value="Q3">Q3 (Oct–Dec)</option>
-                      <option value="Q4">Q4 (Jan–Mar)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Financial Year</label>
-                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={fyFilter} onChange={(e) => setFyFilter(e.target.value)}>
-                      <option value="">All FY</option>
-                      <option value="FY 2025-2026">FY 2025-2026</option>
-                      <option value="FY 2024-2025">FY 2024-2025</option>
-                      <option value="FY 2023-2024">FY 2023-2024</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Archived</label>
-                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={archivedFilter} onChange={(e) => setArchivedFilter(e.target.value)}>
-                      <option value="">All</option>
-                      <option value="no">No</option>
-                      <option value="yes">Yes</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value as '' | 'Internal' | 'External')}>
-                      <option value="">All Categories</option>
-                      <option value="Internal">Internal</option>
-                      <option value="External">External</option>
-                    </select>
-                  </div>
-                  <div className="flex items-end">
-                    <button onClick={() => { setOutingNameFilter(''); setQuarterFilter(''); setFyFilter(''); setArchivedFilter(''); setCategoryFilter(''); }} className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium transition">Clear Filters</button>
-                  </div>
-                </div>
-              </div>
+              <OutingFiltersBar
+                search={outingNameFilter} onSearch={setOutingNameFilter}
+                quarter={quarterFilter} onQuarter={setQuarterFilter}
+                fy={fyFilter} onFy={setFyFilter}
+                status={archivedFilter} onStatus={setArchivedFilter}
+                category={categoryFilter} onCategory={(v) => setCategoryFilter(v as '' | 'Internal' | 'External')}
+                statusMode="archived"
+                onClear={() => { setOutingNameFilter(''); setQuarterFilter(''); setFyFilter(''); setArchivedFilter(''); setCategoryFilter(''); }}
+              />
 
               {/* Editable Table (HR Control Panel) */}
               <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
@@ -992,54 +1128,15 @@ const Outing: React.FC = () => {
           {/* ─── OUTINGS VIEW TAB (Scheduled & Completed) ─── */}
           {currentTab === 'outings-view' && (
             <div className="space-y-8">
-              {/* Filters */}
-              <div className="bg-white p-4 sm:p-6 rounded-xl shadow border border-gray-200">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Outing Name</label>
-                    <input placeholder="Search outing topics..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={outingNameFilter} onChange={(e) => setOutingNameFilter(e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Quarter</label>
-                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={quarterFilter} onChange={(e) => setQuarterFilter(e.target.value)}>
-                      <option value="">All Quarters</option>
-                      <option value="Q1">Q1 (Apr–Jun)</option>
-                      <option value="Q2">Q2 (Jul–Sep)</option>
-                      <option value="Q3">Q3 (Oct–Dec)</option>
-                      <option value="Q4">Q4 (Jan–Mar)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Financial Year</label>
-                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={fyFilter} onChange={(e) => setFyFilter(e.target.value)}>
-                      <option value="">All FY</option>
-                      <option value="FY 2025-2026">FY 2025-2026</option>
-                      <option value="FY 2024-2025">FY 2024-2025</option>
-                      <option value="FY 2023-2024">FY 2023-2024</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={archivedFilter} onChange={(e) => setArchivedFilter(e.target.value)}>
-                      <option value="">All</option>
-                      <option value="scheduled">Scheduled</option>
-                      <option value="completed">Completed</option>
-                      <option value="archived">Archived</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value as '' | 'Internal' | 'External')}>
-                      <option value="">All Categories</option>
-                      <option value="Internal">Internal</option>
-                      <option value="External">External</option>
-                    </select>
-                  </div>
-                  <div className="flex items-end">
-                    <button onClick={() => { setOutingNameFilter(''); setQuarterFilter(''); setFyFilter(''); setArchivedFilter(''); setCategoryFilter(''); }} className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium transition">Clear Filters</button>
-                  </div>
-                </div>
-              </div>
+              <OutingFiltersBar
+                search={outingNameFilter} onSearch={setOutingNameFilter}
+                quarter={quarterFilter} onQuarter={setQuarterFilter}
+                fy={fyFilter} onFy={setFyFilter}
+                status={archivedFilter} onStatus={setArchivedFilter}
+                category={categoryFilter} onCategory={(v) => setCategoryFilter(v as '' | 'Internal' | 'External')}
+                statusMode="status"
+                onClear={() => { setOutingNameFilter(''); setQuarterFilter(''); setFyFilter(''); setArchivedFilter(''); setCategoryFilter(''); }}
+              />
 
               {/* Scheduled & Completed Outings Table */}
               <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
@@ -1109,52 +1206,15 @@ const Outing: React.FC = () => {
           {/* ─── GLOBAL TAB ─── */}
           {currentTab === 'global' && (
             <div className="space-y-8">
-              <div className="bg-white p-6 rounded-xl shadow border border-gray-200">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Outing Name</label>
-                    <input placeholder="Search outing topics..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={outingNameFilter} onChange={(e) => setOutingNameFilter(e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Quarter</label>
-                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={quarterFilter} onChange={(e) => setQuarterFilter(e.target.value)}>
-                      <option value="">All Quarters</option>
-                      <option value="Q1">Q1 (Apr–Jun)</option>
-                      <option value="Q2">Q2 (Jul–Sep)</option>
-                      <option value="Q3">Q3 (Oct–Dec)</option>
-                      <option value="Q4">Q4 (Jan–Mar)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Financial Year</label>
-                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={fyFilter} onChange={(e) => setFyFilter(e.target.value)}>
-                      <option value="">All FY</option>
-                      <option value="FY 2025-2026">FY 2025-2026</option>
-                      <option value="FY 2024-2025">FY 2024-2025</option>
-                      <option value="FY 2023-2024">FY 2023-2024</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Archived</label>
-                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={archivedFilter} onChange={(e) => setArchivedFilter(e.target.value)}>
-                      <option value="">All</option>
-                      <option value="no">No</option>
-                      <option value="yes">Yes</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a8b2e]" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value as '' | 'Internal' | 'External')}>
-                      <option value="">All Categories</option>
-                      <option value="Internal">Internal</option>
-                      <option value="External">External</option>
-                    </select>
-                  </div>
-                  <div className="flex items-end">
-                    <button onClick={() => { setOutingNameFilter(''); setQuarterFilter(''); setFyFilter(''); setArchivedFilter(''); setCategoryFilter(''); }} className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-medium transition">Clear Filters</button>
-                  </div>
-                </div>
-              </div>
+              <OutingFiltersBar
+                search={outingNameFilter} onSearch={setOutingNameFilter}
+                quarter={quarterFilter} onQuarter={setQuarterFilter}
+                fy={fyFilter} onFy={setFyFilter}
+                status={archivedFilter} onStatus={setArchivedFilter}
+                category={categoryFilter} onCategory={(v) => setCategoryFilter(v as '' | 'Internal' | 'External')}
+                statusMode="archived"
+                onClear={() => { setOutingNameFilter(''); setQuarterFilter(''); setFyFilter(''); setArchivedFilter(''); setCategoryFilter(''); }}
+              />
 
               <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
                 <div className="p-6 bg-gray-50 border-b">

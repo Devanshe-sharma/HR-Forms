@@ -237,7 +237,7 @@ export default function RequisitionDashboard() {
 
   return (
     <>
-      <div className={`min-h-screen bg-gray-100 flex transition-all duration-200 ${anyModalOpen ? 'blur-sm brightness-75 pointer-events-none select-none' : ''}`}>
+      <div className={`min-h-screen flex transition-all duration-200 ${anyModalOpen ? 'blur-sm brightness-75 pointer-events-none select-none' : ''}`} style={{ background: '#E2E0B6' }}>
         <Sidebar />
         <div className="flex-1 flex flex-col">
           <Navbar />
@@ -267,7 +267,7 @@ export default function RequisitionDashboard() {
                 <button
                   onClick={() => navigate('/applicants')}
                   title="Candidate Management"
-                  className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-md hover:bg-gray-100 transition"
+                  className="flex items-center gap-1.5 px-3 py-2 bg-[#597e37] text-white text-sm font-medium rounded-md hover:bg-[#3d5420] transition"
                 >
                   <Users size={16} />
                   Candidate Management
@@ -282,7 +282,7 @@ export default function RequisitionDashboard() {
                 </button>
                 <button
                   onClick={openNew}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition"
+                  className="flex items-center gap-1.5 px-3 py-2 bg-[#597e37] text-white text-sm font-medium rounded-md hover:bg-[#3d5420] transition"
                 >
                   <Plus size={16} />
                   New Requisition
@@ -325,7 +325,7 @@ export default function RequisitionDashboard() {
                   placeholder="Search designation, dept, name…"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 />
               </div>
 
@@ -333,7 +333,7 @@ export default function RequisitionDashboard() {
                 <select
                   value={filterStatus}
                   onChange={e => setFilterStatus(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
                 >
                   <option value="">All Hiring Statuses</option>
                   {HIRING_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
@@ -344,7 +344,7 @@ export default function RequisitionDashboard() {
                     const v = e.target.value;
                     setCardFilter(v === 'Open' ? 'open' : v === 'Closed' ? 'closed' : 'all');
                   }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
                 >
                   <option value="">All FMS Statuses</option>
                   <option value="Open">Open</option>
@@ -363,7 +363,7 @@ export default function RequisitionDashboard() {
               {(cardFilter !== 'all' || filterStatus || search || groupByField) && (
                 <button
                   onClick={() => { setCardFilter('all'); setFilterStatus(''); setSearch(''); setGroupByField(null); }}
-                  className="px-3 py-1.5 text-xs font-medium text-blue-600 hover:underline whitespace-nowrap sm:ml-auto"
+                  className="px-3 py-1.5 text-xs font-medium text-green-600 hover:underline whitespace-nowrap sm:ml-auto"
                 >
                   Reset Filters
                 </button>
@@ -372,7 +372,7 @@ export default function RequisitionDashboard() {
 
             {loading ? (
               <div className="flex justify-center py-16">
-                <span className="w-8 h-8 border-[3px] border-gray-200 border-t-blue-600 rounded-full animate-spin" />
+                <span className="w-8 h-8 border-[3px] border-gray-200 border-t-green-600 rounded-full animate-spin" />
               </div>
             ) : (
               <div className="border border-gray-200 rounded-lg overflow-x-auto">

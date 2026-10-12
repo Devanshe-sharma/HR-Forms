@@ -10,8 +10,10 @@ import {
   Add as AddIcon,
   Close as CloseIcon,
   CheckCircle as CheckCircleIcon,
+  Gavel as GavelIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
 import { useAuth } from '../contexts/AuthContext';
@@ -66,7 +68,7 @@ const API_URL = process.env.REACT_APP_API_URL || process.env.REACT_APP_REACT_APP
 const API     = `${API_URL}/escalations`;
 const EMP_API = `${API_URL}/onboarding/eligible-employees`;
 
-const ACCENT = '#4f46e5';
+const ACCENT = '#2b3d14';
 const TH = { fontWeight: 600, fontSize: 11, color: '#64748b', bgcolor: '#f8fafc', whiteSpace: 'nowrap' as const, py: '8px', borderBottom: '1px solid #e2e8f0' };
 
 const MODE_OPTIONS: { value: EscalationMode; label: string }[] = [
@@ -233,8 +235,24 @@ function DashboardView({ records, employees, loading, onAdd, onSelect }: {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
   const [mode, setMode] = useState('All');
+  const [filterDept, setFilterDept] = useState('All');
+  const [filterDesig, setFilterDesig] = useState('All');
+  const [filterEmployee, setFilterEmployee] = useState('All');
   const [viewTab, setViewTab] = useState<'table' | 'category' | 'department' | 'employee'>('table');
   const [drilldownCategory, setDrilldownCategory] = useState<string | null>(null);
+
+  // Department/designation live on the escalation itself and on each named
+  // target employee — a record "has" a value if either source carries it,
+  // so the dropdown catches cases either way.
+  const departmentOptions = useMemo(() =>
+    [...new Set(records.flatMap(r => [r.department, ...r.targetEmployees.map(t => t.department)]).filter(Boolean))].sort(),
+    [records]);
+  const designationOptions = useMemo(() =>
+    [...new Set(records.flatMap(r => r.targetEmployees.map(t => t.designation)).filter(Boolean))].sort(),
+    [records]);
+  const employeeOptions = useMemo(() =>
+    [...new Set(records.flatMap(r => r.targetEmployees.map(t => t.name)).filter(Boolean))].sort(),
+    [records]);
 
   const filtered = useMemo(() => records.filter(r => {
     const searchOk = !search
@@ -244,8 +262,13 @@ function DashboardView({ records, employees, loading, onAdd, onSelect }: {
       || r.description.toLowerCase().includes(search.toLowerCase());
     const categoryOk = category === 'All' || r.category === category;
     const modeOk = mode === 'All' || r.escalationFor === mode;
-    return searchOk && categoryOk && modeOk;
-  }), [records, search, category, mode]);
+    const deptOk = filterDept === 'All'
+      || r.department === filterDept
+      || r.targetEmployees.some(t => t.department === filterDept);
+    const desigOk = filterDesig === 'All' || r.targetEmployees.some(t => t.designation === filterDesig);
+    const employeeOk = filterEmployee === 'All' || r.targetEmployees.some(t => t.name === filterEmployee);
+    return searchOk && categoryOk && modeOk && deptOk && desigOk && employeeOk;
+  }), [records, search, category, mode, filterDept, filterDesig, filterEmployee]);
 
   // ── Category view: total per category, plus who's behind that total ──────
   const categoryBreakdown = useMemo(() => {
@@ -305,17 +328,24 @@ function DashboardView({ records, employees, loading, onAdd, onSelect }: {
     };
   }, [records]);
 
+  const navigate = useNavigate();
+
   return (
     <Box sx={{ p: 2.5, maxWidth: 1300, mx: 'auto' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
         <Box>
           <Typography fontSize={18} fontWeight={700} color="#0f172a">Escalations</Typography>
-          <Typography fontSize={12} color="text.secondary">Employees, external parties, or BO members / clients / vendors / referrers</Typography>
         </Box>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={onAdd} size="small"
-          sx={{ bgcolor: ACCENT, textTransform: 'none', fontWeight: 600, borderRadius: 1.5, '&:hover': { bgcolor: '#4338ca' } }}>
-          Log Escalation
-        </Button>
+        <Stack direction="row" spacing={1.5}>
+          <Button variant="outlined" startIcon={<GavelIcon />} onClick={() => navigate('/grievances')} size="small"
+            sx={{ color: ACCENT, borderColor: ACCENT, textTransform: 'none', fontWeight: 600, borderRadius: 1.5, '&:hover': { borderColor: '#1f2d0e', bgcolor: `${ACCENT}10` } }}>
+            Grievances
+          </Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={onAdd} size="small"
+            sx={{ bgcolor: ACCENT, textTransform: 'none', fontWeight: 600, borderRadius: 1.5, '&:hover': { bgcolor: '#1f2d0e' } }}>
+            Log Escalation
+          </Button>
+        </Stack>
       </Box>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' }, gap: 1.5, mb: 2 }}>
@@ -347,8 +377,8 @@ function DashboardView({ records, employees, loading, onAdd, onSelect }: {
             sx={{
               textTransform: 'none', fontWeight: 600, fontSize: 12.5, borderRadius: 1.5, px: 1.75, py: 0.75,
               bgcolor: viewTab === t.key ? ACCENT : 'white', color: viewTab === t.key ? 'white' : ACCENT,
-              border: `1px solid ${viewTab === t.key ? ACCENT : '#c7d2fe'}`,
-              '&:hover': { bgcolor: viewTab === t.key ? '#4338ca' : '#eef2ff' },
+              border: `1px solid ${viewTab === t.key ? ACCENT : '#c9d4ae'}`,
+              '&:hover': { bgcolor: viewTab === t.key ? '#1f2d0e' : '#eef1e4' },
             }}>
             {t.label}
           </Button>
@@ -361,7 +391,10 @@ function DashboardView({ records, employees, loading, onAdd, onSelect }: {
         <TextField size="small" placeholder="Search case #, name, or description…" value={search}
           onChange={e => setSearch(e.target.value)} sx={{ minWidth: 200 }} InputProps={{ sx: { fontSize: 13 } }} />
 
-        <FiltersMenuButton activeCount={(mode !== 'All' ? 1 : 0) + (category !== 'All' ? 1 : 0)}>
+        <FiltersMenuButton activeCount={
+          (mode !== 'All' ? 1 : 0) + (category !== 'All' ? 1 : 0) +
+          (filterDept !== 'All' ? 1 : 0) + (filterDesig !== 'All' ? 1 : 0) + (filterEmployee !== 'All' ? 1 : 0)
+        }>
           <FormControl size="small" fullWidth>
             <InputLabel sx={{ fontSize: 12 }}>Mode</InputLabel>
             <Select value={mode} label="Mode" onChange={e => setMode(e.target.value)} sx={{ fontSize: 12 }}>
@@ -376,13 +409,45 @@ function DashboardView({ records, employees, loading, onAdd, onSelect }: {
               {CATEGORIES.map(c => <MenuItem key={c.code} value={c.code} sx={{ fontSize: 12 }}>{c.code} — {c.name}</MenuItem>)}
             </Select>
           </FormControl>
+          <FormControl size="small" fullWidth>
+            <InputLabel sx={{ fontSize: 12 }}>Department</InputLabel>
+            <Select value={filterDept} label="Department" onChange={e => setFilterDept(e.target.value)} sx={{ fontSize: 12 }}>
+              <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
+              {departmentOptions.map(d => <MenuItem key={d} value={d} sx={{ fontSize: 12 }}>{d}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small" fullWidth>
+            <InputLabel sx={{ fontSize: 12 }}>Designation</InputLabel>
+            <Select value={filterDesig} label="Designation" onChange={e => setFilterDesig(e.target.value)} sx={{ fontSize: 12 }}>
+              <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
+              {designationOptions.map(d => <MenuItem key={d} value={d} sx={{ fontSize: 12 }}>{d}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small" fullWidth>
+            <InputLabel sx={{ fontSize: 12 }}>Employee</InputLabel>
+            <Select value={filterEmployee} label="Employee" onChange={e => setFilterEmployee(e.target.value)} sx={{ fontSize: 12 }}>
+              <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
+              {employeeOptions.map(n => <MenuItem key={n} value={n} sx={{ fontSize: 12 }}>{n}</MenuItem>)}
+            </Select>
+          </FormControl>
         </FiltersMenuButton>
 
         <FavoritesMenuButton
           storageKey="filters:escalations"
-          currentState={{ search, category, mode }}
-          onApply={(s) => { setSearch(s.search ?? ''); setCategory(s.category ?? 'All'); setMode(s.mode ?? 'All'); }}
+          currentState={{ search, category, mode, filterDept, filterDesig, filterEmployee }}
+          onApply={(s) => {
+            setSearch(s.search ?? ''); setCategory(s.category ?? 'All'); setMode(s.mode ?? 'All');
+            setFilterDept(s.filterDept ?? 'All'); setFilterDesig(s.filterDesig ?? 'All'); setFilterEmployee(s.filterEmployee ?? 'All');
+          }}
         />
+
+        {(mode !== 'All' || category !== 'All' || filterDept !== 'All' || filterDesig !== 'All' || filterEmployee !== 'All' || search) && (
+          <Button size="small" variant="text" onClick={() => {
+            setSearch(''); setCategory('All'); setMode('All'); setFilterDept('All'); setFilterDesig('All'); setFilterEmployee('All');
+          }} sx={{ fontSize: 12.5, textTransform: 'none', color: 'text.secondary' }}>
+            Clear Filters
+          </Button>
+        )}
       </Box>
 
       <Box sx={{ bgcolor: 'white', borderRadius: 2, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
@@ -421,7 +486,7 @@ function DashboardView({ records, employees, loading, onAdd, onSelect }: {
                         <Typography fontSize={12} fontWeight={600}>{r.createdBy.name}</Typography>
                       </Box>
                     </TableCell>
-                    <TableCell><Chip size="small" label={r.escalationFor} sx={{ fontSize: 10, height: 20, bgcolor: '#eef2ff', color: ACCENT }} /></TableCell>
+                    <TableCell><Chip size="small" label={r.escalationFor} sx={{ fontSize: 10, height: 20, bgcolor: '#eef1e4', color: ACCENT }} /></TableCell>
                     <TableCell sx={{ fontSize: 12 }}>{targetSummary(r)}</TableCell>
                     <TableCell sx={{ fontSize: 12 }}>{r.department || '—'}</TableCell>
                     <TableCell sx={{ fontSize: 12, fontWeight: 700, color: score !== undefined && score < 0 ? '#dc2626' : '#0f172a' }}>
@@ -455,7 +520,7 @@ function DashboardView({ records, employees, loading, onAdd, onSelect }: {
               return (
                 <Box key={c.code} onClick={() => setDrilldownCategory(isSelected ? null : c.code)}
                   sx={{
-                    cursor: 'pointer', bgcolor: isSelected ? '#eef2ff' : 'white',
+                    cursor: 'pointer', bgcolor: isSelected ? '#eef1e4' : 'white',
                     border: `1px solid ${isSelected ? ACCENT : '#e2e8f0'}`, borderRadius: 2, p: '12px 14px',
                   }}>
                   <Typography sx={{ fontSize: 11, fontWeight: 700, color: ACCENT }}>{c.code}</Typography>
@@ -848,18 +913,15 @@ function CreateEscalationForm({ employees, onDone, onBack, showToast }: {
         </IconButton>
         <Typography fontSize={20} fontWeight={700} color="#0f172a">Log Escalation</Typography>
       </Box>
-      <Typography fontSize={13} color="text.secondary" sx={{ mb: 2.5, ml: 6 }}>
-        Employees, external parties, or BO members / clients / vendors / referrers
-      </Typography>
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 1.25, mb: 3 }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 1.25, mb: 3, mt: 2.5 }}>
         {MODE_OPTIONS.map(o => (
           <Button key={o.value} onClick={() => changeMode(o.value)}
             sx={{
-              border: `1px solid ${mode === o.value ? ACCENT : '#c7d2fe'}`, borderRadius: 2, py: 1.25, px: 1,
+              border: `1px solid ${mode === o.value ? ACCENT : '#c9d4ae'}`, borderRadius: 2, py: 1.25, px: 1,
               fontWeight: 700, fontSize: 13, lineHeight: 1.3, textTransform: 'none',
               bgcolor: mode === o.value ? ACCENT : 'white', color: mode === o.value ? 'white' : ACCENT,
-              '&:hover': { bgcolor: mode === o.value ? '#4338ca' : '#eef2ff' },
+              '&:hover': { bgcolor: mode === o.value ? '#1f2d0e' : '#eef1e4' },
             }}>
             {o.label}
           </Button>
@@ -918,7 +980,7 @@ function CreateEscalationForm({ employees, onDone, onBack, showToast }: {
 
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', pt: 1 }}>
           <Button variant="contained" onClick={submit} disabled={busy || !canSubmit()}
-            sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', fontWeight: 700, px: 3 }}>
+            sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#1f2d0e' }, textTransform: 'none', fontWeight: 700, px: 3 }}>
             {busy ? <CircularProgress size={20} sx={{ color: 'white' }} /> : 'Submit escalation'}
           </Button>
         </Box>
@@ -1007,10 +1069,10 @@ function EditEscalationForm({ record, employees, onDone, onCancel, showToast }: 
         {MODE_OPTIONS.map(o => (
           <Button key={o.value} onClick={() => setMode(o.value)}
             sx={{
-              border: `1px solid ${mode === o.value ? ACCENT : '#c7d2fe'}`, borderRadius: 2, py: 1.25, px: 1,
+              border: `1px solid ${mode === o.value ? ACCENT : '#c9d4ae'}`, borderRadius: 2, py: 1.25, px: 1,
               fontWeight: 700, fontSize: 13, lineHeight: 1.3, textTransform: 'none',
               bgcolor: mode === o.value ? ACCENT : 'white', color: mode === o.value ? 'white' : ACCENT,
-              '&:hover': { bgcolor: mode === o.value ? '#4338ca' : '#eef2ff' },
+              '&:hover': { bgcolor: mode === o.value ? '#1f2d0e' : '#eef1e4' },
             }}>
             {o.label}
           </Button>
@@ -1097,7 +1159,7 @@ function EditEscalationForm({ record, employees, onDone, onCancel, showToast }: 
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1.5, pt: 1, borderTop: '1px solid #e2e8f0' }}>
           <Button onClick={onCancel} sx={{ textTransform: 'none' }}>Cancel</Button>
           <Button variant="contained" onClick={submit} disabled={busy || !canSubmit()}
-            sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#4338ca' }, textTransform: 'none', fontWeight: 600 }}>
+            sx={{ bgcolor: ACCENT, '&:hover': { bgcolor: '#1f2d0e' }, textTransform: 'none', fontWeight: 600 }}>
             {busy ? <CircularProgress size={20} sx={{ color: 'white' }} /> : 'Save changes'}
           </Button>
         </Box>
@@ -1135,7 +1197,7 @@ export default function Escalationspage() {
   useEffect(() => { loadData(); }, [loadData]);
 
   if (loading && view === 'dashboard') return (
-    <div className="flex min-h-screen bg-gray-50/70">
+    <div className="flex min-h-screen" style={{ background: '#E2E0B6' }}>
       <Sidebar /><div className="flex-1 flex flex-col"><Navbar />
         <main className="flex-1 flex items-center justify-center pt-16 md:pt-20">
           <CircularProgress size={40} />
@@ -1145,7 +1207,7 @@ export default function Escalationspage() {
   );
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen" style={{ background: '#E2E0B6' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col">
         <Navbar />

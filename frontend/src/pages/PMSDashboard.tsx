@@ -17,7 +17,7 @@ import {
 } from '@mui/icons-material';
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL;
-const BRAND    = '#3B82F6';
+const BRAND    = '#2b3d14';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Employee {
@@ -80,7 +80,7 @@ const scaleIn = {
 // ─── Score helpers ────────────────────────────────────────────────────────────
 const scoreColor  = (s: number) => s >= 0 ? '#15803d' : s >= -10 ? '#1d4ed8' : s >= -25 ? '#b45309' : '#b91c1c';
 const scoreBg     = (s: number) => s >= 0 ? '#bbf7d0' : s >= -10 ? '#bfdbfe' : s >= -25 ? '#fde68a' : '#fecaca';
-const ratingColor = (r: string) => ({'On Target':'#16a34a','Good':'#2563eb','Average':'#d97706','Below Target':'#dc2626'}[r] || '#64748b');
+const ratingColor = (r: string) => ({'On Target':'#2b3d14','Good':'#2563eb','Average':'#d97706','Below Target':'#dc2626'}[r] || '#64748b');
 const scoreLabel  = (s: number) => s === 0 ? '0' : s.toFixed(1);
 const progressPct = (a: number, t: number) => t <= 0 ? 100 : Math.min(100, Math.max(0, (a / t) * 100));
 
@@ -137,10 +137,10 @@ const KPITable: React.FC<KPITableProps> = ({ data, title, accent, departments, e
   const totAchieved = filtered.reduce((s, x) => s + x.achievedValue, 0);
 
   return (
-    <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: '0 4px 20px rgba(99,102,241,0.10)', border: '1px solid #e0e7ff', transition: 'box-shadow 0.25s ease, transform 0.25s ease', '&:hover': { boxShadow: '0 8px 32px rgba(99,102,241,0.16)', transform: 'translateY(-1px)' }, ...fadeSlideIn }}>
+    <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: '0 4px 20px rgba(61,84,32,0.10)', border: '1px solid #dde6cc', transition: 'box-shadow 0.25s ease, transform 0.25s ease', '&:hover': { boxShadow: '0 8px 32px rgba(61,84,32,0.16)', transform: 'translateY(-1px)' }, ...fadeSlideIn }}>
       <Box onClick={() => setExpanded(p => !p)} sx={{
         px: 2.5, py: 1.5, display: 'flex', alignItems: 'center', gap: 1.5, bgcolor: '#fff',
-        borderBottom: expanded ? `2px solid ${accent}` : '1px solid #e0e7ff',
+        borderBottom: expanded ? `2px solid ${accent}` : '1px solid #dde6cc',
         cursor: 'pointer', userSelect: 'none', transition: 'background-color 0.2s', '&:hover': { bgcolor: '#eef2ff' },
       }}>
         <Box sx={{ width: 4, height: 20, borderRadius: 1, bgcolor: accent, flexShrink: 0 }} />
@@ -155,13 +155,13 @@ const KPITable: React.FC<KPITableProps> = ({ data, title, accent, departments, e
       </Box>
 
       <Collapse in={expanded}>
-        <Stack direction="row" sx={{ px: 2, py: 1.5, bgcolor: '#f5f3ff', borderBottom: '1px solid #ddd6fe', flexWrap: 'wrap', gap: 1.5 }}>
+        <Stack direction="row" sx={{ px: 2, py: 1.5, bgcolor: '#E2E0B6', borderBottom: '1px solid #cddcb8', flexWrap: 'wrap', gap: 1.5 }}>
           <TextField size="small" placeholder="Search…" value={search} onChange={e => setSearch(e.target.value)}
-            sx={{ minWidth: 180, bgcolor: '#faf5ff' }}
+            sx={{ minWidth: 180, bgcolor: '#F2F4E9' }}
             InputProps={{ startAdornment: <InputAdornment position="start"><Search sx={{ fontSize: 16, color: '#94a3b8' }} /></InputAdornment> }} />
 
           {!showEmpFilter && (
-            <FormControl size="small" sx={{ minWidth: 160, bgcolor: '#faf5ff' }}>
+            <FormControl size="small" sx={{ minWidth: 160, bgcolor: '#F2F4E9' }}>
               <InputLabel>Department</InputLabel>
               <Select value={selDept} label="Department" onChange={e => { setSelDept(e.target.value as string); setSelEmp(''); }}>
                 <MenuItem value=""><em>All</em></MenuItem>
@@ -174,7 +174,7 @@ const KPITable: React.FC<KPITableProps> = ({ data, title, accent, departments, e
             <>
               <ToggleButtonGroup size="small" value={filterBy} exclusive
                 onChange={(_, v) => { if (v) { setFilterBy(v); setSelEmp(''); } }}
-                sx={{ bgcolor: '#faf5ff', border: '1px solid #ddd6fe', borderRadius: 1 }}>
+                sx={{ bgcolor: '#F2F4E9', border: '1px solid #cddcb8', borderRadius: 1 }}>
                 <ToggleButton value="person" sx={{ px: 1.5, fontSize: 11, fontWeight: 600, gap: 0.5 }}>
                   <Person sx={{ fontSize: 14 }} /> Person
                 </ToggleButton>
@@ -183,7 +183,7 @@ const KPITable: React.FC<KPITableProps> = ({ data, title, accent, departments, e
                 </ToggleButton>
               </ToggleButtonGroup>
 
-              <FormControl size="small" sx={{ minWidth: 230, bgcolor: '#faf5ff' }}>
+              <FormControl size="small" sx={{ minWidth: 230, bgcolor: '#F2F4E9' }}>
                 <InputLabel>Select {filterBy === 'person' ? 'Person' : 'Role via Person'}</InputLabel>
                 <Select value={selEmp} label={`Select ${filterBy === 'person' ? 'Person' : 'Role via Person'}`}
                   onChange={e => setSelEmp(e.target.value as string)}>
@@ -219,7 +219,7 @@ const KPITable: React.FC<KPITableProps> = ({ data, title, accent, departments, e
         <TableContainer>
           <Table size="small">
             <TableHead>
-              <TableRow sx={{ bgcolor: '#ede9fe' }}>
+              <TableRow sx={{ bgcolor: '#e3e9d4' }}>
                 {['KPI / Target Name', 'Dept / Role', 'Target', 'Achieved', 'Gap', 'Score', 'Progress'].map(h => (
                   <TableCell key={h} sx={{ fontSize: 11, fontWeight: 700, color: '#6d28d9', textTransform: 'uppercase', letterSpacing: '.06em', py: 1.2, whiteSpace: 'nowrap' }}>{h}</TableCell>
                 ))}
@@ -242,7 +242,7 @@ const KPITable: React.FC<KPITableProps> = ({ data, title, accent, departments, e
                     <TableCell sx={{ fontSize: 13, fontFamily: 'monospace' }}>{item.targetValue}</TableCell>
                     <TableCell sx={{ fontSize: 13, fontFamily: 'monospace' }}>{item.achievedValue}</TableCell>
                     <TableCell>
-                      <Typography fontSize={12} fontFamily="monospace" color={gap > 0 ? '#dc2626' : '#16a34a'} fontWeight={600}>
+                      <Typography fontSize={12} fontFamily="monospace" color={gap > 0 ? '#dc2626' : '#2b3d14'} fontWeight={600}>
                         {gap > 0 ? `-${gap.toFixed(1)}` : '0'}
                       </Typography>
                     </TableCell>
@@ -252,20 +252,20 @@ const KPITable: React.FC<KPITableProps> = ({ data, title, accent, departments, e
                     </TableCell>
                     <TableCell sx={{ minWidth: 140 }}>
                       <LinearProgress variant="determinate" value={pct}
-                        sx={{ height: 7, borderRadius: 99, bgcolor: '#ddd6fe', '& .MuiLinearProgress-bar': { bgcolor: scoreColor(item.score) } }} />
+                        sx={{ height: 7, borderRadius: 99, bgcolor: '#cddcb8', '& .MuiLinearProgress-bar': { bgcolor: scoreColor(item.score) } }} />
                       <Typography fontSize={10} color="text.disabled" mt={0.3}>{pct.toFixed(0)}%</Typography>
                     </TableCell>
                   </TableRow>
                 );
               })}
               {filtered.length > 0 && (
-                <TableRow sx={{ bgcolor: '#f0f4ff', borderTop: '2px solid #c4b5fd' }}>
+                <TableRow sx={{ bgcolor: '#E2E0B6', borderTop: '2px solid #9ab874' }}>
                   <TableCell sx={{ fontWeight: 700, fontSize: 12, color: '#475569', textTransform: 'uppercase' }}>Total / Avg</TableCell>
                   <TableCell />
                   <TableCell sx={{ fontWeight: 700, fontFamily: 'monospace' }}>{totTarget.toFixed(1)}</TableCell>
                   <TableCell sx={{ fontWeight: 700, fontFamily: 'monospace' }}>{totAchieved.toFixed(1)}</TableCell>
                   <TableCell>
-                    <Typography fontSize={12} fontFamily="monospace" color={totTarget > totAchieved ? '#dc2626' : '#16a34a'} fontWeight={700}>
+                    <Typography fontSize={12} fontFamily="monospace" color={totTarget > totAchieved ? '#dc2626' : '#2b3d14'} fontWeight={700}>
                       {totTarget > totAchieved ? `−${(totTarget - totAchieved).toFixed(1)}` : '0'}
                     </Typography>
                   </TableCell>
@@ -275,7 +275,7 @@ const KPITable: React.FC<KPITableProps> = ({ data, title, accent, departments, e
                   </TableCell>
                   <TableCell>
                     <LinearProgress variant="determinate" value={progressPct(totAchieved, totTarget)}
-                      sx={{ height: 7, borderRadius: 99, bgcolor: '#ddd6fe', '& .MuiLinearProgress-bar': { bgcolor: scoreColor(avgScore) } }} />
+                      sx={{ height: 7, borderRadius: 99, bgcolor: '#cddcb8', '& .MuiLinearProgress-bar': { bgcolor: scoreColor(avgScore) } }} />
                   </TableCell>
                 </TableRow>
               )}
@@ -293,7 +293,7 @@ interface StatCardProps {
   icon: React.ReactElement; color: string; progress?: { achieved: number; target: number };
 }
 const StatCard: React.FC<StatCardProps> = ({ label, value, sub, icon, color, progress }) => (
-  <Card variant="outlined" sx={{ borderRadius: 2, boxShadow: '0 4px 16px rgba(99,102,241,0.10)', border: '1px solid #e0e7ff', transition: 'box-shadow 0.25s ease, transform 0.25s ease, border-color 0.2s', '&:hover': { borderColor: color, boxShadow: `0 8px 28px ${color}30`, transform: 'translateY(-2px)' }, ...scaleIn }}>
+  <Card variant="outlined" sx={{ borderRadius: 2, boxShadow: '0 4px 16px rgba(61,84,32,0.10)', border: '1px solid #dde6cc', transition: 'box-shadow 0.25s ease, transform 0.25s ease, border-color 0.2s', '&:hover': { borderColor: color, boxShadow: `0 8px 28px ${color}30`, transform: 'translateY(-2px)' }, ...scaleIn }}>
     <CardContent sx={{ pb: '16px !important' }}>
       <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={1.5}>
         <Box>
@@ -306,7 +306,7 @@ const StatCard: React.FC<StatCardProps> = ({ label, value, sub, icon, color, pro
         </Avatar>
       </Stack>
       {progress && <LinearProgress variant="determinate" value={progressPct(progress.achieved, progress.target)}
-        sx={{ height: 5, borderRadius: 99, bgcolor: '#ddd6fe', '& .MuiLinearProgress-bar': { bgcolor: color } }} />}
+        sx={{ height: 5, borderRadius: 99, bgcolor: '#cddcb8', '& .MuiLinearProgress-bar': { bgcolor: color } }} />}
     </CardContent>
   </Card>
 );
@@ -317,7 +317,7 @@ const Gauge: React.FC<{ score: number; size?: number; worstCase?: number }> = ({
   const fraction = score >= 0 ? 1 : Math.max(0, 1 - Math.abs(score) / Math.abs(worstCase));
   return (
     <svg width={size} height={size / 2 + 24} viewBox={`0 0 ${size} ${size / 2 + 24}`}>
-      <path d={`M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}`} fill="none" stroke="#ddd6fe" strokeWidth={10} strokeLinecap="round" />
+      <path d={`M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}`} fill="none" stroke="#cddcb8" strokeWidth={10} strokeLinecap="round" />
       <path d={`M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}`} fill="none" stroke={col} strokeWidth={10} strokeLinecap="round"
         strokeDasharray={Math.PI * r} strokeDashoffset={Math.PI * r * (1 - fraction)}
         style={{ transition: 'stroke-dashoffset 1.2s cubic-bezier(.22,1,.36,1)' }} />
@@ -466,15 +466,15 @@ const PMSDashboard: React.FC = () => {
   const growth  = emp ? growthData.find(g => String(g.employeeId) === String(emp._id))  : undefined;
 
   return (
-    <div className="flex min-h-screen bg-[#f0f4ff]">
+    <div className="flex min-h-screen" style={{ background: '#E2E0B6' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col">
         <Navbar />
-        <Box sx={{ bgcolor: '#f0f4ff', minHeight: '100%', mt: '56px' }}>
+        <Box sx={{ bgcolor: '#E2E0B6', minHeight: '100%', mt: '56px' }}>
 
           {/* ── Employee selector bar ── */}
           <Box sx={{
-            bgcolor: '#ffffff', borderBottom: '1px solid #e0e7ff', boxShadow: '0 2px 8px rgba(99,102,241,0.07)', px: 3, py: 1.5, mt: 8,
+            bgcolor: '#ffffff', borderBottom: '1px solid #dde6cc', boxShadow: '0 2px 8px rgba(61,84,32,0.07)', px: 3, py: 1.5, mt: 8,
             display: 'flex', alignItems: 'center', gap: 2.5, flexWrap: 'wrap',
             position: 'sticky', top: 56, zIndex: 10,
           }}>
@@ -578,11 +578,11 @@ const PMSDashboard: React.FC = () => {
                         sx={{
                           borderRadius: 1.5,
                           overflow: 'hidden',
-                          boxShadow: '0 2px 10px rgba(99,102,241,0.08)',
-                          border: '1px solid #e0e7ff',
+                          boxShadow: '0 2px 10px rgba(61,84,32,0.08)',
+                          border: '1px solid #dde6cc',
                           transition: 'box-shadow 0.2s ease, transform 0.2s ease',
                           '&:hover': {
-                            boxShadow: '0 4px 18px rgba(99,102,241,0.14)',
+                            boxShadow: '0 4px 18px rgba(61,84,32,0.14)',
                             transform: 'translateY(-1px)'
                           },
                           ...fadeSlideIn
@@ -638,7 +638,7 @@ const PMSDashboard: React.FC = () => {
                                 value={`${hygiene.attendance.percentage.toFixed(1)}%`}
                                 sub={`${hygiene.attendance.present}/${hygiene.attendance.total}`}
                                 icon={<People fontSize="small" />}
-                                color="#16a34a"
+                                color="#2b3d14"
                                 progress={{
                                   achieved: hygiene.attendance.percentage,
                                   target: 100
@@ -652,7 +652,7 @@ const PMSDashboard: React.FC = () => {
                                 value={hygiene.lateMarks}
                                 sub="This period"
                                 icon={<AccessTime fontSize="small" />}
-                                color={hygiene.lateMarks <= 1 ? '#16a34a' : '#dc2626'}
+                                color={hygiene.lateMarks <= 1 ? '#2b3d14' : '#dc2626'}
                               />
                             </Grid>
 
@@ -676,7 +676,7 @@ const PMSDashboard: React.FC = () => {
                                 value={hygiene.outOfOffice}
                                 sub="Days"
                                 icon={<TrendingUp fontSize="small" />}
-                                color={hygiene.outOfOffice <= 3 ? '#16a34a' : '#dc2626'}
+                                color={hygiene.outOfOffice <= 3 ? '#2b3d14' : '#dc2626'}
                               />
                             </Grid>
                           </Grid>
@@ -685,16 +685,16 @@ const PMSDashboard: React.FC = () => {
                     )}
 
                     {hygieneData.length > 0 && (
-                      <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: '0 4px 20px rgba(99,102,241,0.10)', border: '1px solid #e0e7ff', transition: 'box-shadow 0.25s ease, transform 0.25s ease', '&:hover': { boxShadow: '0 8px 32px rgba(99,102,241,0.16)', transform: 'translateY(-1px)' }, ...fadeSlideIn }}>
-                        <Box sx={{ px: 2.5, py: 1.5, borderBottom: '2px solid #16a34a', display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                          <Box sx={{ width: 4, height: 20, borderRadius: 1, bgcolor: '#16a34a' }} />
+                      <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: '0 4px 20px rgba(61,84,32,0.10)', border: '1px solid #dde6cc', transition: 'box-shadow 0.25s ease, transform 0.25s ease', '&:hover': { boxShadow: '0 8px 32px rgba(61,84,32,0.16)', transform: 'translateY(-1px)' }, ...fadeSlideIn }}>
+                        <Box sx={{ px: 2.5, py: 1.5, borderBottom: '2px solid #2b3d14', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                          <Box sx={{ width: 4, height: 20, borderRadius: 1, bgcolor: '#2b3d14' }} />
                           <Typography fontSize={14} fontWeight={700}>All Employees Hygiene</Typography>
                           <Chip label={`${hygieneData.length} records`} size="small" sx={{ ml: 'auto', bgcolor: '#bbf7d0', color: '#166534', fontWeight: 700 }} />
                         </Box>
                         <TableContainer>
                           <Table size="small">
                             <TableHead>
-                              <TableRow sx={{ bgcolor: '#ede9fe' }}>
+                              <TableRow sx={{ bgcolor: '#e3e9d4' }}>
                                 {['Employee', 'Attendance', 'Late Marks', 'Leaves Taken', 'Out of Office', 'Score'].map(h => (
                                   <TableCell key={h} sx={{ fontSize: 11, fontWeight: 700, color: '#6d28d9', textTransform: 'uppercase', letterSpacing: '.06em', py: 1.2 }}>{h}</TableCell>
                                 ))}
@@ -786,11 +786,11 @@ const PMSDashboard: React.FC = () => {
                         </Grid>
                         <Grid container spacing={2.5}>
                           <Grid size={{ xs: 12, md: 6 }}>
-                            <Paper variant="outlined" sx={{ borderRadius: 2, p: 2.5, boxShadow: '0 4px 16px rgba(99,102,241,0.09)', border: '1px solid #e0e7ff', transition: 'box-shadow 0.25s ease, transform 0.25s ease', '&:hover': { boxShadow: '0 8px 28px rgba(99,102,241,0.15)', transform: 'translateY(-1px)' }, ...fadeSlideIn }}>
+                            <Paper variant="outlined" sx={{ borderRadius: 2, p: 2.5, boxShadow: '0 4px 16px rgba(61,84,32,0.09)', border: '1px solid #dde6cc', transition: 'box-shadow 0.25s ease, transform 0.25s ease', '&:hover': { boxShadow: '0 8px 28px rgba(61,84,32,0.15)', transform: 'translateY(-1px)' }, ...fadeSlideIn }}>
                               <Typography fontSize={13} fontWeight={700} color="text.secondary" mb={2}>Training Breakdown</Typography>
                               {[
                                 { label: 'Training Delivered', val: growth.trainingDelivered, target: 10, color: '#6366f1', suffix: ' sessions' },
-                                { label: 'Training Attended',  val: growth.trainingAttended,  target: 40, color: '#16a34a', suffix: ' hrs' },
+                                { label: 'Training Attended',  val: growth.trainingAttended,  target: 40, color: '#2b3d14', suffix: ' hrs' },
                               ].map(item => {
                                 const sc = item.val >= item.target ? 0 : -(item.target - item.val);
                                 return (
@@ -803,14 +803,14 @@ const PMSDashboard: React.FC = () => {
                                       </Stack>
                                     </Stack>
                                     <LinearProgress variant="determinate" value={progressPct(item.val, item.target)}
-                                      sx={{ height: 8, borderRadius: 99, bgcolor: '#ddd6fe', '& .MuiLinearProgress-bar': { bgcolor: scoreColor(sc) } }} />
+                                      sx={{ height: 8, borderRadius: 99, bgcolor: '#cddcb8', '& .MuiLinearProgress-bar': { bgcolor: scoreColor(sc) } }} />
                                   </Box>
                                 );
                               })}
                             </Paper>
                           </Grid>
                           <Grid size={{ xs: 12, md: 6 }}>
-                            <Paper variant="outlined" sx={{ borderRadius: 2, p: 2.5, boxShadow: '0 4px 16px rgba(99,102,241,0.09)', border: '1px solid #e0e7ff', transition: 'box-shadow 0.25s ease, transform 0.25s ease', '&:hover': { boxShadow: '0 8px 28px rgba(99,102,241,0.15)', transform: 'translateY(-1px)' }, ...fadeSlideIn }}>
+                            <Paper variant="outlined" sx={{ borderRadius: 2, p: 2.5, boxShadow: '0 4px 16px rgba(61,84,32,0.09)', border: '1px solid #dde6cc', transition: 'box-shadow 0.25s ease, transform 0.25s ease', '&:hover': { boxShadow: '0 8px 28px rgba(61,84,32,0.15)', transform: 'translateY(-1px)' }, ...fadeSlideIn }}>
                               <Typography fontSize={13} fontWeight={700} color="text.secondary" mb={2}>Innovation & Investment</Typography>
                               {[
                                 { label: 'Investment Initiatives', val: growth.investmentInitiatives, target: 5, color: '#2563eb', suffix: ' projects' },
@@ -827,14 +827,14 @@ const PMSDashboard: React.FC = () => {
                                       </Stack>
                                     </Stack>
                                     <LinearProgress variant="determinate" value={item.target > 0 ? progressPct(item.val, item.target) : 0}
-                                      sx={{ height: 8, borderRadius: 99, bgcolor: '#ddd6fe', '& .MuiLinearProgress-bar': { bgcolor: scoreColor(sc) } }} />
+                                      sx={{ height: 8, borderRadius: 99, bgcolor: '#cddcb8', '& .MuiLinearProgress-bar': { bgcolor: scoreColor(sc) } }} />
                                   </Box>
                                 );
                               })}
                             </Paper>
                           </Grid>
                         </Grid>
-                        <Paper variant="outlined" sx={{ borderRadius: 2, p: 2, bgcolor: '#f0f4ff', display: 'flex', alignItems: 'center', gap: 2, boxShadow: '0 2px 10px rgba(99,102,241,0.08)', border: '1px solid #e0e7ff' }}>
+                        <Paper variant="outlined" sx={{ borderRadius: 2, p: 2, bgcolor: '#E2E0B6', display: 'flex', alignItems: 'center', gap: 2, boxShadow: '0 2px 10px rgba(61,84,32,0.08)', border: '1px solid #dde6cc' }}>
                           <Typography fontSize={11} fontWeight={700} color="text.disabled" textTransform="uppercase" letterSpacing=".1em">Growth Score</Typography>
                           <Chip label={scoreLabel(growth.score)} sx={{ bgcolor: scoreBg(growth.score), color: scoreColor(growth.score), fontWeight: 800, fontSize: 14, height: 28 }} />
                           <Typography fontSize={12} color="text.secondary">= (Training×0.4) + (Investment×0.3) + (Innovation×0.3)</Typography>
@@ -858,8 +858,8 @@ const PMSDashboard: React.FC = () => {
                     </Box>
                     <Paper variant="outlined" sx={{
                       borderRadius: 3, p: { xs: 2.5, md: 4 },
-                      boxShadow: `0 6px 32px rgba(99,102,241,0.13), 0 0 0 1px ${ratingColor(perfScore.rating)}22`,
-                      transition: 'box-shadow 0.3s ease', '&:hover': { boxShadow: `0 12px 48px rgba(99,102,241,0.18), 0 0 0 1px ${ratingColor(perfScore.rating)}44` },
+                      boxShadow: `0 6px 32px rgba(61,84,32,0.13), 0 0 0 1px ${ratingColor(perfScore.rating)}22`,
+                      transition: 'box-shadow 0.3s ease', '&:hover': { boxShadow: `0 12px 48px rgba(61,84,32,0.18), 0 0 0 1px ${ratingColor(perfScore.rating)}44` },
                       display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap',
                       borderColor: ratingColor(perfScore.rating) + '44',
                     }}>
@@ -871,21 +871,21 @@ const PMSDashboard: React.FC = () => {
                         <Typography fontSize={11} color="text.disabled" textTransform="uppercase" letterSpacing=".1em" mb={0.5}>Performance Rating</Typography>
                         <Typography fontSize={44} fontWeight={900} color={ratingColor(perfScore.rating)} lineHeight={1} mb={2}>{perfScore.rating}</Typography>
                         <Stack direction="row" gap={1} mb={2.5} flexWrap="wrap">
-                          {[{ l: '0 = On Target', c: '#16a34a' }, { l: '≥ −10 = Good', c: '#2563eb' }, { l: '≥ −25 = Average', c: '#d97706' }, { l: '< −25 = Below', c: '#dc2626' }].map(x => (
+                          {[{ l: '0 = On Target', c: '#2b3d14' }, { l: '≥ −10 = Good', c: '#2563eb' }, { l: '≥ −25 = Average', c: '#d97706' }, { l: '< −25 = Below', c: '#dc2626' }].map(x => (
                             <Chip key={x.l} label={x.l} size="small" sx={{ bgcolor: x.c + '18', color: x.c, fontWeight: 600, fontSize: 10 }} />
                           ))}
                         </Stack>
                         {([
                           { label: 'KPI Score',     val: perfScore.kpiScore,     weight: '40%', color: '#3b82f6' },
                           { label: 'Target Score',  val: perfScore.targetScore,  weight: '30%', color: '#8b5cf6' },
-                          { label: 'Hygiene Score', val: perfScore.hygieneScore, weight: '20%', color: '#16a34a' },
+                          { label: 'Hygiene Score', val: perfScore.hygieneScore, weight: '20%', color: '#2b3d14' },
                           { label: 'Growth Score',  val: perfScore.growthScore,  weight: '10%', color: '#d97706' },
                         ] as const).map(item => (
                           <Stack key={item.label} direction="row" alignItems="center" gap={1.5} mb={1.2}>
                             <Typography fontSize={11} color="text.disabled" width={100} flexShrink={0}>{item.label}</Typography>
                             <Box flex={1}>
                               <LinearProgress variant="determinate" value={item.val >= 0 ? 100 : Math.max(0, 100 + item.val)}
-                                sx={{ height: 7, borderRadius: 99, bgcolor: '#ddd6fe', '& .MuiLinearProgress-bar': { bgcolor: scoreColor(item.val) } }} />
+                                sx={{ height: 7, borderRadius: 99, bgcolor: '#cddcb8', '& .MuiLinearProgress-bar': { bgcolor: scoreColor(item.val) } }} />
                             </Box>
                             <Chip label={scoreLabel(item.val)} size="small"
                               sx={{ bgcolor: scoreBg(item.val), color: scoreColor(item.val), fontWeight: 700, fontSize: 11, fontFamily: 'monospace' }} />
@@ -900,11 +900,11 @@ const PMSDashboard: React.FC = () => {
                       {([
                         { label: 'KPI Score',     score: perfScore.kpiScore,     weight: 'Weight: 40%', color: '#3b82f6' },
                         { label: 'Target Score',  score: perfScore.targetScore,  weight: 'Weight: 30%', color: '#8b5cf6' },
-                        { label: 'Hygiene Score', score: perfScore.hygieneScore, weight: 'Weight: 20%', color: '#16a34a' },
+                        { label: 'Hygiene Score', score: perfScore.hygieneScore, weight: 'Weight: 20%', color: '#2b3d14' },
                         { label: 'Growth Score',  score: perfScore.growthScore,  weight: 'Weight: 10%', color: '#d97706' },
                       ] as const).map(item => (
                         <Grid size={{ xs: 12, sm: 6, md: 3 }} key={item.label}>
-                          <Paper variant="outlined" sx={{ borderRadius: 2, p: 2.5, textAlign: 'center', boxShadow: '0 4px 16px rgba(99,102,241,0.10)', border: '1px solid #e0e7ff', transition: 'box-shadow 0.25s ease, transform 0.25s ease', '&:hover': { boxShadow: '0 8px 28px rgba(99,102,241,0.16)', transform: 'translateY(-2px)' }, ...scaleIn }}>
+                          <Paper variant="outlined" sx={{ borderRadius: 2, p: 2.5, textAlign: 'center', boxShadow: '0 4px 16px rgba(61,84,32,0.10)', border: '1px solid #dde6cc', transition: 'box-shadow 0.25s ease, transform 0.25s ease', '&:hover': { boxShadow: '0 8px 28px rgba(61,84,32,0.16)', transform: 'translateY(-2px)' }, ...scaleIn }}>
                             <Typography fontSize={11} fontWeight={700} color="text.disabled" textTransform="uppercase" letterSpacing=".08em" mb={0.5}>{item.label}</Typography>
                             <Chip label={item.weight} size="small" sx={{ bgcolor: item.color + '18', color: item.color, fontWeight: 700, mb: 1.5 }} />
                             <Gauge score={item.score} size={120} />
@@ -912,7 +912,7 @@ const PMSDashboard: React.FC = () => {
                         </Grid>
                       ))}
                     </Grid>
-                    <Paper variant="outlined" sx={{ borderRadius: 2, p: 2, bgcolor: '#f0f4ff', display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', boxShadow: '0 2px 10px rgba(99,102,241,0.08)', border: '1px solid #e0e7ff' }}>
+                    <Paper variant="outlined" sx={{ borderRadius: 2, p: 2, bgcolor: '#E2E0B6', display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', boxShadow: '0 2px 10px rgba(61,84,32,0.08)', border: '1px solid #dde6cc' }}>
                       <Typography fontSize={11} fontWeight={700} color="text.disabled" textTransform="uppercase" letterSpacing=".1em" flexShrink={0}>Formula</Typography>
                       <Typography fontSize={12} fontFamily="monospace" color="text.secondary">
                         Overall = (KPI×0.4) + (Targets×0.3) + (Hygiene×0.2) + (Growth×0.1) =&nbsp;

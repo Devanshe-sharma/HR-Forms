@@ -287,7 +287,7 @@ const CandidateInformationTab = ({
                   <button
                     onClick={gradeExcel}
                     disabled={grading}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-lime-600 hover:bg-lime-700 disabled:opacity-60 rounded-lg transition"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-[#597e37] hover:bg-[#3d5420] disabled:opacity-60 rounded-lg transition"
                   >
                     {grading ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
                     Submit Grading
@@ -325,7 +325,7 @@ const CandidateInformationTab = ({
                   <div key={t} className="flex items-center gap-2">
                     <span className="text-xs font-semibold text-gray-500 w-6">{t}</span>
                     <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                      <div className="h-full bg-lime-500" style={{ width: `${record.discAssessment?.scores?.[t] ?? 0}%` }} />
+                      <div className="h-full bg-[#eef3e6]0" style={{ width: `${record.discAssessment?.scores?.[t] ?? 0}%` }} />
                     </div>
                     <span className="text-xs text-gray-500 w-10 text-right">{record.discAssessment?.scores?.[t] ?? 0}%</span>
                   </div>
@@ -345,7 +345,7 @@ const CandidateInformationTab = ({
           onBlur={(e) => handleNotesBlur(e.target.value)}
           rows={4}
           placeholder="HR-only notes — not visible to the candidate"
-          className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-800 leading-relaxed focus:outline-none focus:ring-2 focus:ring-lime-400 focus:border-lime-400 resize-none transition bg-white"
+          className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-800 leading-relaxed focus:outline-none focus:ring-2 focus:ring-[#7a9c56] focus:border-[#7a9c56] resize-none transition bg-white"
         />
       </section>
 

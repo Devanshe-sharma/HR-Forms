@@ -648,11 +648,19 @@ function DashboardView({
 }) {
   const [search, setSearch] = useState('');
   const [quarterFilter, setQuarterFilter] = useState('current'); // 'current' | 'all'
+  const [filterDept, setFilterDept] = useState('All');
+  const [filterDesig, setFilterDesig] = useState('All');
 
   // Onboarding is the only employee source now, so there's nothing to
   // merge/deduplicate here anymore — every employee already comes from
   // one place.
   const allEmployees = employees;
+
+  const departmentOptions = React.useMemo(() =>
+    [...new Set(allEmployees.map(e => e.department).filter(Boolean))].sort(), [allEmployees]);
+  const designationOptions = React.useMemo(() =>
+    [...new Set(allEmployees.filter(e => filterDept === 'All' || e.department === filterDept).map(e => e.designation).filter(Boolean))].sort(),
+    [allEmployees, filterDept]);
 
   /** Apply filters - only show current quarter (0-6 months) or all */
   const filtered = React.useMemo(() => {
@@ -667,9 +675,16 @@ function DashboardView({
         if (mo < 0 || mo > 6) return false;
       }
 
-      // Text search
+      if (filterDept !== 'All' && emp.department !== filterDept) return false;
+      if (filterDesig !== 'All' && emp.designation !== filterDesig) return false;
+
+      // Text search — name, ID, department, or designation
       const q = search.toLowerCase();
-      if (q && !emp.full_name.toLowerCase().includes(q) && !emp.employee_id.toLowerCase().includes(q))
+      if (q
+        && !emp.full_name.toLowerCase().includes(q)
+        && !emp.employee_id.toLowerCase().includes(q)
+        && !emp.department?.toLowerCase().includes(q)
+        && !emp.designation?.toLowerCase().includes(q))
         return false;
 
       return true;
@@ -681,7 +696,7 @@ function DashboardView({
     });
 
     return result;
-  }, [allEmployees, quarterFilter, search, records]);
+  }, [allEmployees, quarterFilter, search, filterDept, filterDesig, records]);
 
   const counts = React.useMemo(() => {
     // Every stat card must reflect the SAME filtered set as "Total
@@ -755,7 +770,9 @@ function DashboardView({
           InputProps={{ sx: { fontSize: 13 } }}
         />
 
-        <FiltersMenuButton activeCount={quarterFilter !== 'current' ? 1 : 0}>
+        <FiltersMenuButton activeCount={
+          (quarterFilter !== 'current' ? 1 : 0) + (filterDept !== 'All' ? 1 : 0) + (filterDesig !== 'All' ? 1 : 0)
+        }>
           <FormControl size="small" fullWidth>
             <InputLabel sx={{ fontSize: 13 }}>Time Filter</InputLabel>
             <Select
@@ -768,12 +785,30 @@ function DashboardView({
               <MenuItem value="all" sx={{ fontSize: 13 }}>All Employees</MenuItem>
             </Select>
           </FormControl>
+          <FormControl size="small" fullWidth>
+            <InputLabel sx={{ fontSize: 13 }}>Department</InputLabel>
+            <Select value={filterDept} label="Department"
+              onChange={e => { setFilterDept(e.target.value); setFilterDesig('All'); }} sx={{ fontSize: 13 }}>
+              <MenuItem value="All" sx={{ fontSize: 13 }}>All</MenuItem>
+              {departmentOptions.map(d => <MenuItem key={d} value={d} sx={{ fontSize: 13 }}>{d}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small" fullWidth>
+            <InputLabel sx={{ fontSize: 13 }}>Designation</InputLabel>
+            <Select value={filterDesig} label="Designation" onChange={e => setFilterDesig(e.target.value)} sx={{ fontSize: 13 }}>
+              <MenuItem value="All" sx={{ fontSize: 13 }}>All</MenuItem>
+              {designationOptions.map(d => <MenuItem key={d} value={d} sx={{ fontSize: 13 }}>{d}</MenuItem>)}
+            </Select>
+          </FormControl>
         </FiltersMenuButton>
 
         <FavoritesMenuButton
           storageKey="filters:confirmations"
-          currentState={{ search, quarterFilter }}
-          onApply={(s) => { setSearch(s.search ?? ''); setQuarterFilter(s.quarterFilter ?? 'current'); }}
+          currentState={{ search, quarterFilter, filterDept, filterDesig }}
+          onApply={(s) => {
+            setSearch(s.search ?? ''); setQuarterFilter(s.quarterFilter ?? 'current');
+            setFilterDept(s.filterDept ?? 'All'); setFilterDesig(s.filterDesig ?? 'All');
+          }}
         />
 
         <Button
@@ -782,6 +817,8 @@ function DashboardView({
           onClick={() => {
             setSearch('');
             setQuarterFilter('current');
+            setFilterDept('All');
+            setFilterDesig('All');
           }}
           sx={{ fontSize: 13, textTransform: 'none' }}
         >
@@ -802,10 +839,8 @@ function DashboardView({
                 <TableRow sx={{ '& th': TH }}>
                   <TableCell>Employee</TableCell>
                   <TableCell>Department</TableCell>
-                  <TableCell>Designation</TableCell>
                   <TableCell>Reporting Manager</TableCell>
                   <TableCell>Joining Date</TableCell>
-                  <TableCell>Months In</TableCell>
                   <TableCell>Confirmation Status</TableCell>
                   <TableCell>Stage</TableCell>
                   <TableCell>Review Due</TableCell>
@@ -814,7 +849,7 @@ function DashboardView({
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} align="center" sx={{ py: 6, color: 'text.disabled', fontSize: 13 }}>
+                    <TableCell colSpan={7} align="center" sx={{ py: 6, color: 'text.disabled', fontSize: 13 }}>
                       No employees match the current filters
                     </TableCell>
                   </TableRow>
@@ -862,7 +897,6 @@ function DashboardView({
                         </TableCell>
 
                         <TableCell sx={{ fontSize: 12, color: '#4B5563' }}>{emp.department}</TableCell>
-                        <TableCell sx={{ fontSize: 12, color: '#4B5563' }}>{emp.designation}</TableCell>
 
                         {/* Reporting manager — comes straight from this
                             person's own Onboarding record, not a
@@ -874,20 +908,6 @@ function DashboardView({
                         {/* Joining Date */}
                         <TableCell sx={{ fontSize: 12, color: '#4B5563' }}>
                           {emp.joining_date ? fmtDate(emp.joining_date) : '—'}
-                        </TableCell>
-
-                        {/* Months In — colour-coded by urgency */}
-                        <TableCell>
-                          {mo !== null ? (
-                            <Box sx={{
-                              display: 'inline-block', px: 1, py: 0.3,
-                              bgcolor: mo >= 6 ? '#FEF2F2' : mo >= 5 ? '#FEF9C3' : '#F0FDF4',
-                              color  : mo >= 6 ? '#DC2626' : mo >= 5 ? '#CA8A04' : '#16A34A',
-                              borderRadius: 1, fontSize: 12, fontWeight: 600,
-                            }}>
-                              {mo} mo
-                            </Box>
-                          ) : '—'}
                         </TableCell>
 
                         {/* Confirmation workflow status */}
@@ -1452,7 +1472,7 @@ export default function ConfirmationsPage() {
 
   if (loading && view === 'dashboard') {
     return (
-      <div className="flex min-h-screen bg-gray-50/70">
+      <div className="flex min-h-screen" style={{ background: '#E2E0B6' }}>
         <Sidebar />
         <div className="flex-1 flex flex-col">
           <Navbar />
@@ -1465,7 +1485,7 @@ export default function ConfirmationsPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen" style={{ background: '#E2E0B6' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col">
         <Navbar />

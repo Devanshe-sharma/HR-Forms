@@ -25,20 +25,18 @@ import {
   Payments as PaymentsIcon,
   TrendingUp as TrendingUpIcon,
   CheckCircle as CheckCircleIcon,
-  Mail as MailIcon,
   GpsFixed as KpiIcon,
   HealthAndSafety as HygieneIcon,
   AutoGraph as GrowthIcon,
   Leaderboard as SummaryIcon,
   MonetizationOn as MonetizationOnIcon,
   ReportProblem as ReportProblemIcon,
-  Gavel as GavelIcon,
 } from '@mui/icons-material';
 import { NavLink, useLocation } from 'react-router-dom';
 import { usePageVisibility } from '../contexts/PageVisibilityContext';
 
 const drawerWidth = 260;
-const BRAND_BLUE = '#2b3d14';
+const BRAND_BLUE = '#4A6427';
 
 // ─── Types ─────────────────────────────────────
 interface SubItem {
@@ -71,8 +69,6 @@ export default function Sidebar() {
   const location = useLocation();
 
   const [openPMS, setOpenPMS] = useState(false);
-  const [openEscalations, setOpenEscalations] = useState(false);
-  const [openRecruitment, setOpenRecruitment] = useState(false);
 
   const isActive = (path: string): boolean => {
     const current = location.pathname + location.search;
@@ -89,17 +85,7 @@ export default function Sidebar() {
       '/pms?tab=summary'
     ].some(path => isActive(path));
     
-    // Check if any escalations/grievances sub-item is active
-    const escalationsActive = ['/escalations', '/grievances'].some(path => isActive(path));
-
-    // Check if any Recruitment sub-item is active
-    const recruitmentActive = [
-      '/recruitment', '/applicants', '/referrals', '/offer-joining', '/timeline-history',
-    ].some(path => isActive(path));
-
     setOpenPMS(pmsActive);
-    setOpenEscalations(escalationsActive);
-    setOpenRecruitment(recruitmentActive);
   }, [location.pathname, location.search]);
 
   const { canViewKey } = usePageVisibility();
@@ -109,17 +95,7 @@ export default function Sidebar() {
     { to: '/dept-orientation', text: 'Department Orientation', icon: <ApartmentIcon />, pageKey: 'deptOrientation' },
     { to: '/hr-dashboard', text: 'Dashboard', icon: <DashboardIcon />, pageKey: 'dashboard' },
     { to: '/employees', text: 'Employees List', icon: <PeopleIcon />, pageKey: 'employees' },
-    {
-      text: 'Recruitment',
-      icon: <RequestPageIcon />,
-      onClick: () => setOpenRecruitment(p => !p),
-      open: openRecruitment,
-      pageKey: 'recruitment.dashboard',
-      subItems: [
-        { to: '/recruitment', text: 'Recruitment Dashboard', icon: <RequestPageIcon />, pageKey: 'recruitment.dashboard' },
-        { to: '/applicants', text: 'Candidate Management', icon: <PeopleIcon />, pageKey: 'recruitment.candidates' },
-      ],
-    },
+    { to: '/recruitment', text: 'Recruitment', icon: <RequestPageIcon />, pageKey: 'recruitment.dashboard' },
     { to: '/onboarding/dashboard', text: 'Onboarding', icon: <BusinessCenterIcon />, pageKey: 'onboarding.dashboard' },
     { to: '/exits', text: 'Exit', icon: <ExitToAppIcon />, pageKey: 'exit.dashboard' },
     { to: '/dept-designation-master', text: 'Dept & Designation Master', icon: <BusinessCenterIcon />, pageKey: 'deptDesignationMaster' },
@@ -131,18 +107,7 @@ export default function Sidebar() {
 
     { to: '/confirmations', text: 'Confirmations', icon: <CheckCircleIcon />, pageKey: 'confirmations' },
     { to: '/salary-revision', text: 'Salary Revision', icon: <MonetizationOnIcon />, pageKey: 'salaryRevision' },
-    { to: '/employee-letters', text: 'Employee Letters', icon: <MailIcon />, pageKey: 'employeeLetters' },
-    {
-      text: 'Escalations / Grievances',
-      icon: <ReportProblemIcon />,
-      onClick: () => setOpenEscalations(p => !p),
-      open: openEscalations,
-      pageKey: 'escalations',
-      subItems: [
-        { to: '/escalations', text: 'Escalations', icon: <ReportProblemIcon />, pageKey: 'escalations.list' },
-        { to: '/grievances', text: 'Grievances', icon: <GavelIcon />, pageKey: 'escalations.grievances' },
-      ],
-    },
+    { to: '/escalations', text: 'Escalations / Grievances', icon: <ReportProblemIcon />, pageKey: 'escalations' },
     // { to: '/salary-sheet', text: 'Salary Sheet', icon: <PaymentsIcon /> },
 
     // PMS — commented out per request, not deleted (restore by uncommenting).

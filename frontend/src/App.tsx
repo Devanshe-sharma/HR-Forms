@@ -52,11 +52,14 @@ import AttendancePage from "./pages/AttendancePage";
 // 👈 ADD THIS
 
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { ThemeProvider as MuiThemeProvider } from "@mui/material/styles";
+import { muiTheme } from "./muiTheme";
 import { AuthProvider } from "./contexts/AuthContext";
 import { PageVisibilityProvider } from "./contexts/PageVisibilityContext";
 
 export default function App() {
   return (
+    <MuiThemeProvider theme={muiTheme}>
     <AuthProvider>
     <PageVisibilityProvider>
     <ThemeProvider>
@@ -137,5 +140,6 @@ export default function App() {
     </ThemeProvider>
     </PageVisibilityProvider>
     </AuthProvider>
+    </MuiThemeProvider>
   );
 }

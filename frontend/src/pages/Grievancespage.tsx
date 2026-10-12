@@ -135,6 +135,19 @@ function DashboardView({ records, loading, isHr, onAdd, onSelect }: {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('All');
   const [severity, setSeverity] = useState('All');
+  const [filterDept, setFilterDept] = useState('All');
+  const [filterDesig, setFilterDesig] = useState('All');
+  const [filterEmployee, setFilterEmployee] = useState('All');
+
+  const departmentOptions = useMemo(() =>
+    [...new Set(records.flatMap(r => [r.filedBy.department, ...r.concerning.map(t => t.department)]).filter(Boolean))].sort(),
+    [records]);
+  const designationOptions = useMemo(() =>
+    [...new Set(records.flatMap(r => r.concerning.map(t => t.designation)).filter(Boolean))].sort(),
+    [records]);
+  const employeeOptions = useMemo(() =>
+    [...new Set(records.flatMap(r => r.concerning.map(t => t.name)).filter(Boolean))].sort(),
+    [records]);
 
   const filtered = useMemo(() => records.filter(r => {
     const searchOk = !search
@@ -143,8 +156,13 @@ function DashboardView({ records, loading, isHr, onAdd, onSelect }: {
       || r.category.toLowerCase().includes(search.toLowerCase());
     const statusOk = status === 'All' || r.status === status;
     const severityOk = severity === 'All' || r.severity === severity;
-    return searchOk && statusOk && severityOk;
-  }), [records, search, status, severity]);
+    const deptOk = filterDept === 'All'
+      || r.filedBy.department === filterDept
+      || r.concerning.some(t => t.department === filterDept);
+    const desigOk = filterDesig === 'All' || r.concerning.some(t => t.designation === filterDesig);
+    const employeeOk = filterEmployee === 'All' || r.concerning.some(t => t.name === filterEmployee);
+    return searchOk && statusOk && severityOk && deptOk && desigOk && employeeOk;
+  }), [records, search, status, severity, filterDept, filterDesig, filterEmployee]);
 
   const kpis = useMemo(() => {
     const isThisMonth = (d?: string) => {
@@ -197,7 +215,10 @@ function DashboardView({ records, loading, isHr, onAdd, onSelect }: {
         <TextField size="small" placeholder="Search case #, name, or category…" value={search}
           onChange={e => setSearch(e.target.value)} sx={{ minWidth: 200 }} InputProps={{ sx: { fontSize: 13 } }} />
 
-        <FiltersMenuButton activeCount={(status !== 'All' ? 1 : 0) + (severity !== 'All' ? 1 : 0)}>
+        <FiltersMenuButton activeCount={
+          (status !== 'All' ? 1 : 0) + (severity !== 'All' ? 1 : 0) +
+          (filterDept !== 'All' ? 1 : 0) + (filterDesig !== 'All' ? 1 : 0) + (filterEmployee !== 'All' ? 1 : 0)
+        }>
           <FormControl size="small" fullWidth>
             <InputLabel sx={{ fontSize: 12 }}>Status</InputLabel>
             <Select value={status} label="Status" onChange={e => setStatus(e.target.value)} sx={{ fontSize: 12 }}>
@@ -212,13 +233,45 @@ function DashboardView({ records, loading, isHr, onAdd, onSelect }: {
               {SEVERITY_OPTIONS.map(o => <MenuItem key={o.value} value={o.value} sx={{ fontSize: 12 }}>{o.value}</MenuItem>)}
             </Select>
           </FormControl>
+          <FormControl size="small" fullWidth>
+            <InputLabel sx={{ fontSize: 12 }}>Department</InputLabel>
+            <Select value={filterDept} label="Department" onChange={e => setFilterDept(e.target.value)} sx={{ fontSize: 12 }}>
+              <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
+              {departmentOptions.map(d => <MenuItem key={d} value={d} sx={{ fontSize: 12 }}>{d}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small" fullWidth>
+            <InputLabel sx={{ fontSize: 12 }}>Designation</InputLabel>
+            <Select value={filterDesig} label="Designation" onChange={e => setFilterDesig(e.target.value)} sx={{ fontSize: 12 }}>
+              <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
+              {designationOptions.map(d => <MenuItem key={d} value={d} sx={{ fontSize: 12 }}>{d}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small" fullWidth>
+            <InputLabel sx={{ fontSize: 12 }}>Employee</InputLabel>
+            <Select value={filterEmployee} label="Employee" onChange={e => setFilterEmployee(e.target.value)} sx={{ fontSize: 12 }}>
+              <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
+              {employeeOptions.map(n => <MenuItem key={n} value={n} sx={{ fontSize: 12 }}>{n}</MenuItem>)}
+            </Select>
+          </FormControl>
         </FiltersMenuButton>
 
         <FavoritesMenuButton
           storageKey="filters:grievances"
-          currentState={{ search, status, severity }}
-          onApply={(s) => { setSearch(s.search ?? ''); setStatus(s.status ?? 'All'); setSeverity(s.severity ?? 'All'); }}
+          currentState={{ search, status, severity, filterDept, filterDesig, filterEmployee }}
+          onApply={(s) => {
+            setSearch(s.search ?? ''); setStatus(s.status ?? 'All'); setSeverity(s.severity ?? 'All');
+            setFilterDept(s.filterDept ?? 'All'); setFilterDesig(s.filterDesig ?? 'All'); setFilterEmployee(s.filterEmployee ?? 'All');
+          }}
         />
+
+        {(status !== 'All' || severity !== 'All' || filterDept !== 'All' || filterDesig !== 'All' || filterEmployee !== 'All' || search) && (
+          <Button size="small" variant="text" onClick={() => {
+            setSearch(''); setStatus('All'); setSeverity('All'); setFilterDept('All'); setFilterDesig('All'); setFilterEmployee('All');
+          }} sx={{ fontSize: 12.5, textTransform: 'none', color: 'text.secondary' }}>
+            Clear Filters
+          </Button>
+        )}
       </Box>
 
       <Box sx={{ bgcolor: 'white', borderRadius: 2, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
@@ -619,7 +672,7 @@ export default function Grievancespage() {
   useEffect(() => { loadData(); }, [loadData]);
 
   if (loading && view === 'dashboard') return (
-    <div className="flex min-h-screen bg-gray-50/70">
+    <div className="flex min-h-screen" style={{ background: '#E2E0B6' }}>
       <Sidebar /><div className="flex-1 flex flex-col"><Navbar />
         <main className="flex-1 flex items-center justify-center pt-16 md:pt-20">
           <CircularProgress size={40} />
@@ -629,7 +682,7 @@ export default function Grievancespage() {
   );
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen" style={{ background: '#E2E0B6' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col">
         <Navbar />

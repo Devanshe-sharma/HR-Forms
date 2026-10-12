@@ -1105,14 +1105,14 @@ export default function DeptOrientationPage() {
   const dd = deptDataMap[activeDept];
 
   return(
-    <div className="min-h-screen" style={{background:'#F1F5F9'}}>
+    <div className="min-h-screen" style={{background:'#E2E0B6'}}>
       <Sidebar/>
       <div className="lg:pl-64">
         <Navbar/>
         <main style={{padding:'24px',paddingTop:'88px'}}>
 
           {/* Banner */}
-          <Box sx={{mb:3,p:3.5,borderRadius:'20px',background:'linear-gradient(135deg, #1E3A5F 0%, #3B82F6 100%)',color:'white',position:'relative',overflow:'hidden'}}>
+          <Box sx={{mb:3,p:3.5,borderRadius:'20px',background:'linear-gradient(135deg, #597e37 0%, #3d5420 100%)',color:'white',position:'relative',overflow:'hidden'}}>
             <Box sx={{position:'absolute',top:-40,right:-20,width:180,height:180,borderRadius:'50%',bgcolor:'rgba(255,255,255,0.04)'}}/>
             <Box sx={{display:'flex',alignItems:'center',gap:2,position:'relative',zIndex:1}}>
               <Box sx={{width:52,height:52,borderRadius:'14px',bgcolor:'rgba(255,255,255,0.1)',display:'flex',alignItems:'center',justifyContent:'center'}}><ApartmentIcon sx={{fontSize:28}}/></Box>

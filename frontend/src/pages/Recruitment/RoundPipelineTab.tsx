@@ -69,8 +69,8 @@ const DetailRow = ({ label, children }: { label: string; children: React.ReactNo
   </div>
 );
 
-const rowControlClass = 'w-full border border-gray-300 rounded-md bg-white px-2.5 py-1.5 text-xs text-black focus:outline-none focus:ring-2 focus:ring-lime-400 focus:border-lime-400';
-const rowTextareaClass = `w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-xs text-black bg-white focus:outline-none focus:ring-2 focus:ring-lime-400 resize-none ${FIELD_PLACEHOLDER_CLASS}`;
+const rowControlClass = 'w-full border border-gray-300 rounded-md bg-white px-2.5 py-1.5 text-xs text-black focus:outline-none focus:ring-2 focus:ring-[#7a9c56] focus:border-[#7a9c56]';
+const rowTextareaClass = `w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-xs text-black bg-white focus:outline-none focus:ring-2 focus:ring-[#7a9c56] resize-none ${FIELD_PLACEHOLDER_CLASS}`;
 
 const RoundForm = ({
   data, roundLabelText, onChange, onSave, onCancel, saving, interviewers, loadingInterviewers,
@@ -252,7 +252,7 @@ const RoundForm = ({
         <button
           onClick={onSave}
           disabled={saving}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-lime-600 hover:bg-lime-700 disabled:opacity-60 rounded-lg transition"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-[#597e37] hover:bg-[#3d5420] disabled:opacity-60 rounded-lg transition"
         >
           {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Save
         </button>
@@ -726,7 +726,7 @@ const RoundPipelineTab = ({
                     ) : (
                       <button
                         onClick={() => startEdit(r)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-lime-600 hover:bg-lime-700 rounded-lg transition"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-[#597e37] hover:bg-[#3d5420] rounded-lg transition"
                       >
                         <Edit2 size={13} /> Edit
                       </button>
@@ -761,7 +761,7 @@ const RoundPipelineTab = ({
       })}
 
       {adding && (
-        <div className="border border-lime-200 rounded-xl overflow-hidden bg-lime-50/40">
+        <div className="border border-[#cddcb8] rounded-xl overflow-hidden bg-[#eef3e6]/40">
           <p className="text-sm font-bold text-gray-700 px-3 pt-3">New {typeLabel} — #{rounds.length + 1}</p>
           <RoundForm
             data={newRound}
@@ -786,7 +786,7 @@ const RoundPipelineTab = ({
         return canAddAnotherInstance ? (
           <button
             onClick={() => setAdding(true)}
-            className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-gray-200 hover:border-lime-400 hover:text-lime-600 rounded-xl text-sm text-gray-400 transition"
+            className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-gray-200 hover:border-[#7a9c56] hover:text-[#597e37] rounded-xl text-sm text-gray-400 transition"
           >
             <Plus size={15} /> Add {typeLabel}
           </button>
@@ -865,7 +865,7 @@ const RoundPipelineTab = ({
                             onClick={() => handleSendMail(tab)}
                             disabled={mailModal.sending || sent || !mailModal.reason.trim() || !content?.to}
                             className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
-                              sent ? 'bg-gray-200 text-gray-500' : 'text-white bg-lime-600 hover:bg-lime-700 disabled:opacity-50'
+                              sent ? 'bg-gray-200 text-gray-500' : 'text-white bg-[#597e37] hover:bg-[#3d5420] disabled:opacity-50'
                             }`}
                           >
                             {sent ? <><Check size={13} /> Sent</> : <><Send size={13} /> Send</>}
@@ -885,7 +885,7 @@ const RoundPipelineTab = ({
                     key={tab}
                     onClick={() => setMailModal((m) => ({ ...m, tab }))}
                     className={`flex-1 text-xs font-semibold py-1.5 rounded-lg transition ${
-                      mailModal.tab === tab ? 'bg-lime-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                      mailModal.tab === tab ? 'bg-[#597e37] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                     }`}
                   >
                     {tab === 'interviewer' ? 'Mail to Interviewer' : 'Mail to Candidate'}
@@ -899,7 +899,7 @@ const RoundPipelineTab = ({
                 const current = mailModal.content[mailModal.tab];
                 const fieldClass = (editable: boolean) =>
                   `w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm placeholder:text-gray-400 placeholder:font-normal ${
-                    editable ? 'focus:outline-none focus:ring-2 focus:ring-lime-400' : 'bg-gray-50 text-gray-600'
+                    editable ? 'focus:outline-none focus:ring-2 focus:ring-[#7a9c56]' : 'bg-gray-50 text-gray-600'
                   }`;
 
                 return (
@@ -912,7 +912,7 @@ const RoundPipelineTab = ({
                         type="button"
                         onClick={() => mailModal.round && fetchPreview(mailModal.tab, mailModal.round, mailModal.type, mailModal.reason)}
                         disabled={mailModal.loadingPreview}
-                        className="flex items-center gap-1 text-[11px] font-semibold text-gray-500 hover:text-lime-600 disabled:opacity-50 transition"
+                        className="flex items-center gap-1 text-[11px] font-semibold text-gray-500 hover:text-[#597e37] disabled:opacity-50 transition"
                         title="Regenerate from the current round details"
                       >
                         <RefreshCw size={11} className={mailModal.loadingPreview ? 'animate-spin' : ''} /> Regenerate
@@ -1011,7 +1011,7 @@ const RoundPipelineTab = ({
                 <button
                   onClick={() => handleSendMail(mailModal.tab)}
                   disabled={mailModal.sending || mailModal.sentTabs.includes(mailModal.tab)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-lime-600 hover:bg-lime-700 disabled:opacity-60 rounded-lg transition"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-[#597e37] hover:bg-[#3d5420] disabled:opacity-60 rounded-lg transition"
                 >
                   {mailModal.sending
                     ? <><Loader2 size={14} className="animate-spin" /> Sending...</>

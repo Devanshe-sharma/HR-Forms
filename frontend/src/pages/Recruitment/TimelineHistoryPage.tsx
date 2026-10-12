@@ -50,7 +50,7 @@ export const TimelineHistoryDashboardTab: React.FC = () => {
                 <select
                   value={selectedId}
                   onChange={(e) => setSelectedId(e.target.value)}
-                  className="min-w-[280px] border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lime-400"
+                  className="min-w-[280px] border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a9c56]"
                 >
                   {records.map((r) => (
                     <option key={r._id} value={r._id}>{r.full_name} — {r.designation}</option>
@@ -72,7 +72,7 @@ export const TimelineHistoryDashboardTab: React.FC = () => {
 
 const TimelineHistoryPage: React.FC = () => {
   return (
-    <div className="flex h-screen bg-gray-100 overflow-hidden">
+    <div className="flex h-screen overflow-hidden" style={{ background: '#E2E0B6' }}>
       <div className="w-64 flex-shrink-0 z-10 bg-white border-r">
         <Sidebar />
       </div>

@@ -994,7 +994,24 @@ function CompanyAssetsCard({ assets, employeeId, defaultDate, onSaved }: {
   );
 }
 
+// Required document types a complete profile must have at least one upload
+// for — keys must match backend-node/utils/onboardingDocumentTypes.js, same
+// as latestDocFor above. Keep in sync with the "Required" DocumentItem tags
+// rendered in the Documents tab.
+const REQUIRED_DOC_TYPES = [
+  { key: 'resume', label: 'Resume' },
+  { key: 'personalPhoto', label: 'Personal Photograph' },
+  { key: 'tenthMarksheet', label: '10th Marksheet' },
+  { key: 'twelfthMarksheet', label: '12th Marksheet' },
+  { key: 'graduationMarksheet', label: 'Graduation Marksheet' },
+  { key: 'aadhaarCard', label: 'Aadhaar Card' },
+  { key: 'panCard', label: 'PAN Card' },
+];
+
 function profileCompletionFields(profile: UserProfile | null) {
+  const isMarried = profile?.maritalStatus === 'Married';
+  const hasDoc = (docType: string) => (profile?.documents || []).some(d => d.docType === docType);
+
   return [
     { label: 'Full Name', filled: !!profile?.full_name },
     { label: 'Official Email', filled: !!profile?.official_email },
@@ -1005,6 +1022,32 @@ function profileCompletionFields(profile: UserProfile | null) {
     { label: 'Date of Birth', filled: !!profile?.birthday },
     { label: 'Blood Group', filled: !!profile?.bloodGroup },
     { label: 'Marital Status', filled: !!profile?.maritalStatus },
+
+    // Emergency Details — all four required.
+    { label: 'Emergency Contact Name', filled: !!profile?.emergencyContactName },
+    { label: 'Emergency Contact Relation', filled: !!profile?.emergencyContactRelation },
+    { label: 'Emergency Contact Phone', filled: !!profile?.emergencyContactPhone },
+    { label: 'Emergency Contact Place', filled: !!profile?.emergencyContactPlace },
+
+    // Family — parents always required; spouse only once married, so an
+    // unmarried employee isn't stuck unable to reach 100%.
+    { label: "Father's Name", filled: !!profile?.familyFather },
+    { label: "Father's Occupation", filled: !!profile?.familyFatherOccupation },
+    { label: "Mother's Name", filled: !!profile?.familyMother },
+    { label: "Mother's Occupation", filled: !!profile?.familyMotherOccupation },
+    ...(isMarried ? [
+      { label: 'Spouse Name', filled: !!profile?.familySpouse },
+      { label: 'Spouse Occupation', filled: !!profile?.familySpouseOccupation },
+    ] : []),
+
+    // Documents — one upload per required type.
+    ...REQUIRED_DOC_TYPES.map(d => ({ label: d.label, filled: hasDoc(d.key) })),
+
+    // Company Assets — dateIssued is only ever set once the checklist has
+    // actually been saved at least once (see CompanyAssetsCard), so it's a
+    // reliable "section touched" signal, unlike the individual booleans
+    // which can legitimately all be false (nothing issued yet).
+    { label: 'Company Assets', filled: !!profile?.companyAssets?.dateIssued },
   ];
 }
 function profileCompletionPct(profile: UserProfile | null) {
@@ -1017,25 +1060,25 @@ function profileCompletionPct(profile: UserProfile | null) {
 // Overview tab; this is just the at-a-glance number.
 function ProfileProgressBadge({ profile }: { profile: UserProfile | null }) {
   const pct = profileCompletionPct(profile);
-  const color = pct === 100 ? '#4ADE80' : '#fff';
+  const color = pct === 100 ? '#15803D' : '#000';
   return (
     <Box sx={{ position: 'absolute', top: { xs: 12, md: 20 }, right: { xs: 12, md: 32 }, display: 'flex', alignItems: 'center', gap: 1.2 }}>
       <Box sx={{ textAlign: 'right', display: { xs: 'none', sm: 'block' } }}>
-        <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.64rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        <Typography sx={{ color: 'rgba(0,0,0,0.7)', fontSize: '0.64rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
           Profile
         </Typography>
-        <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.64rem' }}>
+        <Typography sx={{ color: 'rgba(0,0,0,0.55)', fontSize: '0.64rem' }}>
           {pct === 100 ? 'Complete' : 'Strength'}
         </Typography>
       </Box>
       <Box sx={{ position: 'relative', display: 'inline-flex' }}>
-        <CircularProgress variant="determinate" value={100} size={48} thickness={4.5} sx={{ color: 'rgba(255,255,255,0.18)' }} />
+        <CircularProgress variant="determinate" value={100} size={48} thickness={4.5} sx={{ color: 'rgba(0,0,0,0.12)' }} />
         <CircularProgress
           variant="determinate" value={pct} size={48} thickness={4.5}
           sx={{ color, position: 'absolute', left: 0, '& .MuiCircularProgress-circle': { strokeLinecap: 'round' } }}
         />
         <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '0.68rem' }}>{pct}%</Typography>
+          <Typography sx={{ color: '#000', fontWeight: 800, fontSize: '0.68rem' }}>{pct}%</Typography>
         </Box>
       </Box>
     </Box>
@@ -1220,7 +1263,7 @@ export default function Profile() {
     setUserProfile((prev) => prev ? { ...prev, companyAssets } : prev);
 
   if (loading) return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen" style={{ background: '#EFEDD6' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col">
         <Navbar />
@@ -1239,7 +1282,7 @@ export default function Profile() {
   // before that context settles.
   if (!user || !userProfile) {
     return (
-      <div className="flex min-h-screen bg-gray-50">
+      <div className="flex min-h-screen" style={{ background: '#EFEDD6' }}>
         <Sidebar />
         <div className="flex-1 flex flex-col">
           <Navbar />
@@ -1252,12 +1295,12 @@ export default function Profile() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen" style={{ background: '#EFEDD6' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col">
         <Navbar />
         <main className="flex-1 overflow-auto pt-20 md:pt-10">
-        <Box sx={{ minHeight: '100%', bgcolor: '#F3F5F8', display: 'flex', flexDirection: 'column' }}>
+        <Box sx={{ minHeight: '100%', bgcolor: '#EFEDD6', display: 'flex', flexDirection: 'column' }}>
 
       {/* ── Status Banner ── */}
       {errorMsg && (
@@ -1267,7 +1310,7 @@ export default function Profile() {
       )}
 
       {/* ── Hero ── */}
-      <Box sx={{ background: 'linear-gradient(135deg, #3182CE 0%, #0F172A 100%)', px: { xs: 3, md: 5 }, pt: 4, pb: 0, position: 'relative' }}>
+      <Box sx={{ background: '#EDE8D0', px: { xs: 3, md: 5 }, pt: 4, pb: 0, position: 'relative' }}>
         <Box sx={{ position: 'absolute', inset: 0, opacity: 0.04, backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
         <ProfileProgressBadge profile={userProfile} />
         <Stack direction="row" spacing={3} alignItems="flex-end">
@@ -1275,19 +1318,19 @@ export default function Profile() {
             {userProfile?.full_name?.[0]}
           </Avatar>
           <Box sx={{ pb: '32px' }}>
-            <Typography variant="h6" fontWeight="800" color="white" sx={{ lineHeight: 1.2 }}>{userProfile?.full_name}</Typography>
+            <Typography variant="h6" fontWeight="800" color="black" sx={{ lineHeight: 1.2 }}>{userProfile?.full_name}</Typography>
             <Stack direction="row" spacing={1} alignItems="center" mt={0.5} flexWrap="wrap">
-              <Chip label={currentRole} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.18)', color: 'white', fontWeight: 700, fontSize: '0.68rem', border: '1px solid rgba(255,255,255,0.3)' }} />
+              <Chip label={currentRole} size="small" sx={{ bgcolor: 'rgba(0,0,0,0.08)', color: 'black', fontWeight: 700, fontSize: '0.9rem', border: '1px solid rgba(0,0,0,0.18)' }} />
               {userProfile?.empId && (
-                <Chip label={`ID: ${userProfile.empId}`} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.9)', fontWeight: 700, fontSize: '0.68rem', border: '1px solid rgba(255,255,255,0.25)' }} />
+                <Chip label={`ID: ${userProfile.empId}`} size="small" sx={{ bgcolor: 'rgba(0,0,0,0.05)', color: 'rgba(0,0,0,0.75)', fontWeight: 700, fontSize: '0.68rem', border: '1px solid rgba(0,0,0,0.15)' }} />
               )}
-              <Typography fontSize="0.75rem" color="rgba(255,255,255,0.85)" fontWeight={500}>{userProfile?.designation} &bull; {userProfile?.department}</Typography>
+              <Typography fontSize="0.75rem" color="rgba(0,0,0,0.7)" fontWeight={500}>{userProfile?.designation} &bull; {userProfile?.department}</Typography>
             </Stack>
           </Box>
         </Stack>
         <Box sx={{ mt: 3, ml: '110px' }}>
-          <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} TabIndicatorProps={{ style: { backgroundColor: '#fff', height: 3, borderRadius: '3px 3px 0 0' } }}
-            sx={{ '& .MuiTab-root': { color: 'rgba(255,255,255,0.6)', textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', minWidth: 0, mr: 1, px: 1.5, '&:hover': { color: 'rgba(255,255,255,0.9)' } }, '& .Mui-selected': { color: '#fff !important' } }}>
+          <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} TabIndicatorProps={{ style: { backgroundColor: '#000', height: 3, borderRadius: '3px 3px 0 0' } }}
+            sx={{ '& .MuiTab-root': { color: 'rgba(0,0,0,0.55)', textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', minWidth: 0, mr: 1, px: 1.5, '&:hover': { color: 'rgba(0,0,0,0.85)' } }, '& .Mui-selected': { color: '#000 !important' } }}>
             {tabs.map((t, i) => <Tab key={i} icon={t.icon} iconPosition="start" label={t.label} />)}
           </Tabs>
         </Box>

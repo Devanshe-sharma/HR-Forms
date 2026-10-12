@@ -21,7 +21,7 @@ export function AttendanceTab() {
             sx={{
               textTransform: 'none', fontWeight: 600, borderRadius: 1.5, borderColor: ACCENT,
               bgcolor: view === v ? ACCENT : 'transparent', color: view === v ? 'white' : ACCENT,
-              '&:hover': { bgcolor: view === v ? '#4338ca' : '#eef2ff' },
+              '&:hover': { bgcolor: view === v ? '#1f2d0e' : '#eef1e4' },
             }}>
             {v === 'daily' ? 'Daily' : 'Monthly'}
           </Button>

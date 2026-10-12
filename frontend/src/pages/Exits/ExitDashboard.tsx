@@ -424,7 +424,7 @@ const ExitDashboard: React.FC = () => {
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "#f8fafc" }}>
+    <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "#E2E0B6" }}>
       <Sidebar />
       <Box sx={{ flexGrow: 1, overflow: "hidden" }}>
         <Navbar />
@@ -696,7 +696,7 @@ const ExitDashboard: React.FC = () => {
             {/* Modal header */}
             <Box sx={{
               px: 3, py: 2, flexShrink: 0,
-              background: "linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)",
+              background: "linear-gradient(135deg, #597e37 0%, #3d5420 100%)",
               display: "flex", alignItems: "flex-start", justifyContent: "space-between",
             }}>
               <Box>

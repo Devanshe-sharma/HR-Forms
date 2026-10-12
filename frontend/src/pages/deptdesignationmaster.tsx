@@ -21,7 +21,7 @@ import Navbar from '../components/Navbar';
 import Sidebar from '../components/Sidebar';
 import { FiltersMenuButton, FavoritesMenuButton } from '../components/FilterBar';
 
-const BRAND_BLUE = '#1976d2';
+const BRAND_BLUE = '#2b3d14';
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
 const PAGE_SIZE  = 15;
 const SIDEBAR_W  = 25;
@@ -437,7 +437,7 @@ export default function DeptDesignationMaster() {
   // ─── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#f5f7fb', overflow: 'hidden' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#E2E0B6', overflow: 'hidden' }}>
 
       <Sidebar />
 
