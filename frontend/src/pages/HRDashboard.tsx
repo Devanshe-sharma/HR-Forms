@@ -2854,7 +2854,7 @@ const HRAnalyticsDashboard: React.FC = () => {
   const activeModuleLabel = MODULES.find((m) => m.key === activeCard)?.label;
 
   return (
-    <Box sx={{ display: "flex", height: "100vh", bgcolor: "#E2E0B6", overflow: "hidden" }}>
+    <Box sx={{ display: "flex", height: "100vh", bgcolor: "#F3F5EF", overflow: "hidden" }}>
       <Sidebar />
       <Box sx={{ flexGrow: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <Navbar />

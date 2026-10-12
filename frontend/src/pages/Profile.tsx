@@ -1263,7 +1263,7 @@ export default function Profile() {
     setUserProfile((prev) => prev ? { ...prev, companyAssets } : prev);
 
   if (loading) return (
-    <div className="flex min-h-screen" style={{ background: '#EFEDD6' }}>
+    <div className="flex min-h-screen" style={{ background: '#F3F5EF' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col">
         <Navbar />
@@ -1282,7 +1282,7 @@ export default function Profile() {
   // before that context settles.
   if (!user || !userProfile) {
     return (
-      <div className="flex min-h-screen" style={{ background: '#EFEDD6' }}>
+      <div className="flex min-h-screen" style={{ background: '#F3F5EF' }}>
         <Sidebar />
         <div className="flex-1 flex flex-col">
           <Navbar />
@@ -1295,12 +1295,12 @@ export default function Profile() {
   }
 
   return (
-    <div className="flex min-h-screen" style={{ background: '#EFEDD6' }}>
+    <div className="flex min-h-screen" style={{ background: '#F3F5EF' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col">
         <Navbar />
         <main className="flex-1 overflow-auto pt-20 md:pt-10">
-        <Box sx={{ minHeight: '100%', bgcolor: '#EFEDD6', display: 'flex', flexDirection: 'column' }}>
+        <Box sx={{ minHeight: '100%', bgcolor: '#F3F5EF', display: 'flex', flexDirection: 'column' }}>
 
       {/* ── Status Banner ── */}
       {errorMsg && (
@@ -1310,7 +1310,7 @@ export default function Profile() {
       )}
 
       {/* ── Hero ── */}
-      <Box sx={{ background: '#EDE8D0', px: { xs: 3, md: 5 }, pt: 4, pb: 0, position: 'relative' }}>
+      <Box sx={{ background: '#F3F5EF', px: { xs: 3, md: 5 }, pt: 4, pb: 0, position: 'relative' }}>
         <Box sx={{ position: 'absolute', inset: 0, opacity: 0.04, backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
         <ProfileProgressBadge profile={userProfile} />
         <Stack direction="row" spacing={3} alignItems="flex-end">

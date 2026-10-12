@@ -29,7 +29,7 @@ export default function AttendancePage() {
   const activeTab = (new URLSearchParams(location.search).get('tab') || 'out-of-office') as TabId;
 
   return (
-    <div className="flex min-h-screen" style={{ background: '#E2E0B6' }}>
+    <div className="flex min-h-screen" style={{ background: '#F3F5EF' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col">
         <Navbar />

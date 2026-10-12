@@ -990,7 +990,7 @@ const handleBackToDept = () => {
   // ── Page mode: wrap with Sidebar + Navbar ─────────────────────────────────
   return (
     
-    <div className="min-h-screen flex" style={{ background: '#E2E0B6' }}>
+    <div className="min-h-screen flex" style={{ background: '#F3F5EF' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col">
         <Navbar />

@@ -4343,7 +4343,7 @@ export default function SalaryRevisionPage() {
   };
 
   if (loading&&initialLoad) return (
-    <div className="flex min-h-screen" style={{ background: '#E2E0B6' }}>
+    <div className="flex min-h-screen" style={{ background: '#F3F5EF' }}>
       <Sidebar/><div className="flex-1 flex flex-col"><Navbar/>
         <main className="flex-1 flex items-center justify-center  ">
           <CircularProgress size={40}/>
@@ -4353,7 +4353,7 @@ export default function SalaryRevisionPage() {
   );
 
   return (
-    <div className="flex min-h-screen" style={{ background: '#E2E0B6' }}>
+    <div className="flex min-h-screen" style={{ background: '#F3F5EF' }}>
       <Sidebar/>
       <div className="flex-1 flex flex-col">
         <Navbar/>

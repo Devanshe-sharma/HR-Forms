@@ -1472,7 +1472,7 @@ export default function ConfirmationsPage() {
 
   if (loading && view === 'dashboard') {
     return (
-      <div className="flex min-h-screen" style={{ background: '#E2E0B6' }}>
+      <div className="flex min-h-screen" style={{ background: '#F3F5EF' }}>
         <Sidebar />
         <div className="flex-1 flex flex-col">
           <Navbar />
@@ -1485,7 +1485,7 @@ export default function ConfirmationsPage() {
   }
 
   return (
-    <div className="flex min-h-screen" style={{ background: '#E2E0B6' }}>
+    <div className="flex min-h-screen" style={{ background: '#F3F5EF' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col">
         <Navbar />

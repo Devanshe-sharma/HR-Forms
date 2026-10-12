@@ -879,7 +879,7 @@ const NewExit: React.FC = () => {
       <Box sx={{ flexGrow: 1 }}>
         <Navbar />
         <LocalizationProvider dateAdapter={AdapterDayjs}>
-          <div className="min-h-screen" style={{ marginTop: "56px", background: '#E2E0B6' }}>
+          <div className="min-h-screen" style={{ marginTop: "56px", background: '#F3F5EF' }}>
             {/* Header */}
             <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
               <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">

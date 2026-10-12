@@ -58,7 +58,7 @@ const CandidatesReferrals: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: '#E2E0B6' }}>
+    <div className="flex h-screen overflow-hidden" style={{ background: '#F3F5EF' }}>
       <div className="w-64 flex-shrink-0 z-10 bg-white border-r">
         <Sidebar />
       </div>

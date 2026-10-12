@@ -437,7 +437,7 @@ export default function DeptDesignationMaster() {
   // ─── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#E2E0B6', overflow: 'hidden' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#F3F5EF', overflow: 'hidden' }}>
 
       <Sidebar />
 

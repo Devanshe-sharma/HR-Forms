@@ -155,7 +155,7 @@ const KPITable: React.FC<KPITableProps> = ({ data, title, accent, departments, e
       </Box>
 
       <Collapse in={expanded}>
-        <Stack direction="row" sx={{ px: 2, py: 1.5, bgcolor: '#E2E0B6', borderBottom: '1px solid #cddcb8', flexWrap: 'wrap', gap: 1.5 }}>
+        <Stack direction="row" sx={{ px: 2, py: 1.5, bgcolor: '#F3F5EF', borderBottom: '1px solid #cddcb8', flexWrap: 'wrap', gap: 1.5 }}>
           <TextField size="small" placeholder="Search…" value={search} onChange={e => setSearch(e.target.value)}
             sx={{ minWidth: 180, bgcolor: '#F2F4E9' }}
             InputProps={{ startAdornment: <InputAdornment position="start"><Search sx={{ fontSize: 16, color: '#94a3b8' }} /></InputAdornment> }} />
@@ -259,7 +259,7 @@ const KPITable: React.FC<KPITableProps> = ({ data, title, accent, departments, e
                 );
               })}
               {filtered.length > 0 && (
-                <TableRow sx={{ bgcolor: '#E2E0B6', borderTop: '2px solid #9ab874' }}>
+                <TableRow sx={{ bgcolor: '#F3F5EF', borderTop: '2px solid #9ab874' }}>
                   <TableCell sx={{ fontWeight: 700, fontSize: 12, color: '#475569', textTransform: 'uppercase' }}>Total / Avg</TableCell>
                   <TableCell />
                   <TableCell sx={{ fontWeight: 700, fontFamily: 'monospace' }}>{totTarget.toFixed(1)}</TableCell>
@@ -466,11 +466,11 @@ const PMSDashboard: React.FC = () => {
   const growth  = emp ? growthData.find(g => String(g.employeeId) === String(emp._id))  : undefined;
 
   return (
-    <div className="flex min-h-screen" style={{ background: '#E2E0B6' }}>
+    <div className="flex min-h-screen" style={{ background: '#F3F5EF' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col">
         <Navbar />
-        <Box sx={{ bgcolor: '#E2E0B6', minHeight: '100%', mt: '56px' }}>
+        <Box sx={{ bgcolor: '#F3F5EF', minHeight: '100%', mt: '56px' }}>
 
           {/* ── Employee selector bar ── */}
           <Box sx={{
@@ -834,7 +834,7 @@ const PMSDashboard: React.FC = () => {
                             </Paper>
                           </Grid>
                         </Grid>
-                        <Paper variant="outlined" sx={{ borderRadius: 2, p: 2, bgcolor: '#E2E0B6', display: 'flex', alignItems: 'center', gap: 2, boxShadow: '0 2px 10px rgba(61,84,32,0.08)', border: '1px solid #dde6cc' }}>
+                        <Paper variant="outlined" sx={{ borderRadius: 2, p: 2, bgcolor: '#F3F5EF', display: 'flex', alignItems: 'center', gap: 2, boxShadow: '0 2px 10px rgba(61,84,32,0.08)', border: '1px solid #dde6cc' }}>
                           <Typography fontSize={11} fontWeight={700} color="text.disabled" textTransform="uppercase" letterSpacing=".1em">Growth Score</Typography>
                           <Chip label={scoreLabel(growth.score)} sx={{ bgcolor: scoreBg(growth.score), color: scoreColor(growth.score), fontWeight: 800, fontSize: 14, height: 28 }} />
                           <Typography fontSize={12} color="text.secondary">= (Training×0.4) + (Investment×0.3) + (Innovation×0.3)</Typography>
@@ -912,7 +912,7 @@ const PMSDashboard: React.FC = () => {
                         </Grid>
                       ))}
                     </Grid>
-                    <Paper variant="outlined" sx={{ borderRadius: 2, p: 2, bgcolor: '#E2E0B6', display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', boxShadow: '0 2px 10px rgba(61,84,32,0.08)', border: '1px solid #dde6cc' }}>
+                    <Paper variant="outlined" sx={{ borderRadius: 2, p: 2, bgcolor: '#F3F5EF', display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', boxShadow: '0 2px 10px rgba(61,84,32,0.08)', border: '1px solid #dde6cc' }}>
                       <Typography fontSize={11} fontWeight={700} color="text.disabled" textTransform="uppercase" letterSpacing=".1em" flexShrink={0}>Formula</Typography>
                       <Typography fontSize={12} fontFamily="monospace" color="text.secondary">
                         Overall = (KPI×0.4) + (Targets×0.3) + (Hygiene×0.2) + (Growth×0.1) =&nbsp;

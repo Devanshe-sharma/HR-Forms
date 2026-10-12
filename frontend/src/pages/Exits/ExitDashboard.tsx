@@ -424,7 +424,7 @@ const ExitDashboard: React.FC = () => {
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "#E2E0B6" }}>
+    <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "#F3F5EF" }}>
       <Sidebar />
       <Box sx={{ flexGrow: 1, overflow: "hidden" }}>
         <Navbar />

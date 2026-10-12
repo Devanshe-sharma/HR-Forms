@@ -1197,7 +1197,7 @@ export default function Escalationspage() {
   useEffect(() => { loadData(); }, [loadData]);
 
   if (loading && view === 'dashboard') return (
-    <div className="flex min-h-screen" style={{ background: '#E2E0B6' }}>
+    <div className="flex min-h-screen" style={{ background: '#F3F5EF' }}>
       <Sidebar /><div className="flex-1 flex flex-col"><Navbar />
         <main className="flex-1 flex items-center justify-center pt-16 md:pt-20">
           <CircularProgress size={40} />
@@ -1207,7 +1207,7 @@ export default function Escalationspage() {
   );
 
   return (
-    <div className="flex min-h-screen" style={{ background: '#E2E0B6' }}>
+    <div className="flex min-h-screen" style={{ background: '#F3F5EF' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col">
         <Navbar />

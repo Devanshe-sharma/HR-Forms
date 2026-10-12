@@ -1241,7 +1241,7 @@ const EmployeesPage: React.FC = () => {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen" style={{ background: '#E2E0B6' }}>
+    <div className="min-h-screen" style={{ background: '#F3F5EF' }}>
       <Sidebar />
       <div className="lg:pl-64">
         <Navbar />
