@@ -21,7 +21,6 @@ import {
   KeyboardArrowDown as ArrowDownIcon,
   Article as ArticleIcon,
   VerifiedUser as JDIcon,
-  Apartment as ApartmentIcon,
   Work as WorkIcon,
   Quiz as QuizIcon,
   Assignment as AssignmentIcon,
@@ -1110,23 +1109,6 @@ export default function DeptOrientationPage() {
       <div className="lg:pl-64">
         <Navbar/>
         <main style={{padding:'24px',paddingTop:'88px'}}>
-
-          {/* Banner */}
-          <Box sx={{mb:3,p:3.5,borderRadius:'20px',background:'linear-gradient(135deg, #597e37 0%, #3d5420 100%)',color:'white',position:'relative',overflow:'hidden'}}>
-            <Box sx={{position:'absolute',top:-40,right:-20,width:180,height:180,borderRadius:'50%',bgcolor:'rgba(255,255,255,0.04)'}}/>
-            <Box sx={{display:'flex',alignItems:'center',gap:2,position:'relative',zIndex:1}}>
-              <Box sx={{width:52,height:52,borderRadius:'14px',bgcolor:'rgba(255,255,255,0.1)',display:'flex',alignItems:'center',justifyContent:'center'}}><ApartmentIcon sx={{fontSize:28}}/></Box>
-              <Box flex={1}>
-                <Typography fontWeight={800} fontSize="1.5rem" lineHeight={1.2}>Department Orientation</Typography>
-                {/* <Typography fontSize="0.85rem" sx={{opacity:0.6,mt:0.3}}>PPTs · JDs · Notes · Tests — organised by department</Typography> */}
-              </Box>
-              <Stack direction="row" spacing={1.5} alignItems="center">
-                {loading&&<CircularProgress size={18} sx={{color:'rgba(255,255,255,0.6)'}}/>}
-                <Chip label={`${departments.length} Departments`} size="small" sx={{bgcolor:'rgba(255,255,255,0.12)',color:'white',fontWeight:700,border:'1px solid rgba(255,255,255,0.2)',fontSize:'0.75rem'}}/>
-                {/* {isHR&&<Chip label="HR · Edit Mode" size="small" sx={{bgcolor:'rgba(134,239,172,0.15)',color:'#86EFAC',fontWeight:700,border:'1px solid rgba(134,239,172,0.3)',fontSize:'0.75rem'}}/>} */}
-              </Stack>
-            </Box>
-          </Box>
 
           {loading
             ?<Box sx={{display:'flex',justifyContent:'center',pt:8}}><CircularProgress/></Box>

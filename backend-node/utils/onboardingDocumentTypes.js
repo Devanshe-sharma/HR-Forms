@@ -7,7 +7,7 @@
 const ONBOARDING_DOCUMENT_TYPES = [
   // Personal Documents
   { key: 'resume', label: 'Resume' },
-  { key: 'personalPhoto', label: 'Personal Photograph' },
+  { key: 'personalPhoto', label: 'Passport size Photograph' },
   { key: 'tenthMarksheet', label: '10th Marksheet' },
   { key: 'twelfthMarksheet', label: '12th Marksheet' },
   { key: 'graduationMarksheet', label: 'Graduation Marksheet' },
@@ -15,6 +15,8 @@ const ONBOARDING_DOCUMENT_TYPES = [
   { key: 'aadhaarCard', label: 'Aadhaar Card' },
   { key: 'panCard', label: 'PAN Card' },
   { key: 'uanCard', label: 'UAN Card' },
+  // Bank Details (Documents tab)
+  { key: 'bankPassbook', label: 'Passbook/Cancelled Cheque' },
   // Employment Documents (the rest of that tab — Offer/Appointment/
   // Increment Letters, Payslips — are system-issued via /employee-letters,
   // not self-uploaded, so they have no entry here). Both of these accept

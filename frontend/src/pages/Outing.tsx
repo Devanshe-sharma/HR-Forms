@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
-import { Plus, X, CheckCircle, XCircle, Edit, Trash2, Save, Archive, Calendar, MapPin, IndianRupee, AlignLeft, Tag, Eye, Star, Search, SlidersHorizontal, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
+import { Plus, X, CheckCircle, XCircle, Edit, Trash2, Save, Archive, Calendar, MapPin, IndianRupee, AlignLeft, Tag, Eye, Star, Search, SlidersHorizontal, ChevronDown, ChevronRight, RotateCcw, Mail, Send } from 'lucide-react';
 axios.defaults.headers.common['x-user-role'] = localStorage.getItem('role') || 'Admin';
 
 
@@ -37,6 +37,7 @@ const OutingFiltersBar = ({
   category, onCategory,
   statusMode,
   onClear,
+  extraAction,
 }: {
   search: string; onSearch: (v: string) => void;
   quarter: string; onQuarter: (v: string) => void;
@@ -45,6 +46,7 @@ const OutingFiltersBar = ({
   category: string; onCategory: (v: string) => void;
   statusMode: 'archived' | 'status';
   onClear: () => void;
+  extraAction?: React.ReactNode;
 }) => {
   const [open, setOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
@@ -173,6 +175,8 @@ const OutingFiltersBar = ({
         >
           <RotateCcw size={14} /> Clear Filters
         </button>
+
+        {extraAction && <div className="ml-auto">{extraAction}</div>}
       </div>
 
       {activeChips.length > 0 && (
@@ -352,6 +356,48 @@ const Outing: React.FC = () => {
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [rejectOutingId, setRejectOutingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+
+  // Manual mail: preview & send (proposal update / 2-week reminder / quarterly approval digest).
+  // All three mail types are editable before send — To/CC/Subject/Body.
+  const [mailModal, setMailModal] = useState<{
+    open: boolean;
+    kind: 'update' | 'reminder' | 'quarterly' | 'single-approval' | null;
+    outingId: string | null;
+    to: string; cc: string; subject: string; body: string;
+    loading: boolean; sending: boolean; error: string;
+  }>({ open: false, kind: null, outingId: null, to: '', cc: '', subject: '', body: '', loading: false, sending: false, error: '' });
+
+  const openMailModal = async (kind: 'update' | 'reminder' | 'quarterly' | 'single-approval', outingId?: string) => {
+    setMailModal({ open: true, kind, outingId: outingId || null, to: '', cc: '', subject: '', body: '', loading: true, sending: false, error: '' });
+    try {
+      const url = kind === 'quarterly'
+        ? `${API_URL}/outing/mail/quarterly-approval/preview`
+        : `${API_URL}/outing/${outingId}/mail/${kind}/preview`;
+      const res = await axios.get(url);
+      const d = res.data.data;
+      setMailModal(prev => ({ ...prev, loading: false, to: d.to || '', cc: d.cc || '', subject: d.subject || '', body: d.body || '' }));
+    } catch (err: any) {
+      setMailModal(prev => ({ ...prev, loading: false, error: err.response?.data?.error || err.message }));
+    }
+  };
+
+  const closeMailModal = () => setMailModal({ open: false, kind: null, outingId: null, to: '', cc: '', subject: '', body: '', loading: false, sending: false, error: '' });
+
+  const sendMailModal = async () => {
+    if (!mailModal.kind) return;
+    if (!mailModal.to.trim()) { setMailModal(prev => ({ ...prev, error: 'Recipient (To) is required' })); return; }
+    setMailModal(prev => ({ ...prev, sending: true, error: '' }));
+    try {
+      const url = mailModal.kind === 'quarterly'
+        ? `${API_URL}/outing/mail/quarterly-approval/send`
+        : `${API_URL}/outing/${mailModal.outingId}/mail/${mailModal.kind}/send`;
+      await axios.post(url, { to: mailModal.to, cc: mailModal.cc, subject: mailModal.subject, body: mailModal.body });
+      alert('Email sent successfully!');
+      closeMailModal();
+    } catch (err: any) {
+      setMailModal(prev => ({ ...prev, sending: false, error: err.response?.data?.error || err.message }));
+    }
+  };
 
   // Management: Suggest New Outing
   const [isSuggestModalOpen, setIsSuggestModalOpen] = useState(false);
@@ -899,6 +945,10 @@ const Outing: React.FC = () => {
                             </button>
                           )}
                           <button onClick={() => handleArchive(o._id!)} className="p-1.5 bg-amber-50 text-amber-600 hover:bg-amber-600 hover:text-white rounded-md transition" title="Archive"><Archive size={16} /></button>
+                          <button onClick={() => openMailModal('update', o._id!)} className="p-1.5 bg-emerald-50 text-[#7a8b2e] hover:bg-[#7a8b2e] hover:text-white rounded-md transition" title="Send Update Mail"><Mail size={16} /></button>
+                          {o.status === 'Scheduled' && (
+                            <button onClick={() => openMailModal('reminder', o._id!)} className="p-1.5 bg-sky-50 text-sky-600 hover:bg-sky-600 hover:text-white rounded-md transition" title="Send Reminder Mail"><Send size={16} /></button>
+                          )}
                           <button onClick={() => openDetails(o)} className="p-1.5 bg-purple-50 text-purple-600 hover:bg-purple-600 hover:text-white rounded-md transition" title="View Details & Feedbacks">
                             <Eye size={16} />
                           </button>
@@ -964,6 +1014,15 @@ const Outing: React.FC = () => {
                 category={categoryFilter} onCategory={(v) => setCategoryFilter(v as '' | 'Internal' | 'External')}
                 statusMode="archived"
                 onClear={() => { setOutingNameFilter(''); setQuarterFilter(''); setFyFilter(''); setArchivedFilter(''); setCategoryFilter(''); }}
+                extraAction={
+                  <button
+                    onClick={() => openMailModal('quarterly')}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#7a8b2e] text-white rounded-lg text-sm font-bold hover:bg-[#5e6c24] transition shadow-sm"
+                    title="Preview & send the quarterly approval request digest to Management"
+                  >
+                    <Mail size={16} /> Send Quarterly Approval Mail
+                  </button>
+                }
               />
 
               {/* Editable Table (HR Control Panel) */}
@@ -984,12 +1043,11 @@ const Outing: React.FC = () => {
                         <th className="p-2 sm:p-4 hidden md:table-cell">Date</th>
                         <th className="p-2 sm:p-4">Priority</th>
                         <th className="p-2 sm:p-4 text-center">Action</th>
-                        <th className="p-2 sm:p-4 hidden lg:table-cell text-center">Remark</th>
                       </tr>
                     </thead>
                     <tbody className="text-xs divide-y divide-gray-100">
                       {filteredOutings.length === 0 ? (
-                        <tr><td colSpan={10} className="p-8 text-center text-gray-500 italic">No outings found</td></tr>
+                        <tr><td colSpan={9} className="p-8 text-center text-gray-500 italic">No outings found</td></tr>
                       ) : (
                         filteredOutings.map((o, i) => {
                           const isEditing = editingId === o._id;
@@ -1043,23 +1101,23 @@ const Outing: React.FC = () => {
                                 }
                               </td>
                               <td className="p-2 sm:p-4 text-center">
-                                <div className="flex justify-center gap-1 sm:gap-3 flex-wrap">
+                                <div className="grid grid-cols-2 gap-1 w-fit mx-auto">
                                   {isEditing ? (
                                     <>
-                                      <button onClick={saveEdit} className="p-1 sm:p-2 bg-green-600 text-white rounded hover:bg-green-700" title="Save"><Save size={12} className="sm:hidden" /><Save size={16} className="hidden sm:block" /></button>
-                                      <button onClick={cancelEditing} className="p-1 sm:p-2 bg-gray-600 text-white rounded hover:bg-gray-700" title="Cancel"><X size={12} className="sm:hidden" /><X size={16} className="hidden sm:block" /></button>
+                                      <button onClick={saveEdit} className="inline-flex items-center justify-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 rounded-full text-[10px] font-semibold hover:bg-green-600 hover:text-white transition"><Save size={11} /> Save</button>
+                                      <button onClick={cancelEditing} className="inline-flex items-center justify-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-[10px] font-semibold hover:bg-gray-600 hover:text-white transition"><X size={11} /> Cancel</button>
                                     </>
                                   ) : (
                                     <>
-                                      <button onClick={() => startEditing(o)} className="p-1 sm:p-2 hover:bg-blue-50 text-blue-600 rounded" title="Edit"><Edit size={12} className="sm:hidden" /><Edit size={16} className="hidden sm:block" /></button>
-                                      {o.status === 'Suggested' && <button onClick={() => startEditing(o)} className="p-1 sm:p-2 bg-indigo-600 text-white rounded hover:bg-indigo-700" title="Schedule"><Calendar size={12} className="sm:hidden" /><Calendar size={16} className="hidden sm:block" /></button>}
-                                      <button onClick={() => handleArchive(o._id!)} className="p-1 sm:p-2 bg-amber-600 text-white rounded hover:bg-amber-700" title="Archive"><Archive size={12} className="sm:hidden" /><Archive size={16} className="hidden sm:block" /></button>
-                                      <button onClick={() => openDetails(o)} className="p-1 sm:p-2 hover:bg-purple-50 text-purple-600 rounded" title="View Details & Feedbacks"><Eye size={12} className="sm:hidden" /><Eye size={16} className="hidden sm:block" /></button>
+                                      <button onClick={() => openDetails(o)} className="inline-flex items-center justify-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[10px] font-semibold hover:bg-blue-600 hover:text-white transition"><Eye size={11} /> View</button>
+                                      <button onClick={() => startEditing(o)} className="inline-flex items-center justify-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full text-[10px] font-semibold hover:bg-amber-600 hover:text-white transition"><Edit size={11} /> Edit</button>
+                                      {o.status === 'Suggested' && <button onClick={() => startEditing(o)} className="inline-flex items-center justify-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-semibold hover:bg-indigo-600 hover:text-white transition"><Calendar size={11} /> Schedule</button>}
+                                      <button onClick={() => openMailModal('single-approval', o._id!)} className="inline-flex items-center justify-center gap-1 px-2 py-0.5 bg-emerald-50 text-[#5e6c24] rounded-full text-[10px] font-semibold hover:bg-[#7a8b2e] hover:text-white transition"><Mail size={11} /> Send Mail</button>
+                                      <button onClick={() => handleArchive(o._id!)} className="inline-flex items-center justify-center gap-1 px-2 py-0.5 bg-red-50 text-red-600 rounded-full text-[10px] font-semibold hover:bg-red-600 hover:text-white transition"><Archive size={11} /> Archive</button>
                                     </>
                                   )}
                                 </div>
                               </td>
-                              <td className="p-2 sm:p-4 hidden lg:table-cell text-center text-gray-400 italic font-medium">{o.remark || '--'}</td>
                             </tr>
                           );
                         })
@@ -1369,6 +1427,62 @@ const Outing: React.FC = () => {
           )}
 
           {/* ─── REJECT MODAL ─── */}
+          {mailModal.open && (
+            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 1300 }} onClick={closeMailModal}>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                <div className="p-4 sm:p-6 border-b flex justify-between items-center bg-emerald-50 rounded-t-2xl shrink-0">
+                  <h3 className="text-lg sm:text-xl font-bold text-[#3d5420]">
+                    {mailModal.kind === 'quarterly' ? 'Quarterly Approval Mail' : mailModal.kind === 'reminder' ? '2-Week Reminder Mail' : mailModal.kind === 'single-approval' ? 'Approval Request Mail' : 'Proposal Update Mail'}
+                  </h3>
+                  <button onClick={closeMailModal} className="p-2 hover:bg-gray-200 rounded-full transition"><X size={20} className="text-gray-600" /></button>
+                </div>
+                <div className="p-4 sm:p-6 space-y-3 overflow-y-auto flex-1 min-h-0">
+                  {mailModal.loading ? (
+                    <p className="text-sm text-gray-500">Loading preview...</p>
+                  ) : (
+                    <>
+                      {mailModal.error && <p className="text-red-600 text-sm font-medium bg-red-50 border border-red-200 rounded-lg p-2">{mailModal.error}</p>}
+                      <div>
+                        <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">To *</label>
+                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" value={mailModal.to} onChange={(e) => setMailModal(prev => ({ ...prev, to: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">CC</label>
+                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" value={mailModal.cc} onChange={(e) => setMailModal(prev => ({ ...prev, cc: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">Subject *</label>
+                        <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" value={mailModal.subject} onChange={(e) => setMailModal(prev => ({ ...prev, subject: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">Body</label>
+                        {/* Rendered as formatted text (not raw HTML tags) — directly editable in place. */}
+                        <div
+                          key={`${mailModal.kind}-${mailModal.outingId}`}
+                          contentEditable
+                          suppressContentEditableWarning
+                          className="w-full border border-gray-200 rounded-lg px-3 py-3 text-sm h-64 overflow-y-auto bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                          dangerouslySetInnerHTML={{ __html: mailModal.body }}
+                          onBlur={(e) => setMailModal(prev => ({ ...prev, body: e.currentTarget.innerHTML }))}
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+                <div className="p-4 sm:p-6 border-t bg-gray-50 flex justify-end gap-3 sm:gap-4 shrink-0 rounded-b-2xl">
+                  <button onClick={closeMailModal} className="px-4 sm:px-6 py-2 sm:py-3 text-gray-700 font-medium hover:bg-gray-200 rounded-xl transition text-sm">Cancel</button>
+                  <button
+                    onClick={sendMailModal}
+                    disabled={mailModal.loading || mailModal.sending || !mailModal.to.trim() || !mailModal.subject.trim()}
+                    className={`flex items-center gap-2 px-4 sm:px-8 py-2 sm:py-3 rounded-xl font-bold transition text-sm ${(!mailModal.loading && !mailModal.sending && mailModal.to.trim() && mailModal.subject.trim()) ? 'bg-[#597e37] text-white hover:bg-[#3d5420]' : 'bg-gray-300 text-white cursor-not-allowed'}`}
+                  >
+                    <Send size={16} /> {mailModal.sending ? 'Sending...' : 'Send'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {isRejectModalOpen && (
             <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-auto">

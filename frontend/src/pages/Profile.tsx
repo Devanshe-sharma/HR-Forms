@@ -26,6 +26,8 @@ import {
   FamilyRestroom as FamilyIcon,
   AccountBalance as BankIcon,
   Flag as CitizenshipIcon,
+  Delete as DeleteIcon,
+  Autorenew as ReplaceIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
@@ -42,6 +44,7 @@ const API_URL = process.env.REACT_APP_API_URL || '/api';
 interface FamilyMember { name: string; occupation: string; }
 
 interface OnboardingDocument {
+  _id?: string;
   docType: string;
   fileName: string;
   driveLink: string;
@@ -341,7 +344,6 @@ const BANK_FIELDS: FieldSpec[] = [
   { key: 'panCard', label: 'PAN Card' },
   { key: 'aadhaarNo', label: 'Aadhaar Card No' },
   { key: 'uanNo', label: 'UAN No' },
-  { key: 'ePassbookLink', label: 'E-Passbook' },
 ];
 
 // One self-contained editable card — its own Edit/Save/Cancel, scoped to just
@@ -351,7 +353,7 @@ const BANK_FIELDS: FieldSpec[] = [
 // `leadingField` renders one always-read-only row above the editable ones
 // (e.g. Official Email — a login identifier, not safe to self-edit) so it
 // doesn't need its own separate, nearly-empty card.
-function EditableSectionCard({ title, icon, fields, profile, employeeId, onSaved, leadingField }: {
+function EditableSectionCard({ title, icon, fields, profile, employeeId, onSaved, leadingField, children }: {
   title: string;
   icon: React.ReactNode;
   fields: FieldSpec[];
@@ -359,6 +361,10 @@ function EditableSectionCard({ title, icon, fields, profile, employeeId, onSaved
   profile: UserProfile | null;
   employeeId?: string;
   onSaved: (patch: Partial<UserProfile>) => void;
+  // Extra, non-field content rendered after the field rows — e.g. a document
+  // upload that belongs with this section but isn't part of the editable
+  // text-field draft/save flow.
+  children?: React.ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Partial<Record<PersonalInfoField, string>>>({});
@@ -463,6 +469,7 @@ function EditableSectionCard({ title, icon, fields, profile, employeeId, onSaved
         <EditableFieldRow key={f.key} label={f.label} value={val(f)} editing={editing} required={f.required} showError={showErrors}
           type={f.type} options={f.options} onChange={v => setField(f.key, v)} />
       ))}
+      {children}
     </SectionCard>
   );
 }
@@ -759,26 +766,64 @@ function MultiDocumentItem({ docType, title, subtitle, docs, employeeId, onUploa
   onUploaded?: (documents: OnboardingDocument[]) => void;
 }) {
   const [uploading, setUploading] = useState(false);
+  // Which row is mid-action — 'add' for the top-level button, or a specific
+  // doc's _id while it's being replaced/deleted — so only that row's button
+  // shows a spinner instead of the whole list looking busy.
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Set just before opening the file picker for a "Replace"; read back inside
+  // handleFile once a file is chosen, since both Add and Replace share the
+  // same hidden <input>.
+  const replaceTargetRef = useRef<string | null>(null);
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = ''; // lets the same filename be re-selected later
+    const replacingId = replaceTargetRef.current;
+    replaceTargetRef.current = null;
     if (!file || !employeeId) return;
     setUploading(true);
+    setBusyId(replacingId || 'add');
     setError(null);
     try {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('docType', docType);
       const res = await axios.post(`${API_URL}/onboarding/${employeeId}/upload-documents`, formData);
-      if (res.data?.success) onUploaded?.(res.data.data || []);
-      else setError('Upload failed.');
+      if (!res.data?.success) { setError('Upload failed.'); return; }
+      let documents = res.data.data || [];
+      if (replacingId) {
+        const delRes = await axios.delete(`${API_URL}/onboarding/${employeeId}/documents/${replacingId}`);
+        if (delRes.data?.success) documents = delRes.data.data;
+      }
+      onUploaded?.(documents);
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Upload failed.');
     } finally {
       setUploading(false);
+      setBusyId(null);
+    }
+  };
+
+  const handleReplace = (docId: string) => {
+    replaceTargetRef.current = docId;
+    inputRef.current?.click();
+  };
+
+  const handleDelete = async (docId: string) => {
+    if (!employeeId) return;
+    if (!window.confirm('Remove this document? This can\'t be undone.')) return;
+    setBusyId(docId);
+    setError(null);
+    try {
+      const res = await axios.delete(`${API_URL}/onboarding/${employeeId}/documents/${docId}`);
+      if (res.data?.success) onUploaded?.(res.data.data || []);
+      else setError('Delete failed.');
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Delete failed.');
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -805,18 +850,35 @@ function MultiDocumentItem({ docType, title, subtitle, docs, employeeId, onUploa
         </Typography>
         {docs.length > 0 && (
           <Stack spacing={0.4} sx={{ mt: 0.8 }}>
-            {docs.map((d, i) => (
-              <Stack key={i} direction="row" alignItems="center" spacing={0.8} sx={{ bgcolor: '#F8F9FB', borderRadius: '6px', px: 1, py: 0.4 }}>
-                <DocumentIcon sx={{ fontSize: 12, color: '#9CA3AF' }} />
-                <Typography fontSize="0.65rem" color="#374151" sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {d.fileName}{formatDateDisplay(d.uploadedAt) ? ` • ${formatDateDisplay(d.uploadedAt)}` : ''}
-                </Typography>
-                <Button component={Link} href={d.driveLink} target="_blank" rel="noopener" size="small"
-                  sx={{ textTransform: 'none', fontSize: '0.62rem', fontWeight: 700, color: '#3F6FE8', minWidth: 0, p: 0 }}>
-                  View
-                </Button>
-              </Stack>
-            ))}
+            {docs.map((d, i) => {
+              const rowBusy = !!d._id && busyId === d._id;
+              return (
+                <Stack key={d._id || i} direction="row" alignItems="center" spacing={0.8} sx={{ bgcolor: '#F8F9FB', borderRadius: '6px', px: 1, py: 0.4 }}>
+                  <DocumentIcon sx={{ fontSize: 12, color: '#9CA3AF' }} />
+                  <Typography fontSize="0.65rem" color="#374151" sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {d.fileName}{formatDateDisplay(d.uploadedAt) ? ` • ${formatDateDisplay(d.uploadedAt)}` : ''}
+                  </Typography>
+                  <Button component={Link} href={d.driveLink} target="_blank" rel="noopener" size="small"
+                    sx={{ textTransform: 'none', fontSize: '0.62rem', fontWeight: 700, color: '#3F6FE8', minWidth: 0, p: 0 }}>
+                    View
+                  </Button>
+                  {d._id && employeeId && (
+                    <>
+                      <Button size="small" disabled={rowBusy || uploading} onClick={() => handleReplace(d._id!)}
+                        startIcon={rowBusy && busyId === d._id && uploading ? <CircularProgress size={9} color="inherit" /> : <ReplaceIcon sx={{ fontSize: 12 }} />}
+                        sx={{ textTransform: 'none', fontSize: '0.62rem', fontWeight: 700, color: '#6B7280', minWidth: 0, p: 0 }}>
+                        Replace
+                      </Button>
+                      <Button size="small" disabled={rowBusy} onClick={() => handleDelete(d._id!)}
+                        startIcon={rowBusy && !uploading ? <CircularProgress size={9} color="inherit" /> : <DeleteIcon sx={{ fontSize: 12 }} />}
+                        sx={{ textTransform: 'none', fontSize: '0.62rem', fontWeight: 700, color: '#DC2626', minWidth: 0, p: 0 }}>
+                        Delete
+                      </Button>
+                    </>
+                  )}
+                </Stack>
+              );
+            })}
           </Stack>
         )}
       </Box>
@@ -824,10 +886,10 @@ function MultiDocumentItem({ docType, title, subtitle, docs, employeeId, onUploa
         <Box sx={{ ml: 1, flexShrink: 0 }}>
           <input ref={inputRef} type="file" hidden accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" onChange={handleFile} />
           <Button
-            size="small" variant="text" disabled={uploading} onClick={() => inputRef.current?.click()}
-            startIcon={uploading ? <CircularProgress size={10} color="inherit" /> : <AddIcon sx={{ fontSize: 12 }} />}
+            size="small" variant="text" disabled={uploading} onClick={() => { replaceTargetRef.current = null; inputRef.current?.click(); }}
+            startIcon={uploading && busyId === 'add' ? <CircularProgress size={10} color="inherit" /> : <AddIcon sx={{ fontSize: 12 }} />}
             sx={{ textTransform: 'none', fontSize: '0.64rem', fontWeight: 700, color: '#3F6FE8', minWidth: 0 }}>
-            {uploading ? 'Uploading…' : 'Add'}
+            {uploading && busyId === 'add' ? 'Uploading…' : 'Add'}
           </Button>
         </Box>
       )}
@@ -1006,6 +1068,7 @@ const REQUIRED_DOC_TYPES = [
   { key: 'graduationMarksheet', label: 'Graduation Marksheet' },
   { key: 'aadhaarCard', label: 'Aadhaar Card' },
   { key: 'panCard', label: 'PAN Card' },
+  { key: 'bankPassbook', label: 'Passbook/Cancelled Cheque' },
 ];
 
 function profileCompletionFields(profile: UserProfile | null) {
@@ -1429,7 +1492,7 @@ export default function Profile() {
                     <List disablePadding sx={{ mx: -3, mb: -2.5 }}>
                       <DocumentItem docType="resume" title="Resume" subtitle="Your latest resume/CV" requiredTag="Required" requiredTagColor="#E53E3E"
                         doc={latestDocFor(userProfile?.documents, 'resume')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
-                      <DocumentItem docType="personalPhoto" title="Personal Photograph" subtitle="Passport-size photo" requiredTag="Required" requiredTagColor="#E53E3E"
+                      <DocumentItem docType="personalPhoto" title="Passport size Photograph" subtitle="Passport-size photo" requiredTag="Required" requiredTagColor="#E53E3E"
                         doc={latestDocFor(userProfile?.documents, 'personalPhoto')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
                       <DocumentItem docType="tenthMarksheet" title="10th Marksheet" subtitle="Class X board certificate" requiredTag="Required" requiredTagColor="#E53E3E"
                         doc={latestDocFor(userProfile?.documents, 'tenthMarksheet')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
@@ -1476,7 +1539,17 @@ export default function Profile() {
                     title="Bank Details" icon={<BankIcon sx={{ fontSize: 17 }} />}
                     fields={BANK_FIELDS}
                     profile={userProfile} employeeId={userProfile?._id} onSaved={handlePersonalInfoSaved}
-                  />
+                  >
+                    {!userProfile?._id && (
+                      <Alert severity="info" sx={{ mt: 1.5, fontSize: '0.7rem' }}>
+                        No onboarding record is linked to this account yet — uploads can't be saved until one exists.
+                      </Alert>
+                    )}
+                    <List disablePadding sx={{ mx: -3, mt: 1, mb: -2.5 }}>
+                      <DocumentItem docType="bankPassbook" title="Passbook/Cancelled Cheque" subtitle="Passbook first page or a cancelled cheque leaf, for bank account verification" requiredTag="Required" requiredTagColor="#E53E3E"
+                        doc={latestDocFor(userProfile?.documents, 'bankPassbook')} employeeId={userProfile?._id} onUploaded={handleDocumentsUploaded} />
+                    </List>
+                  </EditableSectionCard>
                 </Box>
               </Box>
             </TabPanel>

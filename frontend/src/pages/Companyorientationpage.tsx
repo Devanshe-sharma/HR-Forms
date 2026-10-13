@@ -28,7 +28,6 @@ import {
   CreditCard as ECardIcon,
   AssignmentReturn as ClaimIcon,
   ContactPhone as ContactIcon,
-  Domain as DomainIcon,
   Save as SaveIcon,
   Link as LinkIcon,
   Delete as DeleteIcon,
@@ -1267,24 +1266,6 @@ const CompanyOrientationPage: React.FC = () => {
       <div className="lg:pl-64">
         <Navbar />
         <main style={{ padding: '24px', paddingTop: '88px' }}>
-
-          {/* Hero header */}
-          <Box sx={{ mb: 4, p: 3.5, borderRadius: '20px', background: 'linear-gradient(135deg, #597e37 0%, #3d5420 100%)', color: '#faf0e6', position: 'relative' }}>
-            <Box sx={{ position: 'absolute', top: -30, right: -30, width: 160, height: 160, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.06)' }} />
-            <Box sx={{ position: 'absolute', bottom: -40, right: 80, width: 100, height: 100, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.04)' }} />
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, position: 'relative', zIndex: 1 }}>
-              <Box sx={{ width: 52, height: 52, borderRadius: '14px', bgcolor: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <DomainIcon sx={{ fontSize: 28 }} />
-              </Box>
-              <Box flex={1}>
-                <Typography fontWeight={800} fontSize="1.5rem" lineHeight={1.2}>Company Orientation</Typography>
-                {/* <Typography fontSize="0.85rem" sx={{ opacity: 0.75, mt: 0.3 }}>All resources, policies and guides in one place</Typography> */}
-              </Box>
-              <Stack direction="row" spacing={1.5} alignItems="center">
-                {loading && <CircularProgress size={18} sx={{ color: 'rgba(255,255,255,0.7)' }} />}
-              </Stack>
-            </Box>
-          </Box>
 
           {/* Stats row */}
           <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2, mb: 3 }}>

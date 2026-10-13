@@ -106,9 +106,10 @@ const TRAINING_TABS = [
 
   { label: 'HR',                  value: 'HR' },
 
-  { label: 'Manager Evaluation',  value: 'manager' },
+  // Manager Evaluation & Skill Gap tabs removed from nav per request (2026-10-13) — keep commented, not deleted.
+  // { label: 'Manager Evaluation',  value: 'manager' },
 
-  { label: 'Skill Gap',           value: 'skillgap' },
+  // { label: 'Skill Gap',           value: 'skillgap' },
 
   { label: 'Management', value: 'management' },
 

@@ -8,8 +8,9 @@ import CapabilityManagement from '../components/training/CapabilityManagement';
 import TrainingTopicManagement from '../components/training/TrainingTopicManagement';
 import TrainingApproval from '../components/training/TrainingApproval';
 import FinalTrainingScheduling from '../components/training/FinalTrainingScheduling';
-import ManagerEvaluation from '../components/training/Managerevaluation';
-import SkillGapReport from '../components/training/Skillgapreport';
+// Manager Evaluation & Skill Gap tabs removed per request (2026-10-13) — keep commented, not deleted.
+// import ManagerEvaluation from '../components/training/Managerevaluation';
+// import SkillGapReport from '../components/training/Skillgapreport';
 import EmployeeAssessment from '../components/training/Employeeassessment';
 import EmployeeFeedback from '../components/training/Employeefeedback';
 import TrainingDelivery from '../components/training/Trainingdelivery';
@@ -56,20 +57,22 @@ export default function TrainingPageImpl() {
         );
 
       // ── Manager Evaluation ────────────────────────────────────────────
-      case 'manager':
-        return (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-            <ManagerEvaluation />
-          </div>
-        );
+      // Removed from the tab bar per request (2026-10-13) — keep commented, not deleted.
+      // case 'manager':
+      //   return (
+      //     <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      //       <ManagerEvaluation />
+      //     </div>
+      //   );
 
       // ── Skill Gap Report ──────────────────────────────────────────────
-      case 'skillgap':
-        return (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-            <SkillGapReport />
-          </div>
-        );
+      // Removed from the tab bar per request (2026-10-13) — keep commented, not deleted.
+      // case 'skillgap':
+      //   return (
+      //     <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      //       <SkillGapReport />
+      //     </div>
+      //   );
 
       // ── Management Approval ───────────────────────────────────────────
       case 'management':

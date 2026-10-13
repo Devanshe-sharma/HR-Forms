@@ -87,7 +87,8 @@ function startEmailScheduler() {
   //   }
   // }, { timezone: tz });
 
-  // 6-7. ALL Outing mail jobs are PAUSED, per explicit request (2026-09-14).
+  // 6-7. ALL Outing mail cron jobs are PAUSED again, per explicit request
+  // (2026-10-13) — re-paused shortly after being re-enabled the same day.
   // Re-enable by uncommenting.
   //
   // // 6. Quarterly Outing/Event approval request

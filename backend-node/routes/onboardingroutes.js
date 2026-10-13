@@ -2938,6 +2938,37 @@ router.post('/:id/upload-documents', authenticate, uploadOnboardingDoc, async (r
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// DELETE /api/onboarding/:id/documents/:docId — Self-service removal of a
+// single uploaded document entry (Profile page). Only removes this record's
+// own reference; the file itself is left on Drive. Used both for a plain
+// delete and, from the frontend, as the second half of "Replace" (upload the
+// new file first, then delete the old entry).
+// ─────────────────────────────────────────────────────────────────────────────
+router.delete('/:id/documents/:docId', authenticate, async (req, res) => {
+  try {
+    const doc = await Onboarding.findById(req.params.id);
+    if (!doc) {
+      return res.status(404).json({ success: false, message: 'Onboarding record not found' });
+    }
+    if (!ownsOnboardingRecord(req.user, doc)) {
+      return res.status(403).json({ success: false, message: 'You can only manage documents for your own profile' });
+    }
+
+    const entry = doc.documents.id(req.params.docId);
+    if (!entry) {
+      return res.status(404).json({ success: false, message: 'Document not found' });
+    }
+    entry.deleteOne();
+
+    await doc.save();
+    return res.json({ success: true, data: doc.documents });
+  } catch (err) {
+    console.error('Error deleting onboarding document:', err);
+    return res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/onboarding/:id/upload-signature — Self-service digital signature
 // upload from the Profile page. Single image file, replaces any previous
 // signature (unlike upload-documents above, which appends). Shares the same

@@ -3,7 +3,9 @@ const express = require('express');
 const router = express.Router();
 const Outing = require('../models/Outing');
 const sendEmail = require('../emails/sendEmail'); // your email utility
-const { sendOutingProposalUpdateEmail } = require('../emails/emailOutingProposalUpdate'); // optional update email
+const { sendOutingProposalUpdateEmail, buildOutingProposalUpdateMail } = require('../emails/emailOutingProposalUpdate');
+const { buildQuarterlyOutingApprovalMail, buildSingleOutingApprovalMail } = require('../emails/emailQuarterlyOutingApproval');
+const { buildUpcomingOutingReminderMail } = require('../emails/emailUpcomingOutingReminder');
 
 // 1. CREATE new outing proposal (HR or Management)
 router.post('/', async (req, res) => {
@@ -113,16 +115,15 @@ router.patch('/:id', async (req, res) => {
     const statusChanged = req.body.status && req.body.status !== oldOuting.status;
     const hasRemarkOrReason = req.body.remark || req.body.reason;
 
-    // All outing mail is PAUSED per explicit request (2026-09-14).
+    // Automatic update email disabled 2026-10-13 ("do not send any mail" —
+    // all outing mail is now manual-only via /:id/mail/update/send etc.).
     // if (statusChanged || hasRemarkOrReason) {
     //   try {
     //     await sendOutingProposalUpdateEmail(updated._id);
-    //     console.log(`Update email sent to HR for outing: ${updated.topic} (status changed or remark added)`);
+    //     console.log(`Update email sent for outing: ${updated.topic} (status changed or remark added)`);
     //   } catch (emailErr) {
     //     console.error('Failed to send update email:', emailErr);
     //   }
-    // } else {
-    //   console.log(`Minor update (no status/remark/reason change) on outing ${updated._id} → skipping email`);
     // }
 
     res.json({ success: true, data: updated });
@@ -189,19 +190,103 @@ router.post('/suggest', async (req, res) => {
   }
 });
 
-router.patch('/:id', async (req, res) => {
+// 8. Manual mail preview & send — proposal update (per outing)
+router.get('/:id/mail/update/preview', async (req, res) => {
   try {
-    const updated = await Outing.findByIdAndUpdate(
-      req.params.id,
-      { $set: req.body },
-      { new: true, runValidators: true }
-    );
-
-    if (!updated) return res.status(404).json({ success: false, error: 'Outing not found' });
-
-    res.json({ success: true, data: updated });
+    const mail = await buildOutingProposalUpdateMail(req.params.id);
+    res.json({ success: true, data: mail });
   } catch (err) {
-    console.error('Patch error:', err);
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/:id/mail/update/send', async (req, res) => {
+  try {
+    const { to, cc, subject, body } = req.body;
+    if (!to?.trim()) return res.status(400).json({ success: false, error: 'Recipient (To) is required' });
+    if (!subject?.trim()) return res.status(400).json({ success: false, error: 'Subject is required' });
+
+    const result = await sendEmail({ to, cc: cc || undefined, subject, html: body });
+    if (!result.success) return res.status(500).json({ success: false, error: result.error || 'Send failed' });
+
+    res.json({ success: true, data: result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// 8b. Manual mail preview & send — single-outing approval request (per outing)
+router.get('/:id/mail/single-approval/preview', async (req, res) => {
+  try {
+    const mail = await buildSingleOutingApprovalMail(req.params.id);
+    res.json({ success: true, data: mail });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/:id/mail/single-approval/send', async (req, res) => {
+  try {
+    const { to, cc, subject, body } = req.body;
+    if (!to?.trim()) return res.status(400).json({ success: false, error: 'Recipient (To) is required' });
+    if (!subject?.trim()) return res.status(400).json({ success: false, error: 'Subject is required' });
+
+    const result = await sendEmail({ to, cc: cc || undefined, subject, html: body });
+    if (!result.success) return res.status(500).json({ success: false, error: result.error || 'Send failed' });
+
+    res.json({ success: true, data: result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// 9. Manual mail preview & send — 2-week reminder (per outing)
+router.get('/:id/mail/reminder/preview', async (req, res) => {
+  try {
+    const mail = await buildUpcomingOutingReminderMail(req.params.id);
+    res.json({ success: true, data: mail });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/:id/mail/reminder/send', async (req, res) => {
+  try {
+    const { to, cc, subject, body } = req.body;
+    if (!to?.trim()) return res.status(400).json({ success: false, error: 'Recipient (To) is required' });
+    if (!subject?.trim()) return res.status(400).json({ success: false, error: 'Subject is required' });
+
+    const result = await sendEmail({ to, cc: cc || undefined, subject, html: body });
+    if (!result.success) return res.status(500).json({ success: false, error: result.error || 'Send failed' });
+
+    await Outing.updateOne({ _id: req.params.id }, { $set: { reminder2WeeksSent: true } });
+    res.json({ success: true, data: result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// 10. Manual mail preview & send — quarterly approval digest (page-level, not per outing)
+router.get('/mail/quarterly-approval/preview', async (req, res) => {
+  try {
+    const mail = await buildQuarterlyOutingApprovalMail();
+    res.json({ success: true, data: mail });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/mail/quarterly-approval/send', async (req, res) => {
+  try {
+    const { to, cc, subject, body } = req.body;
+    if (!to?.trim()) return res.status(400).json({ success: false, error: 'Recipient (To) is required' });
+    if (!subject?.trim()) return res.status(400).json({ success: false, error: 'Subject is required' });
+
+    const result = await sendEmail({ to, cc: cc || undefined, subject, html: body });
+    if (!result.success) return res.status(500).json({ success: false, error: result.error || 'Send failed' });
+
+    res.json({ success: true, data: result });
+  } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
 });
