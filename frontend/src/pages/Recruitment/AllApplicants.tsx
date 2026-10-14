@@ -1075,7 +1075,7 @@ const CandidatesTab: React.FC = () => {
           initialTab={initialTab}
         />
       )}
-
+      
       <div>
           {/* <div className="flex justify-between items-center mb-4 gap-4">
             <h1 className="text-2xl font-bold text-gray-800">Recruitment Tracker</h1>
