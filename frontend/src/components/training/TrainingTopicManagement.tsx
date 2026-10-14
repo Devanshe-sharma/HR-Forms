@@ -223,8 +223,20 @@ export default function TrainingTopicManagement() {
 
   const loadEmployees = async () => {
     try {
-      const res = await api.get('/employees?lightweight=true');
-      if (res.data?.success) setEmployees(res.data.data || []);
+      // The separate Employee collection (/employees) is a sync'd copy that
+      // can lag behind — it keeps people who've since left and misses
+      // people who just joined. Onboarding is the live source of truth for
+      // who's currently employed (same one EmployeesPage.tsx uses), so the
+      // trainer picker reads from there instead.
+      const res = await api.get('/onboarding/employee-master');
+      const current = (res.data?.data?.employees || []).filter((e: any) => e.is_current);
+      setEmployees(current.map((e: any) => ({
+        name: e.full_name || '',
+        dept: e.department || '',
+        desig: e.designation || '',
+        email: e.employee_id || e._id,
+        score: 0,
+      })));
     } catch (err: any) {
       console.error('Failed to load employees:', err);
     }

@@ -9,6 +9,9 @@ const ApplicantRecord    = require('../models/ApplicantRecord');
 const { uploadResumeToDrive } = require('../utils/googleDrive');
 const { triggerReferralSubmitted } = require('../emails');
 const { authenticate } = require('../middleware/authenticate');
+const { sendMail } = require('../emails/mailer');
+
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://hr.briskolive.com';
 
 function escapeRegex(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -99,6 +102,46 @@ router.post('/', authenticate, uploadResume.single('resume'), async (req, res) =
     }
     console.error('Referral submission error:', err);
     res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/referrals/send-link
+// HR-triggered — emails an employee the referral link for a specific,
+// HR-chosen open requisition. The designation is never left blank: it's
+// always whatever requisition HR picked, shown read-only on the referral
+// page itself (ReferCandidate.tsx) once the employee opens the link and
+// logs in to submit.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/send-link', async (req, res) => {
+  try {
+    const { requisitionId, referrerName, referrerEmail } = req.body;
+    if (!requisitionId) return res.status(400).json({ success: false, message: 'A requisition must be selected.' });
+    if (!referrerEmail || !String(referrerEmail).trim()) {
+      return res.status(400).json({ success: false, message: 'Referrer email is required.' });
+    }
+
+    const requisition = await HiringRequisition.findById(requisitionId).lean();
+    if (!requisition) return res.status(404).json({ success: false, message: 'Requisition not found.' });
+    if (requisition.fmsStatus !== 'Open') {
+      return res.status(400).json({ success: false, message: 'This requisition is not open — pick an open one to refer for.' });
+    }
+
+    const link = `${FRONTEND_URL}/refer/${requisition._id}`;
+
+    await sendMail({
+      to: referrerEmail,
+      subject: `Refer a Candidate — ${requisition.designation}`,
+      html: `<p>Dear ${referrerName || 'Team Member'},</p>
+        <p>You've been invited to refer a candidate for the <strong>${requisition.designation}</strong> position (${requisition.hiring_dept}).</p>
+        <p><a href="${link}">${link}</a></p>
+        <p>You'll need to log in to submit the referral.</p>`,
+    });
+
+    res.json({ success: true, data: { link } });
+  } catch (err) {
+    console.error('[referrals/send-link] error:', err);
+    res.status(500).json({ success: false, message: 'Failed to send the referral link.' });
   }
 });
 

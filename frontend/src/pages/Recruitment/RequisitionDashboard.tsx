@@ -61,11 +61,99 @@ const STATUS_CHIP: Record<string, string> = {
 type CardFilter = 'all' | 'open' | 'closed' | 'overdue';
 
 // Lets HR send a candidate the application form link directly — independent
-// of whether a matching requisition is currently open. Designation is a
-// free-text hint only (not tied to any requisition record); leaving it
-// blank sends a general application link that CandidateApplication.tsx
-// renders as "General Application" and still accepts a full submission for.
-function SendApplicationLinkForm({ onClose }: { onClose: () => void }) {
+// of whether a matching requisition is currently open. Designation is
+// chosen from a dropdown (every designation seen across requisitions, open
+// or not) rather than left to free text or silently omitted — "General
+// Application" is its own explicit choice, not just "leave this blank".
+// Lets HR invite an employee to refer a candidate for a specific, chosen
+// open requisition — the designation is never blank here, since the
+// referral page itself (ReferCandidate.tsx) is always keyed to the
+// requisition the employee picks, shown read-only once they open the link.
+function SendReferralLinkForm({ onClose, openRequisitions }: { onClose: () => void; openRequisitions: Requisition[] }) {
+  const [requisitionId, setRequisitionId] = useState('');
+  const [referrerName, setReferrerName] = useState('');
+  const [referrerEmail, setReferrerEmail] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSend = async () => {
+    if (!requisitionId) { setError('Please select a requisition.'); return; }
+    if (!referrerEmail.trim()) { setError('Referrer email is required.'); return; }
+    setSending(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/referrals/send-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requisitionId, referrerName, referrerEmail }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to send the referral link');
+      alert(`Referral link sent to ${referrerEmail}.`);
+      onClose();
+    } catch (e: any) {
+      setError(e.message || 'Failed to send the referral link');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="p-5 space-y-3">
+      <p className="text-xs text-gray-500">
+        Choose which open requisition the referral is for — the link always carries that
+        designation, the employee can't submit it for anything else.
+      </p>
+      {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-2">{error}</p>}
+      <div>
+        <label className="block text-xs font-semibold text-gray-600 mb-1">Requisition *</label>
+        <select
+          value={requisitionId} onChange={(e) => setRequisitionId(e.target.value)}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#597e37] bg-white"
+        >
+          <option value="">Select an open requisition...</option>
+          {openRequisitions.map((r) => (
+            <option key={r._id} value={r._id}>{r.designation} — {r.hiring_dept}</option>
+          ))}
+        </select>
+        {openRequisitions.length === 0 && (
+          <p className="text-xs text-amber-600 mt-1">No open requisitions right now.</p>
+        )}
+      </div>
+      <div>
+        <label className="block text-xs font-semibold text-gray-600 mb-1">Referrer Name</label>
+        <input
+          value={referrerName} onChange={(e) => setReferrerName(e.target.value)}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#597e37]"
+          placeholder="e.g. Priya Nair"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-semibold text-gray-600 mb-1">Referrer Email *</label>
+        <input
+          type="email" value={referrerEmail} onChange={(e) => setReferrerEmail(e.target.value)}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#597e37]"
+          placeholder="employee@briskolive.com"
+        />
+      </div>
+      <div className="flex justify-end gap-3 pt-2">
+        <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 font-medium hover:bg-gray-100 rounded-lg transition">
+          Cancel
+        </button>
+        <button
+          onClick={handleSend}
+          disabled={sending || !requisitionId || !referrerEmail.trim()}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-[#597e37] hover:bg-[#3d5420] disabled:opacity-50 rounded-lg transition"
+        >
+          {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+          {sending ? 'Sending...' : 'Send Link'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SendApplicationLinkForm({ onClose, designationOptions }: { onClose: () => void; designationOptions: string[] }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [designation, setDesignation] = useState('');
@@ -96,8 +184,8 @@ function SendApplicationLinkForm({ onClose }: { onClose: () => void }) {
   return (
     <div className="p-5 space-y-3">
       <p className="text-xs text-gray-500">
-        Sends the candidate a link to fill out the application form. Leave the role blank to send a
-        general application — useful when no matching requisition is open yet.
+        Sends the candidate a link to fill out the application form. Choose "General Application"
+        if no matching requisition is open yet.
       </p>
       {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-2">{error}</p>}
       <div>
@@ -117,12 +205,14 @@ function SendApplicationLinkForm({ onClose }: { onClose: () => void }) {
         />
       </div>
       <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">Role (optional)</label>
-        <input
+        <label className="block text-xs font-semibold text-gray-600 mb-1">Role *</label>
+        <select
           value={designation} onChange={(e) => setDesignation(e.target.value)}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#597e37]"
-          placeholder="Leave blank for a general application"
-        />
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#597e37] bg-white"
+        >
+          <option value="">General Application (no specific role)</option>
+          {designationOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
       </div>
       <div className="flex justify-end gap-3 pt-2">
         <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 font-medium hover:bg-gray-100 rounded-lg transition">
@@ -243,8 +333,14 @@ export default function RequisitionDashboard() {
   const activeFilterCount = (filterStatus ? 1 : 0) + (cardFilter !== 'all' ? 1 : 0);
 
   const [sendLinkOpen, setSendLinkOpen] = useState(false);
+  const [sendReferralOpen, setSendReferralOpen] = useState(false);
+  const designationOptions = useMemo(
+    () => Array.from(new Set(rows.map((r) => r.designation).filter(Boolean))).sort(),
+    [rows]
+  );
+  const openRequisitions = useMemo(() => rows.filter((r) => r.fmsStatus === 'Open'), [rows]);
 
-  const anyModalOpen = newModalOpen || viewModalOpen || updateModalOpen || sendLinkOpen;
+  const anyModalOpen = newModalOpen || viewModalOpen || updateModalOpen || sendLinkOpen || sendReferralOpen;
 
   // Pulled out so both the flat and grouped-by table bodies can reuse the
   // same row markup.
@@ -370,6 +466,14 @@ export default function RequisitionDashboard() {
                 >
                   <Send size={16} />
                   Send Application Link
+                </button>
+                <button
+                  onClick={() => setSendReferralOpen(true)}
+                  title="Invite an employee to refer a candidate for a chosen open requisition"
+                  className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-md hover:bg-gray-100 transition"
+                >
+                  <Share2 size={16} />
+                  Send Referral Link
                 </button>
                 <button
                   onClick={openNew}
@@ -563,7 +667,16 @@ export default function RequisitionDashboard() {
         title="Send Application Link"
         maxWidth="max-w-md"
       >
-        <SendApplicationLinkForm onClose={() => setSendLinkOpen(false)} />
+        <SendApplicationLinkForm onClose={() => setSendLinkOpen(false)} designationOptions={designationOptions} />
+      </Modal>
+
+      <Modal
+        open={sendReferralOpen}
+        onClose={() => setSendReferralOpen(false)}
+        title="Send Referral Link"
+        maxWidth="max-w-md"
+      >
+        <SendReferralLinkForm onClose={() => setSendReferralOpen(false)} openRequisitions={openRequisitions} />
       </Modal>
     </>
   );
