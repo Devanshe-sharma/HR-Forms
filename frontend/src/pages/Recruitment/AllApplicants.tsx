@@ -1077,12 +1077,12 @@ const CandidatesTab: React.FC = () => {
       )}
 
       <div>
-          <div className="flex justify-between items-center mb-4 gap-4">
+          {/* <div className="flex justify-between items-center mb-4 gap-4">
             <h1 className="text-2xl font-bold text-gray-800">Recruitment Tracker</h1>
             <span className="bg-blue-600 text-white px-3 py-1 rounded-full text-sm whitespace-nowrap">
               {sortedRecords.length} of {records.length} Applicants
             </span>
-          </div>
+          </div> */}
 
           <div className="flex flex-wrap items-end gap-3 mb-4 p-3 bg-white border border-gray-200 rounded-lg">
             <ExternalLink className="w-4 h-4 text-gray-400 mb-2.5" />

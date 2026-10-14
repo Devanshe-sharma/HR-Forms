@@ -107,6 +107,13 @@ export default function RequisitionDashboard() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  const counts = useMemo(() => ({
+    total:   rows.length,
+    open:    rows.filter(r => r.fmsStatus === 'Open').length,
+    closed:  rows.filter(r => r.fmsStatus === 'Closed').length,
+    overdue: rows.filter(r => r.fmsStatus !== 'Closed' && (r.tasks_overdue ?? 0) > 0).length,
+  }), [rows]);
+
   const filteredRows = useMemo(() => {
     return rows.filter(r => {
       if (cardFilter === 'open'    && r.fmsStatus !== 'Open')  return false;
@@ -282,6 +289,29 @@ export default function RequisitionDashboard() {
                 <button onClick={() => setError(null)} className="ml-4 text-red-500 hover:text-red-700">✕</button>
               </div>
             )}
+
+            {/* Stat / Filter Cards — monochrome, clicking one filters the table below */}
+            <div className="flex gap-3 mb-5 flex-wrap">
+              {([
+                { key: 'all' as CardFilter,     label: 'Total Requisitions', value: counts.total },
+                { key: 'open' as CardFilter,     label: 'Open',               value: counts.open },
+                { key: 'closed' as CardFilter,   label: 'Closed',             value: counts.closed },
+                { key: 'overdue' as CardFilter,  label: 'Overdue Tasks',      value: counts.overdue },
+              ]).map(c => (
+                <button
+                  key={c.key}
+                  onClick={() => setCardFilter(c.key)}
+                  className="flex-1 min-w-[150px] text-left p-3.5 rounded-lg border bg-white transition"
+                  style={{
+                    borderColor: cardFilter === c.key ? '#0f172a' : '#e2e8f0',
+                    borderWidth: cardFilter === c.key ? 2 : 1,
+                  }}
+                >
+                  <p className="text-2xl font-bold leading-none text-gray-900">{c.value}</p>
+                  <p className="text-xs text-gray-500 mt-1">{c.label}</p>
+                </button>
+              ))}
+            </div>
 
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-5 p-2.5 rounded-xl border border-gray-200 bg-gray-50 flex-wrap">
               <div className="relative flex-[2] min-w-[180px]">

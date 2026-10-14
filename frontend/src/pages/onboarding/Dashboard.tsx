@@ -12,6 +12,7 @@ import {
 } from "@mui/material";
 import {
   AddCircle, Search, Edit, Refresh,
+  PeopleAlt, AssignmentTurnedIn, PendingActions, Warning,
   Close, Visibility, CalendarToday, Person, Email, Phone,
   Business, WorkOutline, AccountBalance, RateReview,
 } from "@mui/icons-material";
@@ -184,6 +185,9 @@ const OnboardingDashboard: React.FC = () => {
     r.joiningStatus === "Joined" && !isExited(r);
 
   const total       = rows.length;
+  const open        = rows.filter(r => r.fmsStatus === "Open").length;
+  const closed      = rows.filter(r => r.fmsStatus === "Closed").length;
+  const overdue     = rows.filter(r => r.fmsStatus === "Open" && (r.fmsScore ?? 0) < 0).length;
   const exitedCount = rows.filter(isExited).length;
   const currentCount = rows.filter(isCurrent).length;
 
@@ -516,6 +520,28 @@ const OnboardingDashboard: React.FC = () => {
                 New Onboarding
               </Button>
             </Box>
+          </Box>
+
+          {/* Stats — monochrome, display only (not clickable filters) */}
+          <Box sx={{ display: "flex", gap: 1.5, mb: 2.5, flexWrap: "wrap" }}>
+            {[
+              { label: "Total",             value: total,        Icon: PeopleAlt },
+              { label: "Current Employees", value: currentCount, Icon: PeopleAlt },
+              { label: "Exited",            value: exitedCount,  Icon: Warning },
+              { label: "Open",              value: open,         Icon: PendingActions },
+              { label: "Completed",         value: closed,       Icon: AssignmentTurnedIn },
+              { label: "Overdue",           value: overdue,      Icon: Warning },
+            ].map(({ label, value, Icon }) => (
+              <Box key={label} sx={{ flex: "1 1 110px", bgcolor: "#fff",
+                border: "1px solid #e2e8f0", borderRadius: "10px",
+                p: "10px 14px", display: "flex", alignItems: "center", gap: 1 }}>
+                <Icon sx={{ color: "#0f172a", fontSize: 18 }} />
+                <Box>
+                  <Typography fontWeight={800} fontSize="1.1rem" sx={{ color: "#0f172a", lineHeight: 1 }}>{value}</Typography>
+                  <Typography fontSize="0.62rem" color="#64748b">{label}</Typography>
+                </Box>
+              </Box>
+            ))}
           </Box>
 
           {/* ── Filters / Group By / Favorites — Odoo-style toolbar ── */}
