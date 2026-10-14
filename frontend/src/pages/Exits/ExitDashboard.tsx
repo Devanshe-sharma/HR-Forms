@@ -12,7 +12,6 @@ import {
 } from "@mui/material";
 import {
   AddCircle, Search, Edit, Refresh,
-  PeopleAlt, PendingActions, AssignmentTurnedIn, Warning,
   Close, Visibility,
 } from "@mui/icons-material";
 
@@ -153,9 +152,6 @@ const ExitDashboard: React.FC = () => {
   const isNotExitingStatus = (r: ExitRow) => r.exitStatus === "Not Exiting" || r.exitStatus === "Exit Cancelled";
 
   const total          = rows.length;
-  const open           = rows.filter(r => r.fmsStatus === "Open").length;
-  const closed          = rows.filter(r => r.fmsStatus === "Closed").length;
-  const overdue         = rows.filter(r => r.fmsStatus === "Open" && (r.tasksOverdue ?? 0) > 0).length;
   const exitedCount     = rows.filter(isExitedStatus).length;
   const servingNoticeCount = rows.filter(isServingNotice).length;
   const notExitingCount = rows.filter(isNotExitingStatus).length;
@@ -471,29 +467,6 @@ const ExitDashboard: React.FC = () => {
                 New Exit
               </Button>
             </Box>
-          </Box>
-
-          {/* Stats */}
-          <Box sx={{ display: "flex", gap: 1.5, mb: 2.5, flexWrap: "wrap" }}>
-            {[
-              { label: "Total",          value: total,             color: "#dc2626", bg: "#fef2f2", Icon: PeopleAlt },
-              { label: "Exited",         value: exitedCount,       color: "#b91c1c", bg: "#fef2f2", Icon: PeopleAlt },
-              { label: "Serving Notice", value: servingNoticeCount, color: "#d97706", bg: "#fffbeb", Icon: PendingActions },
-              { label: "Not Exiting",    value: notExitingCount,   color: "#64748b", bg: "#f8fafc", Icon: PeopleAlt },
-              { label: "Open",           value: open,              color: "#d97706", bg: "#fffbeb", Icon: PendingActions },
-              { label: "Completed",      value: closed,            color: "#15803d", bg: "#f0fdf4", Icon: AssignmentTurnedIn },
-              { label: "Overdue",        value: overdue,           color: "#b91c1c", bg: "#fef2f2", Icon: Warning },
-            ].map(({ label, value, color, bg, Icon }) => (
-              <Box key={label} sx={{ flex: "1 1 110px", bgcolor: bg,
-                border: `1px solid ${color}25`, borderRadius: "10px",
-                p: "10px 14px", display: "flex", alignItems: "center", gap: 1 }}>
-                <Icon sx={{ color, fontSize: 18 }} />
-                <Box>
-                  <Typography fontWeight={800} fontSize="1.1rem" sx={{ color, lineHeight: 1 }}>{value}</Typography>
-                  <Typography fontSize="0.62rem" color="#64748b">{label}</Typography>
-                </Box>
-              </Box>
-            ))}
           </Box>
 
           {/* ── Filters / Group By / Favorites — Odoo-style toolbar ── */}

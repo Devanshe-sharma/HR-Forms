@@ -950,7 +950,13 @@ function ProfileAvatarUpload({ fullName, profilePicture, employeeId, onUploaded 
         size="small"
         disabled={uploading || !employeeId}
         onClick={() => inputRef.current?.click()}
-        title="Upload profile picture"
+        title={
+          !employeeId
+            ? 'No onboarding record is linked to this account yet — uploads can\'t be saved until one exists.'
+            : uploading
+              ? 'Uploading... this can take up to 20-30 seconds (Google Drive upload)'
+              : 'Upload profile picture'
+        }
         sx={{
           position: 'absolute', bottom: 0, right: 0, width: 30, height: 30,
           bgcolor: '#4A6427', color: '#fff', border: '2px solid rgba(255,255,255,0.9)',
@@ -959,6 +965,16 @@ function ProfileAvatarUpload({ fullName, profilePicture, employeeId, onUploaded 
       >
         {uploading ? <CircularProgress size={14} color="inherit" /> : <CameraIcon sx={{ fontSize: 15 }} />}
       </IconButton>
+      {uploading && (
+        <Typography
+          sx={{
+            position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+            mt: 0.5, fontSize: '0.65rem', color: 'rgba(0,0,0,0.6)', whiteSpace: 'nowrap',
+          }}
+        >
+          Uploading...
+        </Typography>
+      )}
     </Box>
   );
 }

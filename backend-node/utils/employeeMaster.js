@@ -11,7 +11,7 @@ const EXITED_STATUS_VALUES = new Set(['Left', 'Already Left']);
 async function getEmployeeMasterList() {
   const docs = await Onboarding.find(
     {},
-    'name gender empId dept designation officialEmail persEmail mobile joiningStatus exitStatus joinedDate reportingHead employeeCategory managementLevel'
+    'name gender empId dept designation officialEmail persEmail mobile joiningStatus exitStatus joinedDate reportingHead employeeCategory managementLevel profilePicture'
   ).lean();
 
   return docs.map((d) => {
@@ -35,6 +35,7 @@ async function getEmployeeMasterList() {
       exit_status: d.exitStatus || '',
       is_current: isCurrent,
       is_exited: isExited,
+      profile_picture_drive_id: d.profilePicture?.driveFileId || null,
     };
   });
 }

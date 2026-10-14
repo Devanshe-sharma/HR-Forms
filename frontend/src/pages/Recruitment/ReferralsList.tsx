@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Mail, Phone, ExternalLink, Search } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Mail, Phone, ExternalLink, Search, Share2 } from 'lucide-react';
 import { FiltersMenuButton, FavoritesMenuButton } from '../../components/FilterBar';
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
@@ -31,12 +31,35 @@ type Referral = {
   createdAt: string;
 };
 
+type OpenRequisition = { _id: string; designation: string; hiring_dept: string };
+
 export default function ReferralsTab() {
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [loading, setLoading]     = useState(true);
   const [search, setSearch]       = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  // For the "open the referral form" picker — the form is always keyed to
+  // one specific open requisition, so there's no single static link; HR
+  // picks the role, then gets straight to that role's form, no email step.
+  const [openRequisitions, setOpenRequisitions] = useState<OpenRequisition[]>([]);
+  const [formRequisitionId, setFormRequisitionId] = useState('');
+
+  useEffect(() => {
+    fetch(`${API_BASE}/hiringrequisitions`)
+      .then((r) => r.json())
+      .then((res) => {
+        const rows = Array.isArray(res?.data) ? res.data : [];
+        setOpenRequisitions(rows.filter((r: any) => r.fmsStatus === 'Open'));
+      })
+      .catch(() => setOpenRequisitions([]));
+  }, []);
+
+  const referralFormUrl = useMemo(
+    () => (formRequisitionId ? `/refer/${formRequisitionId}` : ''),
+    [formRequisitionId]
+  );
 
   const load = () => {
     setLoading(true);
@@ -76,6 +99,40 @@ export default function ReferralsTab() {
   return (
     <div>
           <h1 className="text-2xl font-bold text-gray-800 mb-4">Employee Referrals</h1>
+
+          <div className="flex flex-wrap items-end gap-3 mb-4 p-3 bg-white border rounded-lg">
+            <Share2 className="w-4 h-4 text-gray-400 mb-2.5" />
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Referral Form</label>
+              <select
+                value={formRequisitionId}
+                onChange={(e) => setFormRequisitionId(e.target.value)}
+                className="border rounded-lg text-sm px-3 py-2 w-72"
+              >
+                <option value="">Select an open role...</option>
+                {openRequisitions.map((r) => (
+                  <option key={r._id} value={r._id}>{r.designation} — {r.hiring_dept}</option>
+                ))}
+              </select>
+              {openRequisitions.length === 0 && (
+                <p className="text-xs text-amber-600 mt-1">No open requisitions right now.</p>
+              )}
+            </div>
+            <a
+              href={referralFormUrl || undefined}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-disabled={!referralFormUrl}
+              className={`flex items-center gap-1.5 px-3 py-2 border text-sm font-medium rounded-md transition ${
+                referralFormUrl
+                  ? 'border-gray-200 text-gray-600 hover:bg-gray-100'
+                  : 'border-gray-100 text-gray-300 pointer-events-none'
+              }`}
+            >
+              <ExternalLink className="w-4 h-4" />
+              Open Form
+            </a>
+          </div>
 
           <div className="flex flex-wrap gap-3 mb-4">
             <div className="relative">

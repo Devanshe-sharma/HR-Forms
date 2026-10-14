@@ -58,6 +58,14 @@ interface EmployeeEntry {
   // Populated separately from /salary-revisions/pip-status, only for
   // Admin/HR/Management (see PIP_VISIBLE_ROLES) — absent for everyone else.
   pipStatus?: 'ongoing' | 'previous' | null;
+  // Self-service DP uploaded from the Profile page (see onboardingModel.js's
+  // profilePicture field) — null until the employee has uploaded one.
+  profile_picture_drive_id?: string | null;
+}
+
+// Same Drive-thumbnail pattern as Profile.tsx's buildSignatureThumbnailUrl.
+function buildProfilePictureUrl(driveFileId: string) {
+  return `https://drive.google.com/thumbnail?id=${driveFileId}&sz=w160`;
 }
 
 type DateMode = 'all' | 'quarter' | 'year' | 'custom';
@@ -585,7 +593,10 @@ const EmployeeDetailDialog: React.FC<{
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth
       PaperProps={{ sx: { borderRadius: 3, height: 640, maxHeight: '85vh', display: 'flex', flexDirection: 'column' } }}>
       <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1.5 }}>
-        <Avatar sx={{ width: 44, height: 44, bgcolor: bg, color: fg, fontWeight: 700 }}>
+        <Avatar
+          src={employee.profile_picture_drive_id ? buildProfilePictureUrl(employee.profile_picture_drive_id) : undefined}
+          sx={{ width: 44, height: 44, bgcolor: bg, color: fg, fontWeight: 700 }}
+        >
           {initials(employee.full_name)}
         </Avatar>
         <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -1087,13 +1098,16 @@ const EmployeesPage: React.FC = () => {
     }}>
       <CardContent sx={{ p: 2.5, '&:last-child': { pb: 2.5 } }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.75 }}>
-          <Avatar sx={{
-            width: 48, height: 48, flexShrink: 0,
-            bgcolor: isLight ? '#F1F5F9' : 'rgba(255,255,255,0.08)',
-            color: isLight ? '#475569' : '#CBD5E1',
-            fontSize: '1rem', fontWeight: 700,
-            border: `2px solid ${border}`,
-          }}>
+          <Avatar
+            src={emp.profile_picture_drive_id ? buildProfilePictureUrl(emp.profile_picture_drive_id) : undefined}
+            sx={{
+              width: 48, height: 48, flexShrink: 0,
+              bgcolor: isLight ? '#F1F5F9' : 'rgba(255,255,255,0.08)',
+              color: isLight ? '#475569' : '#CBD5E1',
+              fontSize: '1rem', fontWeight: 700,
+              border: `2px solid ${border}`,
+            }}
+          >
             {initials(emp.full_name)}
           </Avatar>
           <Box sx={{ minWidth: 0, flex: 1 }}>
@@ -1182,11 +1196,14 @@ const EmployeesPage: React.FC = () => {
         }}>
         <TableCell sx={{ py: 1 }}>
           <Stack direction="row" alignItems="center" spacing={1.25}>
-            <Avatar sx={{
-              width: 34, height: 34, flexShrink: 0, fontSize: '0.72rem', fontWeight: 700,
-              bgcolor: isLight ? '#F1F5F9' : 'rgba(255,255,255,0.08)',
-              color: isLight ? '#475569' : '#CBD5E1',
-            }}>
+            <Avatar
+              src={emp.profile_picture_drive_id ? buildProfilePictureUrl(emp.profile_picture_drive_id) : undefined}
+              sx={{
+                width: 34, height: 34, flexShrink: 0, fontSize: '0.72rem', fontWeight: 700,
+                bgcolor: isLight ? '#F1F5F9' : 'rgba(255,255,255,0.08)',
+                color: isLight ? '#475569' : '#CBD5E1',
+              }}
+            >
               {initials(emp.full_name)}
             </Avatar>
             <Box sx={{ minWidth: 0 }}>

@@ -852,6 +852,11 @@ const CandidatesTab: React.FC = () => {
   // job_id -> hiring_dept — department isn't stored on the candidate record
   // itself, only on the Hiring Requisition it applied against.
   const [deptByJobId, setDeptByJobId] = useState<Map<number, string>>(new Map());
+  // For the "open the application form" picker below — every requisition
+  // (not just open ones, unlike the referral picker), so HR can hand a
+  // candidate a pre-filled link for any role, or a general application.
+  const [allRequisitions, setAllRequisitions] = useState<{ serial_no: number; designation: string; hiring_dept: string }[]>([]);
+  const [formJobChoice, setFormJobChoice] = useState('');
 
   useEffect(() => {
     fetch(`${API_BASE}/applicant-records`)
@@ -876,9 +881,17 @@ const CandidatesTab: React.FC = () => {
         const m = new Map<number, string>();
         (res.data || []).forEach((req: any) => { if (req.serial_no != null && req.hiring_dept) m.set(req.serial_no, req.hiring_dept); });
         setDeptByJobId(m);
+        setAllRequisitions((res.data || []).map((req: any) => ({ serial_no: req.serial_no, designation: req.designation, hiring_dept: req.hiring_dept })));
       })
       .catch(() => {});
   }, []);
+
+  const candidateFormUrl = useMemo(() => {
+    if (!formJobChoice) return '/candidate-application';
+    const req = allRequisitions.find((r) => String(r.serial_no) === formJobChoice);
+    if (!req) return '/candidate-application';
+    return `/candidate-application?job_id=${req.serial_no}&designation=${encodeURIComponent(req.designation)}`;
+  }, [formJobChoice, allRequisitions]);
 
   const handleUpdate = (updated: ApplicantRecordWithAI) => {
     setRecords((prev) => prev.map((r) => r._id === updated._id ? updated : r));
@@ -1064,11 +1077,37 @@ const CandidatesTab: React.FC = () => {
       )}
 
       <div>
-          <div className="flex justify-between items-center mb-6">
+          <div className="flex justify-between items-center mb-4 gap-4">
             <h1 className="text-2xl font-bold text-gray-800">Recruitment Tracker</h1>
-            <span className="bg-blue-600 text-white px-3 py-1 rounded-full text-sm">
+            <span className="bg-blue-600 text-white px-3 py-1 rounded-full text-sm whitespace-nowrap">
               {sortedRecords.length} of {records.length} Applicants
             </span>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-3 mb-4 p-3 bg-white border border-gray-200 rounded-lg">
+            <ExternalLink className="w-4 h-4 text-gray-400 mb-2.5" />
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Candidate Application Form</label>
+              <select
+                value={formJobChoice}
+                onChange={(e) => setFormJobChoice(e.target.value)}
+                className="border border-gray-200 rounded-lg text-sm px-3 py-2 w-72"
+              >
+                <option value="">General Application (no specific role)</option>
+                {allRequisitions.map((r) => (
+                  <option key={r.serial_no} value={String(r.serial_no)}>{r.designation} — {r.hiring_dept}</option>
+                ))}
+              </select>
+            </div>
+            <a
+              href={candidateFormUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-md hover:bg-gray-100 transition"
+            >
+              <ExternalLink className="w-4 h-4" />
+              Open Form
+            </a>
           </div>
 
           {!loading && records.length > 0 && (
