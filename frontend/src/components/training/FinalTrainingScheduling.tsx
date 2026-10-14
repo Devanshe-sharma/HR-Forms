@@ -102,9 +102,9 @@ export default function FinalTrainingScheduling() {
   const [editingSchedule, setEditingSchedule] = useState<TrainingSchedule | null>(null);
   const [viewingSchedule, setViewingSchedule] = useState<TrainingSchedule | null>(null);
 
-  const canCreate = can('trainingSchedule', 'create');
-  const canEdit   = can('trainingSchedule', 'update');
-  const canDelete = can('trainingSchedule', 'delete');
+  const canCreate = can('trainingSchedule', 'create') || can('training', 'create');
+  const canEdit   = can('trainingSchedule', 'update') || can('training', 'update');
+  const canDelete = can('trainingSchedule', 'delete') || can('training', 'delete');
 
   // ── Loaders ─────────────────────────────────────────────────────────────────
 

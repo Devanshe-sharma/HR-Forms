@@ -19,7 +19,7 @@ router.get('/:id', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment',
 }));
 
 // POST create training schedule
-router.post('/', requireRole(['Admin', 'HR']), asyncHandler(async (req, res) => {
+router.post('/', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
   const {
     trainingId, trainingName, capabilityArea, capabilitySkill, trainerName,
     type, trainingDate, startTime, endTime, venue, onlineLink,
@@ -61,7 +61,7 @@ router.post('/', requireRole(['Admin', 'HR']), asyncHandler(async (req, res) => 
 }));
 
 // PATCH update training schedule
-router.patch('/:id', requireRole(['Admin', 'HR']), asyncHandler(async (req, res) => {
+router.patch('/:id', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
   const updates = req.body || {};
   const allowed = ['trainingName', 'capabilityArea', 'capabilitySkill', 'trainerName', 'type',
     'trainingDate', 'startTime', 'endTime', 'venue', 'onlineLink', 'targetAudience',
@@ -74,14 +74,14 @@ router.patch('/:id', requireRole(['Admin', 'HR']), asyncHandler(async (req, res)
 }));
 
 // DELETE training schedule
-router.delete('/:id', requireRole(['Admin', 'HR']), asyncHandler(async (req, res) => {
+router.delete('/:id', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
   const deleted = await TrainingSchedule.findByIdAndDelete(req.params.id);
   if (!deleted) return res.status(404).json({ success: false, error: 'Training schedule not found' });
   res.json({ success: true });
 }));
 
 // PATCH update status
-router.patch('/:id/status', requireRole(['Admin', 'HR']), asyncHandler(async (req, res) => {
+router.patch('/:id/status', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
   const { status } = req.body || {};
   const valid = ['Scheduled', 'Rescheduled', 'Cancelled', 'Completed'];
   if (!status || !valid.includes(status)) return res.status(400).json({ success: false, error: 'Invalid status' });
