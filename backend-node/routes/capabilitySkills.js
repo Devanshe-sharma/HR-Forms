@@ -6,7 +6,7 @@ const CapabilitySkill = require('../models/CapabilitySkill');
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 // GET all capability skills
-router.get('/', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
+router.get('/', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Manager', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
   const { capabilityId } = req.query;
   const filter = capabilityId ? { capabilityId } : {};
   const skills = await CapabilitySkill.find(filter).sort({ createdAt: -1 });
@@ -14,14 +14,14 @@ router.get('/', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'T
 }));
 
 // GET single capability skill
-router.get('/:id', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
+router.get('/:id', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Manager', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
   const skill = await CapabilitySkill.findById(req.params.id);
   if (!skill) return res.status(404).json({ success: false, error: 'Capability skill not found' });
   res.json({ success: true, data: skill });
 }));
 
 // POST create capability skill
-router.post('/', requireRole(['Admin', 'HR']), asyncHandler(async (req, res) => {
+router.post('/', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Manager', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
   const { capabilityId, capabilitySkill, isGeneric, capabilityArea, createdBy } = req.body || {};
 
   if (!capabilityId) {
@@ -43,7 +43,7 @@ router.post('/', requireRole(['Admin', 'HR']), asyncHandler(async (req, res) => 
 }));
 
 // PATCH update capability skill
-router.patch('/:id', requireRole(['Admin', 'HR']), asyncHandler(async (req, res) => {
+router.patch('/:id', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Manager', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
   const { capabilityId, capabilitySkill, isGeneric, capabilityArea } = req.body || {};
   const updates = {
     ...(capabilityId && { capabilityId: String(capabilityId) }),
@@ -58,7 +58,7 @@ router.patch('/:id', requireRole(['Admin', 'HR']), asyncHandler(async (req, res)
 }));
 
 // DELETE capability skill
-router.delete('/:id', requireRole(['Admin', 'HR']), asyncHandler(async (req, res) => {
+router.delete('/:id', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Manager', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
   const deleted = await CapabilitySkill.findByIdAndDelete(req.params.id);
   if (!deleted) return res.status(404).json({ success: false, error: 'Capability skill not found' });
   res.json({ success: true });
