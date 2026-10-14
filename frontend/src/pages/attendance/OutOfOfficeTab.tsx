@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box, Typography, Chip, CircularProgress, Alert, Modal, Divider, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, Autocomplete, Stack, IconButton, Select, MenuItem, FormControl, InputLabel,
 } from '@mui/material';
@@ -11,7 +11,7 @@ import {
 import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { Employee, API, EMP_API, ACCENT, TH, TD, ELLIPSIS, fmtDate, fmtTime24, fmtDateTime24, fmtDayMonth, Toast, DetailRow } from './shared';
-import { FiltersMenuButton, FavoritesMenuButton } from '../../components/FilterBar';
+import { FiltersMenuButton, FavoritesMenuButton, GroupByMenuButton, SearchWithChips } from '../../components/FilterBar';
 
 interface CcEmployee { employeeId: string; name: string; email: string }
 
@@ -139,6 +139,7 @@ function OutOfOfficeDashboard({ records, employees, loading, onAdd }: {
   const [filterDept, setFilterDept] = useState('All');
   const [filterEmployee, setFilterEmployee] = useState('All');
   const [filterStatus, setFilterStatus] = useState<'All' | OutOfOfficeRecord['informedStatus']>('All');
+  const [groupByField, setGroupByField] = useState<string | null>(null);
 
   // OutOfOfficeRecord.person only carries name/email/employeeId — department
   // comes from joining against the Employee list fetched by the parent tab.
@@ -182,6 +183,21 @@ function OutOfOfficeDashboard({ records, employees, loading, onAdd }: {
     });
   }, [records, search, dateFrom, dateTo, filterDept, filterEmployee, filterStatus, deptByEmployeeId]);
 
+  const groupByOptions = [
+    { key: 'department', label: 'Department' },
+    { key: 'status', label: 'Informed Status' },
+  ];
+  const groupedRecords = useMemo(() => {
+    if (!groupByField) return null;
+    const groups = new Map<string, OutOfOfficeRecord[]>();
+    filteredRecords.forEach(r => {
+      const key = groupByField === 'department' ? (departmentOf(r) || '(none)') : informedShortLabel(r.informedStatus);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(r);
+    });
+    return Array.from(groups.entries()).sort((a, b) => b[1].length - a[1].length);
+  }, [filteredRecords, groupByField, deptByEmployeeId]);
+
   const hasActiveFilters = !!(search || dateFrom || dateTo || filterDept !== 'All' || filterEmployee !== 'All' || filterStatus !== 'All');
   const resetFilters = () => {
     setSearch(''); setDateFrom(''); setDateTo(''); setFilterDept('All'); setFilterEmployee('All'); setFilterStatus('All');
@@ -201,13 +217,18 @@ function OutOfOfficeDashboard({ records, employees, loading, onAdd }: {
       </Box>
 
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2, flexWrap: 'wrap' }}>
-        <TextField
-          size="small"
-          placeholder="Search name, email, reason…"
+        <SearchWithChips
           value={search}
-          onChange={e => setSearch(e.target.value)}
-          InputProps={{ startAdornment: <SearchIcon sx={{ fontSize: 18, color: 'text.secondary', mr: 0.75 }} /> }}
+          onChange={setSearch}
+          placeholder="Search name, email, reason…"
           sx={{ minWidth: 240, bgcolor: 'white' }}
+          chips={[
+            ...(dateFrom ? [{ key: 'from', label: `From: ${dateFrom}`, onRemove: () => setDateFrom('') }] : []),
+            ...(dateTo ? [{ key: 'to', label: `To: ${dateTo}`, onRemove: () => setDateTo('') }] : []),
+            ...(filterDept !== 'All' ? [{ key: 'dept', label: `Department: ${filterDept}`, onRemove: () => setFilterDept('All') }] : []),
+            ...(filterEmployee !== 'All' ? [{ key: 'emp', label: `Employee: ${filterEmployee}`, onRemove: () => setFilterEmployee('All') }] : []),
+            ...(filterStatus !== 'All' ? [{ key: 'status', label: `Status: ${filterStatus === 'advance' ? 'On time' : filterStatus === 'late_before_start' ? 'Late (<24h)' : 'Late (after start)'}`, onRemove: () => setFilterStatus('All') }] : []),
+          ]}
         />
         <FiltersMenuButton activeCount={
           (dateFrom ? 1 : 0) + (dateTo ? 1 : 0) +
@@ -258,6 +279,8 @@ function OutOfOfficeDashboard({ records, employees, loading, onAdd }: {
           </FormControl>
         </FiltersMenuButton>
 
+        <GroupByMenuButton options={groupByOptions} value={groupByField} onChange={setGroupByField} />
+
         <FavoritesMenuButton
           storageKey="filters:out-of-office"
           currentState={{ search, dateFrom, dateTo, filterDept, filterEmployee, filterStatus }}
@@ -270,7 +293,7 @@ function OutOfOfficeDashboard({ records, employees, loading, onAdd }: {
         {hasActiveFilters && (
           <Button size="small" startIcon={<RestartAltIcon />} onClick={resetFilters}
             sx={{ textTransform: 'none', fontWeight: 600, color: 'text.secondary' }}>
-            Reset
+            Clear Filters
           </Button>
         )}
       </Box>
@@ -295,7 +318,8 @@ function OutOfOfficeDashboard({ records, employees, loading, onAdd }: {
                     {records.length === 0 ? 'No out-of-office records logged yet' : 'No records match the current filters'}
                   </TableCell></TableRow>
                 )}
-                {filteredRecords.map(r => (
+                {(() => {
+                  const renderRow = (r: OutOfOfficeRecord) => (
                   <TableRow key={r._id} onClick={() => setSelected(r)}
                     sx={{ cursor: 'pointer', '&:hover': { bgcolor: '#f8fafc' }, borderBottom: '1px solid #f1f5f9' }}>
                     <TableCell sx={TD}>{fmtDateTime24(r.createdAt)}</TableCell>
@@ -317,7 +341,22 @@ function OutOfOfficeDashboard({ records, employees, loading, onAdd }: {
                       <Typography fontSize={12}>{r.ccEmployees?.length || '—'}</Typography>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+
+                  if (groupedRecords) {
+                    return groupedRecords.map(([groupLabel, rows]) => (
+                      <React.Fragment key={groupLabel}>
+                        <TableRow>
+                          <TableCell colSpan={6} sx={{ bgcolor: '#f8fafc', fontSize: 11.5, fontWeight: 700, color: '#475569', py: 0.75 }}>
+                            {groupLabel} ({rows.length})
+                          </TableCell>
+                        </TableRow>
+                        {rows.map(renderRow)}
+                      </React.Fragment>
+                    ));
+                  }
+                  return filteredRecords.map(renderRow);
+                })()}
               </TableBody>
             </Table>
           </TableContainer>

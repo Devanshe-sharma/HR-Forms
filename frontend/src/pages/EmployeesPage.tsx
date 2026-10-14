@@ -26,13 +26,14 @@ import {
   DownloadOutlined as DownloadIcon,
   Close as CloseIcon,
   WarningAmberOutlined as PipIcon,
+  RestartAlt as RestartAltIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
 import { hasAnyRole } from '../config/rbac';
-import { FiltersMenuButton, GroupByMenuButton, FavoritesMenuButton, GroupByOption } from '../components/FilterBar';
+import { FiltersMenuButton, GroupByMenuButton, FavoritesMenuButton, GroupByOption, SearchWithChips } from '../components/FilterBar';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -1309,28 +1310,17 @@ const EmployeesPage: React.FC = () => {
             backgroundColor: isLight ? '#F8FAFC' : 'rgba(255,255,255,0.02)',
           }}>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} flexWrap="wrap" useFlexGap>
-              <TextField
-                size="small"
-                placeholder="Search name, designation, email…"
+              <SearchWithChips
                 value={search}
-                onChange={e => setSearch(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon sx={{ fontSize: 15, color: 'text.secondary' }} />
-                    </InputAdornment>
-                  ),
-                }}
-                sx={{
-                  flex: '1 1 220px', minWidth: 180,
-                  '& .MuiOutlinedInput-root': {
-                    borderRadius: '8px', fontSize: '0.78rem',
-                    backgroundColor: theme.palette.background.paper,
-                    '& fieldset': { borderColor: border },
-                    '&:hover fieldset': { borderColor: theme.palette.primary.main },
-                  },
-                  '& .MuiInputBase-input': { py: '6.5px' },
-                }}
+                onChange={setSearch}
+                placeholder="Search name, designation, email…"
+                sx={{ flex: '1 1 220px', minWidth: 180, borderColor: border }}
+                chips={[
+                  ...(filterDept ? [{ key: 'dept', label: `Department: ${filterDept}`, onRemove: () => setFilterDept('') }] : []),
+                  ...(filterDesig ? [{ key: 'desig', label: `Designation: ${filterDesig}`, onRemove: () => setFilterDesig('') }] : []),
+                  ...(filterManager ? [{ key: 'manager', label: `Manager: ${filterManager}`, onRemove: () => setFilterManager('') }] : []),
+                  ...(dateMode !== 'all' ? [{ key: 'date', label: `Joining Date: ${dateModeOptions.find(o => o.key === dateMode)?.label || dateMode}`, onRemove: () => { setDateMode('all'); setCustomFrom(''); setCustomTo(''); } }] : []),
+                ]}
               />
 
               <FiltersMenuButton activeCount={activeFilterCount}>
@@ -1414,13 +1404,13 @@ const EmployeesPage: React.FC = () => {
                   </Typography>
                 </Box>
                 {hasFilters && (
-                  <Button variant="outlined" size="small" onClick={clearAll} sx={{
+                  <Button variant="outlined" size="small" startIcon={<RestartAltIcon sx={{ fontSize: 14 }} />} onClick={clearAll} sx={{
                     fontSize: '0.71rem', px: 1.2, py: '3px', minWidth: 'unset',
                     borderColor: isLight ? '#CBD5E1' : 'rgba(255,255,255,0.2)',
                     color: 'text.secondary', borderRadius: '6px',
                     '&:hover': { borderColor: 'error.main', color: 'error.main', bgcolor: 'transparent' },
                   }}>
-                    Clear
+                    Clear Filters
                   </Button>
                 )}
 

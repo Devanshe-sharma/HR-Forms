@@ -31,11 +31,57 @@ const CandidateInformationTab = ({
   const [jdError,   setJdError]   = useState<string | null>(null);
   const [loadingJd, setLoadingJd] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
-  const [sendingAssessment, setSendingAssessment] = useState<'excel' | 'disc' | null>(null);
-  const [marks, setMarks] = useState<boolean[]>([]);
+  const [practicalMarks, setPracticalMarks] = useState<Record<number, boolean>>({});
   const [grading, setGrading] = useState(false);
 
-  useEffect(() => { setMarks(record.excelTest?.marks?.length ? record.excelTest.marks : (record.excelTest?.answers || []).map(() => true)); }, [record.excelTest]);
+  // Mail preview/send modal — shared by the Excel Test and DISC Assessment
+  // "Send" buttons. Editable To/CC/Subject/Body before anything actually
+  // goes out, same pattern as the interview round invite mail.
+  const [mailModal, setMailModal] = useState<{
+    open: boolean; kind: 'excel' | 'disc' | null;
+    to: string; cc: string; subject: string; body: string;
+    loading: boolean; sending: boolean; error: string;
+  }>({ open: false, kind: null, to: '', cc: '', subject: '', body: '', loading: false, sending: false, error: '' });
+
+  useEffect(() => {
+    const init: Record<number, boolean> = {};
+    (record.excelTest?.answers || []).filter(a => a.type === 'practical').forEach(a => { init[a.qNo] = a.marks === 1; });
+    setPracticalMarks(init);
+  }, [record.excelTest]);
+
+  const openMailModal = async (kind: 'excel' | 'disc') => {
+    setMailModal({ open: true, kind, to: '', cc: '', subject: '', body: '', loading: true, sending: false, error: '' });
+    try {
+      const res = await fetch(`${API_BASE}/applicant-records/${record._id}/assessments/${kind}/preview-mail`);
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to load preview');
+      setMailModal(prev => ({ ...prev, loading: false, to: json.data.to || '', cc: json.data.cc || '', subject: json.data.subject || '', body: json.data.body || '' }));
+    } catch (e: any) {
+      setMailModal(prev => ({ ...prev, loading: false, error: e.message || 'Failed to load preview' }));
+    }
+  };
+
+  const closeMailModal = () => setMailModal({ open: false, kind: null, to: '', cc: '', subject: '', body: '', loading: false, sending: false, error: '' });
+
+  const sendMailModal = async () => {
+    if (!mailModal.kind) return;
+    if (!mailModal.to.trim()) { setMailModal(prev => ({ ...prev, error: 'Recipient (To) is required' })); return; }
+    setMailModal(prev => ({ ...prev, sending: true, error: '' }));
+    try {
+      const res = await fetch(`${API_BASE}/applicant-records/${record._id}/assessments/${mailModal.kind}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: mailModal.to, cc: mailModal.cc, subject: mailModal.subject, customBody: mailModal.body }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to send');
+      onSave(json.data);
+      toast.success(`${mailModal.kind === 'excel' ? 'Excel Test' : 'DISC Assessment'} sent`);
+      closeMailModal();
+    } catch (e: any) {
+      setMailModal(prev => ({ ...prev, sending: false, error: e.message || 'Failed to send' }));
+    }
+  };
 
   useEffect(() => {
     setLoadingJd(true);
@@ -51,28 +97,13 @@ const CandidateInformationTab = ({
       .finally(() => setLoadingJd(false));
   }, [record._id]);
 
-  const sendAssessment = async (kind: 'excel' | 'disc') => {
-    setSendingAssessment(kind);
-    try {
-      const res = await fetch(`${API_BASE}/applicant-records/${record._id}/assessments/${kind}/send`, { method: 'POST' });
-      const json = await res.json();
-      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to send assessment');
-      onSave(json.data);
-      toast.success(`${kind === 'excel' ? 'Excel Test' : 'DISC Assessment'} sent`);
-    } catch (e: any) {
-      toast.error(e.message || 'Failed to send assessment');
-    } finally {
-      setSendingAssessment(null);
-    }
-  };
-
   const gradeExcel = async () => {
     setGrading(true);
     try {
       const res = await fetch(`${API_BASE}/applicant-records/${record._id}/assessments/excel/grade`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ marks }),
+        body: JSON.stringify({ practicalMarks }),
       });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.message || 'Failed to grade test');
@@ -258,26 +289,37 @@ const CandidateInformationTab = ({
             </div>
             {!record.excelTest?.status && (
               <button
-                onClick={() => sendAssessment('excel')}
-                disabled={sendingAssessment === 'excel' || !record.email}
+                onClick={() => openMailModal('excel')}
+                disabled={!record.email}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-50 rounded-lg transition"
               >
-                {sendingAssessment === 'excel' ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                <Send size={13} />
                 Send Test
               </button>
             )}
             {(record.excelTest?.status === 'Submitted' || record.excelTest?.status === 'Graded') && (
               <div className="space-y-2">
-                {(record.excelTest.answers || []).map((a, i) => (
-                  <div key={i} className="bg-white border border-gray-100 rounded-lg p-2.5">
-                    <p className="text-xs font-semibold text-gray-600 mb-1">{a.question}</p>
-                    <p className="text-sm text-gray-800 mb-2">{a.answer || '—'}</p>
+                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">MCQ — auto-graded ({record.excelTest.mcqScore ?? 0}/20)</p>
+                {(record.excelTest.answers || []).filter(a => a.type === 'mcq').map((a) => (
+                  <div key={a.qNo} className={`border rounded-lg p-2.5 ${a.isCorrect ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                    <p className="text-xs font-semibold text-gray-600 mb-1">Q{a.qNo}. {a.question}</p>
+                    <p className="text-sm text-gray-800">
+                      Selected: <span className="font-bold">{a.selectedOption || '—'}</span>{' '}
+                      {a.isCorrect ? <span className="text-green-700 font-semibold">✓ Correct</span> : <span className="text-red-700 font-semibold">✗ Incorrect</span>}
+                    </p>
+                  </div>
+                ))}
+                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mt-3">Practical — for HR to check &amp; mark</p>
+                {(record.excelTest.answers || []).filter(a => a.type === 'practical').map((a) => (
+                  <div key={a.qNo} className="bg-white border border-gray-100 rounded-lg p-2.5">
+                    <p className="text-xs font-semibold text-gray-600 mb-1">Q{a.qNo}. {a.question}</p>
+                    <p className="text-sm text-gray-800 mb-2 whitespace-pre-wrap font-mono">{a.answer || '—'}</p>
                     <label className="inline-flex items-center gap-1.5 text-xs text-gray-600">
                       <input
                         type="checkbox"
-                        checked={!!marks[i]}
+                        checked={!!practicalMarks[a.qNo]}
                         disabled={record.excelTest?.status === 'Graded'}
-                        onChange={(e) => setMarks((p) => p.map((m, idx) => idx === i ? e.target.checked : m))}
+                        onChange={(e) => setPracticalMarks((p) => ({ ...p, [a.qNo]: e.target.checked }))}
                       />
                       Correct
                     </label>
@@ -293,7 +335,9 @@ const CandidateInformationTab = ({
                     Submit Grading
                   </button>
                 ) : (
-                  <p className="text-sm font-bold text-gray-700">Score: {record.excelTest.score}%</p>
+                  <p className="text-sm font-bold text-gray-700">
+                    MCQ: {record.excelTest.mcqScore}/20 · Practical: {record.excelTest.practicalScore}/10 · Overall: {record.excelTest.score}%
+                  </p>
                 )}
               </div>
             )}
@@ -308,11 +352,11 @@ const CandidateInformationTab = ({
             </div>
             {!record.discAssessment?.status && (
               <button
-                onClick={() => sendAssessment('disc')}
-                disabled={sendingAssessment === 'disc' || !record.email}
+                onClick={() => openMailModal('disc')}
+                disabled={!record.email}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-50 rounded-lg transition"
               >
-                {sendingAssessment === 'disc' ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                <Send size={13} />
                 Send Assessment
               </button>
             )}
@@ -348,6 +392,61 @@ const CandidateInformationTab = ({
           className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-800 leading-relaxed focus:outline-none focus:ring-2 focus:ring-[#7a9c56] focus:border-[#7a9c56] resize-none transition bg-white"
         />
       </section>
+
+      {mailModal.open && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 1300 }} onClick={closeMailModal}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 sm:p-6 border-b flex justify-between items-center bg-indigo-50 rounded-t-2xl shrink-0">
+              <h3 className="text-lg font-bold text-indigo-900">
+                {mailModal.kind === 'excel' ? 'Excel Test Invite' : 'DISC Assessment Invite'}
+              </h3>
+              <button onClick={closeMailModal} className="p-2 hover:bg-gray-200 rounded-full transition text-gray-600">✕</button>
+            </div>
+            <div className="p-4 sm:p-6 space-y-3 overflow-y-auto flex-1 min-h-0">
+              {mailModal.loading ? (
+                <p className="text-sm text-gray-500">Loading preview...</p>
+              ) : (
+                <>
+                  {mailModal.error && <p className="text-red-600 text-sm font-medium bg-red-50 border border-red-200 rounded-lg p-2">{mailModal.error}</p>}
+                  <div>
+                    <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">To *</label>
+                    <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" value={mailModal.to} onChange={(e) => setMailModal(prev => ({ ...prev, to: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">CC</label>
+                    <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" value={mailModal.cc} onChange={(e) => setMailModal(prev => ({ ...prev, cc: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">Subject *</label>
+                    <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" value={mailModal.subject} onChange={(e) => setMailModal(prev => ({ ...prev, subject: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">Body</label>
+                    <div
+                      key={mailModal.kind || ''}
+                      contentEditable
+                      suppressContentEditableWarning
+                      className="w-full border border-gray-200 rounded-lg px-3 py-3 text-sm h-48 overflow-y-auto bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                      dangerouslySetInnerHTML={{ __html: mailModal.body }}
+                      onBlur={(e) => setMailModal(prev => ({ ...prev, body: e.currentTarget.innerHTML }))}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="p-4 sm:p-6 border-t bg-gray-50 flex justify-end gap-3 shrink-0 rounded-b-2xl">
+              <button onClick={closeMailModal} className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-200 rounded-xl transition text-sm">Cancel</button>
+              <button
+                onClick={sendMailModal}
+                disabled={mailModal.loading || mailModal.sending || !mailModal.to.trim() || !mailModal.subject.trim()}
+                className={`flex items-center gap-2 px-6 py-2 rounded-xl font-bold transition text-sm ${(!mailModal.loading && !mailModal.sending && mailModal.to.trim() && mailModal.subject.trim()) ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-gray-300 text-white cursor-not-allowed'}`}
+              >
+                <Send size={14} /> {mailModal.sending ? 'Sending...' : 'Send'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

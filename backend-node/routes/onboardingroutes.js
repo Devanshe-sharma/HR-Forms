@@ -2848,7 +2848,7 @@ router.put('/:id/company-assets', authenticate, async (req, res) => {
       return res.status(403).json({ success: false, message: 'You can only edit your own company assets checklist' });
     }
 
-    const allowed = ['dateIssued', 'laptop', 'mouse', 'charger', 'simCard'];
+    const allowed = ['dateIssued', 'laptop', 'mouse', 'charger', 'simCard', 'phone'];
     const current = existing.companyAssets || {};
     const merged = {
       dateIssued: current.dateIssued ?? null,
@@ -2856,6 +2856,7 @@ router.put('/:id/company-assets', authenticate, async (req, res) => {
       mouse: current.mouse ?? false,
       charger: current.charger ?? false,
       simCard: current.simCard ?? false,
+      phone: current.phone ?? false,
     };
     for (const key of allowed) {
       if (key in req.body) merged[key] = req.body[key];
@@ -3030,6 +3031,64 @@ router.post('/:id/upload-signature', authenticate, uploadOnboardingSignature, as
     return res.json({ success: true, data: doc.signature });
   } catch (err) {
     console.error('Error uploading onboarding signature:', err);
+    return res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/onboarding/:id/upload-profile-picture — Self-service DP upload
+// from the Profile page. Single image file, replaces any previous picture.
+// Mirrors upload-signature above (same folder, same ownership check).
+// ─────────────────────────────────────────────────────────────────────────────
+const uploadOnboardingProfilePicture = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 3 * 1024 * 1024 }, // 3MB
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.jpg', '.jpeg', '.png'];
+    const ext = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
+    allowed.includes(ext) ? cb(null, true) : cb(new Error('Profile picture must be a JPG or PNG image.'));
+  },
+}).single('file');
+
+router.post('/:id/upload-profile-picture', authenticate, uploadOnboardingProfilePicture, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file was selected' });
+    }
+
+    const doc = await Onboarding.findById(req.params.id);
+    if (!doc) {
+      return res.status(404).json({ success: false, message: 'Onboarding record not found' });
+    }
+    if (!ownsOnboardingRecord(req.user, doc)) {
+      return res.status(403).json({ success: false, message: 'You can only upload a profile picture for your own profile' });
+    }
+
+    if (!doc.documentsUploadFolderId) {
+      const parentFolderId = process.env.GOOGLE_DRIVE_EMPLOYEE_DOCS_PARENT_FOLDER_ID || process.env.GOOGLE_DRIVE_RESUME_FOLDER_ID;
+      const folder = await createDriveFolder(`${doc.name || 'Employee'} - ${doc._id}`, parentFolderId);
+      doc.documentsUploadFolderId = folder.id;
+      doc.documentsUploadFolderLink = folder.webViewLink;
+    }
+
+    // makePublic: true — the DP needs to load directly as an <img src>/Avatar
+    // on the Profile page and Navbar, like the signature image above.
+    const driveLink = await uploadFileToDrive(
+      req.file.buffer, req.file.originalname, req.file.mimetype,
+      doc.documentsUploadFolderId, { makePublic: true }
+    );
+
+    doc.profilePicture = {
+      fileName: req.file.originalname,
+      driveLink,
+      driveFileId: extractDriveFileId(driveLink),
+      uploadedAt: new Date(),
+    };
+
+    await doc.save();
+    return res.json({ success: true, data: doc.profilePicture });
+  } catch (err) {
+    console.error('Error uploading profile picture:', err);
     return res.status(400).json({ success: false, message: err.message });
   }
 });

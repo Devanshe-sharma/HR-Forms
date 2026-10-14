@@ -2,16 +2,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Mail, Phone, Loader2, Eye, X, ClipboardList, CheckSquare, User, UserCheck,
-  ExternalLink, Video, Search, SlidersHorizontal, RotateCcw, ArrowUpDown, Sparkles, Lock, History,
+  ExternalLink, Video, Search, RotateCcw, ArrowUpDown, Sparkles, Lock, History,
   Briefcase, TrendingUp, Clock, Hourglass, ChevronDown, ChevronRight,
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
+import { FilterListOutlined as FilterIcon, ArrowDropDown as ArrowDropDownIcon } from '@mui/icons-material';
 
 import CandidateInformationTab from './CandidateInformationTab';
 import RoundPipelineTab from './RoundPipelineTab';
 import EditCandidateInfoModal from './EditCandidateInfoModal';
 import { hasAnyRole, getRole } from '../../config/rbac';
-import { FavoritesMenuButton } from '../../components/FilterBar';
+import { FavoritesMenuButton, GroupByMenuButton } from '../../components/FilterBar';
 
 import {
   ApplicantRecord, API_BASE,
@@ -444,10 +445,11 @@ function parseCtcToNumber(raw?: string): number {
 // menu — just extended one level further since this data actually nests
 // (a candidate's location really is Country > State > City).
 // ─────────────────────────────────────────────────────────────────────────────
-type FilterGroupKey = 'profile' | 'ctc' | 'location' | 'experience';
+type FilterGroupKey = 'profile' | 'ctc' | 'location' | 'experience' | 'stage' | 'source' | 'department';
 
 const FILTER_GROUP_LABELS: Record<FilterGroupKey, string> = {
   profile: 'Profile', ctc: 'Expected CTC', location: 'Location', experience: 'Experience',
+  stage: 'Stage', source: 'Source', department: 'Department',
 };
 
 type FilterNode = {
@@ -584,6 +586,34 @@ function buildProfileTree(options: string[]): FilterNode[] {
   return options.map((p) => ({ id: `profile:${p}`, label: p, path: p, predicate: (r) => r.designation === p }));
 }
 
+// ── Stage — the same pipeline label shown in the table's Stage column
+// (HR Round / Technical Round / Management Round / Selected / Rejected /
+// Applied), derived via getStageLabel so the filter always matches what's
+// actually displayed.
+function buildStageTree(records: ApplicantRecordWithAI[]): FilterNode[] {
+  const stages = Array.from(new Set(records.map((r) => getStageLabel(r)))).sort();
+  return stages.map((s) => ({ id: `stage:${s}`, label: s, path: s, predicate: (r) => getStageLabel(r) === s }));
+}
+
+// ── Source — how the candidate applied (candidateSource on the record).
+function buildSourceTree(records: ApplicantRecordWithAI[]): FilterNode[] {
+  const sources = Array.from(new Set(records.map((r) => r.candidateSource).filter(Boolean))) as string[];
+  return sources.sort().map((s) => ({ id: `source:${s}`, label: s, path: s, predicate: (r) => r.candidateSource === s }));
+}
+
+// ── Department — not stored on the candidate record itself; resolved via
+// job_id against the matching Hiring Requisition's hiring_dept (fetched
+// once into deptByJobId, see fetchRequisitionDepartments below).
+function buildDepartmentTree(records: ApplicantRecordWithAI[], deptByJobId: Map<number, string>): FilterNode[] {
+  const depts = Array.from(new Set(
+    records.map((r) => (r.job_id != null ? deptByJobId.get(r.job_id) : undefined)).filter(Boolean)
+  )) as string[];
+  return depts.sort().map((d) => ({
+    id: `dept:${d}`, label: d, path: d,
+    predicate: (r) => r.job_id != null && deptByJobId.get(r.job_id) === d,
+  }));
+}
+
 const FilterTreeRow: React.FC<{
   node: FilterNode;
   depth: number;
@@ -623,7 +653,7 @@ const FilterTreeRow: React.FC<{
   );
 };
 
-const FILTER_GROUP_ORDER: FilterGroupKey[] = ['profile', 'ctc', 'location', 'experience'];
+const FILTER_GROUP_ORDER: FilterGroupKey[] = ['stage', 'source', 'department', 'profile', 'ctc', 'location', 'experience'];
 
 const FiltersDropdown = ({
   trees, active, onToggle,
@@ -638,7 +668,7 @@ const FiltersDropdown = ({
   // moment the dropdown opened, burying the CTC/Location/Experience
   // groups below it. Now every group is its own accordion.
   const [openGroups, setOpenGroups] = useState<Record<FilterGroupKey, boolean>>({
-    profile: false, ctc: false, location: false, experience: false,
+    profile: false, ctc: false, location: false, experience: false, stage: false, source: false, department: false,
   });
   const ref = React.useRef<HTMLDivElement>(null);
 
@@ -660,11 +690,12 @@ const FiltersDropdown = ({
           activeCount > 0 ? 'border-[#a9c08a] bg-[#eef3e6] text-[#3d5420]' : 'border-gray-200 text-gray-600 bg-white hover:border-gray-300'
         }`}
       >
-        <SlidersHorizontal size={14} />
+        <FilterIcon sx={{ fontSize: 16 }} />
         Filters
         {activeCount > 0 && (
           <span className="bg-[#597e37] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{activeCount}</span>
         )}
+        <ArrowDropDownIcon sx={{ fontSize: 18 }} />
       </button>
 
       {open && (
@@ -713,6 +744,7 @@ const FilterBar = ({
   sortBy, setSortBy,
   onReset, hasActiveFilters,
   onApplyFavorite,
+  groupByField, setGroupByField, groupByOptions,
 }: {
   search: string; setSearch: (v: string) => void;
   onApplyFavorite: (state: { search: string; filters: Record<FilterGroupKey, string[]> }) => void;
@@ -722,6 +754,8 @@ const FilterBar = ({
   onToggle: (group: FilterGroupKey, id: string) => void;
   sortBy: SortOption; setSortBy: (v: SortOption) => void;
   onReset: () => void; hasActiveFilters: boolean;
+  groupByField: string | null; setGroupByField: (v: string | null) => void;
+  groupByOptions: { key: string; label: string }[];
 }) => {
   const chips: { group: FilterGroupKey; id: string; path: string }[] = (Object.keys(active) as FilterGroupKey[])
     .flatMap((group) => active[group].map((id) => ({ group, id, path: nodeIndex[group].get(id)?.path || id })));
@@ -729,19 +763,38 @@ const FilterBar = ({
   return (
     <div className="bg-white rounded-lg shadow border border-gray-200 p-4 mb-4">
       <div className="flex flex-wrap items-center gap-3">
-        {/* Search */}
-        <div className="relative flex-1 min-w-[200px] max-w-xs">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        {/* Search — active filter tags render inline, inside the box itself */}
+        <div className="flex items-center flex-wrap gap-1.5 flex-1 min-w-[200px] max-w-md border border-gray-200 rounded-lg px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-[#7a9c56] focus-within:border-transparent">
+          <Search size={15} className="text-gray-400 shrink-0" />
+          {chips.map(({ group, id, path }) => (
+            <span
+              key={`${group}-${id}`}
+              className="flex items-center gap-1 bg-[#eef3e6] border border-[#cddcb8] text-[#3d5420] text-xs font-semibold pl-2 pr-1 py-0.5 rounded-full"
+            >
+              <span className="text-[#688a46]">{FILTER_GROUP_LABELS[group]}:</span>
+              {path}
+              <button onClick={() => onToggle(group, id)} className="hover:bg-[#dce8c9] rounded-full p-0.5 transition">
+                <X size={10} />
+              </button>
+            </span>
+          ))}
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name, email, phone..."
-            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#7a9c56] focus:border-transparent"
+            placeholder={chips.length ? '' : 'Search name, email, phone...'}
+            className="flex-1 min-w-[80px] text-sm outline-none"
           />
+          {!!search.trim() && (
+            <button onClick={() => setSearch('')} className="text-gray-400 hover:text-gray-600 shrink-0">
+              <X size={13} />
+            </button>
+          )}
         </div>
 
         <FiltersDropdown trees={trees} active={active} onToggle={onToggle} />
+
+        <GroupByMenuButton options={groupByOptions} value={groupByField} onChange={setGroupByField} />
 
         <FavoritesMenuButton
           storageKey="filters:candidate-management"
@@ -768,29 +821,10 @@ const FilterBar = ({
             onClick={onReset}
             className="flex items-center gap-1 text-xs font-semibold text-gray-400 hover:text-red-500 px-2 py-2 transition"
           >
-            <RotateCcw size={13} /> Reset
+            <RotateCcw size={13} /> Clear Filters
           </button>
         )}
       </div>
-
-      {/* Active filter chips — each individually removable, labeled with
-          its full breadcrumb when it came from a nested pick. */}
-      {chips.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100">
-          {chips.map(({ group, id, path }) => (
-            <span
-              key={`${group}-${id}`}
-              className="flex items-center gap-1.5 bg-[#eef3e6] border border-[#cddcb8] text-[#3d5420] text-xs font-semibold pl-2.5 pr-1.5 py-1 rounded-full"
-            >
-              <span className="text-[#eef3e6]0">{FILTER_GROUP_LABELS[group]}:</span>
-              {path}
-              <button onClick={() => onToggle(group, id)} className="hover:bg-[#dce8c9] rounded-full p-0.5 transition">
-                <X size={11} />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 };
@@ -809,12 +843,15 @@ const CandidatesTab: React.FC = () => {
   // values (OR within a group), combined with AND across groups.
   const [search,  setSearch]  = useState('');
   const [filters, setFilters] = useState<Record<FilterGroupKey, string[]>>({
-    profile: [], ctc: [], location: [], experience: [],
+    profile: [], ctc: [], location: [], experience: [], stage: [], source: [], department: [],
   });
   const [sortBy,  setSortBy]  = useState<SortOption>('newest');
   const [cardFilter,       setCardFilter]       = useState<CardFilterKey | null>(null);
   const [pipeline,         setPipeline]         = useState<PipelineSummary | null>(null);
   const [avgDaysToHire,    setAvgDaysToHire]    = useState<number | null>(null);
+  // job_id -> hiring_dept — department isn't stored on the candidate record
+  // itself, only on the Hiring Requisition it applied against.
+  const [deptByJobId, setDeptByJobId] = useState<Map<number, string>>(new Map());
 
   useEffect(() => {
     fetch(`${API_BASE}/applicant-records`)
@@ -830,6 +867,16 @@ const CandidatesTab: React.FC = () => {
     fetch(`${API_BASE}/hiringrequisitions/analytics/days-to-hire`)
       .then((r) => r.json())
       .then((res) => { if (res.success) setAvgDaysToHire(res.overall?.avgDays ?? null); })
+      .catch(() => {});
+
+    fetch(`${API_BASE}/hiringrequisitions`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (!res.success) return;
+        const m = new Map<number, string>();
+        (res.data || []).forEach((req: any) => { if (req.serial_no != null && req.hiring_dept) m.set(req.serial_no, req.hiring_dept); });
+        setDeptByJobId(m);
+      })
       .catch(() => {});
   }, []);
 
@@ -879,13 +926,19 @@ const CandidatesTab: React.FC = () => {
     ctc:        buildCtcTree(records),
     location:   buildLocationTree(records),
     experience: buildExperienceTree(records),
-  }), [records, profileOptions]);
+    stage:      buildStageTree(records),
+    source:     buildSourceTree(records),
+    department: buildDepartmentTree(records, deptByJobId),
+  }), [records, profileOptions, deptByJobId]);
 
   const filterNodeIndex = useMemo<Record<FilterGroupKey, Map<string, FilterNode>>>(() => ({
     profile:    flattenFilterNodes(filterTrees.profile),
     ctc:        flattenFilterNodes(filterTrees.ctc),
     location:   flattenFilterNodes(filterTrees.location),
     experience: flattenFilterNodes(filterTrees.experience),
+    stage:      flattenFilterNodes(filterTrees.stage),
+    source:     flattenFilterNodes(filterTrees.source),
+    department: flattenFilterNodes(filterTrees.department),
   }), [filterTrees]);
 
   const cardCounts = useMemo(() => ({
@@ -929,9 +982,13 @@ const CandidatesTab: React.FC = () => {
       const matchesCtc        = matchesFilterGroup(r, 'ctc');
       const matchesLocation   = matchesFilterGroup(r, 'location');
       const matchesExperience = matchesFilterGroup(r, 'experience');
+      const matchesStage      = matchesFilterGroup(r, 'stage');
+      const matchesSource     = matchesFilterGroup(r, 'source');
+      const matchesDepartment = matchesFilterGroup(r, 'department');
       const matchesCard       = !cardFilter || matchesCardFilter(r, cardFilter);
 
-      return matchesSearch && matchesProfile && matchesCtc && matchesLocation && matchesExperience && matchesCard;
+      return matchesSearch && matchesProfile && matchesCtc && matchesLocation && matchesExperience
+        && matchesStage && matchesSource && matchesDepartment && matchesCard;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [records, search, filters, filterNodeIndex, cardFilter]);
@@ -962,11 +1019,34 @@ const CandidatesTab: React.FC = () => {
     }
   }, [filteredRecords, sortBy]);
 
+  // Odoo-style "Group By" — groups the already filtered+sorted rows under a
+  // header per distinct value of the chosen field. null = flat, no grouping.
+  const [groupByField, setGroupByField] = useState<string | null>(null);
+  const groupByOptions = [
+    { key: 'designation', label: 'Profile / Designation' },
+    { key: 'stage', label: 'Stage' },
+    { key: 'status', label: 'Status' },
+    { key: 'city', label: 'Location' },
+    { key: 'experience', label: 'Experience' },
+  ];
+  const groupedRecords = useMemo(() => {
+    if (!groupByField) return null;
+    const groups = new Map<string, ApplicantRecordWithAI[]>();
+    sortedRecords.forEach((r) => {
+      const key = groupByField === 'stage' ? getStageLabel(r)
+        : groupByField === 'experience' ? (r.experience === 'Yes' ? 'Experienced' : 'Fresher')
+        : String((r as any)[groupByField] || '(none)');
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(r);
+    });
+    return Array.from(groups.entries()).sort((a, b) => b[1].length - a[1].length);
+  }, [sortedRecords, groupByField]);
+
   const hasActiveFilters = !!(search || Object.values(filters).some((arr) => arr.length > 0) || cardFilter);
 
   const resetFilters = () => {
     setSearch('');
-    setFilters({ profile: [], ctc: [], location: [], experience: [] });
+    setFilters({ profile: [], ctc: [], location: [], experience: [], stage: [], source: [], department: [] });
     setCardFilter(null);
   };
 
@@ -1003,6 +1083,7 @@ const CandidatesTab: React.FC = () => {
               sortBy={sortBy} setSortBy={setSortBy}
               onApplyFavorite={(state) => { setSearch(state.search); setFilters(state.filters); }}
               onReset={resetFilters} hasActiveFilters={hasActiveFilters}
+              groupByField={groupByField} setGroupByField={setGroupByField} groupByOptions={groupByOptions}
             />
           )}
 
@@ -1032,7 +1113,8 @@ const CandidatesTab: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {sortedRecords.map((r) => {
+                  {(() => {
+                    const renderRow = (r: ApplicantRecordWithAI) => {
                     const isAnalyzing = analyzingId === r._id;
                     return (
                       <tr
@@ -1100,7 +1182,22 @@ const CandidatesTab: React.FC = () => {
                         </td>
                       </tr>
                     );
-                  })}
+                    };
+
+                    if (groupedRecords) {
+                      return groupedRecords.map(([groupLabel, rows]) => (
+                        <React.Fragment key={groupLabel}>
+                          <tr>
+                            <td colSpan={9} className="p-2 px-4 bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wide">
+                              {groupLabel} ({rows.length})
+                            </td>
+                          </tr>
+                          {rows.map(renderRow)}
+                        </React.Fragment>
+                      ));
+                    }
+                    return sortedRecords.map(renderRow);
+                  })()}
                 </tbody>
               </table>
             </div>

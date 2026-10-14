@@ -1,6 +1,6 @@
 import { Fragment, useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Edit2, Eye, Plus, RefreshCw, ExternalLink, Users, Share2 } from 'lucide-react';
+import { Search, Edit2, Eye, Plus, RefreshCw, ExternalLink, Users, Share2, Send, Loader2 } from 'lucide-react';
 import dayjs from 'dayjs';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
@@ -59,6 +59,87 @@ const STATUS_CHIP: Record<string, string> = {
 };
 
 type CardFilter = 'all' | 'open' | 'closed' | 'overdue';
+
+// Lets HR send a candidate the application form link directly — independent
+// of whether a matching requisition is currently open. Designation is a
+// free-text hint only (not tied to any requisition record); leaving it
+// blank sends a general application link that CandidateApplication.tsx
+// renders as "General Application" and still accepts a full submission for.
+function SendApplicationLinkForm({ onClose }: { onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [designation, setDesignation] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSend = async () => {
+    if (!email.trim()) { setError('Candidate email is required.'); return; }
+    setSending(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/candidate-applications/send-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, designation: designation.trim() || undefined }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to send the application link');
+      alert(`Application link sent to ${email}.`);
+      onClose();
+    } catch (e: any) {
+      setError(e.message || 'Failed to send the application link');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="p-5 space-y-3">
+      <p className="text-xs text-gray-500">
+        Sends the candidate a link to fill out the application form. Leave the role blank to send a
+        general application — useful when no matching requisition is open yet.
+      </p>
+      {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-2">{error}</p>}
+      <div>
+        <label className="block text-xs font-semibold text-gray-600 mb-1">Candidate Name</label>
+        <input
+          value={name} onChange={(e) => setName(e.target.value)}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#597e37]"
+          placeholder="e.g. Rahul Sharma"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-semibold text-gray-600 mb-1">Candidate Email *</label>
+        <input
+          type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#597e37]"
+          placeholder="candidate@example.com"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-semibold text-gray-600 mb-1">Role (optional)</label>
+        <input
+          value={designation} onChange={(e) => setDesignation(e.target.value)}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#597e37]"
+          placeholder="Leave blank for a general application"
+        />
+      </div>
+      <div className="flex justify-end gap-3 pt-2">
+        <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 font-medium hover:bg-gray-100 rounded-lg transition">
+          Cancel
+        </button>
+        <button
+          onClick={handleSend}
+          disabled={sending || !email.trim()}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-[#597e37] hover:bg-[#3d5420] disabled:opacity-50 rounded-lg transition"
+        >
+          {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+          {sending ? 'Sending...' : 'Send Link'}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function RequisitionDashboard() {
   const navigate                      = useNavigate();
@@ -161,7 +242,9 @@ export default function RequisitionDashboard() {
   };
   const activeFilterCount = (filterStatus ? 1 : 0) + (cardFilter !== 'all' ? 1 : 0);
 
-  const anyModalOpen = newModalOpen || viewModalOpen || updateModalOpen;
+  const [sendLinkOpen, setSendLinkOpen] = useState(false);
+
+  const anyModalOpen = newModalOpen || viewModalOpen || updateModalOpen || sendLinkOpen;
 
   // Pulled out so both the flat and grouped-by table bodies can reuse the
   // same row markup.
@@ -279,6 +362,14 @@ export default function RequisitionDashboard() {
                 >
                   <Share2 size={16} />
                   Referrals
+                </button>
+                <button
+                  onClick={() => setSendLinkOpen(true)}
+                  title="Send a candidate the application form link, even with no open requisition"
+                  className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-md hover:bg-gray-100 transition"
+                >
+                  <Send size={16} />
+                  Send Application Link
                 </button>
                 <button
                   onClick={openNew}
@@ -464,6 +555,15 @@ export default function RequisitionDashboard() {
             onClose={closeModal}
           />
         )}
+      </Modal>
+
+      <Modal
+        open={sendLinkOpen}
+        onClose={() => setSendLinkOpen(false)}
+        title="Send Application Link"
+        maxWidth="max-w-md"
+      >
+        <SendApplicationLinkForm onClose={() => setSendLinkOpen(false)} />
       </Modal>
     </>
   );

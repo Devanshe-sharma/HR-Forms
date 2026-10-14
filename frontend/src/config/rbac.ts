@@ -85,7 +85,7 @@ const ROLE_PERMISSIONS: Record<Role, Record<string, string[]>> = {
   // ── Manager ── evaluates employees, views skill gaps for their team
   Manager: {
     capability:           [],
-    training:             ['read'],
+    training:             ['create', 'read', 'update', 'delete'],
     capabilities:         [],
     capabilityAssessment: [],
     capabilityRoleMap:    ['read'],
@@ -102,7 +102,7 @@ const ROLE_PERMISSIONS: Record<Role, Record<string, string[]>> = {
   // ── Trainer ── uploads content, reads schedules
   Trainer: {
     capability:           [],
-    training:             [],
+    training:             ['create', 'read', 'update', 'delete'],
     capabilities:         [],
     capabilityAssessment: [],
     capabilityRoleMap:    ['read'],
@@ -119,7 +119,7 @@ const ROLE_PERMISSIONS: Record<Role, Record<string, string[]>> = {
   // ── Employee ── takes assessments, gives feedback, views own skill gap
   Employee: {
     capability:           [],
-    training:             [],
+    training:             ['create', 'read', 'update', 'delete'],
     capabilities:         [],
     capabilityAssessment: [],
     capabilityRoleMap:    ['read'],
@@ -136,7 +136,7 @@ const ROLE_PERMISSIONS: Record<Role, Record<string, string[]>> = {
   // ── Management ── approves / rejects training plans, views reports
   Management: {
     capability:           ['read'],
-    training:             ['read', 'approve', 'reject'],
+    training:             ['create', 'read', 'update', 'delete'],
     capabilities:         [],
     capabilityAssessment: [],
     capabilityRoleMap:    ['read'],

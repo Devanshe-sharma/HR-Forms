@@ -124,6 +124,13 @@ const onboardingSchema = new mongoose.Schema(
     },
     nameOfBuddy: String,
     empId: { type: String, default: "" },
+    // Explicit link to the attendance machine's employee code (see
+    // backend-node/utils/attendanceEmployees.js) — empId above is a
+    // different numbering system and can't be used for this. Set by
+    // HR/Admin/Management from the Attendance page's "Employee Codes" tab,
+    // never from the onboarding form. When blank, self-service attendance
+    // routes fall back to a fuzzy name match against that same roster.
+    attendanceCode: { type: String, default: "" },
 
     // ============================================================
     dept_id:  { type: Number, default: null },
@@ -479,6 +486,15 @@ const onboardingSchema = new mongoose.Schema(
       uploadedAt:  { type: Date,   default: null },
     },
 
+    // Profile picture (DP) — a single current image, replaced (not appended)
+    // on re-upload. Shown as the user's avatar on Profile and the Navbar.
+    profilePicture: {
+      fileName:    { type: String, default: "" },
+      driveLink:   { type: String, default: "" },
+      driveFileId: { type: String, default: "" },
+      uploadedAt:  { type: Date,   default: null },
+    },
+
     // Company assets issued on/around joining — a simple received-it
     // checklist the employee ticks off themselves from their Profile page.
     companyAssets: {
@@ -487,6 +503,7 @@ const onboardingSchema = new mongoose.Schema(
       mouse:      { type: Boolean, default: false },
       charger:    { type: Boolean, default: false },
       simCard:    { type: Boolean, default: false },
+      phone:      { type: Boolean, default: false },
     },
   },
   {

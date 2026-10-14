@@ -11,7 +11,7 @@
 // the caller's own `storageKey`, so two pages never collide.
 import React, { useEffect, useState } from 'react';
 import {
-  Box, Button, Popover, Menu, MenuItem, Stack, Typography, TextField, IconButton, Divider,
+  Box, Button, Popover, Menu, MenuItem, Stack, Typography, TextField, IconButton, Divider, Chip, InputBase,
 } from '@mui/material';
 import {
   FilterListOutlined as FilterIcon,
@@ -21,12 +21,54 @@ import {
   DeleteOutline as DeleteIcon,
   Add as AddIcon,
   WorkspacesOutlined as GroupByIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 
 const toolbarButtonSx = {
   textTransform: 'none' as const, fontWeight: 600, fontSize: '0.78rem', borderRadius: '8px',
   px: 1.3, py: 0.55,
 };
+
+// ── Search box with inline filter tags ────────────────────────────────────
+// Odoo's actual search-bar look: every active filter renders as a removable
+// tag INSIDE the search input itself (not in a separate row below it). The
+// page still owns the filter state — it just hands this component the
+// current chip list (label + remove callback) alongside the search text.
+export interface SearchChip { key: string; label: string; onRemove: () => void; }
+
+export function SearchWithChips({ value, onChange, chips, placeholder = 'Search...', sx }: {
+  value: string; onChange: (v: string) => void; chips: SearchChip[]; placeholder?: string; sx?: object;
+}) {
+  return (
+    <Box
+      sx={{
+        display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.6,
+        flex: '1 1 260px', minWidth: 220,
+        border: '1px solid', borderColor: 'divider', borderRadius: '8px',
+        px: 1, py: 0.5, bgcolor: 'background.paper',
+        '&:focus-within': { borderColor: 'primary.main' },
+        ...sx,
+      }}
+    >
+      <SearchIcon sx={{ fontSize: 16, color: 'text.secondary', flexShrink: 0 }} />
+      {chips.map((c) => (
+        <Chip
+          key={c.key}
+          size="small"
+          label={c.label}
+          onDelete={c.onRemove}
+          sx={{ height: 22, fontSize: '0.72rem', fontWeight: 600, bgcolor: 'action.selected' }}
+        />
+      ))}
+      <InputBase
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={chips.length ? '' : placeholder}
+        sx={{ flex: '1 1 90px', minWidth: 80, fontSize: '0.8rem' }}
+      />
+    </Box>
+  );
+}
 
 // ── Filters ────────────────────────────────────────────────────────────────
 // A popover shell around whatever filter controls the page passes in as

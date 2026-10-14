@@ -171,16 +171,33 @@ const candidateEventSchema = new mongoose.Schema(
   { _id: false },
 );
 
-// ── Excel Test — HR-graded, not auto-scored (free-text formula answers
-// can't be reliably auto-graded). Candidate submits answers; HR marks each
-// one correct/incorrect afterward; score is derived from those marks.
+// ── Excel Test — 20 MCQ (auto-graded against utils/assessmentBank.js's
+// stored answer key) + 10 Practical tasks (free-text formula/steps, left
+// for HR to check and mark — formula correctness can't be reliably
+// auto-graded). mcqScore is set the moment the candidate submits; HR only
+// has to grade the practical half via POST /:id/assessments/excel/grade.
+const excelAnswerSchema = new mongoose.Schema(
+  {
+    qNo:            { type: Number, required: true },
+    type:           { type: String, enum: ['mcq', 'practical'], required: true },
+    question:       { type: String, default: '' },
+    selectedOption: { type: String, default: '' },  // mcq — one of A/B/C/D
+    answer:         { type: String, default: '' },  // practical — free text
+    isCorrect:      { type: Boolean, default: null }, // mcq — auto-graded on submit
+    marks:          { type: Number, default: null },  // practical — 1/0, set by HR grading
+  },
+  { _id: false },
+);
+
 const excelTestSchema = new mongoose.Schema(
   {
-    sentAt: { type: Date, default: null },
-    status: { type: String, enum: ['', 'Sent', 'Submitted', 'Graded'], default: '' },
-    answers: { type: [{ question: String, answer: String }], default: [] },
-    marks:  { type: [Boolean], default: [] },   // same length/order as answers, filled in once HR grades
-    score:  { type: Number, default: null },    // % correct, computed from marks once graded
+    sentAt:         { type: Date, default: null },
+    status:         { type: String, enum: ['', 'Sent', 'Submitted', 'Graded'], default: '' },
+    answers:        { type: [excelAnswerSchema], default: [] },
+    mcqScore:       { type: Number, default: null }, // correct count out of 20, set on submit
+    practicalScore: { type: Number, default: null }, // HR-marked count out of 10
+    score:          { type: Number, default: null }, // overall %, set once HR grades the practical half
+    gradedAt:       { type: Date, default: null },
   },
   { _id: false },
 );

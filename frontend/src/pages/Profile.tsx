@@ -28,6 +28,7 @@ import {
   Flag as CitizenshipIcon,
   Delete as DeleteIcon,
   Autorenew as ReplaceIcon,
+  CameraAlt as CameraIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
@@ -64,6 +65,7 @@ interface CompanyAssets {
   mouse?: boolean;
   charger?: boolean;
   simCard?: boolean;
+  phone?: boolean;
 }
 
 interface UserProfile {
@@ -128,6 +130,7 @@ interface UserProfile {
   documents?: OnboardingDocument[];
   companyAssets?: CompanyAssets;
   signature?: EmployeeSignature | null;
+  profilePicture?: EmployeeSignature | null;
 
   // Used only to decide whether the Increment Letter is actually available
   // (see hasCompletedIncrement) — not displayed directly.
@@ -905,6 +908,61 @@ function buildSignatureThumbnailUrl(driveFileId: string) {
   return `https://drive.google.com/thumbnail?id=${driveFileId}&sz=w320`;
 }
 
+// Hero avatar with a self-service DP (profile picture) upload — same
+// upload-and-replace pattern as the Digital Signature card, just shown as
+// the avatar itself instead of a separate card, with a camera-icon overlay.
+function ProfileAvatarUpload({ fullName, profilePicture, employeeId, onUploaded }: {
+  fullName?: string;
+  profilePicture?: EmployeeSignature | null;
+  employeeId?: string;
+  onUploaded?: (profilePicture: EmployeeSignature) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !employeeId) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await axios.post(`${API_URL}/onboarding/${employeeId}/upload-profile-picture`, formData);
+      if (res.data?.success) onUploaded?.(res.data.data);
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Upload failed.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <Box sx={{ position: 'relative', width: 88, height: 88, mb: '-28px', flexShrink: 0 }}>
+      <Avatar
+        src={profilePicture?.driveFileId ? buildSignatureThumbnailUrl(profilePicture.driveFileId) : undefined}
+        sx={{ width: 88, height: 88, border: '4px solid rgba(255,255,255,0.9)', boxShadow: '0 8px 24px rgba(0,0,0,0.25)', bgcolor: '#CBD5E0', fontSize: '2rem', fontWeight: 800 }}
+      >
+        {fullName?.[0]}
+      </Avatar>
+      <input ref={inputRef} type="file" hidden accept=".jpg,.jpeg,.png" onChange={handleFile} />
+      <IconButton
+        size="small"
+        disabled={uploading || !employeeId}
+        onClick={() => inputRef.current?.click()}
+        title="Upload profile picture"
+        sx={{
+          position: 'absolute', bottom: 0, right: 0, width: 30, height: 30,
+          bgcolor: '#4A6427', color: '#fff', border: '2px solid rgba(255,255,255,0.9)',
+          '&:hover': { bgcolor: '#3d5420' },
+        }}
+      >
+        {uploading ? <CircularProgress size={14} color="inherit" /> : <CameraIcon sx={{ fontSize: 15 }} />}
+      </IconButton>
+    </Box>
+  );
+}
+
 function SignatureCard({ signature, employeeId, onUploaded }: {
   signature?: EmployeeSignature | null;
   employeeId?: string;
@@ -980,40 +1038,94 @@ function SignatureCard({ signature, employeeId, onUploaded }: {
 // ─── Company Assets — a received-it checklist, ticked off by the employee
 // themselves. Each control saves immediately on change (no Edit/Save dance —
 // a checklist reads more naturally as "tick it and it's done"). ───────────
+// dd-mmm-yyyy, e.g. "13-Oct-2026" — distinct from formatDateDisplay's
+// space-separated "13 Oct 2026" used elsewhere on this page.
+const formatAssetDate = (iso?: string | null) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const day = String(d.getDate()).padStart(2, '0');
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${day}-${months[d.getMonth()]}-${d.getFullYear()}`;
+};
+
+const ASSET_ITEMS: { key: 'laptop' | 'mouse' | 'charger' | 'simCard' | 'phone'; label: string }[] = [
+  { key: 'laptop', label: 'Laptop' },
+  { key: 'mouse', label: 'Mouse' },
+  { key: 'charger', label: 'Charger' },
+  { key: 'simCard', label: 'SIM Card' },
+  { key: 'phone', label: 'Phone' },
+];
+
 function CompanyAssetsCard({ assets, employeeId, defaultDate, onSaved }: {
   assets?: CompanyAssets;
   employeeId?: string;
   defaultDate?: string;
   onSaved: (assets: CompanyAssets) => void;
 }) {
-  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<CompanyAssets>({});
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const save = async (patch: Partial<CompanyAssets>, key: string) => {
+  const startEditing = () => {
+    setDraft({
+      dateIssued: toDateInputValue(assets?.dateIssued || defaultDate || null),
+      laptop: !!assets?.laptop,
+      mouse: !!assets?.mouse,
+      charger: !!assets?.charger,
+      simCard: !!assets?.simCard,
+      phone: !!assets?.phone,
+    });
+    setError(null);
+    setEditing(true);
+  };
+
+  const cancelEditing = () => { setEditing(false); setError(null); };
+
+  const handleSave = async () => {
     if (!employeeId) { setError('No onboarding record is linked to this account yet — nothing to save against.'); return; }
-    setSavingKey(key);
+    setSaving(true);
     setError(null);
     try {
-      const res = await axios.put(`${API_URL}/onboarding/${employeeId}/company-assets`, patch);
-      if (res.data?.success) onSaved(res.data.data);
+      // Every asset is independently optional — there's no requirement that
+      // all of them be ticked for this section to count as saved/complete.
+      const res = await axios.put(`${API_URL}/onboarding/${employeeId}/company-assets`, draft);
+      if (res.data?.success) { onSaved(res.data.data); setEditing(false); }
       else setError('Could not save changes.');
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Could not save changes.');
     } finally {
-      setSavingKey(null);
+      setSaving(false);
     }
   };
 
-  const dateIssued = toDateInputValue(assets?.dateIssued || defaultDate || null);
-  const items: { key: 'laptop' | 'mouse' | 'charger' | 'simCard'; label: string }[] = [
-    { key: 'laptop', label: 'Laptop' },
-    { key: 'mouse', label: 'Mouse' },
-    { key: 'charger', label: 'Charger' },
-    { key: 'simCard', label: 'SIM Card' },
-  ];
+  const dateIssuedDisplay = formatAssetDate(assets?.dateIssued || defaultDate || null);
 
   return (
-    <SectionCard title="Company Assets" icon={<AssetIcon sx={{ fontSize: 17 }} />}>
+    <SectionCard
+      title="Company Assets"
+      icon={<AssetIcon sx={{ fontSize: 17 }} />}
+      action={
+        !editing ? (
+          <Button size="small" startIcon={<EditIcon sx={{ fontSize: 14 }} />} onClick={startEditing} disabled={!employeeId}
+            sx={{ textTransform: 'none', fontSize: '0.7rem', fontWeight: 700 }}>
+            Edit
+          </Button>
+        ) : (
+          <Stack direction="row" spacing={1}>
+            <Button size="small" onClick={cancelEditing} disabled={saving} sx={{ textTransform: 'none', fontSize: '0.7rem', fontWeight: 700, color: '#6B7280' }}>
+              Cancel
+            </Button>
+            <Button size="small" variant="contained" onClick={handleSave} disabled={saving}
+              startIcon={saving ? <CircularProgress size={12} color="inherit" /> : <SaveIcon sx={{ fontSize: 14 }} />}
+              sx={{ textTransform: 'none', fontSize: '0.7rem', fontWeight: 700, bgcolor: '#4A6427', '&:hover': { bgcolor: '#3d5420' } }}>
+              Save
+            </Button>
+          </Stack>
+        )
+      }
+    >
       {error && <Alert severity="error" sx={{ mb: 1.5, fontSize: '0.7rem' }}>{error}</Alert>}
       {!employeeId && (
         <Alert severity="info" sx={{ mb: 1.5, fontSize: '0.7rem' }}>
@@ -1022,33 +1134,32 @@ function CompanyAssetsCard({ assets, employeeId, defaultDate, onSaved }: {
       )}
       <Box sx={{ display: 'flex', alignItems: 'center', py: 1.2, gap: 1.5, borderBottom: '1px solid #F5F6F8' }}>
         <Typography sx={{ width: '45%', color: '#6B7280', fontSize: '0.75rem', fontWeight: 500 }}>Date Issued</Typography>
-        <TextField
-          type="date" size="small" fullWidth value={dateIssued} disabled={!!savingKey || !employeeId}
-          onChange={e => save({ dateIssued: e.target.value }, 'dateIssued')}
-          InputLabelProps={{ shrink: true }} sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem', py: 0.8 } }}
-        />
+        {editing ? (
+          <TextField
+            type="date" size="small" fullWidth value={draft.dateIssued ? toDateInputValue(draft.dateIssued) : ''} disabled={saving}
+            onChange={e => setDraft(prev => ({ ...prev, dateIssued: e.target.value }))}
+            InputLabelProps={{ shrink: true }} sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem', py: 0.8 } }}
+          />
+        ) : (
+          <Typography fontSize="0.78rem" fontWeight={600} color="#1A1F36">{dateIssuedDisplay || '—'}</Typography>
+        )}
       </Box>
       <Typography sx={{ color: '#6B7280', fontSize: '0.75rem', fontWeight: 500, mt: 2, mb: 0.5 }}>
         Items received on joining
       </Typography>
       <Stack spacing={0.3}>
-        {items.map(item => (
+        {ASSET_ITEMS.map(item => (
           <FormControlLabel
             key={item.key}
-            disabled={!!savingKey || !employeeId}
+            disabled={!editing || saving}
             control={
               <Checkbox
                 size="small"
-                checked={!!assets?.[item.key]}
-                onChange={e => save({ [item.key]: e.target.checked }, item.key)}
+                checked={!!(editing ? draft[item.key] : assets?.[item.key])}
+                onChange={e => setDraft(prev => ({ ...prev, [item.key]: e.target.checked }))}
               />
             }
-            label={
-              <Stack direction="row" alignItems="center" spacing={1}>
-                <Typography fontSize="0.78rem" fontWeight={600} color="#1A1F36">{item.label}</Typography>
-                {savingKey === item.key && <CircularProgress size={10} />}
-              </Stack>
-            }
+            label={<Typography fontSize="0.78rem" fontWeight={600} color="#1A1F36">{item.label}</Typography>}
           />
         ))}
       </Stack>
@@ -1322,6 +1433,9 @@ export default function Profile() {
   const handleSignatureUploaded = (signature: EmployeeSignature) =>
     setUserProfile((prev) => prev ? { ...prev, signature } : prev);
 
+  const handleProfilePictureUploaded = (profilePicture: EmployeeSignature) =>
+    setUserProfile((prev) => prev ? { ...prev, profilePicture } : prev);
+
   const handleAssetsSaved = (companyAssets: CompanyAssets) =>
     setUserProfile((prev) => prev ? { ...prev, companyAssets } : prev);
 
@@ -1377,9 +1491,12 @@ export default function Profile() {
         <Box sx={{ position: 'absolute', inset: 0, opacity: 0.04, backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
         <ProfileProgressBadge profile={userProfile} />
         <Stack direction="row" spacing={3} alignItems="flex-end">
-          <Avatar sx={{ width: 88, height: 88, border: '4px solid rgba(255,255,255,0.9)', boxShadow: '0 8px 24px rgba(0,0,0,0.25)', bgcolor: '#CBD5E0', fontSize: '2rem', fontWeight: 800, mb: '-28px' }}>
-            {userProfile?.full_name?.[0]}
-          </Avatar>
+          <ProfileAvatarUpload
+            fullName={userProfile?.full_name}
+            profilePicture={userProfile?.profilePicture}
+            employeeId={userProfile?._id}
+            onUploaded={handleProfilePictureUploaded}
+          />
           <Box sx={{ pb: '32px' }}>
             <Typography variant="h4" fontWeight="700" color="black" sx={{ lineHeight: 1.2 }}>{userProfile?.full_name}</Typography>
             <Stack direction="row" spacing={1} alignItems="center" mt={0.5} flexWrap="wrap">

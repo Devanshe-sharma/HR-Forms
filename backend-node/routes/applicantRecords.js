@@ -23,7 +23,7 @@ const REQUIRED_CANDIDATE_DOCUMENTS = require('../utils/requiredCandidateDocument
 const { addEvent } = require('../utils/candidateEvents');
 const { ROUND_TYPE_ORDER, ROUND_TYPE_LABELS, roundLabel, hasPassedRound, previousRoundType, canAddRound } = require('../utils/roundPipeline');
 const { computeAtsMatchScore } = require('../utils/atsMatchScore');
-const { EXCEL_QUESTIONS, DISC_QUESTIONS, scoreDisc } = require('../utils/assessmentBank');
+const { EXCEL_QUESTIONS, gradeExcelMcq, DISC_QUESTIONS, scoreDisc } = require('../utils/assessmentBank');
 const { sendMail } = require('../emails/mailer');
 
 // Backend is reverse-proxied under the same domain as the frontend at
@@ -1148,12 +1148,49 @@ router.post('/:id/upload-documents', uploadCandidateDocs, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Shared mail-building for both the preview and the real send, so HR's
+// edited fields are optional overrides on top of exactly what the preview
+// showed — same two-endpoint pattern as the interview round invite mail
+// (preview-mail / send-mail) elsewhere in this file.
+// ─────────────────────────────────────────────────────────────────────────────
+function buildAssessmentMail(record, kind) {
+  const sig = signInterviewConfirm(String(record._id), kind, 'assessment');
+  const link = `${FRONTEND_URL}/candidate-assessment/${record._id}/${kind}?sig=${sig}`;
+  const label = kind === 'excel' ? 'Excel Test' : 'DISC Assessment';
+  return {
+    to: record.email,
+    cc: '',
+    subject: `${label} — ${record.full_name}`,
+    body: `<p>Dear ${record.full_name},</p><p>Please complete your ${label} using the link below:</p><p><a href="${link}">${link}</a></p>`,
+  };
+}
+
+// GET /api/applicant-records/:id/assessments/:kind/preview-mail
+// Builds the default To/CC/Subject/Body without sending anything, so HR can
+// edit before it actually goes out.
+router.get('/:id/assessments/:kind/preview-mail', async (req, res) => {
+  try {
+    const { kind } = req.params;
+    if (!['excel', 'disc'].includes(kind)) return err(res, 'Unknown assessment type', 400);
+    const record = await ApplicantRecord.findById(req.params.id);
+    if (!record) return err(res, 'Record not found', 404);
+    if (!record.email) return err(res, 'This candidate has no email on file.', 400);
+    ok(res, buildAssessmentMail(record, kind));
+  } catch (e) {
+    console.error('[assessments/preview-mail] error:', e);
+    err(res, 'Failed to build preview');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/applicant-records/:id/assessments/:kind/send  (kind = excel|disc)
 // HR-triggered — emails the candidate a signed link to the public
-// assessment page. Reuses the interview-confirm signing pattern with `kind`
-// standing in for the roundId slot, and a dedicated 'assessment' purpose so
-// this link can't be reconstructed from any interview-confirm/feedback link
-// already issued for the same record.
+// assessment page. Accepts optional {to, cc, subject, customBody} overrides
+// from the edited preview; anything left blank falls back to the default
+// built by buildAssessmentMail. Reuses the interview-confirm signing
+// pattern with `kind` standing in for the roundId slot, and a dedicated
+// 'assessment' purpose so this link can't be reconstructed from any
+// interview-confirm/feedback link already issued for the same record.
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/:id/assessments/:kind/send', async (req, res) => {
   try {
@@ -1163,14 +1200,15 @@ router.post('/:id/assessments/:kind/send', async (req, res) => {
     if (!record) return err(res, 'Record not found', 404);
     if (!record.email) return err(res, 'This candidate has no email on file.', 400);
 
-    const sig = signInterviewConfirm(String(record._id), kind, 'assessment');
-    const link = `${FRONTEND_URL}/candidate-assessment/${record._id}/${kind}?sig=${sig}`;
+    const defaults = buildAssessmentMail(record, kind);
+    const { to, cc, subject, customBody } = req.body || {};
     const label = kind === 'excel' ? 'Excel Test' : 'DISC Assessment';
 
     await sendMail({
-      to: record.email,
-      subject: `${label} — ${record.full_name}`,
-      html: `<p>Dear ${record.full_name},</p><p>Please complete your ${label} using the link below:</p><p><a href="${link}">${link}</a></p>`,
+      to: (to && to.trim()) || defaults.to,
+      cc: (cc && cc.trim()) || undefined,
+      subject: (subject && subject.trim()) || defaults.subject,
+      html: customBody || defaults.body,
     });
 
     if (kind === 'excel') {
@@ -1240,11 +1278,27 @@ router.post('/:id/assessments/:kind/submit', async (req, res) => {
     if (!record) return err(res, 'Record not found', 404);
 
     if (kind === 'excel') {
-      const { answers } = req.body; // array of strings, same order as EXCEL_QUESTIONS
+      const { answers } = req.body; // array of { qNo, selectedOption? (mcq), answer? (practical) }
       if (!Array.isArray(answers)) return err(res, 'Answers are required.', 400);
-      record.excelTest.answers = EXCEL_QUESTIONS.map((question, i) => ({ question, answer: answers[i] || '' }));
+
+      const { graded, correctCount } = gradeExcelMcq(answers);
+      const correctByQNo = Object.fromEntries(graded.map((g) => [g.qNo, g.isCorrect]));
+
+      record.excelTest.answers = EXCEL_QUESTIONS.map((q) => {
+        const given = answers.find((a) => a.qNo === q.qNo) || {};
+        return {
+          qNo: q.qNo,
+          type: q.type,
+          question: q.question,
+          selectedOption: q.type === 'mcq' ? (given.selectedOption || '') : '',
+          answer: q.type === 'practical' ? (given.answer || '') : '',
+          isCorrect: q.type === 'mcq' ? !!correctByQNo[q.qNo] : null,
+          marks: null,
+        };
+      });
+      record.excelTest.mcqScore = correctCount;
       record.excelTest.status = 'Submitted';
-      addEvent(record, 'assessment-excel-submitted', 'Excel Test Submitted');
+      addEvent(record, 'assessment-excel-submitted', 'Excel Test Submitted', `MCQ: ${correctCount}/20`);
     } else {
       const { answers } = req.body; // array of 12 single-letter picks, same order as DISC_QUESTIONS
       if (!Array.isArray(answers) || answers.length !== DISC_QUESTIONS.length) {
@@ -1267,23 +1321,37 @@ router.post('/:id/assessments/:kind/submit', async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/applicant-records/:id/assessments/excel/grade
-// HR-triggered — marks each submitted answer correct/incorrect; score is
-// derived from the marks, never auto-graded (free-text formula answers
-// can't be reliably auto-graded).
+// HR-triggered — grades ONLY the practical half (formula/steps answers
+// can't be reliably auto-graded); the MCQ half was already auto-scored
+// against the answer key the moment the candidate submitted. Overall score
+// = (mcq correct + practical correct) / total questions.
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/:id/assessments/excel/grade', async (req, res) => {
   try {
-    const { marks } = req.body; // array of booleans, same order as excelTest.answers
-    if (!Array.isArray(marks)) return err(res, 'Marks are required.', 400);
+    const { practicalMarks } = req.body; // { [qNo]: boolean } — practical questions only
+    if (!practicalMarks || typeof practicalMarks !== 'object') return err(res, 'Practical marks are required.', 400);
     const record = await ApplicantRecord.findById(req.params.id);
     if (!record) return err(res, 'Record not found', 404);
     if (!record.excelTest.answers.length) return err(res, 'No submitted answers to grade.', 400);
 
-    record.excelTest.marks = marks;
-    const correct = marks.filter(Boolean).length;
-    record.excelTest.score = Math.round((correct / record.excelTest.answers.length) * 100);
+    let practicalCorrect = 0;
+    let mcqCorrect = 0;
+    record.excelTest.answers.forEach((a) => {
+      if (a.type === 'practical') {
+        const mark = practicalMarks[a.qNo] ? 1 : 0;
+        a.marks = mark;
+        practicalCorrect += mark;
+      } else if (a.isCorrect) {
+        mcqCorrect++;
+      }
+    });
+
+    record.excelTest.mcqScore = mcqCorrect;
+    record.excelTest.practicalScore = practicalCorrect;
+    record.excelTest.score = Math.round(((mcqCorrect + practicalCorrect) / record.excelTest.answers.length) * 100);
     record.excelTest.status = 'Graded';
-    addEvent(record, 'assessment-excel-graded', 'Excel Test Graded', `Score: ${record.excelTest.score}%`);
+    record.excelTest.gradedAt = new Date();
+    addEvent(record, 'assessment-excel-graded', 'Excel Test Graded', `Score: ${record.excelTest.score}% (MCQ ${mcqCorrect}/20, Practical ${practicalCorrect}/10)`);
 
     await record.save();
     ok(res, record.toObject());

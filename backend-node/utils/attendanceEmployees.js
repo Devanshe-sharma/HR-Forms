@@ -100,4 +100,20 @@ const normaliseCode = code => String(code ?? '').trim().replace(/^0+(?=\d)/, '')
 
 const nameForCode = code => MACHINE_EMPLOYEES[normaliseCode(code)] || '';
 
-module.exports = { nameForCode, normaliseCode, MACHINE_EMPLOYEES };
+const nameKey = s => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
+
+// Reverse lookup — Onboarding has no field that stores the machine code (see
+// header comment), so the only way to find "this employee's own" row is by
+// matching their Onboarding name against this roster the same fuzzy way
+// leaves/OOO are cross-referenced in attendanceReport.js. Returns null if no
+// roster entry's name matches.
+function codeForName(name) {
+  const nk = nameKey(name);
+  if (!nk) return null;
+  for (const [code, machineName] of Object.entries(MACHINE_EMPLOYEES)) {
+    if (nameKey(machineName) === nk) return code;
+  }
+  return null;
+}
+
+module.exports = { nameForCode, normaliseCode, codeForName, nameKey, MACHINE_EMPLOYEES };

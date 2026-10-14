@@ -1,8 +1,47 @@
 import { useEffect, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { formatSalary, formatDate } from '../utils/helpers'; 
+import { formatSalary, formatDate } from '../utils/helpers';
+import letterheadLogo from '../assets/BriskOliveLetterheadLogo.png';
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL;
+
+// Company letterhead — logo + footer, matching "Copy of Brisk Olive Letter
+// Head Format.docx" (the Word letterhead template HR uses for everything
+// else). Every printed letter/annexure page renders these at its own top
+// and bottom, since each one is its own independently-wrapped "page" div
+// below (there's no single shared print layout to hook into once).
+const LETTERHEAD_FONT = { fontFamily: '"Times New Roman", Times, serif', fontSize: '12px' };
+const NOWRAP: CSSProperties = { whiteSpace: 'nowrap' };
+
+const LetterHeader = () => (
+  <div className="pb-3 mb-4 border-b-2 border-[#622423] print:mb-3" style={LETTERHEAD_FONT}>
+    <img src={letterheadLogo} alt="Brisk Olive" className="h-10" />
+  </div>
+);
+
+const LetterFooter = () => (
+  <table className="mt-8 pt-2 border-t-2 border-[#622423] text-gray-600 w-full" style={{ ...LETTERHEAD_FONT, borderCollapse: 'separate', tableLayout: 'fixed' }}>
+    <tbody>
+      <tr>
+        <td className="w-1/2 pt-2 align-top" style={NOWRAP}>Brisk Olive Business Solutions Pvt Ltd</td>
+        <td className="w-1/2 pt-2 align-top" style={NOWRAP}>Website:&nbsp;&nbsp;briskolive.com</td>
+      </tr>
+      <tr>
+        <td className="align-top" style={NOWRAP}>Address:&nbsp;G‑203, Sector 63, Noida - 201301,U.P., India</td>
+        <td className="align-top" style={NOWRAP}>CIN:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;U74999UP2019PTC120473</td>
+      </tr>
+      <tr>
+        <td className="align-top" style={NOWRAP}>Mobile:&nbsp;&nbsp;8787240832</td>
+        <td className="align-top" style={NOWRAP}>GSTIN:&nbsp;&nbsp;&nbsp;09AAICB6090J1ZA</td>
+      </tr>
+      <tr>
+        <td className="align-top" style={NOWRAP}>Email:&nbsp;&nbsp;&nbsp;&nbsp;info@briskolive.com</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+);
 
 export default function LetterTemplate() {
   const [searchParams] = useSearchParams();
@@ -45,10 +84,11 @@ export default function LetterTemplate() {
   // const TOTAL_ROWS = 30;
 
   const renderSalaryRevisionLetter = () => (
-    <div className="max-w-4xl mx-auto p-16 mt-16 bg-white font-serif leading-snug text-sm print:p-16 print:text-xs print:max-w-none">
+    <div className="max-w-4xl mx-auto p-16 mt-16 bg-white font-[Arial] font-bold leading-snug text-[9px] print:p-16 print:text-[9px] print:max-w-none">
+      <LetterHeader />
       {/* Strictly Confidential Heading */}
       <div className="text-center mb-3">
-        <h2 className="text-lg font-bold uppercase tracking-wide pb-1">
+        <h2 className="text-[12px] font-bold uppercase tracking-wide pb-1">
           Strictly Personal & Confidential
         </h2>
       </div>
@@ -61,92 +101,82 @@ export default function LetterTemplate() {
         </p>
       </div>
 
-      {/* Address */}
+      {/* Name */}
       <div className="mb-4">
         <p>
-          <strong>Name:</strong> {employee.full_name}<br />
-          <strong>Address:</strong> [Address_Custom] {/* Replace with actual field */}
+          <strong>Employee Name:</strong> {employee.full_name}
         </p>
       </div>
 
       {/* Subject */}
-      <p className="mb-4 font-bold">Sub: Salary Revision</p>
+      <p className="mb-4 text-[12px] font-bold">Subject: SALARY REVISION LETTER</p>
 
       {/* Salutation */}
       <p className="mb-4">Dear {employee.full_name.split(' ')[0]},</p>
 
       {/* Body */}
-      <ol className="list-decimal pl-5 space-y-4">
-        <li>
-          We are pleased to inform you that your salary has been revised upwards.
-        </li>
+      <p className="mb-4">
+        We are pleased to inform you that, in recognition of your performance and valuable contributions, your salary has been revised.
+      </p>
 
-        <li className="space-y-2">
-          The revised salary details are as follows:
-          <div className="mt-2 overflow-x-auto">
-            <table className="w-full border-collapse border border-black text-xs">
-              <tbody>
-                <tr>
-                  <td className="border border-black px-3 py-1 font-bold">Date applicable:</td>
-                  <td className="border border-black px-3 py-1">
-                    {formatDate(employee.sal_applicable_from || today)}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="border border-black px-3 py-1 font-bold">Company:</td>
-                  <td className="border border-black px-3 py-1">
-                    Brisk Olive Business Solutions Pvt Ltd
-                  </td>
-                </tr>
-                <tr>
-                  <td className="border border-black px-3 py-1 font-bold">Department:</td>
-                  <td className="border border-black px-3 py-1">
-                    {employee.department || '[Department_Custom]'}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="border border-black px-3 py-1 font-bold">Designation:</td>
-                  <td className="border border-black px-3 py-1">
-                    {employee.designation || '[Designation_Custom]'}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="border border-black px-3 py-1 font-bold">Reporting To:</td>
-                  <td className="border border-black px-3 py-1">
-                    [Reporting Manager_Custom]
-                  </td>
-                </tr>
-                <tr>
-                  <td className="border border-black px-3 py-1 font-bold">Annual CTC:</td>
-                  <td className="border border-black px-3 py-1 font-bold">
-                    {formatSalary(employee.annual_ctc || 0)}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="border border-black px-3 py-1 font-bold">Details of CTC:</td>
-                  <td className="border border-black px-3 py-1">
-                    Attached as Annexure 'A'
-                  </td>
-                </tr>
-                <tr>
-                  <td className="border border-black px-3 py-1 font-bold">Benefits:</td>
-                  <td className="border border-black px-3 py-1">
-                    As per Company Policy
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </li>
+      <p className="mb-2">The details are as follows:</p>
 
-        <li>
-          Other Terms and Conditions: All other Terms and Conditions of your employment remain unchanged, as per your initial appointment letter, or subsequent instructions, if any.
-        </li>
+      <div className="mb-4 overflow-x-auto">
+        <table className="w-full border-collapse border border-black text-[9px]">
+          <tbody>
+            <tr>
+              <td className="border border-black px-3 py-1 font-bold">Applicable Date from:</td>
+              <td className="border border-black px-3 py-1">
+                {formatDate(employee.sal_applicable_from || today)}
+              </td>
+            </tr>
+            <tr>
+              <td className="border border-black px-3 py-1 font-bold">Department:</td>
+              <td className="border border-black px-3 py-1">
+                {employee.department || '[Department_Custom]'}
+              </td>
+            </tr>
+            <tr>
+              <td className="border border-black px-3 py-1 font-bold">Designation:</td>
+              <td className="border border-black px-3 py-1">
+                {employee.designation || '[Designation_Custom]'}
+              </td>
+            </tr>
+            <tr>
+              <td className="border border-black px-3 py-1 font-bold">Reporting To:</td>
+              <td className="border border-black px-3 py-1">
+                {employee.manager || '[Reporting Manager_Custom]'}
+              </td>
+            </tr>
+            <tr>
+              <td className="border border-black px-3 py-1 font-bold">Annual CTC:</td>
+              <td className="border border-black px-3 py-1 font-bold">
+                {formatSalary(employee.annual_ctc || 0)}
+              </td>
+            </tr>
+            <tr>
+              <td className="border border-black px-3 py-1 font-bold">Details of CTC:</td>
+              <td className="border border-black px-3 py-1">
+                Attached as Annexure 'A'
+              </td>
+            </tr>
+            <tr>
+              <td className="border border-black px-3 py-1 font-bold">Benefits:</td>
+              <td className="border border-black px-3 py-1">
+                As per Company Policy
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-        <li>
-          We congratulate you and wish you success in your endeavours.
-        </li>
-      </ol>
+      <p className="mb-4">
+        <strong>Terms and Conditions:</strong> All other terms and conditions of your employment shall remain unchanged, as stipulated in your original Appointment Letter and any subsequent amendments or instructions issued by the Company.
+      </p>
+
+      <p className="mb-3">
+        Congratulations, and we wish you every success in your future endeavours.
+      </p>
 
       {/* Closing */}
       <div className="mt-8 text-left">
@@ -156,25 +186,27 @@ export default function LetterTemplate() {
 
       {/* Acceptance Section */}
       <div className="mt-8 pt-6">
-        <p className="font-bold">Authorised Signatory</p>
+        <p className="font-bold">ACKNOWLEDGEMENT</p>
         <p className="mt-3">
-          I accept the Company's terms and conditions and confirm my taking up the above position.
+          I hereby accept the above position and agree to the terms and conditions of employment as specified by the Company.
         </p>
         <div className="mt-6 space-y-1.5">
-          <p><strong>Signatures:</strong></p>
-          <p><strong>Name:</strong> {employee.full_name}</p>
+          <p><strong>Signature:</strong></p>
+          <p><strong>Employee Name:</strong> {employee.full_name}</p>
           <p><strong>Date:</strong> {today}</p>
         </div>
 
       </div>
+      <LetterFooter />
     </div>
   );
 
   const renderConfirmationLetter = () => (
-    <div className="max-w-4xl mx-auto p-16 mt-16 bg-white font-serif leading-snug text-sm print:p-16 print:text-xs print:max-w-none">
+    <div className="max-w-4xl mx-auto p-16 mt-16 bg-white font-[Arial] font-bold leading-snug text-[9px] print:p-16 print:text-[9px] print:max-w-none">
+      <LetterHeader />
       {/* Strictly Confidential Heading */}
       <div className="text-center mb-3">
-        <h2 className="text-lg font-bold uppercase tracking-wide pb-1">
+        <h2 className="text-[12px] font-bold uppercase tracking-wide pb-1">
           Strictly Personal & Confidential
         </h2>
       </div>
@@ -193,32 +225,75 @@ export default function LetterTemplate() {
         </p>
       </div>
 
-      {/* Name Breakdown */}
+      {/* Name */}
       <div className="mb-3">
         <p>
-          <strong>First Name:</strong> {firstName} <br />
-          <strong>Middle Name:</strong> {middleName || '[Middle_Name_Custom]'} <br />
-          <strong>Surname:</strong> {lastName || '[Last_Name_Custom]'}
+          <strong>Employee Name:</strong> {employee.full_name}
         </p>
       </div>
 
       {/* Subject */}
-      <p className="mb-4 font-bold">Sub: Confirmation Letter</p>
+      <p className="mb-4 text-[12px] font-bold">Subject: CONFIRMATION LETTER</p>
 
       {/* Salutation */}
-      <p className="mb-4">Dear {employee.full_name.split(' ')[0]},</p>
+      <p className="mb-4">Dear {employee.full_name},</p>
 
       {/* Body */}
       <p className="mb-4">
-        Following completion of your confirmation period, we are pleased to inform you that your employment with the Company has been confirmed with effect from {formatDate(employee.joining_date || today)}.
+        We are pleased to inform you that, following completion of your probation period, your employment with the Company has been confirmed with effective from {formatDate(employee.joining_date || today)}.
       </p>
 
+      <p className="mb-2">The details are as follows:</p>
+
+      <div className="mb-4 overflow-x-auto">
+        <table className="w-full border-collapse border border-black text-[9px]">
+          <tbody>
+            <tr>
+              <td className="border border-black px-3 py-1 font-bold">Date Confirmed:</td>
+              <td className="border border-black px-3 py-1">
+                {formatDate(employee.joining_date || today)}
+              </td>
+            </tr>
+            <tr>
+              <td className="border border-black px-3 py-1 font-bold">Department:</td>
+              <td className="border border-black px-3 py-1">
+                {employee.department || '[Department_Custom]'}
+              </td>
+            </tr>
+            <tr>
+              <td className="border border-black px-3 py-1 font-bold">Designation:</td>
+              <td className="border border-black px-3 py-1">
+                {employee.designation || '[Designation_Custom]'}
+              </td>
+            </tr>
+            <tr>
+              <td className="border border-black px-3 py-1 font-bold">Reporting To:</td>
+              <td className="border border-black px-3 py-1">
+                {employee.manager || '[Reporting Manager_Custom]'}
+              </td>
+            </tr>
+            <tr>
+              <td className="border border-black px-3 py-1 font-bold">Annual CTC:</td>
+              <td className="border border-black px-3 py-1 font-bold">
+                {formatSalary(employee.annual_ctc || 0)}
+              </td>
+            </tr>
+            <tr>
+              <td className="border border-black px-3 py-1 font-bold">Benefits:</td>
+              <td className="border border-black px-3 py-1">
+                As per Company Policy
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
       <p className="mb-4">
-        All other Terms and Conditions of your employment remain unchanged as per your initial appointment letter, or subsequent instructions, if any.
+        <strong>Terms and Conditions:</strong> All other terms and conditions of your employment shall remain unchanged, as stipulated in your initial Appointment Letter and any subsequent amendments or instructions issued by the Company.
       </p>
 
       <p className="mb-3">
-        We congratulate you and wish you success in your endeavours.
+        Congratulations, and we wish you every success in your future endeavours.
       </p>
 
       {/* Closing */}
@@ -229,40 +304,36 @@ export default function LetterTemplate() {
 
       {/* Acceptance Section */}
       <div className="mt-8 pt-6">
-        <p className="font-bold">Authorised Signatory</p>
+        <p className="font-bold">ACKNOWLEDGEMENT</p>
         <p className="mt-3">
-          I accept the Company's terms and conditions and confirm my taking up the above position.
+          I hereby accept the above position and agree to the terms and conditions of employment as specified by the Company.
         </p>
 
-        <p className="mt-6 leading-relaxed">
-          <strong>Signatures of Employee:</strong>
-          <br className="mb-4" />
-          <strong>First Name:</strong> {firstName}
-          <br className="mb-4" />
-          <strong>Middle Name:</strong> {middleName || '[Middle_Name_Custom]'}
-          <br className="mb-4" />
-          <strong>Surname:</strong> {lastName || '[Last_Name_Custom]'}
-          <br className="mb-4" />
-          <strong>Date:</strong>
-        </p>
+        <div className="mt-6 space-y-1.5">
+          <p><strong>Signature:</strong></p>
+          <p><strong>Employee Name:</strong> {employee.full_name}</p>
+          <p><strong>Date:</strong></p>
+        </div>
 
       </div>
+      <LetterFooter />
     </div>
   );
 
   const renderConsultantContractLetter = () => (
-    <div className="max-w-4xl mx-auto p-10 mt-10 bg-white font-serif leading-snug text-sm print:p-16 print:text-xs print:max-w-none">
+    <div className="max-w-4xl mx-auto p-10 mt-10 bg-white font-[Arial] font-bold leading-snug text-[9px] print:p-16 print:text-[9px] print:max-w-none">
+      <LetterHeader />
       {/* Page 1 Content */}
       <div className="page-break-after">
         {/* Strictly Confidential Heading */}
         <div className="text-center mb-4">
-          <h2 className="text-lg font-bold uppercase tracking-wide pb-1">
+          <h2 className="text-[12px] font-bold uppercase tracking-wide pb-1">
             Strictly Personal & Confidential
           </h2>
         </div>
 
         {/* Subject */}
-        <p className="mb-3 font-bold text-left">
+        <p className="mb-3 text-[12px] font-bold text-left">
           Subject: CONSULTANT CONTRACT
         </p>
 
@@ -273,7 +344,7 @@ export default function LetterTemplate() {
 
         {/* Name & Date Table */}
         <div className="mb-4 overflow-x-auto">
-          <table className="w-full border-collapse border border-black text-xs">
+          <table className="w-full border-collapse border border-black text-[9px]">
             <tbody>
               <tr>
                 <td className="border border-black px-4 py-2 font-bold w-1/3">Name:</td>
@@ -297,7 +368,7 @@ export default function LetterTemplate() {
 
         {/* Appointment Table */}
         <div className="mb-4 overflow-x-auto">
-          <table className="w-full border-collapse border border-black text-xs">
+          <table className="w-full border-collapse border border-black text-[9px]">
             <tbody>
               <tr>
                 <td className="border border-black px-4 py-2 font-bold w-1/3">As:</td>
@@ -328,7 +399,7 @@ export default function LetterTemplate() {
 
         {/* Payment Table */}
         <div className="mb-4 overflow-x-auto">
-          <table className="w-full border-collapse border border-black text-xs">
+          <table className="w-full border-collapse border border-black text-[9px]">
             <tbody>
               <tr>
                 <td className="border border-black px-4 py-2 font-bold w-1/3">Amount:</td>
@@ -353,7 +424,7 @@ export default function LetterTemplate() {
 
         {/* Reporting Table */}
         <div className="mb-10 overflow-x-auto">
-          <table className="w-full border-collapse border border-black text-xs">
+          <table className="w-full border-collapse border border-black text-[9px]">
             <tbody>
               <tr>
                 <td className="border border-black px-4 py-2 font-bold w-1/3">Department:</td>
@@ -392,7 +463,7 @@ export default function LetterTemplate() {
       </div>
 
       {/* Page Break - New content starts on page 2 */}
-      <div className="max-w-4xl mx-auto p-10 mt-10 bg-white font-serif leading-snug text-sm print:p-16 print:text-xs print:max-w-none"></div>
+      <div className="max-w-4xl mx-auto p-10 mt-10 bg-white font-[Arial] font-bold leading-snug text-[9px] print:p-16 print:text-[9px] print:max-w-none"></div>
 
       {/* Page 2 - Clause 9 */}
       <ol className="list-decimal pl-5 space-y-4" start={9}>
@@ -441,7 +512,7 @@ export default function LetterTemplate() {
         <li>
 
           {/* Page Break - New content starts on page 2 */}
-          <div className="max-w-4xl mx-auto p-10 mt-10 bg-white font-serif leading-snug text-sm print:p-16 print:text-xs print:max-w-none"></div>
+          <div className="max-w-4xl mx-auto p-10 mt-10 bg-white font-[Arial] font-bold leading-snug text-[9px] print:p-16 print:text-[9px] print:max-w-none"></div>
 
           <strong>CONFLICT OF INTEREST:</strong> During the Consultant's contract with the Company, the Consultant shall ensure that in case of serving anywhere else on honorary or remunerative terms, or engaging in business in the Consultant's individual capacity, there is no conflict of interest between the Consultant's contractual obligations with the Company / any of its Group or affiliated Companies and his / her other engagements. In case such a conflict interest appears likely at any time, the Consultant shall inform the Company Management in advance, who shall then be free to terminate this contract with the Consultant.
         </li>
@@ -493,15 +564,16 @@ export default function LetterTemplate() {
           </strong>
         </tbody>
       </table>
-
+      <LetterFooter />
     </div>
   );
 
   const renderSalaryBreakdownLetter = () => (
-    <div className="max-w-3xl mx-auto p-10 bg-white font-serif leading-snug text-sm print:p-8 print:text-xs print:max-w-none">
+    <div className="max-w-3xl mx-auto p-10 bg-white font-[Arial] font-bold leading-snug text-[9px] print:p-8 print:text-[9px] print:max-w-none">
+      <LetterHeader />
       {/* Header Section */}
       <div className="text-center mb-6">
-        <h1 className="text-xl font-bold">
+        <h1 className="text-[12px] font-bold">
           Annexure A - Salary Breakdown
         </h1>
       </div>
@@ -512,31 +584,23 @@ export default function LetterTemplate() {
           <tbody>
             {/* Metadata Section */}
             <tr>
-              <td className="border border-black px-3 py-1 font-bold w-3/5">CompanyID:</td>
+              <td className="border border-black px-3 py-1 font-bold w-3/5">Company:</td>
               <td className="border border-black px-3 py-1">Brisk Olive Business Solutions Pvt Ltd</td>
             </tr>
             <tr>
-              <td className="border border-black px-3 py-1 font-bold">EmployeeID:</td>
-              <td className="border border-black px-3 py-1">{employee.employee_id || '74'}</td>
+              <td className="border border-black px-3 py-1 font-bold">Employee ID:</td>
+              <td className="border border-black px-3 py-1">{employee.employee_id || ''}</td>
             </tr>
             <tr>
-              <td className="border border-black px-3 py-1 font-bold">First Name:</td>
-              <td className="border border-black px-3 py-1">{firstName || '[Custom_First Name]'}</td>
+              <td className="border border-black px-3 py-1 font-bold">Name:</td>
+              <td className="border border-black px-3 py-1">{employee.full_name}</td>
             </tr>
             <tr>
-              <td className="border border-black px-3 py-1 font-bold">Middle Name:</td>
-              <td className="border border-black px-3 py-1">{middleName || ''}</td>
+              <td className="border border-black px-3 py-1 font-bold">Occurence Type:</td>
+              <td className="border border-black px-3 py-1">Monthly</td>
             </tr>
             <tr>
-              <td className="border border-black px-3 py-1 font-bold">Last Name:</td>
-              <td className="border border-black px-3 py-1">{lastName || '[Custom_Last Name]'}</td>
-            </tr>
-            <tr>
-              <td className="border border-black px-3 py-1 font-bold">Occurrence Type:</td>
-              <td className="border border-black px-3 py-1"></td>
-            </tr>
-            <tr>
-              <td className="border border-black px-3 py-1 font-bold">Offer Date**:</td>
+              <td className="border border-black px-3 py-1 font-bold">Date:</td>
               <td className="border border-black px-3 py-1">{formatDate(employee.offer_accepted_date || today)}</td>
             </tr>
 
@@ -550,20 +614,20 @@ export default function LetterTemplate() {
               <td className="border border-black px-3 py-1">{formatSalary(Number(employee.hra) || 0)}</td>
             </tr>
             <tr>
-              <td className="border border-black px-3 py-1 font-bold">Telephonic Allowance:</td>
-              <td className="border border-black px-3 py-1">{formatSalary(Number(employee.telephone_allowance) || 0)}</td>
-            </tr>
-            <tr>
-              <td className="border border-black px-3 py-1 font-bold">Conveyance Allowance:</td>
+              <td className="border border-black px-3 py-1 font-bold">Transport Allowance:</td>
               <td className="border border-black px-3 py-1">{formatSalary(Number(employee.travel_allowance) || 0)}</td>
             </tr>
             <tr>
-              <td className="border border-black px-3 py-1 font-bold">Statutory Bonus:</td>
-              <td className="border border-black px-3 py-1">{formatSalary(Number(employee.statutory_bonus) || 0)}</td>
+              <td className="border border-black px-3 py-1 font-bold">Supplementary Allowance:</td>
+              <td className="border border-black px-3 py-1">{formatSalary(Number(employee.supplementary_allowance) || 0)}</td>
             </tr>
             <tr>
-              <td className="border border-black px-3 py-1 font-bold">Education Allowance:</td>
-              <td className="border border-black px-3 py-1">{formatSalary(Number(employee.childrens_education_allowance) || 0)}</td>
+              <td className="border border-black px-3 py-1 font-bold">Telephone Allowance:</td>
+              <td className="border border-black px-3 py-1">{formatSalary(Number(employee.telephone_allowance) || 0)}</td>
+            </tr>
+            <tr>
+              <td className="border border-black px-3 py-1 font-bold">Bonus @8.33%</td>
+              <td className="border border-black px-3 py-1">{formatSalary(Number(employee.statutory_bonus) || 0)}</td>
             </tr>
             <tr>
               <td className="border border-black px-3 py-1 font-bold">Gross Monthly Salary:</td>
@@ -572,12 +636,12 @@ export default function LetterTemplate() {
 
             {/* Contributions Section */}
             <tr>
-              <td className="border border-black px-3 py-1 font-bold">Employer ESIC Contribution:</td>
-              <td className="border border-black px-3 py-1">{formatSalary(Number(employee.employer_esi) || 0)}</td>
-            </tr>
-            <tr>
               <td className="border border-black px-3 py-1 font-bold">Employer PF Contribution:</td>
               <td className="border border-black px-3 py-1">{formatSalary(Number(employee.employer_pf) || 0)}</td>
+            </tr>
+            <tr>
+              <td className="border border-black px-3 py-1 font-bold">Employer Contribution ESIC:</td>
+              <td className="border border-black px-3 py-1">{formatSalary(Number(employee.employer_esi) || 0)}</td>
             </tr>
             <tr>
               <td className="border border-black px-3 py-1 font-bold">Monthly CTC:</td>
@@ -585,10 +649,6 @@ export default function LetterTemplate() {
             </tr>
 
             {/* Annual Reimbursements Section */}
-            <tr>
-              <td className="border border-black px-3 py-1 font-bold">Medical Reimbursement Annual:</td>
-              <td className="border border-black px-3 py-1">{formatSalary(Number(employee.medical_reimbursement_annual) || 0)}</td>
-            </tr>
             <tr>
               <td className="border border-black px-3 py-1 font-bold">Vehicle Reimbursement Annual:</td>
               <td className="border border-black px-3 py-1">{formatSalary(Number(employee.vehicle_reimbursement_annual) || 0)}</td>
@@ -624,11 +684,15 @@ export default function LetterTemplate() {
               <td className="border border-black px-3 py-1">{formatSalary(Number(employee.annual_performance_incentive) || 0)}</td>
             </tr>
             <tr>
+              <td className="border border-black px-3 py-1 font-bold">Annual Benefits:</td>
+              <td className="border border-black px-3 py-1"></td>
+            </tr>
+            <tr>
               <td className="border border-black px-3 py-1 font-bold">Gratuity:</td>
               <td className="border border-black px-3 py-1">{formatSalary(Number(employee.gratuity) || 0)}</td>
             </tr>
             <tr>
-              <td className="border border-black px-3 py-1 font-bold">Mediclaim Premium:</td>
+              <td className="border border-black px-3 py-1 font-bold">Medi Claim Premium:</td>
               <td className="border border-black px-3 py-1">{formatSalary(Number(employee.medical_premium) || 0)}</td>
             </tr>
             <tr>
@@ -640,12 +704,9 @@ export default function LetterTemplate() {
       </div>
 
       {/* Footer Text Content */}
-      <div className="mt-8 text-[12px] leading-relaxed mx-auto max-w-2xl">
-        <p className="mb-1">
-          * The Performance Incentive component shall be payable in part / whole, as per the Performance Management Policy of the Company.
-        </p>
+      <div className="mt-8 text-[9px] leading-relaxed mx-auto max-w-2xl">
         <p className="mb-4">
-          ** The Offer is subject to the Candidate joining the Company on or before the due date.
+          * The Performance Incentive component shall be payable in part / whole, as per the Performance Management Policy of the Company.
         </p>
 
         <div className="space-y-2">
@@ -697,19 +758,21 @@ export default function LetterTemplate() {
             </div>
           </div>
         </div>
+        <LetterFooter />
       </div>
     </div>
   );
 
   const renderNonCompeteAgreement = () => (
-    <div className="max-w-4xl mx-auto p-16 bg-white print:p-16 print:text-xs print:max-w-none">
+    <div className="max-w-4xl mx-auto p-16 bg-white font-[Arial] font-bold text-[9px] print:p-16 print:text-[9px] print:max-w-none">
+      <LetterHeader />
       {/* Identification Section - Occupies approx 1/3 of the page */}
       <div className="min-h-[33vh] flex flex-col justify-start">
         <div className="text-center mb-6">
-          <h2 className="text-xl font-bold inline-block pb-1">
-            Consultants / Employees Non-Compete Agreement
+          <h2 className="text-[12px] font-bold inline-block pb-1">
+            Annexure 'D' - Consultants / Employees Non-Compete Agreement
           </h2>
-          <p className="mt-4 uppercase text-[14px] text-left font-bold tracking-tighter">
+          <p className="mt-4 uppercase text-[12px] text-left font-bold tracking-tighter">
             THIS NON-COMPETE AGREEMENT (the "Agreement") is entered into by and between
           </p>
         </div>
@@ -825,16 +888,18 @@ export default function LetterTemplate() {
           </table>
         </div>
       </div>
+      <LetterFooter />
     </div>
   );
 
   const renderNonDisclosureAgreement = () => (
-    <div className="max-w-4xl mx-auto p-10 mt-4  min-h-[1000px] bg-white print:p-16 print:text-xs print:max-w-none">
+    <div className="max-w-4xl mx-auto p-10 mt-4  min-h-[1000px] bg-white font-[Arial] font-bold text-[9px] print:p-16 print:text-[9px] print:max-w-none">
       {/* PAGE 1: Header and Identification Table */}
       <div className="bg-white p-16 print:p-10 min-h-[800px] page-break-after">
+        <LetterHeader />
         <div className="mb-6">
-          <h2 className="text-xl font-bold">
-            Consultants / Employees Confidentiality and Non Disclosure Agreement
+          <h2 className="text-[12px] font-bold">
+            Annexure 'B' - Consultants / Employees Confidentiality and Non-Disclosure Agreement
           </h2>
           <p className="mt-2 font-bold uppercase text-[12px] ">
             THIS CONFIDENTIALITY AND NON-DISCLOSURE AGREEMENT (the "Agreement") is entered into by and between
@@ -985,17 +1050,18 @@ export default function LetterTemplate() {
             </tr>
           </tbody>
         </table>
+        <LetterFooter />
       </div>
     </div>
   );
 
   const renderCodeOfEthics = () => (
-    <div className="max-w-4xl mx-auto p-10 mt- bg-white font-bold print:p-16 print:text-xs print:max-w-none">
-
+    <div className="max-w-4xl mx-auto p-10 mt- bg-white font-[Arial] font-bold text-[9px] print:p-16 print:text-[9px] print:max-w-none">
+      <LetterHeader />
       {/* Header */}
       <div className="text-center mb-4">
-        <h2 className='text-[20px]'>
-          Code of Ethics (Employees, Consultants, Contractual Staff)
+        <h2 className='text-[12px] font-bold'>
+          Annexure 'C' - Code of Ethics (Employees, Consultants, Contractual Staff)
         </h2>
       </div>
 
@@ -1117,7 +1183,7 @@ export default function LetterTemplate() {
         <li>
           PAYMENTS OR GIFTS FROM OTHERS: Under no circumstances may Employees accept any offer, payment, promise to pay, or authorization to pay any money, gift, or anything of value from customers, vendors, consultants, etc., that is perceived as intended, directly or indirectly, to influence any business decision, any act or failure to act, any commitment of fraud, or opportunity for commitment of any fraud. Inexpensive gifts, infrequent business meals, celebratory events and entertainment, provided they are not excessive or create an appearance of impropriety, do not violate this policy.
 
-          <div className="max-w-4xl mx-auto p-8 mt-8 bg-white font-serif leading-snug text-sm print:p-16 print:text-xs print:max-w-none"></div>
+          <div className="max-w-4xl mx-auto p-8 mt-8 bg-white font-[Arial] font-bold leading-snug text-[9px] print:p-16 print:text-[9px] print:max-w-none"></div>
 
           Before accepting anything which may not qualify as inexpensive or token gift from any entity, the Head HR may be consulted. Gifts given by Company to or received from suppliers or customers, should be appropriate to the circumstances and never be of a kind that could create an appearance of impropriety.
 
@@ -1166,12 +1232,13 @@ export default function LetterTemplate() {
         </p>
       </div>
 
-
+      <LetterFooter />
     </div>
   );
 
   const renderInternshipCertificate = () => (
-    <div className="max-w-4xl mx-auto p-16 mt-16 bg-white font-serif leading-snug text-sm print:p-16 print:text-xs print:max-w-none">
+    <div className="max-w-4xl mx-auto p-16 mt-16 bg-white font-[Arial] font-bold leading-snug text-[9px] print:p-16 print:text-[9px] print:max-w-none">
+      <LetterHeader />
       <h3 className="mt-12 mb-10 text-center space-y-12">Internship Certificate</h3>
       {/* Date */}
       <div className="mb-8">
@@ -1185,7 +1252,7 @@ export default function LetterTemplate() {
 
       {/* Subject */}
       <div className="mb-12">
-        <p className="font-bold decoration-1 underline-offset-4">
+        <p className="text-[12px] font-bold decoration-1 underline-offset-4">
           Subject: Internship Certificate
         </p>
       </div>
@@ -1219,11 +1286,13 @@ export default function LetterTemplate() {
           <p>Authorized Signatory</p>
         </div>
       </div>
+      <LetterFooter />
     </div>
   );
 
   const renderExperienceCertificate = () => (
-    <div className="max-w-4xl mx-auto p-16 mt-16 bg-white font-serif leading-snug text-sm print:p-16 print:text-xs print:max-w-none">
+    <div className="max-w-4xl mx-auto p-16 mt-16 bg-white font-[Arial] font-bold leading-snug text-[9px] print:p-16 print:text-[9px] print:max-w-none">
+      <LetterHeader />
       <h3 className="mt-12 mb-10 text-center space-y-12">Experience Certificate</h3>
       {/* Date */}
       <div className="mb-10">
@@ -1237,7 +1306,7 @@ export default function LetterTemplate() {
 
       {/* Subject */}
       <div className="mb-12">
-        <p className="font-bold">
+        <p className="text-[12px] font-bold">
           Subject: Work Experience Certificate
         </p>
       </div>
@@ -1268,6 +1337,7 @@ export default function LetterTemplate() {
           <p className="font-bold">For Brisk Olive Business Solutions Pvt Ltd</p>
         </div>
       </div>
+      <LetterFooter />
     </div>
   );
 
@@ -1276,18 +1346,19 @@ export default function LetterTemplate() {
   const renderAppointmentLetter = () => (
     <>
       {/* PAGE 1 */}
-      <div className="p-8 max-w-4xl mx-auto text-[12px] leading-snug print:max-w-none print:page-break-after">
+      <div className="p-8 max-w-4xl mx-auto font-[Arial] font-bold text-[9px] leading-snug print:max-w-none print:page-break-after">
         <div className="bg-white p-8 print:p-8">
+          <LetterHeader />
           {/* Strictly Confidential Heading */}
           <div className="text-center mb-3">
-            <h2 className="text-lg uppercase pb-1">
+            <h2 className="text-[12px] font-bold uppercase pb-1">
               Strictly Personal & Confidential
             </h2>
           </div>
 
           {/* Header Section */}
           <div className="mb-4">
-            <table className="text-[11px]">
+            <table className="text-[9px]">
               <tbody>
                 <tr>
                   <td className="w-28 py-0.5">Date:</td>
@@ -1314,7 +1385,7 @@ export default function LetterTemplate() {
           </div>
 
           {/* Subject */}
-          <p className="mb-3"><strong>Subject: Appointment Letter</strong></p>
+          <p className="mb-3 text-[12px]"><strong>Subject: Appointment Letter</strong></p>
 
           {/* Salutation */}
           <p className="mb-3">Dear {employee.full_name},</p>
@@ -1327,7 +1398,7 @@ export default function LetterTemplate() {
           </div>
 
           {/* Company Details Table */}
-          <table className="w-full mb-3 text-[11px]">
+          <table className="w-full mb-3 text-[9px]">
             <tbody>
               <tr>
                 <td className="w-1/3 py-0.5">Company/ID:</td>
@@ -1423,11 +1494,11 @@ export default function LetterTemplate() {
 
       {/* PAGE 2 */}
       {/* PAGE 2 */}
-      <div className="p-8 max-w-4xl mx-auto text-[11px] leading-tight print:max-w-none">
+      <div className="p-8 max-w-4xl mx-auto font-[Arial] font-bold text-[9px] leading-tight print:max-w-none">
         <div className="bg-white p-6 print:p-6">
           {/* Header */}
           <div className="text-center mb-3">
-            <h2 className="text-base uppercase pb-1">
+            <h2 className="text-[12px] font-bold uppercase pb-1">
               Strictly Personal and Confidential
             </h2>
           </div>
@@ -1501,7 +1572,7 @@ export default function LetterTemplate() {
               </tr>
               <tr className="align-top">
                 <td className="py-0.5">d.</td>
-                <td className="py-0.5"><strong>Discipline and Code of Ethics:</strong> You are required to maintain the highest order of discipline and ethics as regards the work of the Company and / or its subsidiaries or associate companies and in case of any breach of discipline / trust, your services may be terminated by the Company with immediate effect. You are required to sign the Code of Ethics attached to this Appointment Letter (Annexure 'B')</td>
+                <td className="py-0.5"><strong>Discipline and Code of Ethics:</strong> You are required to maintain the highest order of discipline and ethics as regards the work of the Company and / or its subsidiaries or associate companies and in case of any breach of discipline / trust, your services may be terminated by the Company with immediate effect. You are required to sign the Code of Ethics attached to this Appointment Letter (Annexure 'C')</td>
               </tr>
               <tr className="align-top">
                 <td className="py-0.5">e.</td>
@@ -1524,11 +1595,11 @@ export default function LetterTemplate() {
         </div>
       </div>
       {/* PAGE 3 */}
-      <div className="p-8 pt-12 max-w-4xl mx-auto text-[10px] leading-tight print:max-w-none">
+      <div className="p-8 pt-12 max-w-4xl mx-auto font-[Arial] font-bold text-[9px] leading-tight print:max-w-none">
         <div className="bg-white p-6 print:p-6">
           {/* Header */}
           <div className="text-center mb-3">
-            <h2 className="text-base uppercase pb-1">
+            <h2 className="text-[12px] font-bold uppercase pb-1">
               Strictly Personal and Confidential
             </h2>
           </div>
@@ -1559,7 +1630,7 @@ export default function LetterTemplate() {
 
           {/* Section a */}
           <p className="mb-1"><strong>(a) Confidentiality of Information and Signing of Non-Disclosure Agreement:</strong></p>
-          <p className="mb-2">You will not, at any time, during the employment or after, disclose or divulge or make public, any information regarding the Company's affairs or administration, security arrangements Confidential data, reports, technology, expertise, R and D activities or any business plans whether the same is confided to you or becomes known to you in the course of your service or otherwise, as this would impair the competitive position of the Company. Violation of this shall amount to Breach of Contract. To this effect, you will be expected to sign an Agreement of Non-Disclosure with the Company, within one week of issue of this letter (Annexure 'C'). If it is established that the above said information is passed on in any manner to anyone (unauthorized person within or outside the premises) during the employment, the Company shall be free to terminate your services without assigning any reason and without any compensation thereof, as also the Company would be free to recover damages from you, if any.</p>
+          <p className="mb-2">You will not, at any time, during the employment or after, disclose or divulge or make public, any information regarding the Company's affairs or administration, security arrangements Confidential data, reports, technology, expertise, R and D activities or any business plans whether the same is confided to you or becomes known to you in the course of your service or otherwise, as this would impair the competitive position of the Company. Violation of this shall amount to Breach of Contract. To this effect, you will be expected to sign an Agreement of Non-Disclosure with the Company, within one week of issue of this letter (Annexure 'B'). If it is established that the above said information is passed on in any manner to anyone (unauthorized person within or outside the premises) during the employment, the Company shall be free to terminate your services without assigning any reason and without any compensation thereof, as also the Company would be free to recover damages from you, if any.</p>
 
           {/* Section b */}
           <p className="mb-1"><strong>(b) Confidentiality of Salary Information:</strong></p>
@@ -1567,6 +1638,10 @@ export default function LetterTemplate() {
           <p className="mb-1">(ii) You are required to strictly maintain the secrecy of your compensation package and ensure that you do not divulge or communicate in any form or manner, any information relating to your terms of employment, to any other employee of the Company, excepting your immediate superior/ Head of the HR Dept. of the Company.</p>
           <p className="mb-1">(iii) In the same way, when deputed to work/release at the client site, you are expected to maintain full confidentiality regarding your salary packages, and are expected not to discuss or disclose the same to any member of the client staff, in the interest of maintaining and promoting good and ethical functional business relations with our clients.</p>
           <p className="mb-2">(iv) Your obligation to keep such information confidential shall survive even on termination or cancellation of the employment.</p>
+
+          {/* Section c */}
+          <p className="mb-1"><strong>(c) Non-Compete Agreement:</strong></p>
+          <p className="mb-2">You will be expected to sign a Non-Compete Agreement with the Company, within one week of issue of this letter (Annexure 'D').</p>
 
           {/* Section 10 */}
           <p className="mb-1.5"><strong>10. Termination of Service:</strong></p>
@@ -1593,16 +1668,17 @@ export default function LetterTemplate() {
               <p className="mt-10 text-right">Date:</p>
             </div>
           </div>
+          <LetterFooter />
         </div>
       </div>
 
-      {/* Annexure 'C' - Non-Disclosure Agreement (referenced above, attached as part of this same Appointment Letter) */}
+      {/* Annexure 'B' - Non-Disclosure Agreement (referenced above, attached as part of this same Appointment Letter) */}
       {renderNonDisclosureAgreement()}
 
-      {/* Annexure 'B' - Code of Ethics (referenced above, attached as part of this same Appointment Letter) */}
+      {/* Annexure 'C' - Code of Ethics (referenced above, attached as part of this same Appointment Letter) */}
       {renderCodeOfEthics()}
 
-      {/* Non-Compete Agreement (attached as part of this same Appointment Letter) */}
+      {/* Annexure 'D' - Non-Compete Agreement (referenced above, attached as part of this same Appointment Letter) */}
       {renderNonCompeteAgreement()}
     </>
   );
@@ -1612,10 +1688,11 @@ export default function LetterTemplate() {
     const today = formatDate(new Date().toISOString());
 
     return (
-      <div className="max-w-4xl mx-auto p-12 bg-white font-serif leading-relaxed text-base print:p-8 print:text-sm print:max-w-none">
+      <div className="max-w-4xl mx-auto p-12 bg-white font-[Arial] font-bold leading-relaxed text-[9px] print:p-8 print:text-[9px] print:max-w-none">
+        <LetterHeader />
         {/* Strictly Personal & Confidential Heading */}
         <div className="text-center mb-8">
-          <h2 className="text-xl tracking-wide pb-2">
+          <h2 className="text-[12px] font-bold tracking-wide pb-2">
             Strictly Personal & Confidential
           </h2>
         </div>
@@ -1631,7 +1708,7 @@ export default function LetterTemplate() {
         </div>
 
         {/* Subject */}
-        <p className="mb-6 font-bold">
+        <p className="mb-6 text-[12px] font-bold">
           SUBJECT: OFFER LETTER
         </p>
 
@@ -1642,35 +1719,27 @@ export default function LetterTemplate() {
 
         {/* Main Body */}
         <p className="mb-4">
-          We are pleased to offer you the position of <strong>{employee.designation || '[Custom_Designation]'}</strong> in Brisk Olive Business Solutions Pvt Ltd.
+          We are pleased to offer you the position of <strong>{employee.designation || '[Custom_Designation]'}</strong> in Brisk Olive Business Solutions Pvt Ltd. Your date of joining shall be by <strong>{formatDate(employee.joining_date || today)}</strong>.
         </p>
 
         <p className="mb-4">
-          Your date of joining shall be by <strong>{formatDate(employee.joining_date || today)}</strong>.
+          As agreed, your CTC is Rs. <strong>{formatSalary(employee.annual_ctc || '[Custom_CTC]')}</strong> per annum. Also enclosed is a breakup of Compensation being offered to you.
         </p>
 
         <p className="mb-4">
-          As agreed, your CTC will be Rs. <strong>{formatSalary(employee.annual_ctc || '[Custom_CTC]')}</strong> per annum. Also enclosed is a break up of the Compensation being offered to you and a checklist for completing the joining formalities.
+          We request you to sign the duplicate copy of this Offer Letter, and return it to the undersigned, indicating your acceptance of the offer. A formal Appointment Letter shall be issued to you on your joining. In case your signed acceptance is not received within 2 days of issue of this letter, this offer shall automatically lapse. The offer shall also lapse in case you do not report for work on or before the due date.
         </p>
 
         <p className="mb-4">
-          We request you to sign the duplicate copy of this Offer Letter, and return it to the undersigned, indicating your acceptance of the offer. A formal Appointment Letter shall be issued to you on your joining.
+          Please Note that this is only an offer letter. Your appointment shall be subject to your clearing the Medical Examination at the Company approved Hospital and satisfactory background check (If Applicable).
         </p>
 
         <p className="mb-4">
-          In case your signed acceptance is not received within two days of issue of this letter, this offer shall automatically lapse. The offer shall also lapse in case you do not report for work on or before the date.
-        </p>
-
-        <p className="mb-4">
-          Please Note that this is only an offer letter. Your appointment shall be subject to your clearing the Medical Examination at the Company approved Hospital and satisfactory background check.
-        </p>
-
-        <p className="mb-4">
-          Prior to beginning work at the Company, you are requested to report to the HR Department, which shall assist in completing the joining formalities.
+          Prior to beginning work on the first day of employment, you are requested to report to the HR Department, which shall assist you in completing the joining formalities.
         </p>
 
         <p className="mb-6">
-          We are in an exciting phase of expansion and development and we believe that with your knowledge and skills, you will be able to make a significant contribution to the success of the Company.
+          We are in an exciting phase of expansion and development and we believe that with your knowledge and skills you will be able to make a significant contribution to the success of the Company.
         </p>
 
         {/* Closing */}
@@ -1687,15 +1756,12 @@ export default function LetterTemplate() {
           </p>
 
           <div className="mt-8 space-y-2">
-            <p><strong>Signatures:</strong></p>
+            <p><strong>Signature:</strong></p>
             <p><strong>Name of the Candidate:</strong> {employee.full_name || '[Custom_Full Name]'}</p>
-            <p><strong>Date:</strong> {today}</p>
+            <p><strong>Date:</strong></p>
           </div>
-
-          <p className="mt-6 italic text-sm">
-            (Pre-Employment Checklist as attached)
-          </p>
         </div>
+        <LetterFooter />
       </div>
     );
   };

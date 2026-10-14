@@ -8,6 +8,9 @@ const HiringRequisition    = require('../models/HiringRequisition');
 const { triggerCandidateApplication } = require('../emails');
 const { uploadResumeToDrive } = require('../utils/googleDrive');
 const { computeAtsMatchScore } = require('../utils/atsMatchScore');
+const { sendMail } = require('../emails/mailer');
+
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://hr.briskolive.com';
 
 // Escapes regex metacharacters so user-submitted text can be used safely
 // inside a case-insensitive RegExp (duplicate-candidate lookup below).
@@ -46,6 +49,44 @@ const FIELDS_TO_COPY = [
 // multipart has no native way to carry arrays/objects, so the frontend
 // stringifies these specific fields and this parses them back.
 const JSON_FIELDS = ['primarySkills', 'secondarySkills', 'languagesKnown', 'screeningAnswers'];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/candidate-applications/send-link
+// HR-triggered — emails a candidate the application form link directly,
+// independent of whether a matching requisition is currently open. job_id/
+// designation are optional: when omitted, the candidate gets a general
+// application link (CandidateApplication.tsx renders it as "General
+// Application" and the submit still goes through with no requisition tied
+// to it — see models/Candidateapplication.js's designation default).
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/send-link', async (req, res) => {
+  try {
+    const { name, email, job_id, designation } = req.body;
+    if (!email || !String(email).trim()) {
+      return res.status(400).json({ success: false, message: 'Candidate email is required.' });
+    }
+
+    const params = new URLSearchParams();
+    if (job_id) params.set('job_id', String(job_id));
+    if (designation) params.set('designation', designation);
+    const link = `${FRONTEND_URL}/candidate-application${params.toString() ? `?${params.toString()}` : ''}`;
+
+    const roleLine = designation
+      ? `<p>Please apply for the <strong>${designation}</strong> position using the link below:</p>`
+      : `<p>Please complete your application using the link below — this isn't tied to a specific open position yet, so our team will review it and reach out when a matching opportunity comes up:</p>`;
+
+    await sendMail({
+      to: email,
+      subject: designation ? `Application Link — ${designation}` : 'Application Link',
+      html: `<p>Dear ${name || 'Candidate'},</p>${roleLine}<p><a href="${link}">${link}</a></p>`,
+    });
+
+    res.json({ success: true, data: { link } });
+  } catch (err) {
+    console.error('[candidate-applications/send-link] error:', err);
+    res.status(500).json({ success: false, message: 'Failed to send the application link.' });
+  }
+});
 
 router.post('/', uploadResume.single('resume'), async (req, res) => {
   try {

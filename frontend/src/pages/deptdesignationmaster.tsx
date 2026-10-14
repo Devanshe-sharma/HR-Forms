@@ -15,11 +15,11 @@ import {
   Edit as EditIcon, Refresh as RefreshIcon, Visibility as ViewIcon,
   Business as BusinessIcon, WorkOutline as WorkIcon,
   Groups as GroupsIcon, Category as CategoryIcon,
-  OpenInNew as OpenInNewIcon,
+  OpenInNew as OpenInNewIcon, RestartAlt as RestartAltIcon,
 } from '@mui/icons-material';
 import Navbar from '../components/Navbar';
 import Sidebar from '../components/Sidebar';
-import { FiltersMenuButton, FavoritesMenuButton } from '../components/FilterBar';
+import { FiltersMenuButton, FavoritesMenuButton, GroupByMenuButton, SearchWithChips } from '../components/FilterBar';
 
 const BRAND_BLUE = '#2b3d14';
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
@@ -121,8 +121,17 @@ export default function DeptDesignationMaster() {
   const [page,     setPage]     = useState(1);
 
   const [search,      setSearch]      = useState('');
+  const [filterDept,  setFilterDept]  = useState('');
+  const [filterDesig, setFilterDesig] = useState('');
   const [filterType,  setFilterType]  = useState('');
   const [filterLevel, setFilterLevel] = useState('');
+  const [groupByField, setGroupByField] = useState<string | null>(null);
+  const groupByOptions = [
+    { key: 'department', label: 'Department' },
+    { key: 'designation', label: 'Designation' },
+    { key: 'department_type', label: 'Type' },
+    { key: 'management_level', label: 'Level' },
+  ];
 
   const [open,   setOpen]   = useState(false);
   const [form,   setForm]   = useState<RoleMasterRow>(EMPTY_FORM);
@@ -211,15 +220,20 @@ export default function DeptDesignationMaster() {
   useEffect(() => {
     const q = search.toLowerCase();
     const result = rows.filter(r => {
-      const matchQ     = !q || [r.department, r.designation, r.reporting_manager, r.department_head, r.parent_department]
+      const matchQ      = !q || [r.department, r.designation, r.reporting_manager, r.department_head, r.parent_department]
         .some(v => (v || '').toLowerCase().includes(q));
-      const matchType  = !filterType  || r.department_type  === filterType;
-      const matchLevel = !filterLevel || r.management_level === filterLevel;
-      return matchQ && matchType && matchLevel;
+      const matchDept   = !filterDept  || r.department       === filterDept;
+      const matchDesig  = !filterDesig || r.designation       === filterDesig;
+      const matchType   = !filterType  || r.department_type  === filterType;
+      const matchLevel  = !filterLevel || r.management_level === filterLevel;
+      return matchQ && matchDept && matchDesig && matchType && matchLevel;
     });
+    if (groupByField) {
+      result.sort((a, b) => String(a[groupByField as keyof RoleMasterRow] || '').localeCompare(String(b[groupByField as keyof RoleMasterRow] || '')));
+    }
     setFiltered(result);
     setPage(1);
-  }, [rows, search, filterType, filterLevel]);
+  }, [rows, search, filterDept, filterDesig, filterType, filterLevel, groupByField]);
 
   // ─── Stats ────────────────────────────────────────────────────────────────────
 
@@ -277,6 +291,14 @@ export default function DeptDesignationMaster() {
     const source  = deptKey ? rows.filter(r => r.department?.trim().toLowerCase() === deptKey) : rows;
     return Array.from(new Set(source.map(r => r.designation).filter(Boolean))).sort();
   }, [rows, form.department]);
+
+  // Same scoping as desigNameOptions above, but driven by the filter row's
+  // own department selection rather than the Add/Edit form's.
+  const filterDesigOptions = useMemo(() => {
+    const deptKey = filterDept.trim().toLowerCase();
+    const source  = deptKey ? rows.filter(r => r.department?.trim().toLowerCase() === deptKey) : rows;
+    return Array.from(new Set(source.map(r => r.designation).filter(Boolean))).sort();
+  }, [rows, filterDept]);
 
   const nextDeptId = useMemo(() => {
     const ids = rows.map(r => Number(r.dept_id)).filter(n => !isNaN(n));
@@ -486,22 +508,37 @@ export default function DeptDesignationMaster() {
 
         {/* Filter row */}
         <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-          <TextField
-            size="small"
-            placeholder="Search department, designation, manager…"
+          <SearchWithChips
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={setSearch}
+            placeholder="Search department, designation, manager…"
             sx={{ flex: 1, minWidth: 200 }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon fontSize="small" sx={{ color: 'text.disabled' }} />
-                </InputAdornment>
-              ),
-            }}
+            chips={[
+              ...(filterDept ? [{ key: 'dept', label: `Department: ${filterDept}`, onRemove: () => { setFilterDept(''); setFilterDesig(''); } }] : []),
+              ...(filterDesig ? [{ key: 'desig', label: `Designation: ${filterDesig}`, onRemove: () => setFilterDesig('') }] : []),
+              ...(filterType ? [{ key: 'type', label: `Type: ${filterType}`, onRemove: () => setFilterType('') }] : []),
+              ...(filterLevel ? [{ key: 'level', label: `Level: ${filterLevel}`, onRemove: () => setFilterLevel('') }] : []),
+            ]}
           />
 
-          <FiltersMenuButton activeCount={(filterType ? 1 : 0) + (filterLevel ? 1 : 0)}>
+          <FiltersMenuButton activeCount={(filterDept ? 1 : 0) + (filterDesig ? 1 : 0) + (filterType ? 1 : 0) + (filterLevel ? 1 : 0)}>
+            <FormControl size="small" fullWidth>
+              <InputLabel>Department</InputLabel>
+              <Select
+                value={filterDept} label="Department"
+                onChange={e => { setFilterDept(e.target.value); setFilterDesig(''); }}
+              >
+                <MenuItem value="">All departments</MenuItem>
+                {deptNameOptions.map(d => <MenuItem key={d} value={d}>{d}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <FormControl size="small" fullWidth>
+              <InputLabel>Designation</InputLabel>
+              <Select value={filterDesig} label="Designation" onChange={e => setFilterDesig(e.target.value)}>
+                <MenuItem value="">All designations</MenuItem>
+                {filterDesigOptions.map(d => <MenuItem key={d} value={d}>{d}</MenuItem>)}
+              </Select>
+            </FormControl>
             <FormControl size="small" fullWidth>
               <InputLabel>Type</InputLabel>
               <Select value={filterType} label="Type" onChange={e => setFilterType(e.target.value)}>
@@ -518,11 +555,29 @@ export default function DeptDesignationMaster() {
             </FormControl>
           </FiltersMenuButton>
 
+          <GroupByMenuButton options={groupByOptions} value={groupByField} onChange={setGroupByField} />
+
           <FavoritesMenuButton
             storageKey="filters:dept-designation-master"
-            currentState={{ search, filterType, filterLevel }}
-            onApply={(s) => { setSearch(s.search ?? ''); setFilterType(s.filterType ?? ''); setFilterLevel(s.filterLevel ?? ''); }}
+            currentState={{ search, filterDept, filterDesig, filterType, filterLevel }}
+            onApply={(s) => {
+              setSearch(s.search ?? '');
+              setFilterDept(s.filterDept ?? '');
+              setFilterDesig(s.filterDesig ?? '');
+              setFilterType(s.filterType ?? '');
+              setFilterLevel(s.filterLevel ?? '');
+            }}
           />
+
+          {(search || filterDept || filterDesig || filterType || filterLevel) && (
+            <Button
+              size="small" variant="outlined" color="inherit" startIcon={<RestartAltIcon fontSize="small" />}
+              onClick={() => { setSearch(''); setFilterDept(''); setFilterDesig(''); setFilterType(''); setFilterLevel(''); }}
+              sx={{ textTransform: 'none' }}
+            >
+              Clear Filters
+            </Button>
+          )}
         </Box>
 
         {/* Table */}

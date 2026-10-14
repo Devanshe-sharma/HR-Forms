@@ -4,6 +4,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Button, TextField, Select, MenuItem, FormControl, InputLabel,
   Avatar, Stack, IconButton, Divider, Autocomplete,
+  RadioGroup, Radio, FormControlLabel,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -11,13 +12,16 @@ import {
   Close as CloseIcon,
   CheckCircle as CheckCircleIcon,
   Gavel as GavelIcon,
+  ExpandMore as ExpandMoreIcon,
+  ChevronRight as ChevronRightIcon,
+  RestartAlt as RestartAltIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
 import { useAuth } from '../contexts/AuthContext';
-import { FiltersMenuButton, FavoritesMenuButton } from '../components/FilterBar';
+import { FiltersMenuButton, FavoritesMenuButton, GroupByMenuButton, SearchWithChips } from '../components/FilterBar';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -221,6 +225,38 @@ function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error';
   );
 }
 
+// ─── Odoo-style collapsible single-select filter group — used inside the
+// Filters popover below instead of always-visible dropdown boxes. Each
+// group is its own accordion row with a count badge when active.
+function FilterAccordionGroup({ label, value, options, onChange }: {
+  label: string; value: string; options: { value: string; label: string }[]; onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const active = value !== 'All';
+  return (
+    <Box sx={{ borderBottom: '1px solid #f0f2f5', '&:last-of-type': { borderBottom: 'none' } }}>
+      <Box
+        onClick={() => setOpen(p => !p)}
+        sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', py: 1 }}
+      >
+        <Typography sx={{ fontSize: 11, fontWeight: 700, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.4, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          {open ? <ExpandMoreIcon sx={{ fontSize: 14 }} /> : <ChevronRightIcon sx={{ fontSize: 14 }} />}
+          {label}
+        </Typography>
+        {active && <Chip size="small" label="1" sx={{ height: 16, fontSize: 10, bgcolor: ACCENT, color: 'white' }} />}
+      </Box>
+      {open && (
+        <RadioGroup value={value} onChange={e => onChange(e.target.value)} sx={{ pl: 2.5, pb: 1 }}>
+          <FormControlLabel value="All" control={<Radio size="small" sx={{ py: 0.3 }} />} label={<Typography fontSize={12.5}>All</Typography>} />
+          {options.map(o => (
+            <FormControlLabel key={o.value} value={o.value} control={<Radio size="small" sx={{ py: 0.3 }} />} label={<Typography fontSize={12.5}>{o.label}</Typography>} />
+          ))}
+        </RadioGroup>
+      )}
+    </Box>
+  );
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 function DashboardView({ records, employees, loading, onAdd, onSelect }: {
@@ -238,6 +274,7 @@ function DashboardView({ records, employees, loading, onAdd, onSelect }: {
   const [filterDept, setFilterDept] = useState('All');
   const [filterDesig, setFilterDesig] = useState('All');
   const [filterEmployee, setFilterEmployee] = useState('All');
+  const [groupByField, setGroupByField] = useState<string | null>(null);
   const [viewTab, setViewTab] = useState<'table' | 'category' | 'department' | 'employee'>('table');
   const [drilldownCategory, setDrilldownCategory] = useState<string | null>(null);
 
@@ -269,6 +306,27 @@ function DashboardView({ records, employees, loading, onAdd, onSelect }: {
     const employeeOk = filterEmployee === 'All' || r.targetEmployees.some(t => t.name === filterEmployee);
     return searchOk && categoryOk && modeOk && deptOk && desigOk && employeeOk;
   }), [records, search, category, mode, filterDept, filterDesig, filterEmployee]);
+
+  // Odoo-style "Group By" for the All Cases table — groups the already
+  // filtered rows under a header per distinct value of the chosen field.
+  // null = flat (no grouping), the default.
+  const groupByOptions = [
+    { key: 'category', label: 'Category' },
+    { key: 'department', label: 'Department' },
+    { key: 'mode', label: 'Mode' },
+  ];
+  const groupedFiltered = useMemo(() => {
+    if (!groupByField) return null;
+    const groups = new Map<string, Escalation[]>();
+    filtered.forEach(r => {
+      const key = groupByField === 'category' ? `${r.category} — ${categoryName(r.category)}`
+        : groupByField === 'department' ? (r.department || '(none)')
+        : modeLabel(r.escalationFor);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(r);
+    });
+    return Array.from(groups.entries()).sort((a, b) => b[1].length - a[1].length);
+  }, [filtered, groupByField]);
 
   // ── Category view: total per category, plus who's behind that total ──────
   const categoryBreakdown = useMemo(() => {
@@ -388,49 +446,37 @@ function DashboardView({ records, employees, loading, onAdd, onSelect }: {
       {viewTab === 'table' && (
         <>
       <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-        <TextField size="small" placeholder="Search case #, name, or description…" value={search}
-          onChange={e => setSearch(e.target.value)} sx={{ minWidth: 200 }} InputProps={{ sx: { fontSize: 13 } }} />
+        <SearchWithChips
+          value={search}
+          onChange={setSearch}
+          placeholder="Search case #, name, or description…"
+          sx={{ minWidth: 200 }}
+          chips={[
+            ...(mode !== 'All' ? [{ key: 'mode', label: `Mode: ${modeLabel(mode as EscalationMode)}`, onRemove: () => setMode('All') }] : []),
+            ...(category !== 'All' ? [{ key: 'category', label: `Category: ${category} — ${categoryName(category)}`, onRemove: () => setCategory('All') }] : []),
+            ...(filterDept !== 'All' ? [{ key: 'dept', label: `Department: ${filterDept}`, onRemove: () => setFilterDept('All') }] : []),
+            ...(filterDesig !== 'All' ? [{ key: 'desig', label: `Designation: ${filterDesig}`, onRemove: () => setFilterDesig('All') }] : []),
+            ...(filterEmployee !== 'All' ? [{ key: 'emp', label: `Employee: ${filterEmployee}`, onRemove: () => setFilterEmployee('All') }] : []),
+          ]}
+        />
 
         <FiltersMenuButton activeCount={
           (mode !== 'All' ? 1 : 0) + (category !== 'All' ? 1 : 0) +
           (filterDept !== 'All' ? 1 : 0) + (filterDesig !== 'All' ? 1 : 0) + (filterEmployee !== 'All' ? 1 : 0)
         }>
-          <FormControl size="small" fullWidth>
-            <InputLabel sx={{ fontSize: 12 }}>Mode</InputLabel>
-            <Select value={mode} label="Mode" onChange={e => setMode(e.target.value)} sx={{ fontSize: 12 }}>
-              <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
-              {MODE_OPTIONS.map(o => <MenuItem key={o.value} value={o.value} sx={{ fontSize: 12 }}>{o.label}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <FormControl size="small" fullWidth>
-            <InputLabel sx={{ fontSize: 12 }}>Category</InputLabel>
-            <Select value={category} label="Category" onChange={e => setCategory(e.target.value)} sx={{ fontSize: 12 }}>
-              <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
-              {CATEGORIES.map(c => <MenuItem key={c.code} value={c.code} sx={{ fontSize: 12 }}>{c.code} — {c.name}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <FormControl size="small" fullWidth>
-            <InputLabel sx={{ fontSize: 12 }}>Department</InputLabel>
-            <Select value={filterDept} label="Department" onChange={e => setFilterDept(e.target.value)} sx={{ fontSize: 12 }}>
-              <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
-              {departmentOptions.map(d => <MenuItem key={d} value={d} sx={{ fontSize: 12 }}>{d}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <FormControl size="small" fullWidth>
-            <InputLabel sx={{ fontSize: 12 }}>Designation</InputLabel>
-            <Select value={filterDesig} label="Designation" onChange={e => setFilterDesig(e.target.value)} sx={{ fontSize: 12 }}>
-              <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
-              {designationOptions.map(d => <MenuItem key={d} value={d} sx={{ fontSize: 12 }}>{d}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <FormControl size="small" fullWidth>
-            <InputLabel sx={{ fontSize: 12 }}>Employee</InputLabel>
-            <Select value={filterEmployee} label="Employee" onChange={e => setFilterEmployee(e.target.value)} sx={{ fontSize: 12 }}>
-              <MenuItem value="All" sx={{ fontSize: 12 }}>All</MenuItem>
-              {employeeOptions.map(n => <MenuItem key={n} value={n} sx={{ fontSize: 12 }}>{n}</MenuItem>)}
-            </Select>
-          </FormControl>
+          <FilterAccordionGroup label="Mode" value={mode} onChange={setMode}
+            options={MODE_OPTIONS.map(o => ({ value: o.value, label: o.label }))} />
+          <FilterAccordionGroup label="Category" value={category} onChange={setCategory}
+            options={CATEGORIES.map(c => ({ value: c.code, label: `${c.code} — ${c.name}` }))} />
+          <FilterAccordionGroup label="Department" value={filterDept} onChange={setFilterDept}
+            options={departmentOptions.map(d => ({ value: d, label: d }))} />
+          <FilterAccordionGroup label="Designation" value={filterDesig} onChange={setFilterDesig}
+            options={designationOptions.map(d => ({ value: d, label: d }))} />
+          <FilterAccordionGroup label="Employee" value={filterEmployee} onChange={setFilterEmployee}
+            options={employeeOptions.map(n => ({ value: n, label: n }))} />
         </FiltersMenuButton>
+
+        <GroupByMenuButton options={groupByOptions} value={groupByField} onChange={setGroupByField} />
 
         <FavoritesMenuButton
           storageKey="filters:escalations"
@@ -442,7 +488,7 @@ function DashboardView({ records, employees, loading, onAdd, onSelect }: {
         />
 
         {(mode !== 'All' || category !== 'All' || filterDept !== 'All' || filterDesig !== 'All' || filterEmployee !== 'All' || search) && (
-          <Button size="small" variant="text" onClick={() => {
+          <Button size="small" variant="text" startIcon={<RestartAltIcon fontSize="small" />} onClick={() => {
             setSearch(''); setCategory('All'); setMode('All'); setFilterDept('All'); setFilterDesig('All'); setFilterEmployee('All');
           }} sx={{ fontSize: 12.5, textTransform: 'none', color: 'text.secondary' }}>
             Clear Filters
@@ -473,35 +519,51 @@ function DashboardView({ records, employees, loading, onAdd, onSelect }: {
                     No escalations logged yet
                   </TableCell></TableRow>
                 )}
-                {filtered.map(r => {
-                  const score = r.targetEmployees.length ? scoreById.get(r.targetEmployees[0].employeeId) : undefined;
-                  return (
-                  <TableRow key={r._id} onClick={() => onSelect(r)}
-                    sx={{ cursor: 'pointer', '&:hover': { bgcolor: '#f8fafc' }, borderBottom: '1px solid #f1f5f9' }}>
-                    <TableCell sx={{ fontSize: 12, fontFamily: 'monospace', color: ACCENT, fontWeight: 600 }}>{r.caseNumber || '—'}</TableCell>
-                    <TableCell sx={{ fontSize: 12 }}>{fmtDate(r.createdAt)}</TableCell>
-                    <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Avatar sx={{ width: 24, height: 24, bgcolor: ACCENT, fontSize: 10, fontWeight: 700 }}>{initials(r.createdBy.name)}</Avatar>
-                        <Typography fontSize={12} fontWeight={600}>{r.createdBy.name}</Typography>
-                      </Box>
-                    </TableCell>
-                    <TableCell><Chip size="small" label={r.escalationFor} sx={{ fontSize: 10, height: 20, bgcolor: '#eef1e4', color: ACCENT }} /></TableCell>
-                    <TableCell sx={{ fontSize: 12 }}>{targetSummary(r)}</TableCell>
-                    <TableCell sx={{ fontSize: 12 }}>{r.department || '—'}</TableCell>
-                    <TableCell sx={{ fontSize: 12, fontWeight: 700, color: score !== undefined && score < 0 ? '#dc2626' : '#0f172a' }}>
-                      {score !== undefined ? score : '—'}
-                    </TableCell>
-                    <TableCell sx={{ fontSize: 12, maxWidth: 220 }}>
-                      <Typography fontSize={12}>{r.category} — {categoryName(r.category)}</Typography>
-                      <Typography fontSize={11} color="text.secondary" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {r.categoryDescription}
-                      </Typography>
-                    </TableCell>
-                    <TableCell sx={{ fontSize: 12, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description || '—'}</TableCell>
-                  </TableRow>
-                  );
-                })}
+                {(() => {
+                  const renderRow = (r: Escalation) => {
+                    const score = r.targetEmployees.length ? scoreById.get(r.targetEmployees[0].employeeId) : undefined;
+                    return (
+                      <TableRow key={r._id} onClick={() => onSelect(r)}
+                        sx={{ cursor: 'pointer', '&:hover': { bgcolor: '#f8fafc' }, borderBottom: '1px solid #f1f5f9' }}>
+                        <TableCell sx={{ fontSize: 12, fontFamily: 'monospace', color: ACCENT, fontWeight: 600 }}>{r.caseNumber || '—'}</TableCell>
+                        <TableCell sx={{ fontSize: 12 }}>{fmtDate(r.createdAt)}</TableCell>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Avatar sx={{ width: 24, height: 24, bgcolor: ACCENT, fontSize: 10, fontWeight: 700 }}>{initials(r.createdBy.name)}</Avatar>
+                            <Typography fontSize={12} fontWeight={600}>{r.createdBy.name}</Typography>
+                          </Box>
+                        </TableCell>
+                        <TableCell><Chip size="small" label={r.escalationFor} sx={{ fontSize: 10, height: 20, bgcolor: '#eef1e4', color: ACCENT }} /></TableCell>
+                        <TableCell sx={{ fontSize: 12 }}>{targetSummary(r)}</TableCell>
+                        <TableCell sx={{ fontSize: 12 }}>{r.department || '—'}</TableCell>
+                        <TableCell sx={{ fontSize: 12, fontWeight: 700, color: score !== undefined && score < 0 ? '#dc2626' : '#0f172a' }}>
+                          {score !== undefined ? score : '—'}
+                        </TableCell>
+                        <TableCell sx={{ fontSize: 12, maxWidth: 220 }}>
+                          <Typography fontSize={12}>{r.category} — {categoryName(r.category)}</Typography>
+                          <Typography fontSize={11} color="text.secondary" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {r.categoryDescription}
+                          </Typography>
+                        </TableCell>
+                        <TableCell sx={{ fontSize: 12, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description || '—'}</TableCell>
+                      </TableRow>
+                    );
+                  };
+
+                  if (groupedFiltered) {
+                    return groupedFiltered.map(([groupLabel, rows]) => (
+                      <React.Fragment key={groupLabel}>
+                        <TableRow>
+                          <TableCell colSpan={9} sx={{ bgcolor: '#f8fafc', fontSize: 11.5, fontWeight: 700, color: '#475569', py: 0.75 }}>
+                            {groupLabel} ({rows.length})
+                          </TableCell>
+                        </TableRow>
+                        {rows.map(renderRow)}
+                      </React.Fragment>
+                    ));
+                  }
+                  return filtered.map(renderRow);
+                })()}
               </TableBody>
             </Table>
           </TableContainer>

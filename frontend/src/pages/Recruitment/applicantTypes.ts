@@ -112,13 +112,23 @@ export interface Joining {
   remarks:       string;
 }
 
-export interface ExcelTestAnswer { question: string; answer: string }
+export interface ExcelTestAnswer {
+  qNo:            number;
+  type:           'mcq' | 'practical';
+  question:       string;
+  selectedOption?: string;
+  answer?:        string;
+  isCorrect?:     boolean | null;
+  marks?:         number | null;
+}
 export interface ExcelTest {
-  sentAt:  string | null;
-  status:  '' | 'Sent' | 'Submitted' | 'Graded';
-  answers: ExcelTestAnswer[];
-  marks:   boolean[];
-  score:   number | null;
+  sentAt:         string | null;
+  status:         '' | 'Sent' | 'Submitted' | 'Graded';
+  answers:        ExcelTestAnswer[];
+  mcqScore:       number | null;
+  practicalScore: number | null;
+  score:          number | null;
+  gradedAt?:      string | null;
 }
 
 export interface DiscAssessment {
@@ -178,6 +188,7 @@ export interface ApplicantRecord {
   relocation:            string;
   designation:           string;
   designation_id?:       number;
+  candidateSource?:      string;
   highest_qualification: string;
   experience:            'Yes' | 'No';
   total_experience:      string;

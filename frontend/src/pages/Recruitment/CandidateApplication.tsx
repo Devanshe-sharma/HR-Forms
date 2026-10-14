@@ -49,7 +49,10 @@ const formSchema = z
     sourceDetail: z.string().optional(),
 
     job_id: z.union([z.string(), z.number()]).optional(),
-    designation: z.string().min(1, 'No role selected — please apply from the careers page'),
+    // Optional — a candidate can submit a general application with no
+    // specific role selected (no requisition open yet); defaults to
+    // "General Application" server-side when left blank.
+    designation: z.string().optional(),
     designation_id: z.number().optional(),
 
     // Step 2 — Education & Experience
@@ -262,7 +265,16 @@ export default function CandidateApplicationPage() {
 
   useEffect(() => {
     if (!jobIdParam) {
-      setJobError('No job selected. Please apply from the careers page.');
+      // No requisition in the link at all — a general/independent
+      // application (e.g. HR sent this candidate the form before any
+      // matching requisition was open). Not an error: render the form
+      // with a generic "General Application" role instead of blocking it.
+      setJob({
+        serial_no: 0,
+        designation: designationParam || 'General Application',
+        hiring_dept: '',
+      });
+      setValue('designation', designationParam || 'General Application', { shouldValidate: true });
       setLoadingJob(false);
       return;
     }
@@ -475,7 +487,7 @@ export default function CandidateApplicationPage() {
       formData.append('candidateSource', data.candidateSource || '');
       formData.append('sourceDetail', data.sourceDetail || '');
       if (data.job_id !== undefined) formData.append('job_id', String(data.job_id));
-      formData.append('designation', data.designation);
+      formData.append('designation', data.designation || 'General Application');
       if (data.designation_id !== undefined) formData.append('designation_id', String(data.designation_id));
 
       formData.append('highest_qualification', data.highest_qualification);

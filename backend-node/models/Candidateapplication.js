@@ -32,8 +32,11 @@ const candidateApplicationSchema = new mongoose.Schema(
     pin_code:              { type: String, required: true, match: /^\d{6}$/ },
     relocation:            { type: String, enum: ['Yes', 'No'], required: true },
 
+    // Both optional — a candidate can apply with no requisition open yet
+    // (a general/independent application), in which case designation
+    // defaults to "General Application" instead of blocking the submit.
     job_id:                { type: Number },
-    designation:           { type: String, required: true },
+    designation:           { type: String, default: 'General Application' },
     designation_id:        { type: Number },
 
     // ── Candidate classification — drives every conditional field below ──────

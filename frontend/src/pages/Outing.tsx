@@ -3,7 +3,9 @@ import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
-import { Plus, X, CheckCircle, XCircle, Edit, Trash2, Save, Archive, Calendar, MapPin, IndianRupee, AlignLeft, Tag, Eye, Star, Search, SlidersHorizontal, ChevronDown, ChevronRight, RotateCcw, Mail, Send } from 'lucide-react';
+import { Plus, X, CheckCircle, XCircle, Edit, Trash2, Save, Archive, Calendar, MapPin, IndianRupee, AlignLeft, Tag, Eye, Star, Search, ChevronDown, ChevronRight, RotateCcw, Mail, Send } from 'lucide-react';
+import { FilterListOutlined as FilterIcon, WorkspacesOutlined as GroupByIcon, ArrowDropDown as ArrowDropDownIcon } from '@mui/icons-material';
+import { FavoritesMenuButton } from '../components/FilterBar';
 axios.defaults.headers.common['x-user-role'] = localStorage.getItem('role') || 'Admin';
 
 
@@ -29,6 +31,8 @@ const formatDate = (date?: string | Date | null): string => {
 // prop, since only that one group's label/options differ between them.
 type OutingFilterGroup = { key: string; label: string; options: { value: string; label: string }[] };
 
+type OutingFilterSnapshot = { search: string; quarter: string; fy: string; status: string; category: string };
+
 const OutingFiltersBar = ({
   search, onSearch,
   quarter, onQuarter,
@@ -38,6 +42,10 @@ const OutingFiltersBar = ({
   statusMode,
   onClear,
   extraAction,
+  favoritesKey,
+  onApplyFavorite,
+  groupBy,
+  onGroupBy,
 }: {
   search: string; onSearch: (v: string) => void;
   quarter: string; onQuarter: (v: string) => void;
@@ -47,14 +55,27 @@ const OutingFiltersBar = ({
   statusMode: 'archived' | 'status';
   onClear: () => void;
   extraAction?: React.ReactNode;
+  favoritesKey: string;
+  onApplyFavorite: (state: OutingFilterSnapshot) => void;
+  groupBy: string;
+  onGroupBy: (v: string) => void;
 }) => {
   const [open, setOpen] = useState(false);
+  const [groupByOpen, setGroupByOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const ref = React.useRef<HTMLDivElement>(null);
+  const groupByRef = React.useRef<HTMLDivElement>(null);
+
+  const GROUP_BY_OPTIONS = [
+    { value: 'quarter', label: 'Quarter' },
+    { value: 'category', label: 'Category' },
+    { value: 'status', label: 'Status' },
+  ];
 
   useEffect(() => {
     const onClickOutside = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (groupByRef.current && !groupByRef.current.contains(e.target as Node)) setGroupByOpen(false);
     };
     document.addEventListener('mousedown', onClickOutside);
     return () => document.removeEventListener('mousedown', onClickOutside);
@@ -95,14 +116,31 @@ const OutingFiltersBar = ({
   return (
     <div className="bg-white p-4 rounded-xl shadow border border-gray-200">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <div className="flex items-center flex-wrap gap-1.5 flex-1 min-w-[200px] max-w-md border border-gray-300 rounded-lg px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-[#597e37] focus-within:border-transparent">
+          <Search size={15} className="text-gray-400 shrink-0" />
+          {activeChips.map((c) => (
+            <span
+              key={c.group.key}
+              className="flex items-center gap-1 bg-[#eef3e6] border border-[#cddcb8] text-[#3d5420] text-xs font-semibold pl-2 pr-1 py-0.5 rounded-full"
+            >
+              <span className="text-[#688a46]">{c.group.label}:</span>
+              {c.optionLabel}
+              <button onClick={() => setFor(c.group.key, '')} className="hover:bg-[#dce8c9] rounded-full p-0.5 transition">
+                <X size={10} />
+              </button>
+            </span>
+          ))}
           <input
-            placeholder="Search outing topics..."
+            placeholder={activeChips.length ? '' : 'Search outing topics...'}
             value={search}
             onChange={(e) => onSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#597e37] focus:border-transparent"
+            className="flex-1 min-w-[80px] text-sm outline-none"
           />
+          {!!search.trim() && (
+            <button onClick={() => onSearch('')} className="text-gray-400 hover:text-gray-600 shrink-0">
+              <X size={13} />
+            </button>
+          )}
         </div>
 
         <div className="relative" ref={ref}>
@@ -113,11 +151,12 @@ const OutingFiltersBar = ({
               activeChips.length > 0 ? 'border-[#a9c08a] bg-[#eef3e6] text-[#3d5420]' : 'border-gray-300 text-gray-600 bg-white hover:border-gray-400'
             }`}
           >
-            <SlidersHorizontal size={14} />
+            <FilterIcon sx={{ fontSize: 16 }} />
             Filters
             {activeChips.length > 0 && (
               <span className="bg-[#597e37] text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{activeChips.length}</span>
             )}
+            <ArrowDropDownIcon sx={{ fontSize: 18 }} />
           </button>
 
           {open && (
@@ -167,6 +206,48 @@ const OutingFiltersBar = ({
           )}
         </div>
 
+        <div className="relative" ref={groupByRef}>
+          <button
+            type="button"
+            onClick={() => setGroupByOpen((p) => !p)}
+            className={`flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg border transition ${
+              groupBy ? 'border-[#a9c08a] bg-[#eef3e6] text-[#3d5420]' : 'border-gray-300 text-gray-600 bg-white hover:border-gray-400'
+            }`}
+          >
+            <GroupByIcon sx={{ fontSize: 16 }} />
+            Group By
+            <ArrowDropDownIcon sx={{ fontSize: 18 }} />
+          </button>
+          {groupByOpen && (
+            <div className="absolute z-20 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg p-1">
+              <button
+                type="button"
+                onClick={() => { onGroupBy(''); setGroupByOpen(false); }}
+                className={`w-full text-left px-3 py-1.5 text-sm rounded-md transition ${!groupBy ? 'bg-[#eef3e6] text-[#3d5420] font-semibold' : 'text-gray-600 hover:bg-gray-50'}`}
+              >
+                None
+              </button>
+              {GROUP_BY_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => { onGroupBy(o.value); setGroupByOpen(false); }}
+                  className={`w-full text-left px-3 py-1.5 text-sm rounded-md transition ${groupBy === o.value ? 'bg-[#eef3e6] text-[#3d5420] font-semibold' : 'text-gray-600 hover:bg-gray-50'}`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+
+        <FavoritesMenuButton
+          storageKey={favoritesKey}
+          currentState={{ search, quarter, fy, status, category }}
+          onApply={onApplyFavorite}
+        />
+
         <button
           type="button"
           onClick={onClear}
@@ -175,26 +256,10 @@ const OutingFiltersBar = ({
         >
           <RotateCcw size={14} /> Clear Filters
         </button>
-
+        
+  
         {extraAction && <div className="ml-auto">{extraAction}</div>}
       </div>
-
-      {activeChips.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100">
-          {activeChips.map((c) => (
-            <span
-              key={c.group.key}
-              className="flex items-center gap-1.5 bg-[#eef3e6] border border-[#cddcb8] text-[#3d5420] text-xs font-semibold pl-2.5 pr-1.5 py-1 rounded-full"
-            >
-              <span className="text-[#688a46]">{c.group.label}:</span>
-              {c.optionLabel}
-              <button onClick={() => setFor(c.group.key, '')} className="hover:bg-[#dce8c9] rounded-full p-0.5 transition">
-                <X size={11} />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 };
@@ -307,6 +372,15 @@ const Outing: React.FC = () => {
   const [fyFilter, setFyFilter] = useState('');
   const [archivedFilter, setArchivedFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'' | 'Internal' | 'External'>('');
+  const [groupByField, setGroupByField] = useState('');
+
+  const applyOutingFavorite = (snap: OutingFilterSnapshot) => {
+    setOutingNameFilter(snap.search || '');
+    setQuarterFilter(snap.quarter || '');
+    setFyFilter(snap.fy || '');
+    setArchivedFilter(snap.status || '');
+    setCategoryFilter((snap.category as '' | 'Internal' | 'External') || '');
+  };
 
   // NEW: Global + Details Modal
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -349,8 +423,12 @@ const Outing: React.FC = () => {
       }
     }
 
+    if (groupByField) {
+      list.sort((a, b) => String(a[groupByField as keyof Outing] || '').localeCompare(String(b[groupByField as keyof Outing] || '')));
+    }
+
     return list;
-  }, [outingList, outingNameFilter, quarterFilter, fyFilter, archivedFilter, categoryFilter, currentTab]);
+  }, [outingList, outingNameFilter, quarterFilter, fyFilter, archivedFilter, categoryFilter, currentTab, groupByField]);
 
   // Management: Reject Modal
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
@@ -1014,6 +1092,9 @@ const Outing: React.FC = () => {
                 category={categoryFilter} onCategory={(v) => setCategoryFilter(v as '' | 'Internal' | 'External')}
                 statusMode="archived"
                 onClear={() => { setOutingNameFilter(''); setQuarterFilter(''); setFyFilter(''); setArchivedFilter(''); setCategoryFilter(''); }}
+                favoritesKey="filters:outing-hr"
+                onApplyFavorite={applyOutingFavorite}
+                groupBy={groupByField} onGroupBy={setGroupByField}
                 extraAction={
                   <button
                     onClick={() => openMailModal('quarterly')}
@@ -1194,6 +1275,9 @@ const Outing: React.FC = () => {
                 category={categoryFilter} onCategory={(v) => setCategoryFilter(v as '' | 'Internal' | 'External')}
                 statusMode="status"
                 onClear={() => { setOutingNameFilter(''); setQuarterFilter(''); setFyFilter(''); setArchivedFilter(''); setCategoryFilter(''); }}
+                favoritesKey="filters:outing-scheduled"
+                onApplyFavorite={applyOutingFavorite}
+                groupBy={groupByField} onGroupBy={setGroupByField}
               />
 
               {/* Scheduled & Completed Outings Table */}
@@ -1272,6 +1356,9 @@ const Outing: React.FC = () => {
                 category={categoryFilter} onCategory={(v) => setCategoryFilter(v as '' | 'Internal' | 'External')}
                 statusMode="archived"
                 onClear={() => { setOutingNameFilter(''); setQuarterFilter(''); setFyFilter(''); setArchivedFilter(''); setCategoryFilter(''); }}
+                favoritesKey="filters:outing-global"
+                onApplyFavorite={applyOutingFavorite}
+                groupBy={groupByField} onGroupBy={setGroupByField}
               />
 
               <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">

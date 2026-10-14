@@ -5,11 +5,19 @@ import { useParams, useSearchParams } from 'react-router-dom';
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
 
+type ExcelQuestion = {
+  qNo: number;
+  type: 'mcq' | 'practical';
+  question: string;
+  options?: { A: string; B: string; C: string; D: string };
+  sampleData?: string;
+};
+
 type ExcelContext = {
   full_name: string;
-  questions: string[];
+  questions: ExcelQuestion[];
   status: string;
-  answers: { question: string; answer: string }[];
+  answers: { qNo: number; selectedOption?: string; answer?: string }[];
 };
 
 type DiscContext = {
@@ -26,7 +34,8 @@ export default function CandidateAssessment() {
   const [context, setContext] = useState<ExcelContext | DiscContext | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
-  const [answers, setAnswers] = useState<string[]>([]);
+  const [excelAnswers, setExcelAnswers] = useState<Record<number, string>>({});
+  const [discAnswers, setDiscAnswers]   = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted]   = useState(false);
 
@@ -40,9 +49,11 @@ export default function CandidateAssessment() {
         if (!res.success) { setError(res.message || 'This link could not be verified.'); setLoading(false); return; }
         setContext(res.data);
         if (kind === 'excel') {
-          setAnswers(new Array((res.data as ExcelContext).questions.length).fill(''));
+          const init: Record<number, string> = {};
+          (res.data as ExcelContext).questions.forEach((q) => { init[q.qNo] = ''; });
+          setExcelAnswers(init);
         } else {
-          setAnswers(new Array((res.data as DiscContext).questions.length).fill(''));
+          setDiscAnswers(new Array((res.data as DiscContext).questions.length).fill(''));
         }
         setLoading(false);
       })
@@ -51,14 +62,35 @@ export default function CandidateAssessment() {
   }, [recordId, kind, sig]);
 
   const handleSubmit = async () => {
-    if (answers.some((a) => !a)) { setError('Please answer every question before submitting.'); return; }
+    if (kind === 'excel') {
+      const questions = (context as ExcelContext).questions;
+      if (questions.some((q) => !excelAnswers[q.qNo]?.trim())) {
+        setError('Please answer every question before submitting.');
+        return;
+      }
+    } else {
+      if (discAnswers.some((a) => !a)) {
+        setError('Please answer every question before submitting.');
+        return;
+      }
+    }
     setSubmitting(true);
     setError('');
     try {
+      const body = kind === 'excel'
+        ? {
+            answers: (context as ExcelContext).questions.map((q) => (
+              q.type === 'mcq'
+                ? { qNo: q.qNo, selectedOption: excelAnswers[q.qNo] }
+                : { qNo: q.qNo, answer: excelAnswers[q.qNo] }
+            )),
+          }
+        : { answers: discAnswers };
+
       const res = await fetch(`${API_BASE}/applicant-records/${recordId}/assessments/${kind}/submit?sig=${encodeURIComponent(sig)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answers }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -78,7 +110,7 @@ export default function CandidateAssessment() {
     return <div className="min-h-screen flex items-center justify-center text-gray-500">Loading…</div>;
   }
 
-  if (!isValidKind || error && !context) {
+  if (!isValidKind || (error && !context)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 text-center px-4">
         <p className="text-gray-600">{error || 'This link is invalid.'}</p>
@@ -97,7 +129,7 @@ export default function CandidateAssessment() {
     );
   }
 
-  const title = kind === 'excel' ? 'Excel Test' : 'DISC Assessment';
+  const title = kind === 'excel' ? 'Basic Excel Skills Test' : 'DISC Assessment';
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-lime-50 to-white">
@@ -105,22 +137,49 @@ export default function CandidateAssessment() {
         <div className="container mx-auto px-6 py-6">
           <h1 className="text-white text-2xl sm:text-3xl font-bold">{title}</h1>
           {context?.full_name && <p className="text-lime-100 text-sm mt-1">Hi {context.full_name}, please complete the assessment below.</p>}
+          {kind === 'excel' && (
+            <p className="text-lime-100 text-xs mt-2">
+              20 multiple-choice questions, then 10 practical tasks — write the actual formula or describe the steps, don't just name the feature.
+            </p>
+          )}
         </div>
       </nav>
 
       <div className="container mx-auto px-6 py-10 max-w-2xl">
         <div className="bg-white rounded-xl shadow p-6 space-y-6">
           {kind === 'excel'
-            ? (context as ExcelContext).questions.map((q, i) => (
-                <div key={i}>
-                  <label className="block text-sm font-semibold text-gray-800 mb-2">{i + 1}. {q}</label>
-                  <textarea
-                    value={answers[i] || ''}
-                    onChange={(e) => setAnswers((prev) => prev.map((a, idx) => idx === i ? e.target.value : a))}
-                    rows={3}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-lime-400"
-                    placeholder="Describe your approach..."
-                  />
+            ? (context as ExcelContext).questions.map((q) => (
+                <div key={q.qNo}>
+                  <label className="block text-sm font-semibold text-gray-800 mb-1">
+                    {q.qNo}. {q.question}
+                  </label>
+                  {q.sampleData && (
+                    <p className="text-xs text-gray-500 mb-2">Sample data: {q.sampleData}</p>
+                  )}
+                  {q.type === 'mcq' && q.options ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                      {(Object.keys(q.options) as ('A' | 'B' | 'C' | 'D')[]).map((opt) => (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() => setExcelAnswers((prev) => ({ ...prev, [q.qNo]: opt }))}
+                          className={`border rounded-lg px-3 py-2 text-sm text-left transition ${
+                            excelAnswers[q.qNo] === opt ? 'border-lime-500 bg-lime-50 text-lime-800 font-semibold' : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                          }`}
+                        >
+                          <span className="font-bold mr-1">{opt}.</span>{q.options![opt]}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <textarea
+                      value={excelAnswers[q.qNo] || ''}
+                      onChange={(e) => setExcelAnswers((prev) => ({ ...prev, [q.qNo]: e.target.value }))}
+                      rows={3}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono mt-2 focus:outline-none focus:ring-2 focus:ring-lime-400"
+                      placeholder="Write the actual formula, or describe the steps..."
+                    />
+                  )}
                 </div>
               ))
             : (context as DiscContext).questions.map((q, i) => (
@@ -131,9 +190,9 @@ export default function CandidateAssessment() {
                       <button
                         key={trait}
                         type="button"
-                        onClick={() => setAnswers((prev) => prev.map((a, idx) => idx === i ? trait : a))}
+                        onClick={() => setDiscAnswers((prev) => prev.map((a, idx) => idx === i ? trait : a))}
                         className={`border rounded-lg px-3 py-2 text-sm text-left transition ${
-                          answers[i] === trait ? 'border-lime-500 bg-lime-50 text-lime-800 font-semibold' : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                          discAnswers[i] === trait ? 'border-lime-500 bg-lime-50 text-lime-800 font-semibold' : 'border-gray-200 text-gray-600 hover:border-gray-300'
                         }`}
                       >
                         {q[trait]}

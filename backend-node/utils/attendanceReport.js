@@ -24,7 +24,7 @@ const AttendancePunch = require('../models/AttendancePunch');
 const LeaveRequest = require('../models/LeaveRequest');
 const OutOfOffice = require('../models/OutOfOffice');
 const PublicHoliday = require('../models/PublicHoliday');
-const { MACHINE_EMPLOYEES, normaliseCode } = require('./attendanceEmployees');
+const { MACHINE_EMPLOYEES, normaliseCode, nameKey } = require('./attendanceEmployees');
 
 const IST_OFFSET_MS = 5.5 * 3600000;
 
@@ -43,7 +43,6 @@ const istMinutes = d => {
   const t = new Date(new Date(d).getTime() + IST_OFFSET_MS);
   return t.getUTCHours() * 60 + t.getUTCMinutes() + t.getUTCSeconds() / 60;
 };
-const nameKey = s => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
 const codeOrder = (a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0) || a.localeCompare(b);
 
 const dowOf = dateKey => new Date(`${dateKey}T00:00:00Z`).getUTCDay();
