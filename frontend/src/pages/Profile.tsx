@@ -218,6 +218,7 @@ function buildProfileFromOnboarding(doc: any): UserProfile {
     documents: Array.isArray(doc.documents) ? doc.documents : [],
     companyAssets: doc.companyAssets || {},
     signature: doc.signature && doc.signature.driveLink ? doc.signature : null,
+    profilePicture: doc.profilePicture && doc.profilePicture.driveLink ? doc.profilePicture : null,
   };
 }
 
