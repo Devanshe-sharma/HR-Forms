@@ -1,10 +1,15 @@
 import { AppBar, Toolbar, Typography, Tabs, Tab, Box, Button, IconButton, Avatar, Menu, MenuItem, ListItemIcon, Divider } from '@mui/material';
 
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import axios from 'axios';
 
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+
+const API_URL = process.env.REACT_APP_API_URL || '/api';
+const buildProfilePictureThumbnailUrl = (driveFileId: string) =>
+  `https://drive.google.com/thumbnail?id=${driveFileId}&sz=w96`;
 
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
@@ -250,6 +255,24 @@ export default function Navbar() {
     .map((n) => n[0]?.toUpperCase())
     .join('');
 
+  // Same self-service DP (profile picture) the Profile page's avatar shows —
+  // fetched independently here since the Navbar is mounted on every page and
+  // AuthUser (the login session) never carries it, only the Onboarding record
+  // does. Best-effort: a missing/failed lookup just falls back to initials.
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!user?.email) { setAvatarUrl(null); return; }
+    let cancelled = false;
+    axios.get(`${API_URL}/onboarding/by-email`, { params: { email: user.email } })
+      .then((res) => {
+        if (cancelled) return;
+        const pic = res.data?.data?.profilePicture;
+        setAvatarUrl(pic?.driveFileId ? buildProfilePictureThumbnailUrl(pic.driveFileId) : null);
+      })
+      .catch(() => { if (!cancelled) setAvatarUrl(null); });
+    return () => { cancelled = true; };
+  }, [user?.email]);
+
 
 
   const sp           = new URLSearchParams(loc.search);
@@ -416,10 +439,12 @@ export default function Navbar() {
             title={user ? user.name : 'Account'}
             sx={{ p: 0.5 }}
           >
-            <Avatar sx={{
-              width: 34, height: 34, fontSize: 13, fontWeight: 700,
-              bgcolor: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)',
-            }}>
+            <Avatar
+              src={avatarUrl || undefined}
+              sx={{
+                width: 34, height: 34, fontSize: 13, fontWeight: 700,
+                bgcolor: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)',
+              }}>
               {initials}
             </Avatar>
           </IconButton>
