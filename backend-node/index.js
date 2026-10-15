@@ -89,6 +89,7 @@ app.use('/api/training-schedules',  require('./routes/trainingSchedules'));
 // app.use('/api/training-materials', require('./routes/trainingMaterials'));
 app.use('/api/training-feedback',  require('./routes/trainingFeedback'));
 app.use('/api/training-assessments', require('./routes/trainingAssessments'));
+app.use('/api/uploads',            require('./routes/uploads'));
 app.use('/api/employee-scores',    require('./routes/employeeScores'));
 
 app.use('/api/onboarding',         require('./routes/onboardingroutes'));

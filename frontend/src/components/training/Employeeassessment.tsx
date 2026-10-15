@@ -3,9 +3,9 @@ import axios from 'axios';
 import {
   Upload, FileText, Video, FileCheck,
   Link as LinkIcon, X, Eye, ChevronRight,
-  CheckCircle, Clock, AlertCircle,
+  CheckCircle, AlertCircle,
 } from 'lucide-react';
-import { getRole, can } from '../../config/rbac';
+import { getRole } from '../../config/rbac';
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL;
 const api = axios.create({ baseURL: API_BASE });
@@ -198,11 +198,6 @@ export default function EmployeeAssessment() {
   const [submitted, setSubmitted] = useState(false);
   const [score, setScore] = useState(0);
 
-  // 'training' is a blanket create/read/update/delete grant every role gets
-  // (an Admin-override fallback used elsewhere) — it can't tell a Trainer
-  // apart from an Employee, so this checks the resource that actually does:
-  // only Trainer/Admin can update trainingMaterials, Employee is read-only.
-  const isTrainer = can('trainingMaterials', 'update');
 
   const loadTrainings = async () => {
     setLoading(true);
@@ -489,9 +484,7 @@ export default function EmployeeAssessment() {
       <div className="mb-6">
         <h2 className="text-base text-gray-700 mb-1">Employee Assessment</h2>
         <p className="text-gray-400 text-sm">
-          {isTrainer
-            ? 'Upload training content · Employees can then take the assessment below'
-            : 'Complete assessments for your attended trainings'}
+          Upload training content, then take the assessment below
         </p>
       </div>
 
@@ -553,31 +546,21 @@ export default function EmployeeAssessment() {
                   </div>
                 )}
 
-                {/* Actions */}
+                {/* Actions — open to everyone: anyone can upload/update the
+                    content, and anyone can take the assessment once it exists. */}
                 <div className="flex gap-1 mt-auto pt-1">
-                  {/* Trainer: upload content */}
-                  {isTrainer && (
-                    <button onClick={() => openUpload(t)}
-                      className="flex items-center gap-1 px-2 py-1 text-xs border border-blue-300 text-blue-600 rounded-md hover:bg-blue-50 transition-colors">
-                      <Upload className="w-3 h-3" />
-                      {uploaded ? 'Update Content' : 'Upload Content'}
-                    </button>
-                  )}
+                  <button onClick={() => openUpload(t)}
+                    className="flex items-center gap-1 px-2 py-1 text-xs border border-blue-300 text-blue-600 rounded-md hover:bg-blue-50 transition-colors">
+                    <Upload className="w-3 h-3" />
+                    {uploaded ? 'Update Content' : 'Upload Content'}
+                  </button>
 
-                  {/* Employee: take assessment (only if content uploaded & not already passed) */}
-                  {!isTrainer && uploaded && (!myResult || myResult.status === 'Fail') && (
+                  {uploaded && (!myResult || myResult.status === 'Fail') && (
                     <button onClick={() => openAssessment(t)}
                       className="flex items-center gap-1 px-2 py-1 text-xs bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
                       <ChevronRight className="w-3 h-3" />
                       {myResult ? `Retry (Attempt ${myResult.attemptNumber + 1})` : 'Take Assessment'}
                     </button>
-                  )}
-
-                  {/* Not uploaded yet */}
-                  {!isTrainer && !uploaded && (
-                    <span className="flex items-center gap-1 text-xs text-gray-400">
-                      <Clock className="w-3 h-3" /> Awaiting content upload
-                    </span>
                   )}
                 </div>
               </div>
