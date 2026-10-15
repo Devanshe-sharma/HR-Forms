@@ -6,6 +6,8 @@ import Navbar from '../components/Navbar';
 import { Plus, X, CheckCircle, XCircle, Edit, Trash2, Save, Archive, Calendar, MapPin, IndianRupee, AlignLeft, Tag, Eye, Star, Search, ChevronDown, ChevronRight, RotateCcw, Mail, Send } from 'lucide-react';
 import { FilterListOutlined as FilterIcon, WorkspacesOutlined as GroupByIcon, ArrowDropDown as ArrowDropDownIcon } from '@mui/icons-material';
 import { FavoritesMenuButton } from '../components/FilterBar';
+import { useAuth } from '../contexts/AuthContext';
+import { hasAnyRole } from '../config/rbac';
 axios.defaults.headers.common['x-user-role'] = localStorage.getItem('role') || 'Admin';
 
 
@@ -337,6 +339,16 @@ const Outing: React.FC = () => {
   const [searchParams] = useSearchParams();
   const currentTab = searchParams.get('tab') || 'HR';
 
+  // HR/Admin/Management see every outing; everyone else only ever sees
+  // Department-type outings for their own department (company-wide
+  // "Briskolive" and "Project" events still show for everyone — they're not
+  // department-scoped by nature). The "Management Approvals" tab itself is
+  // hidden from non-privileged roles in Navbar.tsx; this is the matching
+  // data-level guard for the other tabs that reuse filteredOutings below.
+  const { user } = useAuth();
+  const canSeeAllOutings = hasAnyRole(['Admin', 'HR', 'Management']);
+  const [myDepartment, setMyDepartment] = useState('');
+
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [outingList, setOutingList] = useState<Outing[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -389,6 +401,13 @@ const Outing: React.FC = () => {
   const filteredOutings = useMemo(() => {
     let list = [...outingList];
 
+    // Department-scoping for non-privileged viewers (see canSeeAllOutings
+    // comment above) — Briskolive-wide and Project-type events aren't
+    // department-specific, so they still show for everyone.
+    if (!canSeeAllOutings) {
+      list = list.filter(o => o.eventType !== 'Department' || o.department === myDepartment);
+    }
+
     if (outingNameFilter.trim()) {
       const lower = outingNameFilter.trim().toLowerCase();
       list = list.filter(o => o.topic?.toLowerCase().includes(lower));
@@ -428,7 +447,7 @@ const Outing: React.FC = () => {
     }
 
     return list;
-  }, [outingList, outingNameFilter, quarterFilter, fyFilter, archivedFilter, categoryFilter, currentTab, groupByField]);
+  }, [outingList, outingNameFilter, quarterFilter, fyFilter, archivedFilter, categoryFilter, currentTab, groupByField, canSeeAllOutings, myDepartment]);
 
   // Management: Reject Modal
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
@@ -548,6 +567,16 @@ const Outing: React.FC = () => {
   useEffect(() => {
     refreshData();
   }, []);
+
+  // Only needed to scope the list for non-privileged viewers — HR/Admin/
+  // Management see everything regardless, so there's nothing to look up.
+  useEffect(() => {
+    if (canSeeAllOutings || !user?.email) return;
+    axios.get(`${API_URL}/onboarding/by-email`, { params: { email: user.email } })
+      .then(res => setMyDepartment(res.data?.data?.dept || ''))
+      .catch(() => setMyDepartment(''));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canSeeAllOutings, user?.email]);
 
   // Debug: Log current state
   useEffect(() => {
@@ -1064,7 +1093,7 @@ const Outing: React.FC = () => {
           )}
 
           {/* Floating + Button - Management suggestion */}
-          {currentTab === 'management' && (
+          {currentTab === 'management' && canSeeAllOutings && (
             <button
               onClick={() => setIsSuggestModalOpen(true)}
               className="fixed top-20 sm:top-24 right-4 sm:right-8 z-40 bg-indigo-600 text-white rounded-full p-3 sm:p-5 shadow-2xl hover:bg-indigo-700 transition transform hover:scale-110 active:scale-95"
@@ -1210,8 +1239,15 @@ const Outing: React.FC = () => {
             </div>
           )}
 
-          {/* ─── MANAGEMENT TAB ─── */}
-          {currentTab === 'management' && (
+          {/* ─── MANAGEMENT TAB — HR/Admin/Management only; the Navbar already
+              hides this tab's button for everyone else, this is the guard
+              against reaching it directly via the URL. ─── */}
+          {currentTab === 'management' && !canSeeAllOutings && (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-10 text-center text-gray-500">
+              You don't have access to Management Approvals.
+            </div>
+          )}
+          {currentTab === 'management' && canSeeAllOutings && (
             <div className="space-y-8">
               {/* Pending Proposals Review */}
               <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">

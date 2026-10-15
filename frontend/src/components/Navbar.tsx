@@ -6,6 +6,7 @@ import axios from 'axios';
 
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { hasAnyRole } from '../config/rbac';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 const buildProfilePictureThumbnailUrl = (driveFileId: string) =>
@@ -488,11 +489,14 @@ export default function Navbar() {
 
 
 
-      {/* Outing white row */}
+      {/* Outing white row — "Management Approvals" is HR/Admin/Management only;
+          everyone else only ever sees their own department's outings, so a
+          company-wide approvals queue wouldn't mean anything to them anyway. */}
 
       {isOutingPage && renderWhiteTabRow(
 
-        OUTING_TABS, activeTab || 'HR', v => nav(`/outing?tab=${v}`), row1Top,
+        hasAnyRole(['Admin', 'HR', 'Management']) ? OUTING_TABS : OUTING_TABS.filter(t => t.value !== 'management'),
+        activeTab || 'HR', v => nav(`/outing?tab=${v}`), row1Top,
 
       )}
 
