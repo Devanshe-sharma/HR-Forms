@@ -1,25 +1,25 @@
 const express = require('express');
 const router = express.Router();
-const { requireRole } = require('../config/roles');
 const TrainingSchedule = require('../models/TrainingSchedule');
 
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
+// Training is open to every logged-in role — no requireRole gate here.
 // GET all training schedules
-router.get('/', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
+router.get('/', asyncHandler(async (req, res) => {
   const schedules = await TrainingSchedule.find().sort({ createdAt: -1 });
   res.json({ success: true, data: schedules });
 }));
 
 // GET single training schedule
-router.get('/:id', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
+router.get('/:id', asyncHandler(async (req, res) => {
   const schedule = await TrainingSchedule.findById(req.params.id);
   if (!schedule) return res.status(404).json({ success: false, error: 'Training schedule not found' });
   res.json({ success: true, data: schedule });
 }));
 
 // POST create training schedule
-router.post('/', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
+router.post('/', asyncHandler(async (req, res) => {
   const {
     trainingId, trainingName, capabilityArea, capabilitySkill, trainerName,
     type, trainingDate, startTime, endTime, venue, onlineLink,
@@ -61,7 +61,7 @@ router.post('/', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', '
 }));
 
 // PATCH update training schedule
-router.patch('/:id', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
+router.patch('/:id', asyncHandler(async (req, res) => {
   const updates = req.body || {};
   const allowed = ['trainingName', 'capabilityArea', 'capabilitySkill', 'trainerName', 'type',
     'trainingDate', 'startTime', 'endTime', 'venue', 'onlineLink', 'targetAudience',
@@ -74,14 +74,14 @@ router.patch('/:id', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment
 }));
 
 // DELETE training schedule
-router.delete('/:id', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
+router.delete('/:id', asyncHandler(async (req, res) => {
   const deleted = await TrainingSchedule.findByIdAndDelete(req.params.id);
   if (!deleted) return res.status(404).json({ success: false, error: 'Training schedule not found' });
   res.json({ success: true });
 }));
 
 // PATCH update status
-router.patch('/:id/status', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
+router.patch('/:id/status', asyncHandler(async (req, res) => {
   const { status } = req.body || {};
   const valid = ['Scheduled', 'Rescheduled', 'Cancelled', 'Completed'];
   if (!status || !valid.includes(status)) return res.status(400).json({ success: false, error: 'Invalid status' });

@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const { requireRole } = require('../config/roles');
 const CapabilityArea = require('../models/CapabilityArea');
 
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -12,21 +11,22 @@ async function getNextCapabilityAreaId() {
   const num = parseInt(last.capabilityAreaId.replace('CA', ''), 10);
   return isNaN(num) ? '001' : `${String(num + 1).padStart(3, '0')}`;
 }
+// Training is open to every logged-in role — no requireRole gate here.
 // GET all capability areas
-router.get('/', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Manager', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
+router.get('/', asyncHandler(async (req, res) => {
   const areas = await CapabilityArea.find().sort({ createdAt: -1 });
   res.json({ success: true, data: areas });
 }));
 
 // GET single capability area
-router.get('/:id', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Manager', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
+router.get('/:id', asyncHandler(async (req, res) => {
   const area = await CapabilityArea.findById(req.params.id);
   if (!area) return res.status(404).json({ success: false, error: 'Capability area not found' });
   res.json({ success: true, data: area });
 }));
 
 // POST create capability area
-router.post('/', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Manager', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
+router.post('/', asyncHandler(async (req, res) => {
   const { capabilityArea, createdBy } = req.body || {};
   if (!capabilityArea || !String(capabilityArea).trim()) {
     return res.status(400).json({ success: false, error: 'Capability area is required' });
@@ -41,7 +41,7 @@ router.post('/', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', '
 }));
 
 // PATCH update capability area
-router.patch('/:id', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Manager', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
+router.patch('/:id', asyncHandler(async (req, res) => {
   const { capabilityAreaId, capabilityArea } = req.body || {};
   const updates = {
     ...(capabilityAreaId && { capabilityAreaId }),
@@ -54,7 +54,7 @@ router.patch('/:id', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment
 }));
 
 // DELETE capability area
-router.delete('/:id', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Manager', 'Trainer', 'Employee']), asyncHandler(async (req, res) => {
+router.delete('/:id', asyncHandler(async (req, res) => {
   const deleted = await CapabilityArea.findByIdAndDelete(req.params.id);
   if (!deleted) return res.status(404).json({ success: false, error: 'Capability area not found' });
   res.json({ success: true });

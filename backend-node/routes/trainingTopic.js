@@ -5,8 +5,10 @@ const TrainingTopic = require('../models/TrainingTopic');
 
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
+// Training is open to every logged-in role — no requireRole gate except on
+// the Management approve/reject/sendBack actions below.
 // GET all training topics
-router.get('/', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Manager', 'Employee', 'Trainer']), asyncHandler(async (req, res) => {
+router.get('/', asyncHandler(async (req, res) => {
   const { status } = req.query;
   const filter = status ? { status } : {};
   const topics = await TrainingTopic.find(filter).sort({ createdAt: -1 });
@@ -14,14 +16,14 @@ router.get('/', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'M
 }));
 
 // GET single training topic
-router.get('/:id', requireRole(['Admin', 'HR', 'Management', 'HeadOfDepartment', 'Manager', 'Employee', 'Trainer']), asyncHandler(async (req, res) => {
+router.get('/:id', asyncHandler(async (req, res) => {
   const topic = await TrainingTopic.findById(req.params.id);
   if (!topic) return res.status(404).json({ success: false, error: 'Training topic not found' });
   res.json({ success: true, data: topic });
 }));
 
 // POST create training topic
-router.post('/', requireRole(['Admin', 'HR', 'HeadOfDepartment', 'Management', 'Manager', 'Employee', 'Trainer']), asyncHandler(async (req, res) => {
+router.post('/', asyncHandler(async (req, res) => {
   const {
     trainingName, trainerName, capabilityArea, capabilitySkill,
     type, isGeneric, proposedScheduleDate, contentPdfLink, videoLink,
@@ -63,7 +65,7 @@ router.post('/', requireRole(['Admin', 'HR', 'HeadOfDepartment', 'Management', '
 }));
 
 // PATCH update training topic
-router.patch('/:id', requireRole(['Admin', 'HR', 'HeadOfDepartment', 'Management', 'Manager', 'Employee', 'Trainer']), asyncHandler(async (req, res) => {
+router.patch('/:id', asyncHandler(async (req, res) => {
   const updates = req.body || {};
   const allowed = ['trainingName', 'trainerName', 'capabilityArea', 'capabilitySkill', 'type',
     'isGeneric', 'proposedScheduleDate', 'contentPdfLink', 'videoLink', 'assessmentLink', 'status'];
@@ -75,14 +77,14 @@ router.patch('/:id', requireRole(['Admin', 'HR', 'HeadOfDepartment', 'Management
 }));
 
 // DELETE training topic
-router.delete('/:id', requireRole(['Admin', 'HR', 'HeadOfDepartment', 'Management', 'Manager', 'Employee', 'Trainer']), asyncHandler(async (req, res) => {
+router.delete('/:id', asyncHandler(async (req, res) => {
   const deleted = await TrainingTopic.findByIdAndDelete(req.params.id);
   if (!deleted) return res.status(404).json({ success: false, error: 'Training topic not found' });
   res.json({ success: true });
 }));
 
 // PATCH submit for approval
-router.patch('/:id/submit-for-approval', requireRole(['Admin', 'HR', 'HeadOfDepartment', 'Management', 'Manager', 'Employee', 'Trainer']), asyncHandler(async (req, res) => {
+router.patch('/:id/submit-for-approval', asyncHandler(async (req, res) => {
   const topic = await TrainingTopic.findById(req.params.id);
   if (!topic) return res.status(404).json({ success: false, error: 'Training topic not found' });
   if (topic.status !== 'Draft') return res.status(400).json({ success: false, error: 'Only draft topics can be submitted for approval' });

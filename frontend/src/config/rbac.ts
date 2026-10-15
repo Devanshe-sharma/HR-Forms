@@ -200,20 +200,6 @@ export function trainingTabVisibility(): Record<
   };
 }
 
-/** First Training tab the current role is actually allowed to land on — used
- * for the sidebar's default link and as the tab row's fallback value, so a
- * role without HR access never lands on (or can switch to) the HR tab and
- * trip its admin-only endpoints. */
-export function defaultTrainingTab(): 'HR' | 'management' | 'employee' | 'delivery' | 'scorecard' {
-  const v = trainingTabVisibility();
-  if (v.hr) return 'HR';
-  if (v.management) return 'management';
-  if (v.employee) return 'employee';
-  if (v.delivery) return 'delivery';
-  if (v.scorecard) return 'scorecard';
-  return 'employee';
-}
-
 /** HR sub-tab visibility */
 export function hrSubTabVisibility(): Record<
   'capability' | 'topics' | 'scheduling',
