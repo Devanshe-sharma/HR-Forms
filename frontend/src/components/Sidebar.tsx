@@ -34,6 +34,7 @@ import {
 } from '@mui/icons-material';
 import { NavLink, useLocation } from 'react-router-dom';
 import { usePageVisibility } from '../contexts/PageVisibilityContext';
+import { defaultTrainingTab } from '../config/rbac';
 
 const drawerWidth = 260;
 const BRAND_BLUE = '#4A6427';
@@ -102,7 +103,7 @@ export default function Sidebar() {
 
 
 
-    { to: '/training-page?tab=HR', text: 'Trainings', icon: <SchoolIcon />, pageKey: 'trainings' },
+    { to: `/training-page?tab=${defaultTrainingTab()}`, text: 'Trainings', icon: <SchoolIcon />, pageKey: 'trainings' },
     { to: '/outing?tab=HR', text: 'Outings / Events', icon: <EventIcon />, pageKey: 'outings' },
 
     { to: '/confirmations', text: 'Confirmations', icon: <CheckCircleIcon />, pageKey: 'confirmations' },

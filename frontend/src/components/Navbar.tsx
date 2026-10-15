@@ -6,7 +6,7 @@ import axios from 'axios';
 
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
-import { hasAnyRole } from '../config/rbac';
+import { hasAnyRole, trainingTabVisibility, defaultTrainingTab } from '../config/rbac';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 const buildProfilePictureThumbnailUrl = (driveFileId: string) =>
@@ -502,11 +502,17 @@ export default function Navbar() {
 
 
 
-      {/* Training main white row */}
+      {/* Training main white row — each tab hides itself from roles that
+          can't use it, so no one can click into (or land on) a tab whose
+          endpoints their role would get a 403 from. */}
 
       {isTrainingPage && renderWhiteTabRow(
 
-        TRAINING_TABS, activeTab || 'HR', v => nav(`/training-page?tab=${v}`), row1Top,
+        TRAINING_TABS.filter(t => {
+          const v = trainingTabVisibility();
+          return t.value === 'HR' ? v.hr : v[t.value as 'management' | 'employee' | 'delivery' | 'scorecard'];
+        }),
+        activeTab || defaultTrainingTab(), v => nav(`/training-page?tab=${v}`), row1Top,
 
       )}
 

@@ -2540,7 +2540,7 @@ function HistoryPanel({ employeeCode }: { employeeCode: string }) {
     managementDecision: {
       finalPct: '',
       reason: '',
-      pipApproved: true,
+      pipApproved: false,
     },
     hrDecision: {
       newContractStartDate: '',
@@ -2577,7 +2577,7 @@ function HistoryPanel({ employeeCode }: { employeeCode: string }) {
       managementDecision: {
         finalPct: selectedRevision.managementDecision?.finalPct != null ? String(selectedRevision.managementDecision.finalPct) : '',
         reason: selectedRevision.managementDecision?.reason || '',
-        pipApproved: selectedRevision.managementDecision?.pipApproved ?? true,
+        pipApproved: selectedRevision.managementDecision?.pipApproved ?? false,
       },
       hrDecision: {
         newContractStartDate: selectedRevision.hrDecision?.newContractStartDate ? new Date(selectedRevision.hrDecision.newContractStartDate).toISOString().split('T')[0] : '',
@@ -2615,7 +2615,7 @@ function HistoryPanel({ employeeCode }: { employeeCode: string }) {
       managementDecision: {
         finalPct: editValues.managementDecision.finalPct !== '' ? Number(editValues.managementDecision.finalPct) : null,
         reason: editValues.managementDecision.reason,
-        pipApproved: editValues.managementDecision.pipApproved,
+        pipApproved: editValues.managerDecision.decision === 'pip' ? editValues.managementDecision.pipApproved : null,
       },
       hrDecision: {
         newContractStartDate: editValues.hrDecision.newContractStartDate || null,
@@ -2689,7 +2689,7 @@ function HistoryPanel({ employeeCode }: { employeeCode: string }) {
         managementDecision: {
           finalPct: selectedRevision.managementDecision?.finalPct != null ? String(selectedRevision.managementDecision.finalPct) : '',
           reason: selectedRevision.managementDecision?.reason || '',
-          pipApproved: selectedRevision.managementDecision?.pipApproved ?? true,
+          pipApproved: selectedRevision.managementDecision?.pipApproved ?? false,
         },
         hrDecision: {
           newContractStartDate: selectedRevision.hrDecision?.newContractStartDate ? new Date(selectedRevision.hrDecision.newContractStartDate).toISOString().split('T')[0] : '',
@@ -3061,7 +3061,7 @@ function RevisionDetailView({ emp, rec, onBack, onRecordChange, showToast }: {
 
   const [mgmtPct,       setMgmtPct]       = useState(rec?.managementDecision?.finalPct??mgrPct);
   const [mgmtReason,    setMgmtReason]    = useState(rec?.managementDecision?.reason||'');
-  const [pipApproved,   setPipApproved]   = useState(rec?.managementDecision?.pipApproved??true);
+  const [pipApproved,   setPipApproved]   = useState(rec?.managementDecision?.pipApproved??false);
 
   const [mgmtAmount, setMgmtAmount] = useState<number>(
     amountFromPct(rec?.managementDecision?.finalPct ?? mgmtPct, prevCtc)
