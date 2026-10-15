@@ -198,7 +198,11 @@ export default function EmployeeAssessment() {
   const [submitted, setSubmitted] = useState(false);
   const [score, setScore] = useState(0);
 
-  const isTrainer = can('training', 'update'); // trainer role can upload content
+  // 'training' is a blanket create/read/update/delete grant every role gets
+  // (an Admin-override fallback used elsewhere) — it can't tell a Trainer
+  // apart from an Employee, so this checks the resource that actually does:
+  // only Trainer/Admin can update trainingMaterials, Employee is read-only.
+  const isTrainer = can('trainingMaterials', 'update');
 
   const loadTrainings = async () => {
     setLoading(true);

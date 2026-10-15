@@ -84,7 +84,14 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     user.email = normalizedEmail;
   }
   if (name !== undefined) user.name = String(name).trim();
-  if (role !== undefined) user.role = role;
+  // A role change must invalidate any already-issued JWT — it still carries
+  // the old role (authenticate.js trusts the token's role over the current
+  // DB value), so without this the user keeps hitting role-gated routes as
+  // their previous role until the token happens to expire on its own.
+  if (role !== undefined && role !== user.role) {
+    user.role = role;
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+  }
   if (isActive !== undefined) user.isActive = Boolean(isActive);
   if (employeeId !== undefined) user.employeeId = employeeId || null;
 
