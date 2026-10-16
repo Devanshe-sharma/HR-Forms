@@ -44,7 +44,7 @@ async function createLateOooEscalation(oooRecord) {
     : null;
   const creator = hr || target;
 
-  const description = 'Out of Office filed late.';
+  const description = `Out of Office filed late. Reason: ${oooRecord.reason || '-'}`;
   const doc = await Escalation.create({
     createdBy: {
       employeeId: creator._id,

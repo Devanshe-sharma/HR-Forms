@@ -1,12 +1,13 @@
 import { Fragment, useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Edit2, Eye, Plus, RefreshCw, ExternalLink, Users, Share2 } from 'lucide-react';
+import { Search, Edit2, Eye, Plus, RefreshCw, ExternalLink, Users, Share2, RotateCcw } from 'lucide-react';
 import dayjs from 'dayjs';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import Modal from '../../components/Modal';
 import NewRequisitionForm from './new-requisition-form';
 import UpdateRequisition  from './UpdateRequisition';
+import ReopenRequisitionModal from './ReopenRequisitionModal';
 import { FiltersMenuButton, GroupByMenuButton, FavoritesMenuButton, GroupByOption } from '../../components/FilterBar';
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
@@ -81,10 +82,12 @@ export default function RequisitionDashboard() {
   const newModalOpen    = modal === 'new';
   const viewModalOpen   = modal === 'view'   && !!editId;
   const updateModalOpen = modal === 'update' && !!editId;
+  const reopenModalOpen = modal === 'reopen' && !!editId;
 
   const openNew    = () => navigate('/recruitment?modal=new');
   const openView   = (id: string) => navigate(`/recruitment?modal=view&id=${id}`);
   const openEdit   = (id: string) => navigate(`/recruitment?modal=update&id=${id}`);
+  const openReopen = (id: string) => navigate(`/recruitment?modal=reopen&id=${id}`);
   const closeModal = () => navigate('/recruitment');
 
   // Always fetch the full set — filtering (including the stat cards) is
@@ -161,7 +164,7 @@ export default function RequisitionDashboard() {
   };
   const activeFilterCount = (filterStatus ? 1 : 0) + (cardFilter !== 'all' ? 1 : 0);
 
-  const anyModalOpen = newModalOpen || viewModalOpen || updateModalOpen;
+  const anyModalOpen = newModalOpen || viewModalOpen || updateModalOpen || reopenModalOpen;
 
   // Pulled out so both the flat and grouped-by table bodies can reuse the
   // same row markup.
@@ -222,6 +225,13 @@ export default function RequisitionDashboard() {
             className="flex items-center gap-1 px-2 py-1 rounded-md text-[0.7rem] font-semibold bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-100 transition"
           >
             <Edit2 size={11} /> Update
+          </button>
+          <button
+            title="Re-open as a new requisition"
+            onClick={e => { e.stopPropagation(); openReopen(row._id); }}
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-[0.7rem] font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition"
+          >
+            <RotateCcw size={11} /> Reopen
           </button>
         </div>
       </td>
@@ -384,7 +394,7 @@ export default function RequisitionDashboard() {
                       <th className="px-3 py-2.5 font-semibold w-32">Planned Joining</th>
                       <th className="px-3 py-2.5 font-semibold w-52">Hiring Status</th>
                       <th className="px-3 py-2.5 font-semibold w-24">FMS Status</th>
-                      <th className="px-3 py-2.5 font-semibold w-36 text-center">Action</th>
+                      <th className="px-3 py-2.5 font-semibold w-48 text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -457,6 +467,21 @@ export default function RequisitionDashboard() {
           <UpdateRequisition
             id={editId}
             asModal
+            onSuccess={() => { closeModal(); fetchData(); }}
+            onClose={closeModal}
+          />
+        )}
+      </Modal>
+
+      <Modal
+        open={reopenModalOpen}
+        onClose={closeModal}
+        title="Re-open as New Requisition"
+        maxWidth="max-w-2xl"
+      >
+        {editId && (
+          <ReopenRequisitionModal
+            id={editId}
             onSuccess={() => { closeModal(); fetchData(); }}
             onClose={closeModal}
           />
