@@ -677,15 +677,15 @@ const Outing: React.FC = () => {
   // What this outing/event is scoped to — the Project name (and service),
   // department, or company-wide — none of which had a visible column
   // anywhere in the list tables, only inside the Details popup.
-  // const eventScopeLabel = (o: Outing): string => {
-  //   if (o.eventType === 'Project') {
-  //     return [o.projectService, o.projectName].filter(Boolean).join(' / ') || '—';
-  //   }
-  //   if (o.eventType === 'Department') {
-  //     return o.department || '—';
-  //   }
-  //   return 'Company-wide';
-  // };
+  const eventScopeLabel = (o: Outing): string => {
+    if (o.eventType === 'Project') {
+      return [o.projectService, o.projectName].filter(Boolean).join(' / ') || '—';
+    }
+    if (o.eventType === 'Department') {
+      return o.department || '—';
+    }
+    return 'Company-wide';
+  };
 
   // ─── HR: CREATE PROPOSAL ─────────────────────────────────
   const submitProposal = async (e: React.FormEvent) => {
