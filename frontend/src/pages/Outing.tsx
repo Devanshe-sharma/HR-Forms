@@ -674,6 +674,19 @@ const Outing: React.FC = () => {
     }
   };
 
+  // What this outing/event is scoped to — the Project name (and service),
+  // department, or company-wide — none of which had a visible column
+  // anywhere in the list tables, only inside the Details popup.
+  // const eventScopeLabel = (o: Outing): string => {
+  //   if (o.eventType === 'Project') {
+  //     return [o.projectService, o.projectName].filter(Boolean).join(' / ') || '—';
+  //   }
+  //   if (o.eventType === 'Department') {
+  //     return o.department || '—';
+  //   }
+  //   return 'Company-wide';
+  // };
+
   // ─── HR: CREATE PROPOSAL ─────────────────────────────────
   const submitProposal = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1147,6 +1160,7 @@ const Outing: React.FC = () => {
                         <th className="p-2 sm:p-4">Sno.</th>
                         <th className="p-2 sm:p-4">Topic</th>
                         <th className="p-2 sm:p-4 hidden sm:table-cell">Description</th>
+                        {/* <th className="p-2 sm:p-4 hidden md:table-cell">Project / Dept</th> */}
                         <th className="p-2 sm:p-4 hidden md:table-cell">Place</th>
                         <th className="p-2 sm:p-4 hidden lg:table-cell">Budget</th>
                         <th className="p-2 sm:p-4 hidden sm:table-cell">Status</th>
@@ -1157,7 +1171,7 @@ const Outing: React.FC = () => {
                     </thead>
                     <tbody className="text-xs divide-y divide-gray-100">
                       {filteredOutings.length === 0 ? (
-                        <tr><td colSpan={9} className="p-8 text-center text-gray-500 italic">No outings found</td></tr>
+                        <tr><td colSpan={10} className="p-8 text-center text-gray-500 italic">No outings found</td></tr>
                       ) : (
                         filteredOutings.map((o, i) => {
                           const isEditing = editingId === o._id;
@@ -1176,6 +1190,7 @@ const Outing: React.FC = () => {
                                   <span className="text-gray-500 block max-w-[180px] truncate text-xs sm:text-sm">{o.description}</span>
                                 }
                               </td>
+                              <td className="p-2 sm:p-4 hidden md:table-cell text-gray-600 max-w-[160px] truncate text-xs sm:text-sm">{eventScopeLabel(o)}</td>
                               <td className="p-2 sm:p-4 hidden md:table-cell">
                                 {isEditing ?
                                   <input className="w-full border rounded px-2 py-1 text-sm" value={editData.tentativePlace ?? o.tentativePlace ?? ''} onChange={e => setEditData(prev => ({ ...prev, tentativePlace: e.target.value }))} /> :

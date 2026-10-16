@@ -14,8 +14,12 @@ const leadsHttpsAgent = new https.Agent({ rejectUnauthorized: false });
 // Fetch leads from Operations and upsert into the Project collection.
 // product_or_service -> service, lead_title -> name
 async function syncProjectsFromLeads() {
+  // The leads payload is ~1.3MB over a self-signed-cert connection — 8s was
+  // cutting this off before it finished often enough that the newest leads
+  // (the ones employees actually go looking for) kept missing every sync,
+  // silently falling back to whatever older snapshot was last cached.
   const response = await axios.get(LEADS_API_URL, {
-    timeout: 8000,
+    timeout: 20000,
     httpsAgent: leadsHttpsAgent,
   });
   const leads = Array.isArray(response.data)

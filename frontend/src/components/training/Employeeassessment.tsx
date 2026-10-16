@@ -522,17 +522,38 @@ export default function EmployeeAssessment() {
                   </span>
                 </div>
 
-                {/* Content status indicators */}
+                {/* Content links — clickable straight from the list when uploaded */}
                 <div className="flex gap-2 text-xs">
-                  <span className={`flex items-center gap-0.5 ${t.contentPdfLink ? 'text-green-600' : 'text-gray-300'}`}>
-                    <FileText className="w-3 h-3" /> PDF
-                  </span>
-                  <span className={`flex items-center gap-1 ${t.videoLink ? 'text-green-600' : 'text-gray-300'}`}>
-                    <Video className="w-3 h-3" /> Video
-                  </span>
-                  <span className={`flex items-center gap-1 ${t.assessmentLink ? 'text-green-600' : 'text-gray-300'}`}>
-                    <FileCheck className="w-3 h-3" /> Assessment
-                  </span>
+                  {t.contentPdfLink ? (
+                    <a href={t.contentPdfLink} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-0.5 text-green-600 hover:underline">
+                      <FileText className="w-3 h-3" /> PDF
+                    </a>
+                  ) : (
+                    <span className="flex items-center gap-0.5 text-gray-300">
+                      <FileText className="w-3 h-3" /> PDF
+                    </span>
+                  )}
+                  {t.videoLink ? (
+                    <a href={t.videoLink} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-green-600 hover:underline">
+                      <Video className="w-3 h-3" /> Video
+                    </a>
+                  ) : (
+                    <span className="flex items-center gap-1 text-gray-300">
+                      <Video className="w-3 h-3" /> Video
+                    </span>
+                  )}
+                  {t.assessmentLink ? (
+                    <a href={t.assessmentLink} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-green-600 hover:underline">
+                      <FileCheck className="w-3 h-3" /> Assessment
+                    </a>
+                  ) : (
+                    <span className="flex items-center gap-1 text-gray-300">
+                      <FileCheck className="w-3 h-3" /> Assessment
+                    </span>
+                  )}
                 </div>
 
                 {/* Assessment result badge */}
