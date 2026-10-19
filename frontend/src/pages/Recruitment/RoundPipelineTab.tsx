@@ -17,21 +17,70 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect } from 'react';
 import {
-  Loader2, Edit2, Save, Plus, ClipboardList,
-  ChevronDown, ChevronUp, ExternalLink, CalendarClock, RefreshCw,
+  Loader2, Save, Plus, ClipboardList,
+  ExternalLink, RefreshCw,
   X, Send, Check, Ban, CheckCircle2, AlertTriangle, FileText,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { FIELD_PLACEHOLDER_CLASS } from './ApplicantFieldComponents';
 import { TemplateModal } from './FeedbackTemplate';
+import { hasAnyRole } from '../../config/rbac';
 import {
-  ApplicantRecord, InterviewRound, RoundType, API_BASE,
+  ApplicantRecord, InterviewRound, HrBackground, RoundType, API_BASE,
   ROUND_TYPE_LABELS, hasPassedRound, roundLabel,
   MODE_OPTIONS,
   SCHEDULING_STATUS_COLORS,
   CANDIDATE_CONFIRMATION_COLORS,
   INTERVIEWER_FEEDBACK_STATUS_COLORS,
+  HR_RECOMMENDATION_OPTIONS, MGMT_RECOMMENDATION_OPTIONS, BOND_OPTIONS, RATING_OPTIONS,
+  DISC_TRAIT_LABELS,
 } from './applicantTypes';
+
+// The mockup's 17-field HR background subform — prefilled from the
+// candidate's profile the first time an HR round is opened (see
+// prefillHrBackground below), then independently editable.
+const HR_BACKGROUND_FIELDS: { key: keyof HrBackground; label: string }[] = [
+  { key: 'nativePlace',         label: 'Native Place' },
+  { key: 'residingIn',          label: 'Residing In' },
+  { key: 'commuteType',         label: 'Commute Type' },
+  { key: 'age',                 label: 'Age' },
+  { key: 'family',              label: 'Family' },
+  { key: 'education',           label: 'Education' },
+  { key: 'hobbies',             label: 'Hobbies' },
+  { key: 'experienceSummary',   label: 'Experience' },
+  { key: 'currentCtc',          label: 'Current CTC' },
+  { key: 'pfApplicable',        label: 'PF Applicable' },
+  { key: 'expectedCtc',         label: 'Expected CTC' },
+  { key: 'recommendedCtc',      label: 'Recommended CTC' },
+  { key: 'currentCompany',      label: 'Current Company' },
+  { key: 'noticePeriodSummary', label: 'Notice Period' },
+  { key: 'whenCanJoin',         label: 'When Can Join' },
+  { key: 'reasonForLeaving',    label: 'Reason for Leaving' },
+  { key: 'skillsSummary',       label: 'Skills' },
+];
+
+const EMPTY_HR_BACKGROUND: HrBackground = HR_BACKGROUND_FIELDS.reduce(
+  (acc, f) => ({ ...acc, [f.key]: '' }), {} as HrBackground,
+);
+
+// Best-effort prefill from the candidate's own application fields — only
+// the ones this app actually captures; everything else (native place,
+// residing in, commute, age, family, hobbies, PF, recommended CTC, when
+// can join, reason for leaving) stays blank for HR to fill in during the
+// interview. Never called once any field has already been edited.
+function prefillHrBackground(record: ApplicantRecord): HrBackground {
+  return {
+    ...EMPTY_HR_BACKGROUND,
+    experienceSummary:   record.total_experience ? `${record.total_experience} yrs` : '',
+    currentCtc:          record.current_ctc || '',
+    expectedCtc:         record.expected_monthly_ctc || '',
+    noticePeriodSummary: record.notice_period || '',
+    education:           record.highest_qualification || '',
+  };
+}
+
+const recommendationOptionsFor = (roundType: RoundType) =>
+  roundType === 'mgmt' ? MGMT_RECOMMENDATION_OPTIONS : HR_RECOMMENDATION_OPTIONS;
 
 function formatTime12h(time24?: string): string {
   if (!time24) return '';
@@ -72,13 +121,29 @@ const DetailRow = ({ label, children }: { label: string; children: React.ReactNo
 const rowControlClass = 'w-full border border-gray-300 rounded-md bg-white px-2.5 py-1.5 text-xs text-black focus:outline-none focus:ring-2 focus:ring-[#7a9c56] focus:border-[#7a9c56]';
 const rowTextareaClass = `w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-xs text-black bg-white focus:outline-none focus:ring-2 focus:ring-[#7a9c56] resize-none ${FIELD_PLACEHOLDER_CLASS}`;
 
+// Label-above-control cell for the grid-based evaluation card, matching the
+// mockup's form layout (several fields per row inside a white card) instead
+// of the read-only detail table's label-left/value-right row style.
+const FormField = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  <div className="min-w-0">
+    <label className="text-xs font-semibold text-gray-500 mb-1 block">{label}</label>
+    {children}
+  </div>
+);
+
+const formControlClass = 'w-full border border-gray-300 rounded-lg bg-white px-3 py-2 text-sm text-black focus:outline-none focus:ring-2 focus:ring-[#7a9c56] focus:border-[#7a9c56]';
+const formTextareaClass = `w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-black bg-white focus:outline-none focus:ring-2 focus:ring-[#7a9c56] resize-none ${FIELD_PLACEHOLDER_CLASS}`;
+
 const RoundForm = ({
-  data, roundLabelText, onChange, onSave, onCancel, saving, interviewers, loadingInterviewers,
+  data, roundType, roundLabelText, onChange, onHrBackgroundChange, onSave, onCancel, saving, interviewers, loadingInterviewers,
   existingRound, onSchedule, onReschedule, onCancelRound, onMarkDone, jdLink, resumeUrl, linkedin,
+  onMoveNext, moveNextLabel, movingNext, onSelect, selectLabel, onReject,
 }: {
   data: Partial<InterviewRound>;
+  roundType: RoundType;
   roundLabelText: string;
   onChange: (f: string, v: string) => void;
+  onHrBackgroundChange: (key: keyof HrBackground, v: string) => void;
   onSave: () => void;
   onCancel: () => void;
   saving: boolean;
@@ -92,6 +157,15 @@ const RoundForm = ({
   jdLink?: string | null;
   resumeUrl?: string;
   linkedin?: string;
+  // Progression actions — shown alongside Save for the latest, still-open
+  // round instance so HR can save feedback and move the candidate forward
+  // (or reject them) in one place, matching the mockup's combined action row.
+  onMoveNext?: () => void;
+  moveNextLabel?: string;
+  movingNext?: boolean;
+  onSelect?: () => void;
+  selectLabel?: string;
+  onReject?: () => void;
 }) => {
   const interviewerOptions = data.interviewer && !interviewers.some((e) => e.name === data.interviewer)
     ? [{ name: data.interviewer, designation: '' }, ...interviewers]
@@ -100,144 +174,232 @@ const RoundForm = ({
   const [templateOpen, setTemplateOpen] = useState(false);
 
   return (
-    <div className="border-t border-dashed border-gray-200">
-      <DetailRow label="Round">
-        <span className="font-bold text-black">{roundLabelText}</span>
-      </DetailRow>
+    <div className="border border-gray-200 rounded-xl bg-white">
+      <div className="px-4 pt-4 pb-1">
+        <p className="text-sm font-bold text-black">{roundLabelText} evaluation</p>
+      </div>
 
-      <DetailRow label="Interviewer Name">
-        <select value={data.interviewer || ''} onChange={(e) => onChange('interviewer', e.target.value)} className={rowControlClass}>
-          <option value="">— Select interviewer —</option>
-          {loadingInterviewers
-            ? <option disabled>Loading…</option>
-            : interviewerOptions.map((e) => (
-              <option key={e.name} value={e.name}>
-                {e.name}{e.designation ? ` — ${e.designation}` : ''}
-              </option>
-            ))}
-        </select>
-      </DetailRow>
+      <div className="px-4 pb-4 space-y-5">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <FormField label="Interviewer">
+            <select value={data.interviewer || ''} onChange={(e) => onChange('interviewer', e.target.value)} className={formControlClass}>
+              <option value="">— Select interviewer —</option>
+              {loadingInterviewers
+                ? <option disabled>Loading…</option>
+                : interviewerOptions.map((e) => (
+                  <option key={e.name} value={e.name}>
+                    {e.name}{e.designation ? ` — ${e.designation}` : ''}
+                  </option>
+                ))}
+            </select>
+          </FormField>
 
-      <DetailRow label="Date & Time">
-        <div className="flex items-center gap-3 flex-wrap">
-          <input
-            type="datetime-local"
-            value={data.scheduledDate && data.scheduledTime ? `${String(data.scheduledDate).slice(0, 10)}T${data.scheduledTime}` : ''}
-            onChange={(e) => {
-              const [d, t] = e.target.value.split('T');
-              onChange('scheduledDate', d || '');
-              onChange('scheduledTime', t || '');
-            }}
-            className={rowControlClass}
-          />
-          {data.scheduledDate && data.scheduledTime && (
-            <span className="text-xs text-gray-400">{formatDateTime12h(data.scheduledDate, data.scheduledTime)}</span>
-          )}
+          <FormField label="Interview Date">
+            <input
+              type="date"
+              value={data.scheduledDate ? String(data.scheduledDate).slice(0, 10) : ''}
+              onChange={(e) => onChange('scheduledDate', e.target.value)}
+              className={formControlClass}
+            />
+          </FormField>
+
+          <FormField label="Interview Time">
+            <input
+              type="time"
+              value={data.scheduledTime || ''}
+              onChange={(e) => onChange('scheduledTime', e.target.value)}
+              className={formControlClass}
+            />
+          </FormField>
         </div>
-      </DetailRow>
 
-      <DetailRow label="Mode">
-        <select value={data.mode || ''} onChange={(e) => onChange('mode', e.target.value)} className={rowControlClass}>
-          <option value="">— Select mode —</option>
-          {MODE_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
-      </DetailRow>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <FormField label="Mode">
+            <select value={data.mode || ''} onChange={(e) => onChange('mode', e.target.value)} className={formControlClass}>
+              <option value="">— Select mode —</option>
+              {MODE_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </FormField>
 
-      <DetailRow label="Meeting Link / Location">
-        <input
-          value={data.meetingLink || ''}
-          onChange={(e) => onChange('meetingLink', e.target.value)}
-          placeholder="URL or physical location"
-          className={`${rowControlClass} ${FIELD_PLACEHOLDER_CLASS}`}
-        />
-      </DetailRow>
+          <FormField label="Meeting Link / Location">
+            <input
+              value={data.meetingLink || ''}
+              onChange={(e) => onChange('meetingLink', e.target.value)}
+              placeholder="URL or physical location"
+              className={`${formControlClass} ${FIELD_PLACEHOLDER_CLASS}`}
+            />
+          </FormField>
 
-      <DetailRow label="JD Link">
-        {jdLink
-          ? <a href={jdLink} target="_blank" rel="noreferrer" className="text-blue-600 underline inline-flex items-center gap-1">Open JD <ExternalLink size={12} /></a>
-          : <span className="text-gray-400 italic">Not available</span>}
-      </DetailRow>
-
-      <DetailRow label="Resume">
-        {resumeUrl
-          ? <a href={resumeUrl} target="_blank" rel="noreferrer" className="text-blue-600 underline inline-flex items-center gap-1">Open CV <ExternalLink size={12} /></a>
-          : <span className="text-gray-400 italic">Not available</span>}
-      </DetailRow>
-
-      <DetailRow label="Candidate Confirmation">
-        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${CANDIDATE_CONFIRMATION_COLORS[data.candidateConfirmation || ''] || 'bg-gray-100 text-gray-600'}`}>
-          {data.candidateConfirmation || 'Pending'}
-        </span>
-      </DetailRow>
-
-      <DetailRow label="Note (if any)">
-        <input
-          value={data.note || ''}
-          onChange={(e) => onChange('note', e.target.value)}
-          placeholder="Any note about this round…"
-          className={`${rowControlClass} ${FIELD_PLACEHOLDER_CLASS}`}
-        />
-      </DetailRow>
-
-      <DetailRow label="Remarks">
-        <div className="flex items-start justify-between gap-2 mb-1.5">
-          <span />
-          <button
-            type="button"
-            onClick={() => setTemplateOpen(true)}
-            className="flex-shrink-0 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition"
-          >
-            {data.feedback ? 'Edit via template' : 'Use template'}
-          </button>
-        </div>
-        <textarea
-          value={data.feedback || ''}
-          onChange={(e) => onChange('feedback', e.target.value)}
-          rows={4}
-          placeholder="Enter interview remarks…"
-          className={rowTextareaClass}
-        />
-        <TemplateModal
-          open={templateOpen}
-          onClose={() => setTemplateOpen(false)}
-          onInsert={(text: string) => onChange('feedback', text)}
-          screenerName={data.interviewer || ''}
-          existingText={data.feedback || ''}
-          defaultRound={roundLabelText}
-          title={`${roundLabelText} Evaluation Template`}
-          defaultResume={resumeUrl}
-          defaultLinkedin={linkedin}
-        />
-      </DetailRow>
-
-      {data.schedulingStatus === 'Cancelled' && (
-        <DetailRow label="Cancellation Reason">
-          <textarea
-            value={data.cancellationReason || ''}
-            onChange={(e) => onChange('cancellationReason', e.target.value)}
-            rows={2}
-            placeholder="Why was this round cancelled?"
-            className={rowTextareaClass}
-          />
-        </DetailRow>
-      )}
-
-      <DetailRow label="Recommendation">
-        {data.interviewerFeedbackStatus
-          ? <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${INTERVIEWER_FEEDBACK_STATUS_COLORS[data.interviewerFeedbackStatus] || 'bg-gray-100 text-gray-600'}`}>
-              {data.interviewerFeedbackStatus}
+          <FormField label="Candidate Confirmation">
+            <span className={`inline-flex items-center text-xs font-bold px-2 py-1.5 rounded-full ${CANDIDATE_CONFIRMATION_COLORS[data.candidateConfirmation || ''] || 'bg-gray-100 text-gray-600'}`}>
+              {data.candidateConfirmation || 'Pending'}
             </span>
-          : <span className="text-gray-400 italic">Set by the interviewer via their feedback link</span>}
-      </DetailRow>
+          </FormField>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+          <div>
+            <span className="font-semibold text-gray-500">JD Link: </span>
+            {jdLink
+              ? <a href={jdLink} target="_blank" rel="noreferrer" className="text-blue-600 underline inline-flex items-center gap-1">Open JD <ExternalLink size={12} /></a>
+              : <span className="text-gray-400 italic">Not available</span>}
+          </div>
+          <div>
+            <span className="font-semibold text-gray-500">Resume: </span>
+            {resumeUrl
+              ? <a href={resumeUrl} target="_blank" rel="noreferrer" className="text-blue-600 underline inline-flex items-center gap-1">Open CV <ExternalLink size={12} /></a>
+              : <span className="text-gray-400 italic">Not available</span>}
+          </div>
+        </div>
+
+        {roundType === 'hr' && (
+          <div>
+            <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">Candidate Background</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {HR_BACKGROUND_FIELDS.map(({ key, label }) => (
+                <FormField key={key} label={label}>
+                  {key === 'family' || key === 'reasonForLeaving' ? (
+                    <textarea
+                      value={data.hrBackground?.[key] || ''}
+                      onChange={(e) => onHrBackgroundChange(key, e.target.value)}
+                      rows={2}
+                      className={formTextareaClass}
+                    />
+                  ) : key === 'pfApplicable' ? (
+                    <select value={data.hrBackground?.[key] || ''} onChange={(e) => onHrBackgroundChange(key, e.target.value)} className={formControlClass}>
+                      <option value="">— Select —</option>
+                      <option value="Yes">Yes</option>
+                      <option value="No">No</option>
+                      <option value="Not sure">Not sure</option>
+                    </select>
+                  ) : key === 'whenCanJoin' ? (
+                    <input
+                      type="date"
+                      value={data.hrBackground?.[key] ? String(data.hrBackground[key]).slice(0, 10) : ''}
+                      onChange={(e) => onHrBackgroundChange(key, e.target.value)}
+                      className={formControlClass}
+                    />
+                  ) : (
+                    <input
+                      value={data.hrBackground?.[key] || ''}
+                      onChange={(e) => onHrBackgroundChange(key, e.target.value)}
+                      className={formControlClass}
+                    />
+                  )}
+                </FormField>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div>
+          <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">Evaluation</p>
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            {roundType === 'hr' ? (
+              <>
+                <FormField label="Communication">
+                  <select value={data.communication || ''} onChange={(e) => onChange('communication', e.target.value)} className={formControlClass}>
+                    <option value="">— Select —</option>
+                    {RATING_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </FormField>
+                <FormField label="Stability">
+                  <select value={data.stability || ''} onChange={(e) => onChange('stability', e.target.value)} className={formControlClass}>
+                    <option value="">— Select —</option>
+                    {RATING_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </FormField>
+                <div>
+                  <FormField label="Attitude / DISC">
+                    <select value={data.attitude || ''} onChange={(e) => onChange('attitude', e.target.value)} className={formControlClass}>
+                      <option value="">— Select —</option>
+                      {(['D', 'I', 'S', 'C'] as const).map((t) => <option key={t} value={t}>{t} — {DISC_TRAIT_LABELS[t]}</option>)}
+                    </select>
+                  </FormField>
+                  <p className="text-[11px] text-gray-400 mt-1">Select the dominant behavioural style observed.</p>
+                </div>
+                <FormField label="Bond">
+                  <select value={data.bond || ''} onChange={(e) => onChange('bond', e.target.value)} className={formControlClass}>
+                    <option value="">— Select —</option>
+                    {BOND_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </FormField>
+                <FormField label="HR Recommendation">
+                  <select value={data.interviewerFeedbackStatus || ''} onChange={(e) => onChange('interviewerFeedbackStatus', e.target.value)} className={formControlClass}>
+                    <option value="">— Select —</option>
+                    {recommendationOptionsFor(roundType).map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </FormField>
+              </>
+            ) : (
+              <>
+                <FormField label="Overall Rating">
+                  <select value={data.rating || ''} onChange={(e) => onChange('rating', e.target.value)} className={formControlClass}>
+                    <option value="">— Select —</option>
+                    {RATING_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </FormField>
+                <FormField label={roundType === 'mgmt' ? 'Final Hiring Recommendation' : 'Technical Recommendation'}>
+                  <select value={data.interviewerFeedbackStatus || ''} onChange={(e) => onChange('interviewerFeedbackStatus', e.target.value)} className={formControlClass}>
+                    <option value="">— Select —</option>
+                    {recommendationOptionsFor(roundType).map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </FormField>
+              </>
+            )}
+          </div>
+          <p className="text-[11px] text-gray-400 mt-1">Recommendation can also be set by the interviewer via their feedback link.</p>
+        </div>
+
+        <FormField label={`${roundType === 'hr' ? 'HR' : roundType === 'mgmt' ? 'Manager' : 'Technical'} Remarks`}>
+          {roundType !== 'hr' && (
+            <div className="flex items-start justify-end gap-2 mb-1.5">
+              <button
+                type="button"
+                onClick={() => setTemplateOpen(true)}
+                className="flex-shrink-0 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition"
+              >
+                {data.feedback ? 'Edit via template' : 'Use template'}
+              </button>
+            </div>
+          )}
+          <textarea
+            value={data.feedback || ''}
+            onChange={(e) => onChange('feedback', e.target.value)}
+            rows={4}
+            placeholder="Enter interview remarks…"
+            className={formTextareaClass}
+          />
+          {roundType !== 'hr' && (
+            <TemplateModal
+              open={templateOpen}
+              onClose={() => setTemplateOpen(false)}
+              onInsert={(text: string) => onChange('feedback', text)}
+              screenerName={data.interviewer || ''}
+              existingText={data.feedback || ''}
+              defaultRound={roundLabelText}
+              title={`${roundLabelText} Evaluation Template`}
+              defaultResume={resumeUrl}
+              defaultLinkedin={linkedin}
+            />
+          )}
+        </FormField>
+
+        {data.schedulingStatus === 'Cancelled' && (
+          <FormField label="Cancellation Reason">
+            <textarea
+              value={data.cancellationReason || ''}
+              onChange={(e) => onChange('cancellationReason', e.target.value)}
+              rows={2}
+              placeholder="Why was this round cancelled?"
+              className={formTextareaClass}
+            />
+          </FormField>
+        )}
+      </div>
 
       {existingRound && existingRound.schedulingStatus !== 'Cancelled' && existingRound.schedulingStatus !== 'Done' && (
-        <div className="flex items-center gap-2 flex-wrap px-3 py-3 bg-gray-50 border-t border-gray-100">
-          <button onClick={onSchedule} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 border border-blue-200 bg-white hover:bg-blue-50 rounded-lg transition">
-            <CalendarClock size={13} /> Schedule
-          </button>
-          <button onClick={onReschedule} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-700 border border-amber-200 bg-white hover:bg-amber-50 rounded-lg transition">
-            <RefreshCw size={13} /> Reschedule
-          </button>
+        <div className="flex items-center gap-2 flex-wrap px-4 py-3 bg-gray-50 border-t border-gray-100">
           <button onClick={onMarkDone} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-green-600 hover:bg-green-700 rounded-lg transition">
             <CheckCircle2 size={13} /> Mark Done
           </button>
@@ -247,15 +409,42 @@ const RoundForm = ({
         </div>
       )}
 
-      <div className="flex gap-2 justify-end px-3 py-3 bg-gray-50 border-t border-gray-100">
-        <button onClick={onCancel} className="px-3 py-1.5 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition">Cancel</button>
+      <div className="flex gap-2 justify-start flex-wrap px-4 py-3 bg-gray-50 border-t border-gray-100 rounded-b-xl">
         <button
           onClick={onSave}
           disabled={saving}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-[#597e37] hover:bg-[#3d5420] disabled:opacity-60 rounded-lg transition"
+          className="flex items-center gap-1.5 px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 rounded-lg transition"
         >
-          {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Save
+          {saving ? <Loader2 size={13} className="animate-spin" /> : null} Save Feedback
         </button>
+        {onMoveNext && (
+          <button
+            onClick={onMoveNext}
+            disabled={saving || movingNext}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-bold text-white bg-green-600 hover:bg-green-700 disabled:opacity-60 rounded-lg transition"
+          >
+            {movingNext ? <Loader2 size={13} className="animate-spin" /> : null} {moveNextLabel}
+          </button>
+        )}
+        {onSelect && (
+          <button
+            onClick={onSelect}
+            disabled={saving}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-bold text-white bg-green-600 hover:bg-green-700 disabled:opacity-60 rounded-lg transition"
+          >
+            {selectLabel}
+          </button>
+        )}
+        {onReject && (
+          <button
+            onClick={onReject}
+            disabled={saving}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-bold text-red-600 border border-red-500 bg-white hover:bg-red-50 disabled:opacity-60 rounded-lg transition"
+          >
+            Reject &amp; Email
+          </button>
+        )}
+        <button onClick={onCancel} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 transition ml-1">Discard changes</button>
       </div>
     </div>
   );
@@ -276,12 +465,11 @@ const RoundPipelineTab = ({
   const rounds = allRounds.filter((r) => r.roundType === roundType);
   const typeLabel = ROUND_TYPE_LABELS[roundType];
 
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [drafts,    setDrafts]    = useState<Record<string, Partial<InterviewRound>>>({});
   const [adding,    setAdding]    = useState(false);
   const [newRound,  setNewRound]  = useState<Partial<InterviewRound>>({});
   const [saving,    setSaving]    = useState(false);
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [activeRoundId, setActiveRoundId] = useState<string | null>(null);
   const [jdLink,    setJdLink]    = useState<string | null>(null);
   const [interviewers,        setInterviewers]        = useState<EmployeeOption[]>([]);
   const [loadingInterviewers, setLoadingInterviewers]  = useState(true);
@@ -304,6 +492,128 @@ const RoundPipelineTab = ({
     loading: boolean; sending: boolean; error: string;
   }>({ open: false, to: '', cc: '', subject: '', body: '', loading: false, sending: false, error: '' });
 
+  // "You're selected" mail — mirrors rejectionModal exactly, used by both
+  // "Select Candidate & Email" (Management round) and "Select Without
+  // Management Round" (Technical round, HR-role only).
+  const [selectionModal, setSelectionModal] = useState<{
+    open: boolean; to: string; cc: string; subject: string; body: string;
+    loading: boolean; sending: boolean; error: string;
+  }>({ open: false, to: '', cc: '', subject: '', body: '', loading: false, sending: false, error: '' });
+
+  const openSelectionModal = async () => {
+    setSelectionModal((m) => ({ ...m, open: true, loading: true, error: '' }));
+    try {
+      const res = await fetch(`${API_BASE}/applicant-records/${record._id}/selection-mail/preview`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to load selection mail');
+      setSelectionModal((m) => ({ ...m, loading: false, to: json.data.to, cc: '', subject: json.data.subject, body: json.data.body }));
+    } catch (e: any) {
+      setSelectionModal((m) => ({ ...m, loading: false, error: e.message || 'Failed to load selection mail' }));
+    }
+  };
+
+  const sendSelectionMail = async () => {
+    setSelectionModal((m) => ({ ...m, sending: true }));
+    try {
+      const res = await fetch(`${API_BASE}/applicant-records/${record._id}/selection-mail/send`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          to: selectionModal.to.trim() || undefined,
+          cc: selectionModal.cc.trim() || undefined,
+          subject: selectionModal.subject,
+          customBody: selectionModal.body,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to send selection mail');
+      toast.success(`Selection mail sent to ${json.data.sentTo}`);
+      setSelectionModal((m) => ({ ...m, open: false, sending: false }));
+      onUpdate(json.data.record);
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to send selection mail');
+      setSelectionModal((m) => ({ ...m, sending: false }));
+    }
+  };
+
+  // "Shortlist Candidate & Email" — HR round's early, pre-interview quick
+  // action (mirrors the mockup's `idx(c)<2` shortlist step): a one-time
+  // notice sent before scheduling/evaluation even happens, distinct from
+  // the later selection mail. Mirrors selectionModal exactly.
+  const [shortlistModal, setShortlistModal] = useState<{
+    open: boolean; to: string; cc: string; subject: string; body: string;
+    loading: boolean; sending: boolean; error: string;
+  }>({ open: false, to: '', cc: '', subject: '', body: '', loading: false, sending: false, error: '' });
+
+  const openShortlistModal = async () => {
+    setShortlistModal((m) => ({ ...m, open: true, loading: true, error: '' }));
+    try {
+      const res = await fetch(`${API_BASE}/applicant-records/${record._id}/shortlist-mail/preview`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to load shortlist mail');
+      setShortlistModal((m) => ({ ...m, loading: false, to: json.data.to, cc: '', subject: json.data.subject, body: json.data.body }));
+    } catch (e: any) {
+      setShortlistModal((m) => ({ ...m, loading: false, error: e.message || 'Failed to load shortlist mail' }));
+    }
+  };
+
+  const sendShortlistMail = async () => {
+    setShortlistModal((m) => ({ ...m, sending: true }));
+    try {
+      const res = await fetch(`${API_BASE}/applicant-records/${record._id}/shortlist-mail/send`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          to: shortlistModal.to.trim() || undefined,
+          cc: shortlistModal.cc.trim() || undefined,
+          subject: shortlistModal.subject,
+          customBody: shortlistModal.body,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to send shortlist mail');
+      toast.success(`Shortlist mail sent to ${json.data.sentTo}`);
+      setShortlistModal((m) => ({ ...m, open: false, sending: false }));
+      onUpdate(json.data.record);
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to send shortlist mail');
+      setShortlistModal((m) => ({ ...m, sending: false }));
+    }
+  };
+
+  // "Move to {Next Round} & Email" — creates the next round, then opens the
+  // existing schedule-mail compose for it. Hidden once a round of the next
+  // type already exists (HR should use that tab instead of creating a dup).
+  const [movingNext, setMovingNext] = useState(false);
+  const nextRoundType: RoundType | null = roundType === 'hr' ? 'tech' : roundType === 'tech' ? 'mgmt' : null;
+  const nextRoundExists = !!nextRoundType && allRounds.some((r) => r.roundType === nextRoundType);
+
+  const moveToNextRound = async () => {
+    if (!nextRoundType) return;
+    setMovingNext(true);
+    try {
+      const res = await fetch(`${API_BASE}/applicant-records/${record._id}/interview-rounds`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ roundType: nextRoundType }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to create the next round');
+      onUpdate(json.data);
+      toast.success(`Moved to ${ROUND_TYPE_LABELS[nextRoundType]}`);
+      const createdRounds = (json.data.interviewRounds || []).filter((r: InterviewRound) => r.roundType === nextRoundType);
+      const created = createdRounds[createdRounds.length - 1];
+      if (created) openMailModal('schedule', created);
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to move to the next round');
+    } finally {
+      setMovingNext(false);
+    }
+  };
+
+  const isPositiveRec = (status: string) =>
+    roundType === 'mgmt' ? ['Select', 'Select with Conditions'].includes(status) : ['Recommended as P1', 'Recommended as P2'].includes(status);
+
   // Whether this round type's prerequisite has passed — HR has none;
   // Technical needs HR passed; Management needs Technical passed.
   const prevType: RoundType | null = roundType === 'hr' ? null : roundType === 'tech' ? 'hr' : 'tech';
@@ -311,7 +621,6 @@ const RoundPipelineTab = ({
     ? `The ${ROUND_TYPE_LABELS[prevType]} must be passed (Done, with a positive recommendation) before the ${typeLabel} can start.`
     : null;
 
-  const hasNotRecommended = rounds.some((r) => ['Not Recommended', 'Reject'].includes(r.interviewerFeedbackStatus));
 
   const openRejectionModal = async () => {
     setRejectionModal((m) => ({ ...m, open: true, loading: true, error: '' }));
@@ -371,17 +680,49 @@ const RoundPipelineTab = ({
       .finally(() => setLoadingInterviewers(false));
   }, []);
 
-  const toggleCollapse = (id: string) => setCollapsed((p) => ({ ...p, [id]: !p[id] }));
+  // Keep the pill-tab selection pointed at the most recently created round
+  // whenever the list changes (new round added, or first load).
+  useEffect(() => {
+    if (rounds.length === 0) { setActiveRoundId(null); return; }
+    if (!activeRoundId || !rounds.some((r) => r._id === activeRoundId)) {
+      setActiveRoundId(rounds[rounds.length - 1]._id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rounds.length, rounds[rounds.length - 1]?._id]);
 
-  const startEdit = (r: InterviewRound) => {
-    setEditingId(r._id);
-    setDrafts((p) => ({ ...p, [r._id]: { ...r } }));
+  const ensureDraft = (r: InterviewRound) => {
+    let draft: Partial<InterviewRound> = { ...r };
+    // First time an HR round is opened with the background subform still
+    // all-blank, seed it from the candidate's own profile fields — never
+    // once any field has actually been edited and saved.
+    if (r.roundType === 'hr') {
+      const hb = r.hrBackground;
+      const isBlank = !hb || HR_BACKGROUND_FIELDS.every(({ key }) => !hb[key]);
+      if (isBlank) draft = { ...draft, hrBackground: prefillHrBackground(record) };
+    }
+    setDrafts((p) => (p[r._id] ? p : { ...p, [r._id]: draft }));
   };
+
+  // The evaluation form stays open and editable at all times — including
+  // after a round is marked Done — rather than requiring an explicit "Edit"
+  // click first; seed its draft as soon as it becomes the active pill.
+  useEffect(() => {
+    if (!canEdit || !activeRoundId) return;
+    const r = rounds.find((x) => x._id === activeRoundId);
+    if (r) ensureDraft(r);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRoundId, canEdit]);
 
   const handleDraftChange = (id: string, field: string, value: string) =>
     setDrafts((p) => ({ ...p, [id]: { ...p[id], [field]: value } }));
 
-  const saveRound = async (id: string) => {
+  const handleHrBackgroundChange = (id: string, key: keyof HrBackground, value: string) =>
+    setDrafts((p) => ({
+      ...p,
+      [id]: { ...p[id], hrBackground: { ...(p[id]?.hrBackground || EMPTY_HR_BACKGROUND), [key]: value } },
+    }));
+
+  const saveRound = async (id: string, { silent = false }: { silent?: boolean } = {}): Promise<boolean> => {
     setSaving(true);
     try {
       const res = await fetch(`${API_BASE}/applicant-records/${record._id}/interview-rounds/${id}`, {
@@ -392,14 +733,22 @@ const RoundPipelineTab = ({
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.message || `Server returned ${res.status}`);
       onUpdate(json.data);
-      setEditingId(null);
-      toast.success('Round updated');
+      if (!silent) toast.success('Round updated');
+      return true;
     } catch (e: any) {
       toast.error(e.message || 'Failed to save round');
+      return false;
     } finally {
       setSaving(false);
     }
   };
+
+  // Save-then-progress — used by the combined "Move/Select/Reject & Email"
+  // buttons so HR's latest feedback edits aren't lost when they act on them
+  // in the same click, rather than requiring a separate explicit Save first.
+  const saveAndMoveNext = async (id: string) => { if (await saveRound(id, { silent: true })) moveToNextRound(); };
+  const saveAndSelect   = async (id: string) => { if (await saveRound(id, { silent: true })) openSelectionModal(); };
+  const saveAndReject   = async (id: string) => { if (await saveRound(id, { silent: true })) openRejectionModal(); };
 
   const addRound = async () => {
     setSaving(true);
@@ -542,9 +891,24 @@ const RoundPipelineTab = ({
     }
   };
 
+  // Marking a round Done locks it forever (the backend refuses further
+  // PATCHes once it's Done), so this both saves whatever's currently in the
+  // draft AND requires the key evaluation fields to be filled in first —
+  // otherwise a round can get locked with blank interviewer/recommendation/
+  // remarks and no way back short of the reopen escape hatch below.
   const markRoundDone = async (round: InterviewRound) => {
+    const data = drafts[round._id] || round;
+    const missing: string[] = [];
+    if (!data.interviewer) missing.push('Interviewer');
+    if (!data.scheduledDate) missing.push('Interview Date');
+    if (!data.interviewerFeedbackStatus) missing.push('Recommendation');
+    if (!data.feedback) missing.push('Remarks');
+    if (missing.length) {
+      toast.error(`Please fill in before marking done: ${missing.join(', ')}`);
+      return;
+    }
     try {
-      await patchRound(round._id, { schedulingStatus: 'Done' });
+      await patchRound(round._id, { ...data, schedulingStatus: 'Done' });
       toast.success('Round marked as done');
     } catch {
       toast.error('Failed to mark round as done');
@@ -591,13 +955,158 @@ const RoundPipelineTab = ({
         </div>
       )}
 
-      {!canEdit && (
-        <div className="p-2.5 rounded-lg border border-gray-100 bg-gray-50 text-xs text-gray-500">
-          Read-only — only HR or the relevant interviewer can edit the {typeLabel}.
-        </div>
-      )}
+      {!gateMessage && (() => {
+        const lastRound = rounds[rounds.length - 1];
+        const canAddAnotherInstance = !lastRound || lastRound.schedulingStatus === 'Done' || lastRound.schedulingStatus === 'Cancelled';
 
-      {(roundType === 'tech' || roundType === 'mgmt') && (
+        return (
+          <div className="flex flex-wrap items-center gap-2 pb-1">
+            {rounds.map((r) => {
+              const isActive = !adding && activeRoundId === r._id;
+              return (
+                <button
+                  key={r._id}
+                  onClick={() => { setAdding(false); setActiveRoundId(r._id); }}
+                  className={`flex items-center gap-1.5 flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full border transition ${
+                    isActive
+                      ? 'bg-indigo-600 border-indigo-600 text-white'
+                      : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-400 hover:text-indigo-700'
+                  }`}
+                >
+                  {r.stage || roundLabel(roundType, r.roundNumber)}
+                  <span className={`w-1.5 h-1.5 rounded-full ${
+                    r.schedulingStatus === 'Done' ? 'bg-green-400'
+                      : r.schedulingStatus === 'Cancelled' ? 'bg-red-400'
+                      : r.schedulingStatus === 'Scheduled' ? 'bg-blue-400'
+                      : isActive ? 'bg-white/70' : 'bg-gray-300'
+                  }`} />
+                </button>
+              );
+            })}
+
+            {canEdit && !gateMessage && (
+              canAddAnotherInstance ? (
+                <button
+                  onClick={() => {
+                    setNewRound(roundType === 'hr' ? { hrBackground: prefillHrBackground(record) } : {});
+                    setAdding(true);
+                  }}
+                  className={`flex items-center gap-1 flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full border-2 border-dashed transition ${
+                    adding
+                      ? 'bg-[#eef3e6] border-[#7a9c56] text-[#3d5420]'
+                      : 'border-gray-200 text-gray-400 hover:border-[#7a9c56] hover:text-[#597e37]'
+                  }`}
+                >
+                  <Plus size={13} /> Add {typeLabel}
+                </button>
+              ) : (
+                <span className="text-xs text-gray-400 italic flex-shrink-0">
+                  Mark {lastRound.stage || roundLabel(roundType, lastRound.roundNumber)} as Done or Cancelled before adding another.
+                </span>
+              )
+            )}
+          </div>
+        );
+      })()}
+
+      {!adding && !gateMessage && (() => {
+        const r = rounds.find((x) => x._id === activeRoundId) || null;
+        const isScheduled = !!(r && r.scheduledDate && r.scheduledTime);
+        const ivLabel = roundType === 'hr' ? 'HR Interview' : roundType === 'tech' ? 'Technical Interview' : 'Management Interview';
+        const canShortlist = roundType === 'hr' && canEdit && !record.shortlistedAt;
+
+        return (
+          <>
+            {canEdit && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => {
+                    if (!r) { setNewRound(roundType === 'hr' ? { hrBackground: prefillHrBackground(record) } : {}); setAdding(true); return; }
+                    openMailModal(isScheduled ? 'reschedule' : 'schedule', r);
+                  }}
+                  disabled={!r && rounds.length > 0}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 rounded-lg transition"
+                >
+                  Schedule {ivLabel}
+                </button>
+                {canShortlist && (
+                  <button
+                    onClick={openShortlistModal}
+                    className="px-4 py-2 text-sm font-bold text-gray-700 border border-gray-300 bg-white hover:bg-gray-50 rounded-lg transition"
+                  >
+                    Shortlist Candidate &amp; Email
+                  </button>
+                )}
+              </div>
+            )}
+
+            {!r && (
+              <div className="border border-gray-200 rounded-xl bg-white px-4 py-4 text-sm text-gray-600">
+                No {typeLabel} has been scheduled yet. Use "Schedule {ivLabel}" above or add a round.
+              </div>
+            )}
+
+            {r && (
+              <div className="border border-gray-200 rounded-xl bg-white px-4 py-3 flex items-center gap-3 flex-wrap text-sm">
+                {isScheduled ? (
+                  <span className="text-gray-700">
+                    Scheduled: <b>{formatDateTime12h(r.scheduledDate, r.scheduledTime)}</b> with {r.interviewer || '—'}
+                    {r.meetingLink && (
+                      /^https?:\/\//i.test(r.meetingLink)
+                        ? <> · <a href={r.meetingLink} target="_blank" rel="noreferrer" className="text-blue-600 underline">{r.meetingLink}</a></>
+                        : <> · {r.meetingLink}</>
+                    )}
+                  </span>
+                ) : (
+                  <span className="text-gray-500">Interview not scheduled yet.</span>
+                )}
+                {isScheduled && canEdit && r.schedulingStatus !== 'Done' && r.schedulingStatus !== 'Cancelled' && (
+                  <button onClick={() => openMailModal('reschedule', r)} className="text-xs font-semibold text-amber-700 border border-amber-200 bg-white hover:bg-amber-50 px-2.5 py-1 rounded-lg transition">
+                    Reschedule
+                  </button>
+                )}
+                {isScheduled && r.schedulingStatus !== 'Done' && canEdit && (
+                  <button onClick={() => markRoundDone(r)} className="text-xs font-semibold text-white bg-green-600 hover:bg-green-700 px-2.5 py-1 rounded-lg transition">
+                    Mark Interview Completed
+                  </button>
+                )}
+                <span className={`ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full ${SCHEDULING_STATUS_COLORS[r.schedulingStatus] || 'bg-gray-100 text-gray-600'}`}>
+                  {r.schedulingStatus || 'Not Scheduled'}
+                </span>
+              </div>
+            )}
+          </>
+        );
+      })()}
+
+      {!adding && !gateMessage && rounds.length > 0 && (() => {
+        const priorTypes: RoundType[] = roundType === 'tech' ? ['hr'] : roundType === 'mgmt' ? ['hr', 'tech'] : [];
+        const priorRounds = allRounds.filter((r) => priorTypes.includes(r.roundType) && r.schedulingStatus === 'Done');
+        return (
+          <details className="border border-gray-200 rounded-xl overflow-hidden">
+            <summary className="px-3 py-2 bg-gray-50 text-sm font-bold text-gray-700 cursor-pointer select-none">
+              Previous Feedback {priorRounds.length ? `(${priorRounds.length})` : ''}
+            </summary>
+            <div className="divide-y divide-gray-100">
+              {priorRounds.length ? priorRounds.map((r) => (
+                <div key={r._id} className="p-3 text-xs space-y-1">
+                  <p className="font-bold text-gray-700">
+                    {r.stage || roundLabel(r.roundType, r.roundNumber)} <span className="font-normal text-gray-400">· {r.interviewer || '—'} · {formatDateTime12h(r.scheduledDate, r.scheduledTime)}</span>
+                  </p>
+                  {r.interviewerFeedbackStatus && (
+                    <span className={`inline-block text-[11px] font-bold px-2 py-0.5 rounded-full ${INTERVIEWER_FEEDBACK_STATUS_COLORS[r.interviewerFeedbackStatus] || 'bg-gray-100 text-gray-600'}`}>
+                      {r.interviewerFeedbackStatus}
+                    </span>
+                  )}
+                  <p className="whitespace-pre-wrap text-gray-600">{r.feedback || <span className="italic text-gray-400">No remarks recorded</span>}</p>
+                </div>
+              )) : <p className="p-3 text-xs text-gray-400 italic">No previous feedback available.</p>}
+            </div>
+          </details>
+        );
+      })()}
+
+      {!adding && !gateMessage && rounds.length > 0 && (roundType === 'tech' || roundType === 'mgmt') && (
         <div className="p-3 rounded-xl border border-gray-100 bg-gray-50">
           <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Candidate Summary <span className="font-normal normal-case">(read-only)</span></p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
@@ -617,59 +1126,14 @@ const RoundPipelineTab = ({
         </div>
       )}
 
-      {hasNotRecommended && (
-        <div className="flex items-center justify-between gap-4 p-3 rounded-xl border border-red-100 bg-red-50">
-          <p className="text-xs text-red-700">A {typeLabel.toLowerCase()} was marked Not Recommended / Reject.</p>
-          <button
-            onClick={openRejectionModal}
-            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition"
-          >
-            <Send size={13} /> Send Rejection Mail
-          </button>
-        </div>
-      )}
-
-      {rounds.length === 0 && !adding && !gateMessage && (
-        <div className="text-center py-12 text-gray-400">
-          <ClipboardList size={36} className="mx-auto mb-3 opacity-40" />
-          <p className="text-sm">No {typeLabel.toLowerCase()} yet.</p>
-        </div>
-      )}
-
-      {[...rounds].reverse().map((r, idx) => {
-        const isEditing   = editingId === r._id;
-        const isLatest    = idx === 0;
-        const isCollapsed = collapsed[r._id] === undefined ? true : collapsed[r._id];
+      {!adding && rounds.filter((r) => r._id === activeRoundId).map((r) => {
+        const isFormMode = canEdit;
+        const isLatest    = r._id === rounds[rounds.length - 1]._id;
 
         return (
-          <div key={r._id} className="border border-gray-200 rounded-xl overflow-hidden hover:border-gray-300 transition">
-            <div
-              onClick={() => toggleCollapse(r._id)}
-              className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 bg-blue-50/60 border-b border-blue-100 cursor-pointer hover:bg-blue-50 transition"
-            >
-              <span className="flex-shrink-0 text-[11px] font-bold text-white bg-slate-800 px-2 py-0.5 rounded">
-                {r.stage || roundLabel(roundType, r.roundNumber)}
-              </span>
-              {isLatest && (
-                <span className="flex-shrink-0 text-[11px] font-bold text-white bg-orange-500 px-2 py-0.5 rounded">
-                  Latest
-                </span>
-              )}
-              <span className="text-xs text-black"><span className="font-bold text-gray-600">Interviewer:</span> {r.interviewer || '—'}</span>
-              <span className="text-xs text-black"><span className="font-bold text-gray-600">Date &amp; Time:</span> {formatDateTime12h(r.scheduledDate, r.scheduledTime)}</span>
-              <span className="text-xs text-black"><span className="font-bold text-gray-600">Mode:</span> {r.mode || '—'}</span>
-
-              <span className={`flex-shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-full ${SCHEDULING_STATUS_COLORS[r.schedulingStatus] || 'bg-gray-100 text-gray-600'}`}>
-                {r.schedulingStatus || 'Not Scheduled'}
-              </span>
-
-              <div className="flex items-center gap-1 flex-shrink-0 ml-auto text-gray-400">
-                {isCollapsed ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
-              </div>
-            </div>
-
-            {!isEditing && !isCollapsed && (
-              <div>
+          <div key={r._id}>
+            {!isFormMode && (
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
                 <DetailRow label="Scheduling Status">
                   <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${SCHEDULING_STATUS_COLORS[r.schedulingStatus] || 'bg-gray-100 text-gray-600'}`}>
                     {r.schedulingStatus || 'Not Scheduled'}
@@ -712,37 +1176,21 @@ const RoundPipelineTab = ({
                       </span>
                     : <span className="text-gray-400 italic">—</span>}
                 </DetailRow>
-                <DetailRow label="Note (if any)">{r.note || <span className="text-gray-400 italic">—</span>}</DetailRow>
                 <DetailRow label="Remarks">
                   <p className="whitespace-pre-wrap font-bold text-black">{r.feedback || <span className="font-normal text-gray-400 italic">No remarks recorded</span>}</p>
                 </DetailRow>
-
-                {canEdit && (
-                  <div className="flex justify-end items-center px-3 py-2.5 bg-gray-50">
-                    {r.schedulingStatus === 'Done' ? (
-                      <span className="text-xs font-semibold text-gray-400">
-                        This round is marked Done and cannot be edited.
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => startEdit(r)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-[#597e37] hover:bg-[#3d5420] rounded-lg transition"
-                      >
-                        <Edit2 size={13} /> Edit
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
             )}
 
-            {isEditing && (
+            {isFormMode && (
               <RoundForm
                 data={drafts[r._id] || r}
+                roundType={roundType}
                 roundLabelText={r.stage || roundLabel(roundType, r.roundNumber)}
                 onChange={(f, v) => handleDraftChange(r._id, f, v)}
+                onHrBackgroundChange={(k, v) => handleHrBackgroundChange(r._id, k, v)}
                 onSave={() => saveRound(r._id)}
-                onCancel={() => setEditingId(null)}
+                onCancel={() => setDrafts((p) => ({ ...p, [r._id]: r }))}
                 saving={saving}
                 interviewers={interviewers}
                 loadingInterviewers={loadingInterviewers}
@@ -754,6 +1202,16 @@ const RoundPipelineTab = ({
                 jdLink={jdLink}
                 resumeUrl={resumeUrl}
                 linkedin={record.linkedin}
+                onMoveNext={isLatest && roundType !== 'mgmt' && !nextRoundExists ? () => saveAndMoveNext(r._id) : undefined}
+                moveNextLabel={nextRoundType ? `Move to ${ROUND_TYPE_LABELS[nextRoundType]} & Email` : undefined}
+                movingNext={movingNext}
+                onSelect={
+                  isLatest && roundType === 'tech' && hasAnyRole(['Admin', 'HR']) ? () => saveAndSelect(r._id)
+                    : isLatest && roundType === 'mgmt' ? () => saveAndSelect(r._id)
+                    : undefined
+                }
+                selectLabel={roundType === 'tech' ? 'Select Without Management Round' : 'Select Candidate & Email'}
+                onReject={isLatest ? () => saveAndReject(r._id) : undefined}
               />
             )}
           </div>
@@ -765,8 +1223,10 @@ const RoundPipelineTab = ({
           <p className="text-sm font-bold text-gray-700 px-3 pt-3">New {typeLabel} — #{rounds.length + 1}</p>
           <RoundForm
             data={newRound}
+            roundType={roundType}
             roundLabelText={roundLabel(roundType, rounds.length + 1)}
             onChange={(f, v) => setNewRound((p) => ({ ...p, [f]: v }))}
+            onHrBackgroundChange={(k, v) => setNewRound((p) => ({ ...p, hrBackground: { ...(p.hrBackground || EMPTY_HR_BACKGROUND), [k]: v } }))}
             onSave={addRound}
             onCancel={() => { setAdding(false); setNewRound({}); }}
             saving={saving}
@@ -778,24 +1238,6 @@ const RoundPipelineTab = ({
           />
         </div>
       )}
-
-      {canEdit && !adding && !gateMessage && (() => {
-        const lastRound = rounds[rounds.length - 1];
-        const canAddAnotherInstance = !lastRound || lastRound.schedulingStatus === 'Done' || lastRound.schedulingStatus === 'Cancelled';
-
-        return canAddAnotherInstance ? (
-          <button
-            onClick={() => setAdding(true)}
-            className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-gray-200 hover:border-[#7a9c56] hover:text-[#597e37] rounded-xl text-sm text-gray-400 transition"
-          >
-            <Plus size={15} /> Add {typeLabel}
-          </button>
-        ) : (
-          <p className="w-full text-center py-3 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-400 italic">
-            Mark {lastRound.stage || roundLabel(roundType, lastRound.roundNumber)} as Done or Cancelled before adding another.
-          </p>
-        );
-      })()}
 
       {mailModal.open && mailModal.round && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={closeMailModal}>
@@ -1086,6 +1528,140 @@ const RoundPipelineTab = ({
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 rounded-lg transition"
               >
                 {rejectionModal.sending ? <><Loader2 size={14} className="animate-spin" /> Sending...</> : <><Send size={14} /> Send</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectionModal.open && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setSelectionModal((m) => ({ ...m, open: false }))}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3.5 border-b rounded-t-2xl bg-green-700">
+              <p className="text-sm font-bold text-white">Send Selection Mail</p>
+              <button onClick={() => setSelectionModal((m) => ({ ...m, open: false }))} className="text-white/70 hover:text-white transition"><X size={16} /></button>
+            </div>
+
+            <div className="p-5 space-y-2.5">
+              {selectionModal.loading ? (
+                <p className="text-sm text-gray-400 italic">Loading…</p>
+              ) : selectionModal.error && !selectionModal.subject ? (
+                <p className="text-sm text-red-500">{selectionModal.error}</p>
+              ) : (
+                <>
+                  <div>
+                    <label className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5 block">To</label>
+                    <input
+                      value={selectionModal.to}
+                      onChange={(e) => setSelectionModal((m) => ({ ...m, to: e.target.value }))}
+                      className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 placeholder:text-gray-400 placeholder:font-normal"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5 block">CC (optional)</label>
+                    <input
+                      value={selectionModal.cc}
+                      onChange={(e) => setSelectionModal((m) => ({ ...m, cc: e.target.value }))}
+                      placeholder="cc1@company.com, cc2@company.com"
+                      className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 placeholder:text-gray-400 placeholder:font-normal"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5 block">Subject</label>
+                    <input
+                      value={selectionModal.subject}
+                      onChange={(e) => setSelectionModal((m) => ({ ...m, subject: e.target.value }))}
+                      className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 placeholder:text-gray-400 placeholder:font-normal"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5 block">Body</label>
+                    <textarea
+                      value={selectionModal.body}
+                      onChange={(e) => setSelectionModal((m) => ({ ...m, body: e.target.value }))}
+                      rows={10}
+                      className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-green-400 placeholder:text-gray-400 placeholder:font-normal"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 px-5 py-3.5 border-t bg-gray-50 rounded-b-2xl">
+              <button onClick={() => setSelectionModal((m) => ({ ...m, open: false }))} className="px-3 py-1.5 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition">Cancel</button>
+              <button
+                onClick={sendSelectionMail}
+                disabled={selectionModal.sending || selectionModal.loading || !selectionModal.subject}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 disabled:opacity-60 rounded-lg transition"
+              >
+                {selectionModal.sending ? <><Loader2 size={14} className="animate-spin" /> Sending...</> : <><Send size={14} /> Send</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {shortlistModal.open && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setShortlistModal((m) => ({ ...m, open: false }))}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3.5 border-b rounded-t-2xl bg-indigo-700">
+              <p className="text-sm font-bold text-white">Send Shortlist Mail</p>
+              <button onClick={() => setShortlistModal((m) => ({ ...m, open: false }))} className="text-white/70 hover:text-white transition"><X size={16} /></button>
+            </div>
+
+            <div className="p-5 space-y-2.5">
+              {shortlistModal.loading ? (
+                <p className="text-sm text-gray-400 italic">Loading…</p>
+              ) : shortlistModal.error && !shortlistModal.subject ? (
+                <p className="text-sm text-red-500">{shortlistModal.error}</p>
+              ) : (
+                <>
+                  <div>
+                    <label className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5 block">To</label>
+                    <input
+                      value={shortlistModal.to}
+                      onChange={(e) => setShortlistModal((m) => ({ ...m, to: e.target.value }))}
+                      className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 placeholder:text-gray-400 placeholder:font-normal"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5 block">CC (optional)</label>
+                    <input
+                      value={shortlistModal.cc}
+                      onChange={(e) => setShortlistModal((m) => ({ ...m, cc: e.target.value }))}
+                      placeholder="cc1@company.com, cc2@company.com"
+                      className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 placeholder:text-gray-400 placeholder:font-normal"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5 block">Subject</label>
+                    <input
+                      value={shortlistModal.subject}
+                      onChange={(e) => setShortlistModal((m) => ({ ...m, subject: e.target.value }))}
+                      className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 placeholder:text-gray-400 placeholder:font-normal"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5 block">Body</label>
+                    <textarea
+                      value={shortlistModal.body}
+                      onChange={(e) => setShortlistModal((m) => ({ ...m, body: e.target.value }))}
+                      rows={10}
+                      className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-indigo-400 placeholder:text-gray-400 placeholder:font-normal"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 px-5 py-3.5 border-t bg-gray-50 rounded-b-2xl">
+              <button onClick={() => setShortlistModal((m) => ({ ...m, open: false }))} className="px-3 py-1.5 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition">Cancel</button>
+              <button
+                onClick={sendShortlistMail}
+                disabled={shortlistModal.sending || shortlistModal.loading || !shortlistModal.subject}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 rounded-lg transition"
+              >
+                {shortlistModal.sending ? <><Loader2 size={14} className="animate-spin" /> Sending...</> : <><Send size={14} /> Send</>}
               </button>
             </div>
           </div>

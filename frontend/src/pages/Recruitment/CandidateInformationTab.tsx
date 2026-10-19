@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Loader2, Sparkles, FileText, Send, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { Field } from './ApplicantFieldComponents';
+import { Field, FIELD_LABEL_CLASS } from './ApplicantFieldComponents';
 import { ApplicantRecord, API_BASE, ASSESSMENT_STATUS_COLORS, DISC_TRAIT_LABELS } from './applicantTypes';
 
 type ApplicantRecordWithAI = ApplicantRecord & {
@@ -22,11 +22,22 @@ function resolveResumeUrl(resume?: string): string {
 // opened via the "Edit Information" button in the modal header
 // (AllApplicants.tsx), rather than an always-present inline edit form.
 const CandidateInformationTab = ({
-  record, onSave,
+  record, onSave, department,
 }: {
   record: ApplicantRecordWithAI;
   onSave: (updated: ApplicantRecord) => void;
+  department?: string;
 }) => {
+  // Native Place / Residing In aren't captured on the application form itself
+  // — they're filled in by HR during the HR Round (hrBackground subform).
+  // Surface them here read-only, once an HR round has recorded them, so this
+  // tab reflects the same values the mockup shows without duplicating entry.
+  const hrBackground = [...(record.interviewRounds || [])]
+    .filter((r) => r.roundType === 'hr' && r.hrBackground)
+    .map((r) => r.hrBackground!)
+    .find((hb) => hb.nativePlace || hb.residingIn);
+  const skills = [...(record.primarySkills || []), ...(record.secondarySkills || [])].join(', ');
+
   const [jdLink,    setJdLink]    = useState<string | null>(null);
   const [jdError,   setJdError]   = useState<string | null>(null);
   const [loadingJd, setLoadingJd] = useState(true);
@@ -213,27 +224,44 @@ const CandidateInformationTab = ({
         <section className="border border-gray-100 rounded-xl p-4">
           <SectionLabel>Contact &amp; Personal</SectionLabel>
           <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-            <Field label="Full Name"  value={record.full_name} />
-            <Field label="Phone"      value={record.phone} />
-            <Field label="Email"      value={record.email} />
-            <Field label="LinkedIn"   value={record.linkedin} />
-            <Field label="Location"   value={[record.city, record.state].filter(Boolean).join(', ')} />
-            <Field label="Country"    value={record.country} />
-            <Field label="Pin Code"   value={record.pin_code} />
-            <Field label="Relocation" value={record.relocation} />
-            <Field label="Education"  value={record.highest_qualification} />
+            <Field label="Full Name"      value={record.full_name} />
+            <Field label="Phone Number"   value={record.phone} />
+            <Field label="Personal Email" value={record.email} />
+            <div className="min-w-0">
+              <p className={FIELD_LABEL_CLASS}>LinkedIn Profile</p>
+              {record.linkedin ? (
+                <a
+                  href={/^https?:\/\//i.test(record.linkedin) ? record.linkedin : `https://${record.linkedin}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={record.linkedin}
+                  className="text-sm text-blue-600 hover:underline font-medium truncate block"
+                >
+                  {record.linkedin.replace(/^https?:\/\//i, '')}
+                </a>
+              ) : (
+                <p className="text-sm text-gray-800 font-medium">—</p>
+              )}
+            </div>
+            <Field label="Current Location" value={[record.city, record.state].filter(Boolean).join(', ')} />
+            <Field label="Native Place"     value={hrBackground?.nativePlace || undefined} />
+            <Field label="Residing In"      value={hrBackground?.residingIn || record.city || undefined} />
+            <Field label="Education"        value={record.highest_qualification} />
           </div>
         </section>
 
         <section className="border border-gray-100 rounded-xl p-4">
           <SectionLabel>Professional</SectionLabel>
           <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-            <Field label="Designation"   value={record.designation} />
-            <Field label="Experience"    value={record.experience} />
-            <Field label="Total Exp"     value={record.total_experience ? `${record.total_experience} yrs` : undefined} />
-            <Field label="Current CTC"   value={record.current_ctc} />
-            <Field label="Expected CTC"  value={record.expected_monthly_ctc} />
-            <Field label="Notice Period" value={record.notice_period ? `${record.notice_period} days` : undefined} />
+            <Field label="Total Experience" value={record.total_experience ? `${record.total_experience} yrs` : undefined} />
+            <Field label="Current Company"  value={record.current_company || undefined} />
+            <Field label="Current CTC"      value={record.current_ctc} />
+            <Field label="Expected CTC"     value={record.expected_monthly_ctc} />
+            <Field label="Notice Period"    value={record.notice_period ? `${record.notice_period} days` : undefined} />
+            <Field label="When Can Join"    value={record.expectedJoiningDate ? new Date(record.expectedJoiningDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : undefined} />
+            <div className="col-span-2 min-w-0">
+              <Field label="Skills" value={skills || undefined} />
+            </div>
           </div>
         </section>
       </div>
@@ -241,11 +269,12 @@ const CandidateInformationTab = ({
       {/* ── Application — full width, read-only ── */}
       <section className="border border-gray-100 rounded-xl p-4">
         <SectionLabel>Application</SectionLabel>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-4">
-          <Field label="Position"  value={record.designation} />
-          <Field label="Applied On" value={new Date(record.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} />
-          <Field label="Match Score" value={record.atsMatchScore != null ? `${record.atsMatchScore}%` : undefined} />
-          <Field label="Resume" value={record.resume ? 'On file' : undefined} />
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-x-4 gap-y-4">
+          <Field label="Position Applied For" value={record.designation} />
+          <Field label="Department"           value={department} />
+          <Field label="Application Source"   value={record.candidateSource} />
+          <Field label="Application Date"     value={new Date(record.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} />
+          <Field label="ATS Score"            value={record.atsMatchScore != null ? `${record.atsMatchScore}%` : undefined} />
         </div>
         {record.resume && (
           <a href={resolveResumeUrl(record.resume)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 mt-3 text-sm font-semibold text-blue-700 underline">
@@ -253,6 +282,10 @@ const CandidateInformationTab = ({
           </a>
         )}
       </section>
+
+      <p className="text-xs text-gray-400 -mt-2">
+        Captured once from the application form and shared by every round. Updates here are visible to HR, Technical and Management interviewers.
+      </p>
 
       {/* ── Languages Known ── */}
       <section>

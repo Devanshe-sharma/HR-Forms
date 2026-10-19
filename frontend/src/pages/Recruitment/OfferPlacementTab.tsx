@@ -1,87 +1,126 @@
-
 // pages/Recruitment/OfferPlacementTab.tsx
+// ─────────────────────────────────────────────────────────────────────────────
+// Offer Management / Joining Management — two always-editable cards, matching
+// the mockup's vOffer() layout exactly (field names, the Pending -> Released
+// -> Accepted/Declined offer lifecycle, and the Joining tracker below it).
+// Reaching this page at all already means the candidate was selected (see
+// RoundPipelineTab's "Select Candidate & Email" / "Select Without Management
+// Round", which now sets finalDecision.decision = 'Offer Made' directly) —
+// no separate manual "mark as Offer Made" step needed here.
+// ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect } from 'react';
-import { Loader2, Save, CheckSquare, CheckCircle2, Mail, FileText, Upload, Eye } from 'lucide-react';
+import type { CSSProperties } from 'react';
+import { Loader2, FileText, Upload, Eye } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Field, EditField, EditSelect } from './ApplicantFieldComponents';
+import letterheadLogo from '../../assets/BriskOliveLetterheadLogo.png';
 import {
-  ApplicantRecord, FinalDecision, Joining, API_BASE,
-  DECISION_OPTIONS, DECISION_COLORS,
+  ApplicantRecord, Joining, API_BASE,
+  OFFER_STATUS_COLORS,
   JOINING_STATUS_OPTIONS, JOINING_STATUS_COLORS, DOCS_STATUS_OPTIONS, BGV_STATUS_OPTIONS,
 } from './applicantTypes';
+
+const fmtDate = (v?: string | null) => v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+const toDateInput = (v?: string | null) => v ? String(v).slice(0, 10) : '';
+
+// Same company letterhead used for every other generated letter (Offer,
+// Appointment, Confirmation, Salary Revision — see LetterTemplate.tsx on the
+// employee Profile page), so a candidate's generated Offer Letter looks
+// identical to the one an employee sees later, just rendered here from the
+// ApplicantRecord instead of an onboarded Employee record.
+const LETTERHEAD_FONT: CSSProperties = { fontFamily: '"Times New Roman", Times, serif', fontSize: '12px' };
+const NOWRAP: CSSProperties = { whiteSpace: 'nowrap' };
+
+const LetterHeader = () => (
+  <div className="pb-3 mb-4 border-b-2 border-[#622423] print:mb-3" style={LETTERHEAD_FONT}>
+    <img src={letterheadLogo} alt="Brisk Olive" className="h-10" />
+  </div>
+);
+
+const LetterFooter = () => (
+  <table className="mt-8 pt-2 border-t-2 border-[#622423] text-gray-600 w-full" style={{ ...LETTERHEAD_FONT, borderCollapse: 'separate', tableLayout: 'fixed' }}>
+    <tbody>
+      <tr>
+        <td className="w-1/2 pt-2 align-top" style={NOWRAP}>Brisk Olive Business Solutions Pvt Ltd</td>
+        <td className="w-1/2 pt-2 align-top" style={NOWRAP}>Website:&nbsp;&nbsp;briskolive.com</td>
+      </tr>
+      <tr>
+        <td className="align-top" style={NOWRAP}>Address:&nbsp;G‑203, Sector 63, Noida - 201301,U.P., India</td>
+        <td className="align-top" style={NOWRAP}>CIN:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;U74999UP2019PTC120473</td>
+      </tr>
+      <tr>
+        <td className="align-top" style={NOWRAP}>Mobile:&nbsp;&nbsp;8787240832</td>
+        <td className="align-top" style={NOWRAP}>GSTIN:&nbsp;&nbsp;&nbsp;09AAICB6090J1ZA</td>
+      </tr>
+      <tr>
+        <td className="align-top" style={NOWRAP}>Email:&nbsp;&nbsp;&nbsp;&nbsp;info@briskolive.com</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+);
 
 const OfferPlacementTab = ({
   record,
   onUpdate,
   canSeeFinancials = true,
+  department,
 }: {
   record: ApplicantRecord;
   onUpdate: (updated: ApplicantRecord) => void;
   canSeeFinancials?: boolean;
+  department?: string;
 }) => {
-  const [draft,  setDraft]  = useState<FinalDecision>(record.finalDecision ?? {} as FinalDecision);
-  const [saving, setSaving] = useState(false);
-  const [editMode, setEditMode] = useState<'view' | 'edit'>('view');
-  const [showSaved, setShowSaved] = useState(false);
-  const [sendingOffer, setSendingOffer] = useState(false);
+  const fd = record.finalDecision || ({} as ApplicantRecord['finalDecision']);
+  const offerStatus = fd.offerStatus || 'Offer Pending';
+  const ended = offerStatus === 'Offer Declined';
+
+  const [offerDraft, setOfferDraft] = useState({
+    offeredCTC: fd.offeredCTC || '',
+    joiningDate: toDateInput(fd.joiningDate),
+    offerRemarks: fd.offerRemarks || '',
+  });
+  const [savingOffer, setSavingOffer] = useState(false);
+  const [releasing, setReleasing] = useState(false);
+  const [accepting, setAccepting] = useState(false);
+  const [declining, setDeclining] = useState(false);
+  const [sendingReminder, setSendingReminder] = useState(false);
   const [generatingLetter, setGeneratingLetter] = useState(false);
   const [uploadingLetter, setUploadingLetter] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [acceptedDateInput, setAcceptedDateInput] = useState(new Date().toISOString().slice(0, 10));
 
   const [joiningDraft, setJoiningDraft] = useState<Joining>(record.joining ?? {} as Joining);
-  const [joiningEdit, setJoiningEdit] = useState(false);
   const [savingJoining, setSavingJoining] = useState(false);
 
   useEffect(() => {
-    setDraft(record.finalDecision ?? {} as FinalDecision);
-    setEditMode('view');
+    setOfferDraft({
+      offeredCTC: fd.offeredCTC || '',
+      joiningDate: toDateInput(fd.joiningDate),
+      offerRemarks: fd.offerRemarks || '',
+    });
     setJoiningDraft(record.joining ?? {} as Joining);
-    setJoiningEdit(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [record]);
 
-  const handleChange = (field: string, value: string) =>
-    setDraft((p) => ({ ...p, [field]: value }));
+  const offerLetter = fd.offerLetter;
 
-  const handleCancel = () => {
-    setDraft(record.finalDecision ?? {} as FinalDecision);
-    setEditMode('view');
-  };
-
-  const handleSave = async () => {
-    if (!window.confirm('Save changes to Offer & Placement?')) return;
-    setSaving(true);
+  const handleSaveOffer = async () => {
+    setSavingOffer(true);
     try {
       const res = await fetch(`${API_BASE}/applicant-records/${record._id}/final-decision`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(draft),
+        body:    JSON.stringify(offerDraft),
       });
-      if (!res.ok) throw new Error();
       const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to save');
       onUpdate(json.data);
-      setEditMode('view');
-      toast.success('Offer & Placement saved');
-      setShowSaved(true);
-    } catch {
-      toast.error('Failed to save');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSendOfferLetter = async () => {
-    if (!window.confirm(`Send the Offer Letter email to ${record.email || 'this candidate'}?`)) return;
-    setSendingOffer(true);
-    try {
-      const res = await fetch(`${API_BASE}/applicant-records/${record._id}/send-offer-letter`, { method: 'POST' });
-      const json = await res.json();
-      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to send offer letter');
-      onUpdate(json.data);
-      toast.success('Offer Letter sent');
+      toast.success('Offer details saved');
     } catch (e: any) {
-      toast.error(e?.message || 'Failed to send offer letter');
+      toast.error(e.message || 'Failed to save');
     } finally {
-      setSendingOffer(false);
+      setSavingOffer(false);
     }
   };
 
@@ -92,8 +131,7 @@ const OfferPlacementTab = ({
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.message || 'Failed to generate offer letter');
       onUpdate({ ...record, finalDecision: { ...record.finalDecision, offerLetter: json.data.offerLetter } });
-      toast.success('Offer letter preview generated');
-      setPreviewOpen(true);
+      toast.success('Offer letter generated from template');
     } catch (e: any) {
       toast.error(e?.message || 'Failed to generate offer letter');
     } finally {
@@ -113,7 +151,7 @@ const OfferPlacementTab = ({
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.message || 'Failed to upload offer letter');
       onUpdate({ ...record, finalDecision: { ...record.finalDecision, offerLetter: json.data.offerLetter } });
-      toast.success('Offer letter uploaded');
+      toast.success(`Offer letter uploaded: ${file.name}`);
     } catch (e: any) {
       toast.error(e?.message || 'Failed to upload offer letter');
     } finally {
@@ -121,10 +159,86 @@ const OfferPlacementTab = ({
     }
   };
 
+  const handleReleaseOffer = async () => {
+    setReleasing(true);
+    try {
+      // Save whatever's in the draft first, same as the mockup's releaseOffer
+      // reading the live inputs before sending.
+      const saveRes = await fetch(`${API_BASE}/applicant-records/${record._id}/final-decision`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(offerDraft),
+      });
+      const saveJson = await saveRes.json();
+      if (!saveRes.ok || !saveJson.success) throw new Error(saveJson.message || 'Failed to save offer details');
+
+      const res = await fetch(`${API_BASE}/applicant-records/${record._id}/offer/release`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to release offer');
+      onUpdate(json.data);
+      toast.success('Offer released.');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to release offer');
+    } finally {
+      setReleasing(false);
+    }
+  };
+
+  const handleSendReminder = async () => {
+    setSendingReminder(true);
+    try {
+      const res = await fetch(`${API_BASE}/applicant-records/${record._id}/offer/send-reminder`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to send reminder');
+      onUpdate(json.data);
+      toast.success('Reminder sent.');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to send reminder');
+    } finally {
+      setSendingReminder(false);
+    }
+  };
+
+  const handleAcceptOffer = async () => {
+    if (!acceptedDateInput) { toast.error('Select the offer accepted date.'); return; }
+    setAccepting(true);
+    try {
+      const res = await fetch(`${API_BASE}/applicant-records/${record._id}/offer/accept`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acceptedDate: acceptedDateInput }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to mark offer accepted');
+      onUpdate(json.data);
+      toast.success('Offer marked accepted. Joining date confirmed.');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to mark offer accepted');
+    } finally {
+      setAccepting(false);
+    }
+  };
+
+  const handleDeclineOffer = async () => {
+    if (!window.confirm(`Confirm that ${record.full_name} declined the offer? The profile is kept in the candidate database.`)) return;
+    setDeclining(true);
+    try {
+      const res = await fetch(`${API_BASE}/applicant-records/${record._id}/offer/decline`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.message || 'Failed to mark offer declined');
+      onUpdate(json.data);
+      toast.success('Offer marked declined.');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to mark offer declined');
+    } finally {
+      setDeclining(false);
+    }
+  };
+
   const handleJoiningChange = (field: string, value: string) =>
     setJoiningDraft((p) => ({ ...p, [field]: value }));
 
   const handleSaveJoining = async () => {
+    if (joiningDraft.status === 'Joined') {
+      if (!joiningDraft.actualDate) { toast.error('Enter the actual joining date.'); return; }
+      if (joiningDraft.actualDate > new Date().toISOString().slice(0, 10)) { toast.error('Actual joining date cannot be in the future.'); return; }
+    }
     setSavingJoining(true);
     try {
       const res = await fetch(`${API_BASE}/applicant-records/${record._id}/joining`, {
@@ -135,7 +249,6 @@ const OfferPlacementTab = ({
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.message || 'Failed to update joining details');
       onUpdate(json.data);
-      setJoiningEdit(false);
       toast.success('Joining details updated');
     } catch (e: any) {
       toast.error(e?.message || 'Failed to update joining details');
@@ -144,271 +257,262 @@ const OfferPlacementTab = ({
     }
   };
 
-  const currentDecision = record.finalDecision?.decision || 'Pending';
-  const displayDecision = editMode === 'edit' ? draft.decision || 'Pending' : currentDecision;
-  const offerLetter = record.finalDecision?.offerLetter;
+  const accepted = offerStatus === 'Offer Accepted';
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-gray-100 bg-gray-50">
-          <CheckSquare size={20} className="text-gray-400" />
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+      {/* ── Offer Management ── */}
+      <div className="bg-white rounded-lg shadow border border-gray-200 p-5 space-y-4">
+        <p className="text-sm font-bold text-gray-800">Offer Management</p>
+
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="Candidate" value={record.full_name} />
+          <Field label="Position" value={record.designation} />
+          <Field label="Department" value={department} />
+        </div>
+        <div className="grid grid-cols-3 gap-3">
           <div>
-            <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Current Decision</p>
-            <span className={`text-sm font-bold px-2 py-0.5 rounded-full ${DECISION_COLORS[displayDecision]}`}>
-              {displayDecision}
-            </span>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Offer Status</p>
+            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${OFFER_STATUS_COLORS[offerStatus]}`}>{offerStatus}</span>
           </div>
+          <Field label="Offer Release Date" value={fmtDate(fd.offerReleaseDate)} />
+          <Field label="Offer Accepted Date" value={fmtDate(fd.offerAcceptedDate)} />
         </div>
 
-        <div className="flex gap-2 justify-end">
-          {editMode === 'view' && currentDecision === 'Offer Made' && (
-            <button
-              onClick={handleSendOfferLetter}
-              disabled={sendingOffer}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 rounded-xl transition"
-            >
-              {sendingOffer ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
-              {record.offerLetterSentAt ? 'Resend Offer Letter' : 'Send Offer Letter'}
-            </button>
-          )}
-          {editMode === 'view' ? (
-            <button
-              onClick={() => setEditMode('edit')}
-              className="px-4 py-2 text-sm font-semibold text-[#3d5420] bg-[#eef3e6] hover:bg-[#dce8c9] rounded-xl transition"
-            >
-              Edit Decision
-            </button>
-          ) : (
-            <>
-              <button
-                onClick={handleCancel}
-                disabled={saving}
-                className="px-4 py-2 text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition"
-              >
-                Cancel
+        {!ended ? (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              {canSeeFinancials ? (
+                <EditField
+                  label="Offered CTC" name="offeredCTC"
+                  value={offerDraft.offeredCTC}
+                  onChange={(_, v) => setOfferDraft((p) => ({ ...p, offeredCTC: v }))}
+                  placeholder="e.g. 6 LPA"
+                />
+              ) : <Field label="Offered CTC" value="Restricted" />}
+              <EditField
+                label="Expected Joining Date" name="joiningDate" type="date"
+                value={offerDraft.joiningDate}
+                onChange={(_, v) => setOfferDraft((p) => ({ ...p, joiningDate: v }))}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Offer Remarks</label>
+              <textarea
+                value={offerDraft.offerRemarks}
+                onChange={(e) => setOfferDraft((p) => ({ ...p, offerRemarks: e.target.value }))}
+                rows={2}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a9c56] resize-none"
+              />
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Offer Letter</p>
+              {offerLetter?.source ? (
+                <p className="text-sm font-bold text-gray-800">{offerLetter.fileName || 'Offer letter generated'}</p>
+              ) : (
+                <p className="text-sm text-gray-400 italic">No offer letter prepared</p>
+              )}
+              {offerStatus === 'Offer Pending' && (
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <label className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition cursor-pointer">
+                    {uploadingLetter ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                    Upload
+                    <input type="file" className="hidden" onChange={handleUploadLetter} disabled={uploadingLetter} />
+                  </label>
+                  <button
+                    onClick={handleGenerateLetter}
+                    disabled={generatingLetter}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-60 rounded-lg transition"
+                  >
+                    {generatingLetter ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
+                    Generate from template
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button onClick={handleSaveOffer} disabled={savingOffer} className="px-4 py-2 text-sm font-bold text-gray-700 border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-60 rounded-lg transition">
+                {savingOffer ? 'Saving…' : 'Save Details'}
               </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#597e37] hover:bg-[#3d5420] disabled:opacity-60 rounded-xl transition"
-              >
-                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                Save Decision
-              </button>
-            </>
-          )}
-        </div>
+              {offerLetter?.source === 'generated' && (
+                <button onClick={() => setPreviewOpen(true)} className="flex items-center gap-1.5 px-4 py-2 text-sm font-bold text-gray-700 border border-gray-300 bg-white hover:bg-gray-50 rounded-lg transition">
+                  <Eye size={14} /> Preview Offer Letter
+                </button>
+              )}
+              {offerStatus === 'Offer Pending' && (
+                <button onClick={handleReleaseOffer} disabled={releasing} className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 rounded-lg transition">
+                  {releasing ? 'Releasing…' : 'Release Offer'}
+                </button>
+              )}
+              {offerStatus === 'Offer Released' && (
+                <>
+                  <button onClick={handleSendReminder} disabled={sendingReminder} className="px-4 py-2 text-sm font-bold text-gray-700 border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-60 rounded-lg transition">
+                    {sendingReminder ? 'Sending…' : 'Send Offer Reminder'}
+                  </button>
+                  <input
+                    type="date"
+                    value={acceptedDateInput}
+                    onChange={(e) => setAcceptedDateInput(e.target.value)}
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  />
+                  <button onClick={handleAcceptOffer} disabled={accepting} className="px-4 py-2 text-sm font-bold text-white bg-green-600 hover:bg-green-700 disabled:opacity-60 rounded-lg transition">
+                    {accepting ? 'Saving…' : 'Mark Offer Accepted'}
+                  </button>
+                  <button onClick={handleDeclineOffer} disabled={declining} className="px-4 py-2 text-sm font-bold text-red-600 border border-red-500 bg-white hover:bg-red-50 disabled:opacity-60 rounded-lg transition">
+                    Mark Offer Declined
+                  </button>
+                </>
+              )}
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-gray-400 italic">This offer is closed.</p>
+        )}
       </div>
 
-      {editMode === 'view' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="Decision" value={record.finalDecision?.decision || 'Pending'} />
-          <Field label="Decision Date" value={record.finalDecision?.decisionDate ? new Date(record.finalDecision.decisionDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} />
-          <Field label="Joining Date" value={record.finalDecision?.joiningDate ? new Date(record.finalDecision.joiningDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} />
-          {canSeeFinancials && <Field label="Offered CTC (₹)" value={record.finalDecision?.offeredCTC} />}
+      {/* ── Joining Management ── */}
+      <div className="bg-white rounded-lg shadow border border-gray-200 p-5 space-y-4">
+        <p className="text-sm font-bold text-gray-800">Joining Management</p>
+
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="Candidate" value={record.full_name} />
+          <Field label="Position" value={record.designation} />
+          {canSeeFinancials && <Field label="Offered CTC" value={fd.offeredCTC || '—'} />}
         </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <EditSelect
-              label="Decision *"
-              name="decision"
-              value={draft.decision || 'Pending'}
-              options={DECISION_OPTIONS}
-              onChange={(_, v) => handleChange('decision', v)}
-            />
-            <EditField
-              label="Decision Date"
-              name="decisionDate"
-              value={draft.decisionDate ? draft.decisionDate.split('T')[0] : ''}
-              onChange={(_, v) => handleChange('decisionDate', v)}
-              type="date"
-            />
-            <EditField
-              label="Joining Date"
-              name="joiningDate"
-              value={draft.joiningDate ? draft.joiningDate.split('T')[0] : ''}
-              onChange={(_, v) => handleChange('joiningDate', v)}
-              type="date"
-            />
-            {canSeeFinancials && (
-              <EditField
-                label="Offered CTC (₹)"
-                name="offeredCTC"
-                value={draft.offeredCTC || ''}
-                onChange={(_, v) => handleChange('offeredCTC', v)}
-              />
-            )}
-          </div>
-
-          <div>
-            <label className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">Notes</label>
-            <textarea
-              value={draft.notes || ''}
-              onChange={(e) => handleChange('notes', e.target.value)}
-              rows={3}
-              placeholder="Any additional notes about the hiring decision..."
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a9c56] resize-none"
-            />
-          </div>
-        </>
-      )}
-
-      {record.finalDecision?.decision && (
-        <div className={`mt-4 p-4 rounded-xl border ${
-          currentDecision === 'Offer Made'  ? 'bg-green-50  border-green-200' :
-          currentDecision === 'Rejected'    ? 'bg-red-50    border-red-200'   :
-          currentDecision === 'On Hold'     ? 'bg-yellow-50 border-yellow-200' :
-                                              'bg-orange-50 border-orange-200'
-        }`}>
-          <p className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-2">Decision Summary</p>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            {canSeeFinancials && record.finalDecision?.offeredCTC  && <div><span className="text-gray-400">Offered CTC:</span> <strong>{record.finalDecision.offeredCTC}</strong></div>}
-            {record.finalDecision?.joiningDate && <div><span className="text-gray-400">Joining:</span> <strong>{new Date(record.finalDecision.joiningDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</strong></div>}
-            {record.finalDecision?.decisionDate && <div><span className="text-gray-400">Decided on:</span> <strong>{new Date(record.finalDecision.decisionDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</strong></div>}
-          </div>
-          {record.finalDecision?.notes && <p className="mt-2 text-xs text-gray-600 italic">"{record.finalDecision.notes}"</p>}
+        <div>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Overall Status</p>
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${JOINING_STATUS_COLORS[record.joining?.status || ''] || 'bg-gray-100 text-gray-600'}`}>
+            {record.joining?.status || 'Not started'}
+          </span>
         </div>
-      )}
 
-      {currentDecision === 'Offer Made' && (
-        <div className="p-4 rounded-xl border border-gray-100 bg-gray-50 space-y-3">
-          <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Offer Letter Document</p>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={handleGenerateLetter}
-              disabled={generatingLetter}
-              className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-60 rounded-lg transition"
-            >
-              {generatingLetter ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-              Generate Preview
-            </button>
-            {offerLetter?.generatedHtml && (
-              <button
-                onClick={() => setPreviewOpen(true)}
-                className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
-              >
-                <Eye size={14} /> View Preview
-              </button>
-            )}
-            <label className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition cursor-pointer">
-              {uploadingLetter ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-              Upload Signed Letter
-              <input type="file" className="hidden" onChange={handleUploadLetter} disabled={uploadingLetter} />
-            </label>
-          </div>
-          {offerLetter?.source === 'uploaded' && offerLetter.driveLink && (
-            <p className="text-xs text-gray-600">
-              Uploaded: <a href={offerLetter.driveLink} target="_blank" rel="noreferrer" className="text-indigo-600 underline">{offerLetter.fileName || 'View file'}</a>
-            </p>
-          )}
+        <div className="grid grid-cols-2 gap-3">
+          <EditField
+            label="Confirmed Joining Date" name="confirmedDate" type="date"
+            value={toDateInput(joiningDraft.confirmedDate)}
+            onChange={(_, v) => handleJoiningChange('confirmedDate', v)}
+          />
+          <EditField
+            label="Actual Joining Date" name="actualDate" type="date"
+            value={toDateInput(joiningDraft.actualDate)}
+            onChange={(_, v) => handleJoiningChange('actualDate', v)}
+          />
         </div>
-      )}
 
-      {/* ── Joining Management — post-acceptance tracking, distinct from the
-          planned joiningDate above ── */}
-      {currentDecision === 'Offer Made' && (
-        <div className="p-4 rounded-xl border border-gray-100 bg-white space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Joining Management</p>
-            {!joiningEdit ? (
-              <button onClick={() => setJoiningEdit(true)} className="text-xs font-semibold text-[#3d5420] hover:underline">Edit</button>
-            ) : (
-              <div className="flex gap-2">
-                <button onClick={() => { setJoiningDraft(record.joining ?? {} as Joining); setJoiningEdit(false); }} className="text-xs font-semibold text-gray-500 hover:underline">Cancel</button>
-                <button onClick={handleSaveJoining} disabled={savingJoining} className="text-xs font-semibold text-[#3d5420] hover:underline">
-                  {savingJoining ? 'Saving…' : 'Save'}
-                </button>
-              </div>
-            )}
-          </div>
-
-          {!joiningEdit ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-              <div>
-                <p className="text-xs text-gray-400">Status</p>
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${JOINING_STATUS_COLORS[record.joining?.status || '']}`}>
-                  {record.joining?.status || 'Not started'}
-                </span>
-              </div>
-              <Field label="Confirmed Date" value={record.joining?.confirmedDate ? new Date(record.joining.confirmedDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} />
-              <Field label="Actual Joining Date" value={record.joining?.actualDate ? new Date(record.joining.actualDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} />
-              <Field label="Documents" value={record.joining?.docsStatus || 'Pending'} />
-              <Field label="BGV Status" value={record.joining?.bgvStatus || 'Not Applicable'} />
-              {record.joining?.remarks && <Field label="Remarks" value={record.joining.remarks} />}
-            </div>
+        <div className="grid grid-cols-2 gap-3">
+          {accepted ? (
+            <EditSelect label="Joining Status" name="status" value={joiningDraft.status || ''} options={JOINING_STATUS_OPTIONS} onChange={(_, v) => handleJoiningChange('status', v)} />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <EditSelect label="Status" name="status" value={joiningDraft.status || ''} options={JOINING_STATUS_OPTIONS} onChange={(_, v) => handleJoiningChange('status', v)} />
-              <EditField label="Confirmed Date" name="confirmedDate" type="date" value={joiningDraft.confirmedDate ? joiningDraft.confirmedDate.split('T')[0] : ''} onChange={(_, v) => handleJoiningChange('confirmedDate', v)} />
-              <EditField label="Actual Joining Date" name="actualDate" type="date" value={joiningDraft.actualDate ? joiningDraft.actualDate.split('T')[0] : ''} onChange={(_, v) => handleJoiningChange('actualDate', v)} />
-              <EditSelect label="Documents" name="docsStatus" value={joiningDraft.docsStatus || 'Pending'} options={DOCS_STATUS_OPTIONS} onChange={(_, v) => handleJoiningChange('docsStatus', v)} />
-              <EditSelect label="BGV Status" name="bgvStatus" value={joiningDraft.bgvStatus || 'Not Applicable'} options={BGV_STATUS_OPTIONS} onChange={(_, v) => handleJoiningChange('bgvStatus', v)} />
-              <div className="md:col-span-2">
-                <label className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5 block">Remarks</label>
-                <textarea
-                  value={joiningDraft.remarks || ''}
-                  onChange={(e) => handleJoiningChange('remarks', e.target.value)}
-                  rows={2}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a9c56] resize-none"
-                />
-              </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Joining Status</label>
+              <select disabled className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-400">
+                <option>Offer not yet accepted</option>
+              </select>
             </div>
           )}
+          <EditSelect label="Joining Documents" name="docsStatus" value={joiningDraft.docsStatus || 'Pending'} options={DOCS_STATUS_OPTIONS} onChange={(_, v) => handleJoiningChange('docsStatus', v)} />
         </div>
-      )}
 
-      {record.offerLetterSentAt && (
-        <div className="p-4 rounded-xl border border-indigo-100 bg-indigo-50">
-          <p className="text-xs font-bold uppercase tracking-wide text-indigo-400 mb-2">Document Upload</p>
-          <p className="text-sm text-gray-700">
-            Offer letter email sent on {new Date(record.offerLetterSentAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+        <EditSelect label="Background Verification" name="bgvStatus" value={joiningDraft.bgvStatus || 'Not Applicable'} options={BGV_STATUS_OPTIONS} onChange={(_, v) => handleJoiningChange('bgvStatus', v)} />
+
+        <div>
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">HR Remarks</label>
+          <textarea
+            value={joiningDraft.remarks || ''}
+            onChange={(e) => handleJoiningChange('remarks', e.target.value)}
+            rows={2}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7a9c56] resize-none"
+          />
+        </div>
+
+        <button onClick={handleSaveJoining} disabled={savingJoining} className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 rounded-lg transition">
+          {savingJoining ? 'Saving…' : 'Update Joining'}
+        </button>
+
+        {record.offerLetterSentAt && (
+          <p className="text-xs text-gray-500 border-t border-gray-100 pt-3">
+            Offer letter email sent on {fmtDate(record.offerLetterSentAt)}
             {record.documentsUploadFolderLink && (
-              <>
-                {' · '}
-                <a href={record.documentsUploadFolderLink} target="_blank" rel="noreferrer" className="text-indigo-600 underline">
-                  View Documents Folder
-                </a>
-              </>
+              <> · <a href={record.documentsUploadFolderLink} target="_blank" rel="noreferrer" className="text-indigo-600 underline">View Documents Folder</a></>
             )}
+            <br />{record.uploadedDocuments?.length ?? 0} document{(record.uploadedDocuments?.length ?? 0) === 1 ? '' : 's'} uploaded by candidate so far
           </p>
-          <p className="text-xs text-gray-500 mt-1">
-            {record.uploadedDocuments?.length ?? 0} document{(record.uploadedDocuments?.length ?? 0) === 1 ? '' : 's'} uploaded by candidate so far
-          </p>
-        </div>
-      )}
+        )}
+      </div>
 
-      {previewOpen && offerLetter?.generatedHtml && (
+      {previewOpen && offerLetter?.source === 'generated' && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setPreviewOpen(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-3 border-b">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b sticky top-0 bg-white">
               <p className="font-bold text-gray-800">Offer Letter Preview</p>
               <button onClick={() => setPreviewOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
             </div>
-            <div className="p-4" dangerouslySetInnerHTML={{ __html: offerLetter.generatedHtml }} />
-          </div>
-        </div>
-      )}
 
-      {showSaved && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30"
-          onClick={() => setShowSaved(false)}
-        >
-          <div
-            className="bg-white rounded-2xl shadow-2xl px-8 py-7 flex flex-col items-center gap-3 max-w-sm mx-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <CheckCircle2 size={40} className="text-green-500" />
-            <p className="text-base font-bold text-gray-800">Saved Successfully</p>
-            <p className="text-sm text-gray-500 text-center">Offer &amp; Placement details have been updated.</p>
-            <button
-              onClick={() => setShowSaved(false)}
-              className="mt-2 px-5 py-2 text-sm font-semibold text-white bg-[#597e37] hover:bg-[#3d5420] rounded-lg transition"
-            >
-              OK
-            </button>
+            <div className="p-12 font-[Arial] font-bold leading-relaxed text-[9px]">
+              <LetterHeader />
+
+              <div className="text-center mb-8">
+                <h2 className="text-[12px] font-bold tracking-wide pb-2">Strictly Personal &amp; Confidential</h2>
+              </div>
+
+              <div className="text-left mb-6">
+                <p>Date: {fmtDate(new Date().toISOString())}</p>
+              </div>
+
+              <div className="mb-6">
+                <p>{record.full_name}</p>
+              </div>
+
+              <p className="mb-6 text-[12px] font-bold">SUBJECT: OFFER LETTER</p>
+
+              <p className="mb-6">Dear {record.full_name},</p>
+
+              <p className="mb-4">
+                We are pleased to offer you the position of <strong>{record.designation || '[Designation]'}</strong>
+                {department ? <> in the <strong>{department}</strong> department</> : null} of Brisk Olive Business Solutions Pvt Ltd. Your date of joining shall be by <strong>{fmtDate(fd.joiningDate) !== '—' ? fmtDate(fd.joiningDate) : fmtDate(new Date().toISOString())}</strong>.
+              </p>
+
+              <p className="mb-4">
+                As agreed, your CTC is <strong>{fd.offeredCTC || '[CTC]'}</strong> per annum. Also enclosed is a breakup of Compensation being offered to you.
+              </p>
+
+              <p className="mb-4">
+                We request you to sign the duplicate copy of this Offer Letter, and return it to the undersigned, indicating your acceptance of the offer. A formal Appointment Letter shall be issued to you on your joining. In case your signed acceptance is not received within 2 days of issue of this letter, this offer shall automatically lapse. The offer shall also lapse in case you do not report for work on or before the due date.
+              </p>
+
+              <p className="mb-4">
+                Please Note that this is only an offer letter. Your appointment shall be subject to your clearing the Medical Examination at the Company approved Hospital and satisfactory background check (If Applicable).
+              </p>
+
+              <p className="mb-4">
+                Prior to beginning work on the first day of employment, you are requested to report to the HR Department, which shall assist you in completing the joining formalities.
+              </p>
+
+              <p className="mb-6">
+                We are in an exciting phase of expansion and development and we believe that with your knowledge and skills you will be able to make a significant contribution to the success of the Company.
+              </p>
+
+              <div className="mt-12 text-left">
+                <p>For Brisk Olive Business Solutions Pvt Ltd</p>
+                <p className="mt-8">Authorised Signatory</p>
+              </div>
+
+              <div className="mt-8">
+                <p className="font-bold text-center">Candidate Confirmation</p>
+                <p className="mt-4">I hereby accept the offer on the terms and conditions of employment discussed with you.</p>
+                <div className="mt-8 space-y-2">
+                  <p><strong>Signature:</strong></p>
+                  <p><strong>Name of the Candidate:</strong> {record.full_name}</p>
+                  <p><strong>Date:</strong></p>
+                </div>
+              </div>
+
+              <LetterFooter />
+            </div>
           </div>
         </div>
       )}

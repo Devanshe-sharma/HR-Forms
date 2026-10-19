@@ -15,10 +15,15 @@ const sendInterviewRoundMail = require('../emails/senders/sendInterviewRoundMail
 const buildInterviewRoundMail = require('../emails/templates/interviewRoundMail');
 const sendCandidateRejection = require('../emails/senders/sendCandidateRejection');
 const buildCandidateRejection = require('../emails/templates/candidateRejection');
+const sendCandidateSelection = require('../emails/senders/sendCandidateSelection');
+const buildCandidateSelection = require('../emails/templates/candidateSelection');
+const sendCandidateShortlisted = require('../emails/senders/sendCandidateShortlisted');
+const buildCandidateShortlisted = require('../emails/templates/candidateShortlisted');
 const { signInterviewConfirm, verifyInterviewConfirm } = require('../utils/interviewConfirmSigning');
 const { signCandidateUpload, verifyCandidateUpload } = require('../utils/candidateUploadSigning');
 const { uploadFileToDrive, createDriveFolder } = require('../utils/googleDrive');
 const sendOfferLetter = require('../emails/senders/sendOfferLetter');
+const sendOfferReminder = require('../emails/senders/sendOfferReminder');
 const REQUIRED_CANDIDATE_DOCUMENTS = require('../utils/requiredCandidateDocuments');
 const { addEvent } = require('../utils/candidateEvents');
 const { ROUND_TYPE_ORDER, ROUND_TYPE_LABELS, roundLabel, hasPassedRound, previousRoundType, canAddRound } = require('../utils/roundPipeline');
@@ -533,6 +538,122 @@ router.post('/:id/rejection-mail/send', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// POST /api/applicant-records/:id/selection-mail/preview
+// Builds the default subject/body for the "you're selected" mail, without
+// sending — mirrors rejection-mail/preview exactly.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/selection-mail/preview', async (req, res) => {
+  try {
+    const record = await ApplicantRecord.findById(req.params.id).lean();
+    if (!record) return err(res, 'Record not found', 404);
+
+    const { subject, body } = buildCandidateSelection({
+      candidateName: record.full_name,
+      position: record.designation,
+    });
+
+    ok(res, { to: record.email || '', subject, body });
+  } catch (e) {
+    console.error('[selection-mail preview] error:', e);
+    err(res, 'Failed to build selection mail preview');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/applicant-records/:id/selection-mail/send
+// Sends the selection mail — To/CC/Subject/Body are all HR-editable
+// overrides from the popup, same convention as rejection-mail/send.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/selection-mail/send', async (req, res) => {
+  try {
+    const { to: toOverride, cc, subject: subjectOverride, customBody } = req.body;
+
+    const record = await ApplicantRecord.findById(req.params.id);
+    if (!record) return err(res, 'Record not found', 404);
+    if (record.selectionMailSentAt) {
+      return err(res, 'Selection mail has already been sent for this candidate.', 400);
+    }
+
+    const to = toOverride || record.email;
+    if (!to) return err(res, 'No candidate email on file', 400);
+
+    await sendCandidateSelection({
+      to, cc,
+      candidateName: record.full_name,
+      position: record.designation,
+      subjectOverride, customBody,
+    });
+
+    record.selectionMailSentAt = new Date();
+    // Being selected is what unlocks Offer & Joining in the mockup's flow —
+    // no separate manual "mark as Offer Made" step needed.
+    record.finalDecision.decision = 'Offer Made';
+    addEvent(record, 'selection-mail-sent', 'Selection Mail Sent');
+    await record.save();
+
+    ok(res, { sentTo: to, record: record.toObject() });
+  } catch (e) {
+    console.error('[selection-mail send] error:', e);
+    err(res, 'Failed to send selection mail');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/applicant-records/:id/shortlist-mail/preview & /send
+// HR round's early "Shortlist Candidate & Email" quick action — a
+// pre-interview notice sent before scheduling/evaluation even happens,
+// distinct from the later selection mail. Same preview/send pattern as
+// rejection-mail and selection-mail above.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/shortlist-mail/preview', async (req, res) => {
+  try {
+    const record = await ApplicantRecord.findById(req.params.id).lean();
+    if (!record) return err(res, 'Record not found', 404);
+
+    const { subject, body } = buildCandidateShortlisted({
+      candidateName: record.full_name,
+      position: record.designation,
+    });
+
+    ok(res, { to: record.email || '', subject, body });
+  } catch (e) {
+    console.error('[shortlist-mail preview] error:', e);
+    err(res, 'Failed to build shortlist mail preview');
+  }
+});
+
+router.post('/:id/shortlist-mail/send', async (req, res) => {
+  try {
+    const { to: toOverride, cc, subject: subjectOverride, customBody } = req.body;
+
+    const record = await ApplicantRecord.findById(req.params.id);
+    if (!record) return err(res, 'Record not found', 404);
+    if (record.shortlistedAt) {
+      return err(res, 'Shortlist mail has already been sent for this candidate.', 400);
+    }
+
+    const to = toOverride || record.email;
+    if (!to) return err(res, 'No candidate email on file', 400);
+
+    await sendCandidateShortlisted({
+      to, cc,
+      candidateName: record.full_name,
+      position: record.designation,
+      subjectOverride, customBody,
+    });
+
+    record.shortlistedAt = new Date();
+    addEvent(record, 'shortlist-mail-sent', 'Shortlist Mail Sent');
+    await record.save();
+
+    ok(res, { sentTo: to, record: record.toObject() });
+  } catch (e) {
+    console.error('[shortlist-mail send] error:', e);
+    err(res, 'Failed to send shortlist mail');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/applicant-records/:id/interview-rounds
 // Add a new interview round, in the fixed HR -> Technical -> Management
 // pipeline (see utils/roundPipeline.js). `roundType` is required; a round
@@ -571,6 +692,11 @@ router.post('/:id/interview-rounds', async (req, res) => {
       feedback:              req.body.feedback              || '',
       interviewerFeedbackStatus: req.body.interviewerFeedbackStatus || '',
       bond:                  req.body.bond                  || '',
+      rating:                req.body.rating                || '',
+      communication:         req.body.communication         || '',
+      stability:             req.body.stability             || '',
+      attitude:              req.body.attitude              || '',
+      hrBackground:          req.body.hrBackground           || undefined,
     };
 
     record.interviewRounds.push(newRound);
@@ -596,18 +722,11 @@ router.patch('/:id/interview-rounds/:roundId', async (req, res) => {
     const round = record.interviewRounds.id(req.params.roundId);
     if (!round) return err(res, 'Round not found', 404);
 
-    // A round marked Done is final — no further edits, enforced here (not
-    // just hidden in the UI) since a stale client could otherwise still
-    // PATCH around it. The transition INTO Done itself (via Mark Done)
-    // still works fine, since at that point the round isn't Done yet.
-    if (round.schedulingStatus === 'Done') {
-      return err(res, 'This round is marked Done and cannot be edited.', 400);
-    }
-
     const updatable = [
       'schedulingStatus', 'cancellationReason', 'scheduledDate', 'scheduledTime',
       'interviewer', 'mode', 'meetingLink', 'candidateConfirmation',
       'note', 'feedback', 'interviewerFeedbackStatus', 'bond',
+      'rating', 'communication', 'stability', 'attitude',
     ];
     for (const field of updatable) {
       if (req.body[field] !== undefined) round[field] = req.body[field];
@@ -989,13 +1108,14 @@ router.patch('/:id/final-decision', async (req, res) => {
       return err(res, 'The Management Round must be passed (Select / Select with Conditions) before Offer & Placement can be used.', 400);
     }
 
-    const { decision, offeredCTC, joiningDate, decisionDate, notes } = req.body;
+    const { decision, offeredCTC, joiningDate, decisionDate, notes, offerRemarks } = req.body;
 
     if (decision     !== undefined) record.finalDecision.decision     = decision;
     if (offeredCTC   !== undefined) record.finalDecision.offeredCTC   = offeredCTC;
     if (joiningDate  !== undefined) record.finalDecision.joiningDate  = joiningDate || null;
     if (decisionDate !== undefined) record.finalDecision.decisionDate = decisionDate || null;
     if (notes        !== undefined) record.finalDecision.notes        = notes;
+    if (offerRemarks !== undefined) record.finalDecision.offerRemarks = offerRemarks;
 
     // If a real decision is being set, sync the top-level status too
     if (decision === 'Offer Made')           record.status = 'Hired';
@@ -1053,6 +1173,127 @@ router.post('/:id/send-offer-letter', async (req, res) => {
   } catch (e) {
     console.error('[send-offer-letter] error:', e);
     err(res, 'Failed to send offer letter');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/applicant-records/:id/offer/release
+// Mockup's "Release Offer" — moves offerStatus Pending -> Released and
+// emails the offer letter (reusing send-offer-letter's mail), requiring the
+// offered CTC, expected joining date and an offer letter to already be set.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/offer/release', async (req, res) => {
+  try {
+    const record = await ApplicantRecord.findById(req.params.id);
+    if (!record) return err(res, 'Record not found', 404);
+    if (record.finalDecision?.decision !== 'Offer Made') {
+      return err(res, 'The Offer & Placement decision must be "Offer Made" before releasing the offer.', 400);
+    }
+    if (record.finalDecision.offerStatus !== 'Offer Pending') {
+      return err(res, 'Offer has already been released.', 400);
+    }
+    if (!record.finalDecision.offeredCTC) return err(res, 'Enter the offered CTC before releasing the offer.', 400);
+    if (!record.finalDecision.joiningDate) return err(res, 'Enter the expected joining date before releasing the offer.', 400);
+    if (!record.finalDecision.offerLetter?.source) return err(res, 'Prepare or upload the offer letter first.', 400);
+    if (!record.email) return err(res, 'This candidate has no email on file.', 400);
+
+    const sig = signCandidateUpload(String(record._id));
+    const uploadLink = `${FRONTEND_URL}/candidate-upload/${record._id}?sig=${sig}`;
+
+    await sendOfferLetter({
+      to: record.email,
+      full_name: record.full_name,
+      joiningDate: record.finalDecision.joiningDate,
+      uploadLink,
+    });
+
+    record.offerLetterSentAt = new Date();
+    record.finalDecision.offerStatus = 'Offer Released';
+    record.finalDecision.offerReleaseDate = new Date();
+    if (!record.joining.status) record.joining.status = 'Joining Pending';
+    addEvent(record, 'offer-released', 'Offer Released');
+    await record.save();
+
+    ok(res, record.toObject());
+  } catch (e) {
+    console.error('[offer/release] error:', e);
+    err(res, 'Failed to release offer');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/applicant-records/:id/offer/accept  { acceptedDate }
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/offer/accept', async (req, res) => {
+  try {
+    const record = await ApplicantRecord.findById(req.params.id);
+    if (!record) return err(res, 'Record not found', 404);
+    if (record.finalDecision.offerStatus !== 'Offer Released') {
+      return err(res, 'Release the offer first.', 400);
+    }
+    const { acceptedDate } = req.body;
+    if (!acceptedDate) return err(res, 'Select the offer accepted date.', 400);
+    if (!record.finalDecision.joiningDate) return err(res, 'Set the expected joining date and save first.', 400);
+
+    record.finalDecision.offerStatus = 'Offer Accepted';
+    record.finalDecision.offerAcceptedDate = acceptedDate;
+    record.joining.confirmedDate = record.finalDecision.joiningDate;
+    record.joining.status = 'Joining Pending';
+    addEvent(record, 'offer-accepted', 'Offer Accepted', `Joining on ${new Date(record.finalDecision.joiningDate).toLocaleDateString('en-IN')}`);
+    await record.save();
+
+    ok(res, record.toObject());
+  } catch (e) {
+    console.error('[offer/accept] error:', e);
+    err(res, 'Failed to mark offer accepted');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/applicant-records/:id/offer/decline
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/offer/decline', async (req, res) => {
+  try {
+    const record = await ApplicantRecord.findById(req.params.id);
+    if (!record) return err(res, 'Record not found', 404);
+    if (record.finalDecision.offerStatus === 'Offer Declined') {
+      return err(res, 'Offer is already marked declined.', 400);
+    }
+
+    record.finalDecision.offerStatus = 'Offer Declined';
+    record.joining.status = 'Offer Withdrawn';
+    addEvent(record, 'offer-declined', 'Offer Declined');
+    await record.save();
+
+    ok(res, record.toObject());
+  } catch (e) {
+    console.error('[offer/decline] error:', e);
+    err(res, 'Failed to mark offer declined');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/applicant-records/:id/offer/send-reminder
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/offer/send-reminder', async (req, res) => {
+  try {
+    const record = await ApplicantRecord.findById(req.params.id);
+    if (!record) return err(res, 'Record not found', 404);
+    if (!record.email) return err(res, 'This candidate has no email on file.', 400);
+
+    await sendOfferReminder({
+      to: record.email,
+      candidateName: record.full_name,
+      position: record.designation,
+    });
+
+    addEvent(record, 'offer-reminder-sent', 'Offer Reminder Sent');
+    await record.save();
+
+    ok(res, record.toObject());
+  } catch (e) {
+    console.error('[offer/send-reminder] error:', e);
+    err(res, 'Failed to send offer reminder');
   }
 });
 
@@ -1156,12 +1397,58 @@ router.post('/:id/upload-documents', uploadCandidateDocs, async (req, res) => {
 function buildAssessmentMail(record, kind) {
   const sig = signInterviewConfirm(String(record._id), kind, 'assessment');
   const link = `${FRONTEND_URL}/candidate-assessment/${record._id}/${kind}?sig=${sig}`;
-  const label = kind === 'excel' ? 'Excel Test' : 'DISC Assessment';
+  const label = kind === 'excel' ? 'Excel Skills Test' : 'DISC Assessment';
+  const intro = kind === 'excel'
+    ? 'As the next step in your application, we would like you to complete a short Excel skills test. This helps us understand your proficiency with the tool as it relates to the role.'
+    : 'As the next step in your application, we would like you to complete a short DISC behavioural assessment. This helps us understand your working style and how you might fit within our team.';
+
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:0 auto;background:#f4f6fa;padding:24px;">
+      <div style="background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e4eaf4;">
+
+        <div style="background:#1a3e72;padding:24px 28px;">
+          <p style="margin:0;color:#ffffff;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;opacity:0.75;">Brisk Olive HR</p>
+          <h2 style="margin:6px 0 0;color:#ffffff;font-size:20px;">${label} Invitation</h2>
+        </div>
+
+        <div style="padding:28px;">
+          <p style="font-size:14px;line-height:1.7;color:#333;margin:0 0 14px;">Dear ${record.full_name},</p>
+          <p style="font-size:14px;line-height:1.7;color:#333;margin:0 0 14px;">${intro}</p>
+          <p style="font-size:14px;line-height:1.7;color:#333;margin:0 0 4px;">Please click the button below to begin:</p>
+
+          <p style="text-align:center;margin:24px 0 4px;">
+            <a href="${link}" style="display:inline-block;background:#597e37;color:#ffffff;padding:12px 28px;
+              text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">
+              Start ${label}
+            </a>
+          </p>
+
+          <p style="font-size:12px;line-height:1.6;color:#8a97ab;margin:20px 0 0;">
+            If the button above doesn't work, copy and paste this link into your browser:<br>
+            <a href="${link}" style="color:#597e37;word-break:break-all;">${link}</a>
+          </p>
+
+          <p style="font-size:14px;line-height:1.7;color:#333;margin:24px 0 0;">
+            Regards,<br>HR Team<br>Brisk Olive Business Solutions Pvt. Ltd.
+          </p>
+        </div>
+
+        <div style="background:#f8fafd;padding:16px 28px;border-top:1px solid #eef2f8;">
+          <p style="margin:0;font-size:11px;color:#8a97ab;line-height:1.6;">
+            This is an automated message from Brisk Olive HR regarding your application.
+            Please do not reply directly to this email.
+          </p>
+        </div>
+
+      </div>
+    </div>
+  `;
+
   return {
     to: record.email,
     cc: '',
-    subject: `${label} — ${record.full_name}`,
-    body: `<p>Dear ${record.full_name},</p><p>Please complete your ${label} using the link below:</p><p><a href="${link}">${link}</a></p>`,
+    subject: `${label} Invitation — ${record.full_name}`,
+    body: html,
   };
 }
 
@@ -1389,23 +1676,13 @@ router.post('/:id/link-application', async (req, res) => {
 // PDF engine); HR can separately upload the actually-signed file via Drive.
 // Not mutually exclusive — see offerLetterSchema comment in the model.
 // ─────────────────────────────────────────────────────────────────────────────
-function buildOfferLetterHtml(record) {
-  const fd = record.finalDecision || {};
-  const joiningDate = fd.joiningDate
-    ? new Date(fd.joiningDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
-    : 'to be confirmed';
-  return `
-    <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; padding: 24px; border: 1px solid #ddd;">
-      <h2>Offer Letter</h2>
-      <p>Dear ${record.full_name},</p>
-      <p>We are pleased to offer you the position of <strong>${record.designation || 'the discussed role'}</strong> at Brisk Olive, with an annual CTC of <strong>${fd.offeredCTC || 'as discussed'}</strong>.</p>
-      <p>Your tentative joining date is <strong>${joiningDate}</strong>.</p>
-      <p>We look forward to having you on board.</p>
-      <p>Regards,<br/>Brisk Olive HR Team</p>
-    </div>
-  `;
-}
-
+// The actual letter markup (letterhead, legal clauses, signature block) is
+// rendered client-side in OfferPlacementTab.tsx, matching the same
+// LetterHeader/LetterFooter + renderOfferLetter() format used for employees
+// on the Profile page (frontend/src/pages/LetterTemplate.tsx) — it's always
+// rendered live from the current record, so it can't go stale against a
+// stored HTML snapshot. This route just marks that a letter has been
+// generated (vs. uploaded) for the offerLetter.source flag shown elsewhere.
 router.post('/:id/offer-letter/generate', async (req, res) => {
   try {
     const record = await ApplicantRecord.findById(req.params.id);
@@ -1414,15 +1691,15 @@ router.post('/:id/offer-letter/generate', async (req, res) => {
       return err(res, 'The Offer & Placement decision must be "Offer Made" before generating the Offer Letter.', 400);
     }
 
+    if (!record.finalDecision.offerLetter) record.finalDecision.offerLetter = {};
     record.finalDecision.offerLetter.source = 'generated';
-    record.finalDecision.offerLetter.generatedHtml = buildOfferLetterHtml(record);
     record.finalDecision.offerLetter.updatedAt = new Date();
     addEvent(record, 'offer-letter-generated', 'Offer Letter Generated (Preview)');
     await record.save();
     ok(res, { offerLetter: record.finalDecision.offerLetter });
   } catch (e) {
     console.error('[offer-letter/generate] error:', e);
-    err(res, 'Failed to generate offer letter');
+    err(res, `Failed to generate offer letter: ${e.message}`);
   }
 });
 

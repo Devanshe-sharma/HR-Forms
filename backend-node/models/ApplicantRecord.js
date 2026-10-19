@@ -93,6 +93,31 @@ const interviewRoundSchema = new mongoose.Schema(
       enum: ['', 'Not discussed', 'Willing to sign bond', 'Negotiable', 'Not willing'],
       default: '',
     },
+    // Overall Rating — all three round types. HR round additionally breaks
+    // this down into Communication/Stability (same vocabulary) alongside it.
+    rating: {
+      type: String,
+      enum: ['', 'Poor', 'Below Expectations', 'Meets Expectations', 'Good', 'Excellent'],
+      default: '',
+    },
+    communication: {
+      type: String,
+      enum: ['', 'Poor', 'Below Expectations', 'Meets Expectations', 'Good', 'Excellent'],
+      default: '',
+    },
+    stability: {
+      type: String,
+      enum: ['', 'Poor', 'Below Expectations', 'Meets Expectations', 'Good', 'Excellent'],
+      default: '',
+    },
+    // HR Round only — the interviewer's own observed read of the candidate's
+    // dominant DISC trait, distinct from the candidate's self-administered
+    // DISC assessment (discAssessment) already captured elsewhere.
+    attitude: {
+      type: String,
+      enum: ['', 'D', 'I', 'S', 'C'],
+      default: '',
+    },
   },
   { _id: true, timestamps: true },
 );
@@ -125,6 +150,19 @@ const finalDecisionSchema = new mongoose.Schema(
     decisionDate: { type: Date,   default: null },
     notes:        { type: String, default: '' },
     offerLetter:  { type: offerLetterSchema, default: () => ({}) },
+
+    // ── Offer lifecycle — Pending -> Released -> Accepted/Declined, matching
+    // the mockup's Offer Management card. Distinct from `decision` above
+    // (which is the earlier hire/reject call); this only moves once
+    // decision === 'Offer Made'.
+    offerStatus: {
+      type: String,
+      enum: ['Offer Pending', 'Offer Released', 'Offer Accepted', 'Offer Declined'],
+      default: 'Offer Pending',
+    },
+    offerReleaseDate:  { type: Date, default: null },
+    offerAcceptedDate: { type: Date, default: null },
+    offerRemarks:      { type: String, default: '' },
   },
   { _id: false },
 );
@@ -347,6 +385,15 @@ const applicantRecordSchema = new mongoose.Schema(
     // is actually sent — a single send-once gate shared by both stages,
     // rather than a separate flag per stage, since it's the same email.
     rejectionMailSentAt: { type: Date, default: null },
+    // Mirrors rejectionMailSentAt — set once the "you're selected" mail is
+    // sent (from the Management round, or Technical for an HR-approved
+    // skip-management selection).
+    selectionMailSentAt: { type: Date, default: null },
+
+    // Set once the HR round's early "Shortlist Candidate & Email" quick
+    // action is used — a pre-interview notice distinct from the later
+    // selection mail, mirroring the mockup's separate "shortlisted" stage.
+    shortlistedAt: { type: Date, default: null },
 
     // ── AI fit analysis against the matching requisition's JD — populated
     // on demand via POST /api/applicant-records/:id/analyze, never

@@ -57,6 +57,10 @@ export interface InterviewRound {
   interviewerFeedbackStatus: string;
   hrBackground?:         HrBackground;
   bond?:                 string;
+  rating?:               string;
+  communication?:        string;
+  stability?:            string;
+  attitude?:             string;
 }
 
 // A round "passes" once Done with a positive recommendation for its type —
@@ -98,6 +102,10 @@ export interface FinalDecision {
   decisionDate: string;
   notes:        string;
   offerLetter?: OfferLetter;
+  offerStatus?:        string;
+  offerReleaseDate?:   string | null;
+  offerAcceptedDate?:  string | null;
+  offerRemarks?:       string;
 }
 
 // Post-acceptance tracking up to the candidate's actual first day — distinct
@@ -192,9 +200,13 @@ export interface ApplicantRecord {
   highest_qualification: string;
   experience:            'Yes' | 'No';
   total_experience:      string;
+  current_company?:      string;
   current_ctc:           string;
   notice_period:         string;
   expected_monthly_ctc:  string;
+  expectedJoiningDate?:  string | null;
+  primarySkills?:   string[];
+  secondarySkills?: string[];
   languagesKnown:  string[];
   otherLanguage:   string;
   facebookLink:    string;
@@ -203,6 +215,7 @@ export interface ApplicantRecord {
   resume:          string;
   internalNotes:   string;
   rejectionMailSentAt: string | null;
+  shortlistedAt?: string | null;
   status:          StatusType;
   // Stage 1 — Screener Round
   screenerName:    string;
@@ -311,6 +324,13 @@ export const DECISION_COLORS: Record<string, string> = {
   Rejected:             'bg-red-100     text-red-700',
   'On Hold':            'bg-yellow-100  text-yellow-700',
   'Candidate Withdrew': 'bg-orange-100  text-orange-700',
+};
+
+export const OFFER_STATUS_COLORS: Record<string, string> = {
+  'Offer Pending':  'bg-gray-100   text-gray-600',
+  'Offer Released': 'bg-blue-100   text-blue-700',
+  'Offer Accepted': 'bg-green-100  text-green-700',
+  'Offer Declined': 'bg-red-100    text-red-700',
 };
 
 export const JOINING_STATUS_OPTIONS = ['Joining Pending', 'Joined', 'Did Not Join', 'Offer Withdrawn'];

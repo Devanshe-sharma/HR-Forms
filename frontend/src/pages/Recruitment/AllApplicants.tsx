@@ -18,6 +18,7 @@ import {
   ApplicantRecord, API_BASE,
   INTERVIEW_FINAL_STATUS_OPTIONS, INTERVIEW_FINAL_STATUS_COLORS,
   STATUS_COLORS, ROUND_TYPE_LABELS, hasPassedRound,
+  ASSESSMENT_STATUS_COLORS, DISC_TRAIT_LABELS,
 } from './applicantTypes';
 
 // CTC/offer figures and the Management Round are restricted to HR,
@@ -199,11 +200,13 @@ const ApplicantModal = ({
   onClose,
   onUpdate,
   initialTab = 'details',
+  department,
 }: {
   record:      ApplicantRecordWithAI;
   onClose:     () => void;
   onUpdate:    (updated: ApplicantRecordWithAI) => void;
   initialTab?: TabId;
+  department?: string;
 }) => {
   const canSeeMgmt = CAN_SEE_FINANCIALS();
   const visibleTabs = TABS.filter((t) => t.id !== 'mgmt' || canSeeMgmt);
@@ -268,7 +271,7 @@ const ApplicantModal = ({
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[92vh] flex flex-col">
 
         {/* ── Modal header — two-line subtitle, pills, Edit Information ── */}
-        <div className="flex items-start justify-between px-6 py-4 border-b gap-4">
+        <div className="flex items-start justify-between px-6 py-4 border-b gap-4 flex-shrink-0">
           <div className="min-w-0">
             <h2 className="text-lg font-bold text-gray-900 truncate">{localRec.full_name}</h2>
             <p className="text-xs text-gray-400 mt-0.5">
@@ -317,7 +320,7 @@ const ApplicantModal = ({
         </div>
 
         {/* ── Links row — always visible, regardless of active tab ── */}
-        <div className="flex items-center flex-wrap gap-2 px-6 py-2.5 border-b bg-gray-50/60">
+        <div className="flex items-center flex-wrap gap-2 px-6 py-2.5 border-b bg-gray-50/60 flex-shrink-0">
           {localRec.resume && (
             <a href={localRec.resume.startsWith('http') ? localRec.resume : `${API_BASE.replace(/\/api\/?$/, '')}${localRec.resume.startsWith('/') ? '' : '/'}${localRec.resume}`}
               target="_blank" rel="noreferrer"
@@ -339,13 +342,13 @@ const ApplicantModal = ({
             active tab, same convention as the top-level nav tabs). Uses
             px-6 to line up with the header/links row above and the tab
             content below, all of which share that same left edge. ── */}
-        <div className="flex items-center gap-2 border-b px-6 overflow-x-auto">
+        <div className="flex items-center gap-2 border-b px-6 overflow-x-auto bg-white relative z-10 flex-shrink-0">
           {visibleTabs.map(({ id, label }) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
-              className={`flex-shrink-0 px-8 py-3 text-sm font-semibold border-b-[3px] transition -mb-px ${
-                activeTab === id ? 'border-[#597e37] text-[#3d5420]' : 'border-transparent text-gray-400 hover:text-gray-600'
+              className={`flex-shrink-0 px-8 py-3 text-sm font-semibold border-b-[3px] transition -mb-px bg-white ${
+                activeTab === id ? 'border-[#597e37] text-[#3d5420]' : 'border-transparent text-gray-600 hover:text-gray-800'
               }`}
             >
               {label}
@@ -356,7 +359,7 @@ const ApplicantModal = ({
         {/* ── Tab content — scrollable ── */}
         <div className="overflow-y-auto flex-1 px-6 py-5">
           {activeTab === 'details' && (
-            <CandidateInformationTab record={localRec} onSave={handleRecordUpdate} />
+            <CandidateInformationTab record={localRec} onSave={handleRecordUpdate} department={department} />
           )}
           {activeTab === 'hr' && (
             <RoundPipelineTab record={localRec} roundType="hr" onUpdate={handleRecordUpdate} canEdit={canEditRoundType('hr')} />
@@ -852,6 +855,11 @@ const CandidatesTab: React.FC = () => {
   // job_id -> hiring_dept — department isn't stored on the candidate record
   // itself, only on the Hiring Requisition it applied against.
   const [deptByJobId, setDeptByJobId] = useState<Map<number, string>>(new Map());
+  // Global Excel Test / DISC response list — a bulk view across every
+  // candidate, instead of checking one at a time. "Open" reuses the exact
+  // same per-candidate Assessments UI already built in
+  // CandidateInformationTab.tsx (send/grade/view), no logic duplicated here.
+  const [testResponsesKind, setTestResponsesKind] = useState<'excel' | 'disc' | null>(null);
   // For the "open the application form" picker below — every requisition
   // (not just open ones, unlike the referral picker), so HR can hand a
   // candidate a pre-filled link for any role, or a general application.
@@ -1073,6 +1081,7 @@ const CandidatesTab: React.FC = () => {
           onClose={() => setSelected(null)}
           onUpdate={handleUpdate}
           initialTab={initialTab}
+          department={selected.job_id != null ? deptByJobId.get(selected.job_id) : undefined}
         />
       )}
       
@@ -1108,6 +1117,21 @@ const CandidatesTab: React.FC = () => {
               <ExternalLink className="w-4 h-4" />
               Open Form
             </a>
+
+            <div className="flex-1 min-w-[1px]" />
+
+            <button
+              onClick={() => setTestResponsesKind('excel')}
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-md hover:bg-gray-100 transition"
+            >
+              Excel Test Responses
+            </button>
+            <button
+              onClick={() => setTestResponsesKind('disc')}
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-md hover:bg-gray-100 transition"
+            >
+              DISC Responses
+            </button>
           </div>
 
           {!loading && records.length > 0 && (
@@ -1140,15 +1164,14 @@ const CandidatesTab: React.FC = () => {
                 <thead className="bg-gray-50 border-b font-semibold text-gray-600">
                   <tr>
                     <th className="p-4">Name</th>
-                    <th className="p-4 w-48">Contact</th>
-                    <th className="p-4">Profile</th>
+                    <th className="p-4">Applied On</th>
+                    <th className="p-4">Position Applied For</th>
                     <th className="p-4">Exp</th>
                     <th className="p-4">Location</th>
                     <th className="p-4">Stage</th>
                     <th className="p-4">Status</th>
-                    {/* <th className="p-4">Match %</th> */}
                     <th className="p-4">AI Score</th>
-                    <th className="p-4 text-center">Actions</th>
+                    <th className="p-4 text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -1161,18 +1184,20 @@ const CandidatesTab: React.FC = () => {
                         onClick={() => openModal(r, 'details')}
                         className="hover:bg-gray-50 transition-colors cursor-pointer"
                       >
-                        <td className="p-4 font-bold text-gray-900">{r.full_name}</td>
-                        <td className="p-4 space-y-1 max-w-[12rem]">
-                          <div className="flex items-center gap-2 text-gray-600 truncate"><Mail size={14} className="flex-shrink-0" /><span className="truncate">{r.email}</span></div>
-                          <div className="flex items-center gap-2 text-gray-400 text-xs truncate"><Phone size={14} className="flex-shrink-0" />{r.phone}</div>
+                        <td className="p-4 max-w-[14rem]">
+                          <p className="font-bold text-gray-900 truncate">{r.full_name}</p>
+                          <div className="flex items-center gap-2 text-gray-400 text-xs truncate mt-0.5"><Mail size={12} className="flex-shrink-0" /><span className="truncate">{r.email}</span></div>
+                          <div className="flex items-center gap-2 text-gray-400 text-xs truncate"><Phone size={12} className="flex-shrink-0" />{r.phone}</div>
                         </td>
-                        <td className="p-4 text-gray-600 text-xs">{r.designation || '—'}</td>
-                        <td className="p-4">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                            r.experience === 'Yes' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-                          }`}>
-                            {r.experience === 'Yes' ? 'EXP' : 'FRESH'}
-                          </span>
+                        <td className="p-4 text-gray-500 text-xs whitespace-nowrap">
+                          {new Date(r.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </td>
+                        <td className="p-4 text-gray-700 text-xs">
+                          {r.designation || '—'}
+                          <div className="text-gray-400 mt-0.5">{(r.job_id != null ? deptByJobId.get(r.job_id) : undefined) || '—'}</div>
+                        </td>
+                        <td className="p-4 text-gray-700 text-xs whitespace-nowrap">
+                          {r.total_experience ? `${r.total_experience} yrs` : (r.experience === 'Yes' ? 'Experienced' : 'Fresher')}
                         </td>
                         <td className="p-4 text-gray-500 text-xs">{[r.city, r.state].filter(Boolean).join(', ')}</td>
                         <td className="p-4">
@@ -1215,7 +1240,7 @@ const CandidatesTab: React.FC = () => {
                               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-[#597e37] hover:bg-[#3d5420] rounded-lg transition"
                               title="View candidate"
                             >
-                              <Eye size={14} /> View
+                              <Eye size={14} /> View &amp; Action
                             </button>
                           </div>
                         </td>
@@ -1239,6 +1264,62 @@ const CandidatesTab: React.FC = () => {
                   })()}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {testResponsesKind && (
+            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => setTestResponsesKind(null)}>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-5 py-3.5 border-b rounded-t-2xl bg-slate-800 flex-shrink-0">
+                  <p className="text-sm font-bold text-white">{testResponsesKind === 'excel' ? 'Excel Test' : 'DISC Assessment'} Responses</p>
+                  <button onClick={() => setTestResponsesKind(null)} className="text-white/70 hover:text-white transition"><X size={16} /></button>
+                </div>
+                <div className="overflow-y-auto flex-1 min-h-0">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-gray-50 border-b font-semibold text-gray-600 sticky top-0">
+                      <tr>
+                        <th className="p-3">Candidate</th>
+                        <th className="p-3">Position</th>
+                        <th className="p-3">Status</th>
+                        <th className="p-3">{testResponsesKind === 'excel' ? 'Score' : 'Primary Style'}</th>
+                        <th className="p-3 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {records.map((r) => {
+                        const t = testResponsesKind === 'excel' ? r.excelTest : r.discAssessment;
+                        const status = t?.status || '';
+                        const score = testResponsesKind === 'excel'
+                          ? (r.excelTest?.status === 'Graded' ? `${r.excelTest.score}%` : '—')
+                          : (r.discAssessment?.status === 'Completed' && r.discAssessment.primary ? DISC_TRAIT_LABELS[r.discAssessment.primary] : '—');
+                        return (
+                          <tr key={r._id} className="hover:bg-gray-50">
+                            <td className="p-3 font-semibold text-gray-800">{r.full_name}</td>
+                            <td className="p-3 text-gray-600">{r.designation}</td>
+                            <td className="p-3">
+                              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ASSESSMENT_STATUS_COLORS[status] || 'bg-gray-100 text-gray-600'}`}>
+                                {status || 'Not Sent'}
+                              </span>
+                            </td>
+                            <td className="p-3 text-gray-700">{score}</td>
+                            <td className="p-3 text-center">
+                              <button
+                                onClick={() => { setTestResponsesKind(null); openModal(r, 'details'); }}
+                                className="px-3 py-1 text-xs font-semibold text-white bg-[#597e37] hover:bg-[#3d5420] rounded-lg transition"
+                              >
+                                Open
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {records.length === 0 && (
+                        <tr><td colSpan={5} className="p-6 text-center text-gray-400">No candidates yet.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           )}
       </div>
