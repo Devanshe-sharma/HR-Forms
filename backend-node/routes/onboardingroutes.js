@@ -1,5 +1,6 @@
 const express = require("express");
 const Onboarding = require('../models/onboardingModel');
+const { decryptPIIFields } = require('../utils/piiEncryption');
 const SalaryRevision = require('../models/SalaryRevision');
 const { signEmail, verifySignature } = require('../utils/accessLinkSigning');
 const { fiscalYearOf, fiscalQuarterOf, fiscalQuarterStartUTC, fiscalQuarterEndUTC } = require('../utils/fiscalQuarter');
@@ -1680,7 +1681,9 @@ router.get("/by-email", async (req, res) => {
     // handed over to a new employee before the old holder's old row is
     // cleaned up. Prefer whoever isn't exited over an exited former holder.
     const doc = matches.find((d) => !EXITED_STATUS_VALUES.has(d.exitStatus || "")) || matches[0];
-    res.json({ success: true, data: doc });
+    // .lean() above returns a plain object, bypassing the schema's
+    // toJSON/toObject decrypt transform — decrypt explicitly here.
+    res.json({ success: true, data: decryptPIIFields(doc) });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

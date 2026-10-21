@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { applyPIIEncryption } = require('../utils/piiEncryption');
 
 // One uploaded file — see routes/employees.js POST /:id/upload-documents.
 // Mirrors ApplicantRecord's uploadedDocumentSchema shape for consistency.
@@ -147,5 +148,11 @@ EmployeeSchema.index({ dept_id: 1 });
 EmployeeSchema.index({ desig_id: 1 });
 EmployeeSchema.index({ management_level: 1 });
 EmployeeSchema.index({ reporting_manager: 1 });
+
+// Bank details + PAN/Aadhaar/UAN are encrypted at rest — see
+// utils/piiEncryption.js. Encrypts on save/update, decrypts automatically on
+// res.json(doc)/toJSON()/toObject(); does NOT cover .lean() reads of these
+// fields, which must call decryptPIIFields() explicitly.
+applyPIIEncryption(EmployeeSchema);
 
 module.exports = mongoose.model('Employee', EmployeeSchema);

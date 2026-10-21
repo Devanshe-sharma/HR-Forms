@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { applyPIIEncryption } = require("../utils/piiEncryption");
 
 // ============================================================
 // CHECKLIST ITEM SCHEMA
@@ -510,6 +511,12 @@ const onboardingSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+// Bank details + PAN/Aadhaar/UAN are encrypted at rest — see
+// utils/piiEncryption.js. Encrypts on save/update, decrypts automatically on
+// res.json(doc)/toJSON()/toObject(); does NOT cover .lean() reads of these
+// fields, which must call decryptPIIFields() explicitly.
+applyPIIEncryption(onboardingSchema);
 
 // ============================================================
 // EXPORT
