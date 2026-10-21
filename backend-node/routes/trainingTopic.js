@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { requireRole } = require('../config/roles');
 const TrainingTopic = require('../models/TrainingTopic');
+const { sendMail } = require('../emails/mailer');
+const buildTrainingApprovalRequest = require('../emails/templates/trainingApprovalRequest');
 
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -140,6 +142,36 @@ router.post('/:id/sendBack', requireRole(['Admin', 'Management']), asyncHandler(
   topic.approvedAt = new Date();
   await topic.save();
   res.json({ success: true, data: topic });
+}));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /approval-request/preview & /approval-request/send
+// Manual, HR-triggered summary email to Management of every "Pending
+// Approval" topic — rebuilt replacement for the old (disabled, broken)
+// emailQuarterlyPlan.js cron job. Never fires on its own.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/approval-request/preview', asyncHandler(async (req, res) => {
+  const topics = await TrainingTopic.find({ status: 'Pending Approval' }).sort({ createdAt: 1 }).lean();
+  if (!topics.length) return res.status(400).json({ success: false, error: 'No topics are currently Pending Approval.' });
+
+  const { subject, html } = buildTrainingApprovalRequest(topics);
+  res.json({ success: true, data: { to: process.env.EMAIL_MANAGEMENT || '', cc: process.env.EMAIL_HR_TEAM || '', subject, body: html, topicCount: topics.length } });
+}));
+
+router.post('/approval-request/send', asyncHandler(async (req, res) => {
+  const { to, cc, subject, customBody } = req.body || {};
+  if (!to || !to.trim()) return res.status(400).json({ success: false, error: 'Recipient (To) is required' });
+  if (!customBody) return res.status(400).json({ success: false, error: 'Email body is required' });
+
+  await sendMail({
+    from: `"Brisk Olive HR" <${process.env.GMAIL_USER}>`,
+    to: to.trim(),
+    cc: cc?.trim() || undefined,
+    subject: subject || 'Training Plan – Approval Request',
+    html: customBody,
+  });
+
+  res.json({ success: true });
 }));
 
 module.exports = router;

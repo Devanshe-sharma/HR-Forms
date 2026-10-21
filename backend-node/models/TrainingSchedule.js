@@ -27,6 +27,14 @@ const trainingScheduleSchema = new mongoose.Schema({
   contentPdfLink:      { type: String, default: '' },
   videoLink:           { type: String, default: '' },
   assessmentLink:      { type: String, default: '' },
+  // Set once HR manually sends each of the 5 training mails for this
+  // training — purely informational (not a lock, never blocks re-sending),
+  // shown as a badge/tooltip in the Scheduling tab.
+  scheduleNotificationSentAt:   { type: Date, default: null },
+  reminder2WeeksSentAt:         { type: Date, default: null },
+  invitation1WeekSentAt:        { type: Date, default: null },
+  materialUploadReminderSentAt: { type: Date, default: null },
+  feedbackReminderSentAt:       { type: Date, default: null },
   status:              { type: String, enum: ['Scheduled', 'Rescheduled', 'Cancelled', 'Completed'], default: 'Scheduled' },
   approvedBy:          { type: String, default: '' },
   approvedAt:          { type: Date },

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import {
-  Plus, X, Edit, Trash2, Save, Eye,
-  RotateCcw, CheckCircle, XCircle,
+  Plus, X, Edit, Save, Eye,
+  CheckCircle, Mail, Send, Loader2,
 } from 'lucide-react';
 import { getRole, can } from '../../config/rbac';
+import EmailRecipientField from './EmailRecipientField';
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL;
 const api = axios.create({ baseURL: API_BASE });
@@ -54,7 +55,30 @@ interface TrainingSchedule {
   createdBy: string;
   approvedBy?: string;
   approvedAt?: string;
+  scheduleNotificationSentAt?: string | null;
+  reminder2WeeksSentAt?: string | null;
+  invitation1WeekSentAt?: string | null;
+  materialUploadReminderSentAt?: string | null;
+  feedbackReminderSentAt?: string | null;
 }
+
+type MailKind = 'schedule' | 'reminder2w' | 'invitation1w' | 'materialUpload1w' | 'feedbackReminder';
+
+const MAIL_KIND_LABELS: Record<MailKind, string> = {
+  schedule:         'Send Schedule Notification',
+  reminder2w:       'Send 2-Week Reminder',
+  invitation1w:     'Send 1-Week Invitation',
+  materialUpload1w: 'Send Material Upload Reminder (Trainer)',
+  feedbackReminder: 'Send Feedback Reminder',
+};
+
+const MAIL_KIND_SENT_FIELD: Record<MailKind, keyof TrainingSchedule> = {
+  schedule:         'scheduleNotificationSentAt',
+  reminder2w:       'reminder2WeeksSentAt',
+  invitation1w:     'invitation1WeekSentAt',
+  materialUpload1w: 'materialUploadReminderSentAt',
+  feedbackReminder: 'feedbackReminderSentAt',
+};
 
 type ScheduleForm = {
   trainingTopicId:    string;
@@ -102,9 +126,21 @@ export default function FinalTrainingScheduling() {
   const [editingSchedule, setEditingSchedule] = useState<TrainingSchedule | null>(null);
   const [viewingSchedule, setViewingSchedule] = useState<TrainingSchedule | null>(null);
 
+  // Every training mail — manual preview-then-send, one training at a time.
+  // Never fires on its own; HR must open this and click Send explicitly.
+  const [mailModal, setMailModal] = useState<{
+    open: boolean; training: TrainingSchedule | null; kind: MailKind | null;
+    to: string; cc: string; subject: string; body: string;
+    loading: boolean; sending: boolean; error: string;
+  }>({ open: false, training: null, kind: null, to: '', cc: '', subject: '', body: '', loading: false, sending: false, error: '' });
+
+  // Rendered as a fixed-position overlay (see bottom of return) rather than
+  // nested inside the table, since the table wrapper has overflow-hidden —
+  // an absolutely-positioned dropdown inside it would get clipped/hidden.
+  const [mailMenu, setMailMenu] = useState<{ schedule: TrainingSchedule; top: number; left: number } | null>(null);
+
   const canCreate = can('trainingSchedule', 'create') || can('training', 'create');
   const canEdit   = can('trainingSchedule', 'update') || can('training', 'update');
-  const canDelete = can('trainingSchedule', 'delete') || can('training', 'delete');
 
   // ── Loaders ─────────────────────────────────────────────────────────────────
 
@@ -237,17 +273,7 @@ export default function FinalTrainingScheduling() {
     }
   };
 
-  // ── Delete / status ──────────────────────────────────────────────────────────
-
-  const deleteSchedule = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this training schedule?')) return;
-    try {
-      await api.delete(`/training-schedules/${id}`);
-      await loadSchedules();
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to delete training schedule');
-    }
-  };
+  // ── Status ───────────────────────────────────────────────────────────────────
 
   const updateStatus = async (id: string, status: string) => {
     try {
@@ -255,6 +281,37 @@ export default function FinalTrainingScheduling() {
       await loadSchedules();
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to update status');
+    }
+  };
+
+  // ── Training mail (all 5 kinds, manual preview-then-send) ───────────────────
+
+  const openMailModal = async (training: TrainingSchedule, kind: MailKind) => {
+    setMailMenu(null);
+    setMailModal({ open: true, training, kind, to: '', cc: '', subject: '', body: '', loading: true, sending: false, error: '' });
+    try {
+      const res = await api.post(`/training-schedules/${training._id}/notify/${kind}/preview`);
+      const data = res.data?.data || {};
+      setMailModal((m) => ({ ...m, loading: false, to: data.to || '', cc: data.cc || '', subject: data.subject || '', body: data.body || '' }));
+    } catch (err: any) {
+      setMailModal((m) => ({ ...m, loading: false, error: err.response?.data?.error || 'Failed to load preview' }));
+    }
+  };
+
+  const closeMailModal = () => setMailModal({ open: false, training: null, kind: null, to: '', cc: '', subject: '', body: '', loading: false, sending: false, error: '' });
+
+  const sendMailModal = async () => {
+    if (!mailModal.training || !mailModal.kind) return;
+    if (!mailModal.to.trim()) { setMailModal((m) => ({ ...m, error: 'Recipient (To) is required' })); return; }
+    setMailModal((m) => ({ ...m, sending: true, error: '' }));
+    try {
+      await api.post(`/training-schedules/${mailModal.training._id}/notify/${mailModal.kind}/send`, {
+        to: mailModal.to, cc: mailModal.cc, subject: mailModal.subject, customBody: mailModal.body,
+      });
+      await loadSchedules();
+      closeMailModal();
+    } catch (err: any) {
+      setMailModal((m) => ({ ...m, sending: false, error: err.response?.data?.error || 'Failed to send' }));
     }
   };
 
@@ -346,24 +403,20 @@ export default function FinalTrainingScheduling() {
                     <button onClick={() => setViewingSchedule(s)} className="text-blue-600 hover:text-blue-800" title="View">
                       <Eye className="w-4 h-4" />
                     </button>
+                    <button
+                      onClick={(e) => {
+                        if (mailMenu?.schedule._id === s._id) { setMailMenu(null); return; }
+                        const r = e.currentTarget.getBoundingClientRect();
+                        setMailMenu({ schedule: s, top: r.bottom + 4, left: r.right - 256 });
+                      }}
+                      className="text-indigo-600 hover:text-indigo-800"
+                      title="Send mail"
+                    >
+                      <Mail className="w-4 h-4" />
+                    </button>
                     {canEdit && (
                       <button onClick={() => openModal(s)} className="text-green-600 hover:text-green-800" title="Edit">
                         <Edit className="w-4 h-4" />
-                      </button>
-                    )}
-                    {canDelete && (
-                      <button onClick={() => deleteSchedule(s._id)} className="text-red-600 hover:text-red-800" title="Delete">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                    {canEdit && s.status === 'Scheduled' && (
-                      <button onClick={() => updateStatus(s._id, 'Rescheduled')} className="text-yellow-600 hover:text-yellow-800" title="Reschedule">
-                        <RotateCcw className="w-4 h-4" />
-                      </button>
-                    )}
-                    {canEdit && s.status === 'Scheduled' && (
-                      <button onClick={() => updateStatus(s._id, 'Cancelled')} className="text-red-600 hover:text-red-800" title="Cancel">
-                        <XCircle className="w-4 h-4" />
                       </button>
                     )}
                     {canEdit && s.status !== 'Completed' && (
@@ -627,6 +680,89 @@ export default function FinalTrainingScheduling() {
               <button onClick={() => setViewingSchedule(null)}
                 className="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* "Send mail" dropdown — rendered fixed/outside the table so the
+          table's overflow-hidden can't clip it */}
+      {mailMenu && (
+        <>
+          <div className="fixed inset-0 z-[9998]" onClick={() => setMailMenu(null)} />
+          <div
+            className="fixed z-[9999] w-64 bg-white border border-gray-200 rounded-md shadow-lg py-1"
+            style={{ top: mailMenu.top, left: mailMenu.left }}
+          >
+            {(Object.keys(MAIL_KIND_LABELS) as MailKind[]).map((kind) => (
+              <button
+                key={kind}
+                onClick={() => openMailModal(mailMenu.schedule, kind)}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
+              >
+                <span>{MAIL_KIND_LABELS[kind]}</span>
+                {mailMenu.schedule[MAIL_KIND_SENT_FIELD[kind]] && <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" />}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Send Schedule Notification — preview, then explicit Send */}
+      {mailModal.open && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-lg w-full max-w-xl max-h-[85vh] overflow-y-auto">
+            <div className="flex justify-between items-center px-5 py-3.5 border-b">
+              <h3 className="text-sm font-semibold text-gray-800">{mailModal.kind ? MAIL_KIND_LABELS[mailModal.kind] : 'Send Mail'}</h3>
+              <button onClick={closeMailModal} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3">
+              {mailModal.loading ? (
+                <p className="text-sm text-gray-400 italic">Loading preview…</p>
+              ) : (
+                <>
+                  {mailModal.error && (
+                    <p className="text-red-600 text-sm font-medium bg-red-50 border border-red-200 rounded-lg p-2">{mailModal.error}</p>
+                  )}
+                  <EmailRecipientField label="To" required value={mailModal.to} onChange={(v) => setMailModal((m) => ({ ...m, to: v }))} />
+                  <EmailRecipientField label="CC" value={mailModal.cc} onChange={(v) => setMailModal((m) => ({ ...m, cc: v }))} />
+                  <div>
+                    <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">Subject *</label>
+                    <input
+                      value={mailModal.subject}
+                      onChange={(e) => setMailModal((m) => ({ ...m, subject: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">Body</label>
+                    <div
+                      contentEditable
+                      suppressContentEditableWarning
+                      className="w-full border border-gray-300 rounded-md px-3 py-3 text-sm h-56 overflow-y-auto bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      dangerouslySetInnerHTML={{ __html: mailModal.body }}
+                      onBlur={(e) => setMailModal((m) => ({ ...m, body: e.currentTarget.innerHTML }))}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 px-5 py-3.5 border-t bg-gray-50">
+              <button onClick={closeMailModal} className="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+                Cancel
+              </button>
+              <button
+                onClick={sendMailModal}
+                disabled={mailModal.loading || mailModal.sending || !mailModal.to.trim() || !mailModal.subject.trim()}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-md transition"
+              >
+                {mailModal.sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {mailModal.sending ? 'Sending…' : 'Send'}
               </button>
             </div>
           </div>

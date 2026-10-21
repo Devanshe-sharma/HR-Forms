@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import Select from 'react-select';
-import { Plus, X, Edit, Trash2, Save, Eye, Calendar } from 'lucide-react';
+import { Plus, X, Edit, Trash2, Save, Eye, Calendar, Mail, Send, Loader2 } from 'lucide-react';
 import { getRole, can } from '../../config/rbac';
+import EmailRecipientField from './EmailRecipientField';
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL;
 const api = axios.create({ baseURL: API_BASE });
@@ -148,6 +149,13 @@ export default function TrainingTopicManagement() {
   const [viewingTopic, setViewingTopic]               = useState<TrainingTopic | null>(null);
   const [generatedTrainingId, setGeneratedTrainingId] = useState('');
 
+  // "Send Approval Request" — manual, bulk mail to Management summarising
+  // every currently Pending Approval topic. Never fires on its own.
+  const [approvalMail, setApprovalMail] = useState<{
+    open: boolean; to: string; cc: string; subject: string; body: string;
+    loading: boolean; sending: boolean; error: string;
+  }>({ open: false, to: '', cc: '', subject: '', body: '', loading: false, sending: false, error: '' });
+
   const canCreate = can('trainingSuggestions', 'create') || can('training', 'create');
   const canEdit   = can('trainingSuggestions', 'update') || can('training', 'update');
   const canDelete = can('trainingSuggestions', 'delete') || can('training', 'delete');
@@ -239,6 +247,32 @@ export default function TrainingTopicManagement() {
       })));
     } catch (err: any) {
       console.error('Failed to load employees:', err);
+    }
+  };
+
+  const openApprovalMail = async () => {
+    setApprovalMail({ open: true, to: '', cc: '', subject: '', body: '', loading: true, sending: false, error: '' });
+    try {
+      const res = await api.post('/training-topics/approval-request/preview');
+      const data = res.data?.data || {};
+      setApprovalMail((m) => ({ ...m, loading: false, to: data.to || '', cc: data.cc || '', subject: data.subject || '', body: data.body || '' }));
+    } catch (err: any) {
+      setApprovalMail((m) => ({ ...m, loading: false, error: err.response?.data?.error || 'Failed to load preview' }));
+    }
+  };
+
+  const closeApprovalMail = () => setApprovalMail({ open: false, to: '', cc: '', subject: '', body: '', loading: false, sending: false, error: '' });
+
+  const sendApprovalMail = async () => {
+    if (!approvalMail.to.trim()) { setApprovalMail((m) => ({ ...m, error: 'Recipient (To) is required' })); return; }
+    setApprovalMail((m) => ({ ...m, sending: true, error: '' }));
+    try {
+      await api.post('/training-topics/approval-request/send', {
+        to: approvalMail.to, cc: approvalMail.cc, subject: approvalMail.subject, customBody: approvalMail.body,
+      });
+      closeApprovalMail();
+    } catch (err: any) {
+      setApprovalMail((m) => ({ ...m, sending: false, error: err.response?.data?.error || 'Failed to send' }));
     }
   };
 
@@ -453,13 +487,17 @@ export default function TrainingTopicManagement() {
         <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">{error}</div>
       )}
 
-      <div className="mb-4">
+      <div className="mb-4 flex gap-2">
         {canCreate && (
           <button onClick={() => openModal()}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm">
             <Plus className="w-4 h-4" /> Create Training Topic
           </button>
         )}
+        <button onClick={openApprovalMail}
+          className="flex items-center gap-2 px-4 py-2 border border-indigo-300 text-indigo-600 rounded-md hover:bg-indigo-50 transition-colors text-sm">
+          <Mail className="w-4 h-4" /> Send Approval Request
+        </button>
       </div>
 
       {/* ── Table ── */}
@@ -823,6 +861,66 @@ export default function TrainingTopicManagement() {
               <button onClick={() => setViewingTopic(null)}
                 className="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors">
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Send Approval Request — bulk, preview then explicit Send */}
+      {approvalMail.open && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
+          <div className="bg-white rounded-lg w-full max-w-xl max-h-[85vh] overflow-y-auto">
+            <div className="flex justify-between items-center px-5 py-3.5 border-b">
+              <h3 className="text-sm font-semibold text-gray-800">Send Approval Request</h3>
+              <button onClick={closeApprovalMail} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3">
+              {approvalMail.loading ? (
+                <p className="text-sm text-gray-400 italic">Loading preview…</p>
+              ) : (
+                <>
+                  {approvalMail.error && (
+                    <p className="text-red-600 text-sm font-medium bg-red-50 border border-red-200 rounded-lg p-2">{approvalMail.error}</p>
+                  )}
+                  <EmailRecipientField label="To" required value={approvalMail.to} onChange={(v) => setApprovalMail((m) => ({ ...m, to: v }))} />
+                  <EmailRecipientField label="CC" value={approvalMail.cc} onChange={(v) => setApprovalMail((m) => ({ ...m, cc: v }))} />
+                  <div>
+                    <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">Subject *</label>
+                    <input
+                      value={approvalMail.subject}
+                      onChange={(e) => setApprovalMail((m) => ({ ...m, subject: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1">Body</label>
+                    <div
+                      contentEditable
+                      suppressContentEditableWarning
+                      className="w-full border border-gray-300 rounded-md px-3 py-3 text-sm h-56 overflow-y-auto bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      dangerouslySetInnerHTML={{ __html: approvalMail.body }}
+                      onBlur={(e) => setApprovalMail((m) => ({ ...m, body: e.currentTarget.innerHTML }))}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 px-5 py-3.5 border-t bg-gray-50">
+              <button onClick={closeApprovalMail} className="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+                Cancel
+              </button>
+              <button
+                onClick={sendApprovalMail}
+                disabled={approvalMail.loading || approvalMail.sending || !approvalMail.to.trim() || !approvalMail.subject.trim()}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-md transition"
+              >
+                {approvalMail.sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {approvalMail.sending ? 'Sending…' : 'Send'}
               </button>
             </div>
           </div>
