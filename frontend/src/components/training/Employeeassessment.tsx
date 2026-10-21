@@ -202,7 +202,10 @@ export default function EmployeeAssessment() {
   const loadTrainings = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/training-schedules?status=Completed');
+      // Every training's content/materials are visible here regardless of
+      // status — only taking the assessment itself requires the content to
+      // have been uploaded, not the training to be marked Completed.
+      const res = await api.get('/training-schedules');
       setTrainings(res.data?.data || []);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to load trainings');
@@ -497,8 +500,8 @@ export default function EmployeeAssessment() {
       ) : trainings.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <div className="text-5xl mb-3">📝</div>
-          <p className="font-medium">No completed trainings yet</p>
-          <p className="text-sm mt-1">Assessments will appear here once trainings are marked complete.</p>
+          <p className="font-medium">No trainings scheduled yet</p>
+          <p className="text-sm mt-1">Trainings will appear here as soon as they're scheduled.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">

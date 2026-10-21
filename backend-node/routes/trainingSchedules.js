@@ -65,7 +65,8 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   const updates = req.body || {};
   const allowed = ['trainingName', 'capabilityArea', 'capabilitySkill', 'trainerName', 'type',
     'trainingDate', 'startTime', 'endTime', 'venue', 'onlineLink', 'targetAudience',
-    'attendanceRequired', 'maxAttempts', 'feedbackWindow'];
+    'attendanceRequired', 'maxAttempts', 'feedbackWindow',
+    'contentPdfLink', 'videoLink', 'assessmentLink'];
   const filtered = Object.fromEntries(Object.entries(updates).filter(([k]) => allowed.includes(k)));
 
   const updated = await TrainingSchedule.findByIdAndUpdate(req.params.id, filtered, { new: true });

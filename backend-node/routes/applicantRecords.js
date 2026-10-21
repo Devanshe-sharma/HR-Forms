@@ -1446,7 +1446,7 @@ function buildAssessmentMail(record, kind) {
 
   return {
     to: record.email,
-    cc: '',
+    cc: process.env.EMAIL_HR_TEAM || 'hr@briskolive.com',
     subject: `${label} Invitation — ${record.full_name}`,
     body: html,
   };

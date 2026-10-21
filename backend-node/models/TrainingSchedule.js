@@ -21,6 +21,12 @@ const trainingScheduleSchema = new mongoose.Schema({
   attendanceRequired:  { type: Boolean, default: true },
   maxAttempts:         { type: Number, default: 2 },
   feedbackWindow:      { type: Number, default: 5 },
+  // Uploaded training content — set via Employeeassessment.tsx's "Upload
+  // Training Content" flow (file goes to Google Drive, this just stores the
+  // returned link).
+  contentPdfLink:      { type: String, default: '' },
+  videoLink:           { type: String, default: '' },
+  assessmentLink:      { type: String, default: '' },
   status:              { type: String, enum: ['Scheduled', 'Rescheduled', 'Cancelled', 'Completed'], default: 'Scheduled' },
   approvedBy:          { type: String, default: '' },
   approvedAt:          { type: Date },
