@@ -1,7 +1,7 @@
 import { AppBar, Toolbar, Typography, Tabs, Tab, Box, Button, IconButton, Avatar, Menu, MenuItem, ListItemIcon, Divider } from '@mui/material';
 
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import axios from 'axios';
 
 import { useTheme } from '../contexts/ThemeContext';
@@ -231,7 +231,7 @@ const TAB_ROW_H  = 40;
 
 
 
-export default function Navbar() {
+export default function Navbar({ actionButton }: { actionButton?: ReactNode } = {}) {
 
   const nav = useNavigate();
 
@@ -354,6 +354,8 @@ export default function Navbar() {
 
     topOffset: number,
 
+    rightContent?: ReactNode,
+
   ) => (
 
     <Box sx={{
@@ -363,6 +365,8 @@ export default function Navbar() {
       backgroundColor: '#ffffff', borderBottom: '1px solid #e5e7eb',
 
       boxShadow: '0 1px 3px rgba(0,0,0,0.07)', px: 2,
+
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
 
     }}>
 
@@ -383,6 +387,8 @@ export default function Navbar() {
         {tabs.map(t => <Tab key={t.value} label={t.label} value={t.value} />)}
 
       </Tabs>
+
+      {rightContent}
 
     </Box>
 
@@ -416,39 +422,41 @@ export default function Navbar() {
 
           <Typography variant="h6" fontWeight={700} color="white">{pageTitle}</Typography>
 
-          <Box
-            onClick={toggleDarkMode}
-            sx={{ 
-              cursor: 'pointer', 
-              display: 'flex', 
-              alignItems: 'center',
-              gap: 1,
-              padding: '4px 8px',
-              borderRadius: '4px',
-              '&:hover': { backgroundColor: 'rgba(255,255,255,0.1)' }
-            }}
-          >
-            {darkMode ? (
-              <Brightness7Icon sx={{ color: 'white', fontSize: 20 }} />
-            ) : (
-              <Brightness4Icon sx={{ color: 'white', fontSize: 20 }} />
-            )}
-          </Box>
-
-          <IconButton
-            onClick={(e) => setProfileMenuAnchor(e.currentTarget)}
-            title={user ? user.name : 'Account'}
-            sx={{ p: 0.5 }}
-          >
-            <Avatar
-              src={avatarUrl || undefined}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box
+              onClick={toggleDarkMode}
               sx={{
-                width: 34, height: 34, fontSize: 13, fontWeight: 700,
-                bgcolor: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)',
-              }}>
-              {initials}
-            </Avatar>
-          </IconButton>
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                padding: '4px 8px',
+                borderRadius: '4px',
+                '&:hover': { backgroundColor: 'rgba(255,255,255,0.1)' }
+              }}
+            >
+              {darkMode ? (
+                <Brightness7Icon sx={{ color: 'white', fontSize: 20 }} />
+              ) : (
+                <Brightness4Icon sx={{ color: 'white', fontSize: 20 }} />
+              )}
+            </Box>
+
+            <IconButton
+              onClick={(e) => setProfileMenuAnchor(e.currentTarget)}
+              title={user ? user.name : 'Account'}
+              sx={{ p: 0.5 }}
+            >
+              <Avatar
+                src={avatarUrl || undefined}
+                sx={{
+                  width: 34, height: 34, fontSize: 13, fontWeight: 700,
+                  bgcolor: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)',
+                }}>
+                {initials}
+              </Avatar>
+            </IconButton>
+          </Box>
 
           <Menu
             anchorEl={profileMenuAnchor}
@@ -497,6 +505,7 @@ export default function Navbar() {
 
         hasAnyRole(['Admin', 'HR', 'Management']) ? OUTING_TABS : OUTING_TABS.filter(t => t.value !== 'management'),
         activeTab || 'HR', v => nav(`/outing?tab=${v}`), row1Top,
+        (activeTab || 'HR') === 'HR' ? actionButton : undefined,
 
       )}
 

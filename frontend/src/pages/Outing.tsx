@@ -1090,21 +1090,18 @@ const Outing: React.FC = () => {
     <div className="flex min-h-screen" style={{ background: '#F3F5EF' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col md:ml-0">
-        <Navbar />
-
-        <main className="p-3 sm:p-4 mt-16 sm:mt-20 md:mt-20 max-w-7xl mx-auto w-full relative">
-          {/* Floating + Button - HR tab */}
-          {currentTab === 'HR' && (
+        <Navbar
+          actionButton={currentTab === 'HR' ? (
             <button
               onClick={() => setIsCreateModalOpen(true)}
-              className="fixed top-20 sm:top-24 right-4 sm:right-8 z-40 bg-[#7a8b2e] text-white rounded-full p-3 sm:p-5 shadow-2xl hover:bg-[#5e6c24] transition-transform hover:scale-105"
-              title="Propose New Outing"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#4A6427] text-white text-sm font-semibold rounded-lg hover:bg-[#3a4f1f] transition"
             >
-              <Plus size={20} className="sm:hidden" />
-              <Plus size={32} className="hidden sm:block" />
+              <Plus size={16} /> Add New
             </button>
-          )}
+          ) : undefined}
+        />
 
+        <main className="p-3 sm:p-4 mt-16 sm:mt-20 md:mt-20 max-w-7xl mx-auto w-full relative">
           {/* Floating + Button - Management suggestion */}
           {currentTab === 'management' && canSeeAllOutings && (
             <button
@@ -1158,40 +1155,31 @@ const Outing: React.FC = () => {
                     <thead className="bg-white text-[10px] font-black text-gray-400 uppercase tracking-tighter border-b">
                       <tr>
                         <th className="p-2 sm:p-4">Sno.</th>
-                        <th className="p-2 sm:p-4">Topic</th>
-                        <th className="p-2 sm:p-4 hidden sm:table-cell">Description</th>
+                        <th className="p-2 sm:p-4 w-56 sm:w-64">Topic</th>
                         {/* <th className="p-2 sm:p-4 hidden md:table-cell">Project / Dept</th> */}
-                        <th className="p-2 sm:p-4 hidden md:table-cell">Place</th>
+                        <th className="p-2 sm:p-4 hidden md:table-cell w-28 sm:w-32">Place</th>
                         <th className="p-2 sm:p-4 hidden lg:table-cell">Budget</th>
                         <th className="p-2 sm:p-4 hidden sm:table-cell">Status</th>
                         <th className="p-2 sm:p-4 hidden md:table-cell">Date</th>
-                        <th className="p-2 sm:p-4">Priority</th>
-                        <th className="p-2 sm:p-4 text-center">Action</th>
+                        <th className="p-2 sm:p-4 text-center w-24 sm:w-28">Action</th>
                       </tr>
                     </thead>
                     <tbody className="text-xs divide-y divide-gray-100">
                       {filteredOutings.length === 0 ? (
-                        <tr><td colSpan={10} className="p-8 text-center text-gray-500 italic">No outings found</td></tr>
+                        <tr><td colSpan={7} className="p-8 text-center text-gray-500 italic">No outings found</td></tr>
                       ) : (
                         filteredOutings.map((o, i) => {
                           const isEditing = editingId === o._id;
                           return (
                             <tr key={o._id} className="hover:bg-gray-50/50 transition group">
                               <td className="p-2 sm:p-4 text-gray-400">{i + 1}</td>
-                              <td className="p-2 sm:p-4">
+                              <td className="p-2 sm:p-4 max-w-[13rem] sm:max-w-[15rem]">
                                 {isEditing ?
                                   <input className="w-full border rounded px-2 py-1 text-sm" value={editData.topic ?? o.topic ?? ''} onChange={e => setEditData(prev => ({ ...prev, topic: e.target.value }))} /> :
-                                  <span className="font-bold text-gray-800 text-xs sm:text-sm">{o.topic}</span>
+                                  <span className="font-normal text-gray-800 text-[11px] sm:text-xs block truncate" title={o.topic}>{o.topic}</span>
                                 }
                               </td>
-                              <td className="p-2 sm:p-4 hidden sm:table-cell">
-                                {isEditing ?
-                                  <textarea className="w-full border rounded px-2 py-1 text-sm h-20" value={editData.description ?? o.description ?? ''} onChange={e => setEditData(prev => ({ ...prev, description: e.target.value }))} /> :
-                                  <span className="text-gray-500 block max-w-[180px] truncate text-xs sm:text-sm">{o.description}</span>
-                                }
-                              </td>
-                              <td className="p-2 sm:p-4 hidden md:table-cell text-gray-600 max-w-[160px] truncate text-xs sm:text-sm">{eventScopeLabel(o)}</td>
-                              <td className="p-2 sm:p-4 hidden md:table-cell">
+                              <td className="p-2 sm:p-4 hidden md:table-cell max-w-[7rem] sm:max-w-[8rem] truncate" title={o.tentativePlace}>
                                 {isEditing ?
                                   <input className="w-full border rounded px-2 py-1 text-sm" value={editData.tentativePlace ?? o.tentativePlace ?? ''} onChange={e => setEditData(prev => ({ ...prev, tentativePlace: e.target.value }))} /> :
                                   o.tentativePlace || '—'
@@ -1217,28 +1205,20 @@ const Outing: React.FC = () => {
                                   o.tentativeDate ? formatDate(o.tentativeDate) : 'TBD'
                                 }
                               </td>
-                              <td className="p-2 sm:p-4">
-                                {isEditing ?
-                                  <select className="border rounded px-2 py-1 text-sm" value={editData.priority ?? o.priority ?? 'P3'} onChange={e => setEditData(prev => ({ ...prev, priority: e.target.value as 'P1' | 'P2' | 'P3' }))}>
-                                    <option value="P1">P1</option><option value="P2">P2</option><option value="P3">P3</option>
-                                  </select> :
-                                  <span className={`priority-text ${o.priority?.toLowerCase() || 'p3'}`}>{o.priority || 'P3'}</span>
-                                }
-                              </td>
                               <td className="p-2 sm:p-4 text-center">
-                                <div className="grid grid-cols-2 gap-1 w-fit mx-auto">
+                                <div className="flex flex-wrap items-center justify-center gap-1 w-fit mx-auto">
                                   {isEditing ? (
                                     <>
-                                      <button onClick={saveEdit} className="inline-flex items-center justify-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 rounded-full text-[10px] font-semibold hover:bg-green-600 hover:text-white transition"><Save size={11} /> Save</button>
-                                      <button onClick={cancelEditing} className="inline-flex items-center justify-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-[10px] font-semibold hover:bg-gray-600 hover:text-white transition"><X size={11} /> Cancel</button>
+                                      <button onClick={saveEdit} title="Save" className="inline-flex items-center justify-center p-1.5 bg-green-50 text-green-700 rounded-full hover:bg-green-600 hover:text-white transition"><Save size={13} /></button>
+                                      <button onClick={cancelEditing} title="Cancel" className="inline-flex items-center justify-center p-1.5 bg-gray-100 text-gray-600 rounded-full hover:bg-gray-600 hover:text-white transition"><X size={13} /></button>
                                     </>
                                   ) : (
                                     <>
-                                      <button onClick={() => openDetails(o)} className="inline-flex items-center justify-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[10px] font-semibold hover:bg-blue-600 hover:text-white transition"><Eye size={11} /> View</button>
-                                      <button onClick={() => startEditing(o)} className="inline-flex items-center justify-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full text-[10px] font-semibold hover:bg-amber-600 hover:text-white transition"><Edit size={11} /> Edit</button>
-                                      {o.status === 'Suggested' && <button onClick={() => startEditing(o)} className="inline-flex items-center justify-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-semibold hover:bg-indigo-600 hover:text-white transition"><Calendar size={11} /> Schedule</button>}
-                                      <button onClick={() => openMailModal('single-approval', o._id!)} className="inline-flex items-center justify-center gap-1 px-2 py-0.5 bg-emerald-50 text-[#5e6c24] rounded-full text-[10px] font-semibold hover:bg-[#7a8b2e] hover:text-white transition"><Mail size={11} /> Send Mail</button>
-                                      <button onClick={() => handleArchive(o._id!)} className="inline-flex items-center justify-center gap-1 px-2 py-0.5 bg-red-50 text-red-600 rounded-full text-[10px] font-semibold hover:bg-red-600 hover:text-white transition"><Archive size={11} /> Archive</button>
+                                      <button onClick={() => openDetails(o)} title="View" className="inline-flex items-center justify-center p-1.5 bg-blue-50 text-blue-600 rounded-full hover:bg-blue-600 hover:text-white transition"><Eye size={13} /></button>
+                                      <button onClick={() => startEditing(o)} title="Edit" className="inline-flex items-center justify-center p-1.5 bg-amber-50 text-amber-600 rounded-full hover:bg-amber-600 hover:text-white transition"><Edit size={13} /></button>
+                                      {o.status === 'Suggested' && <button onClick={() => startEditing(o)} title="Schedule" className="inline-flex items-center justify-center p-1.5 bg-indigo-50 text-indigo-600 rounded-full hover:bg-indigo-600 hover:text-white transition"><Calendar size={13} /></button>}
+                                      <button onClick={() => openMailModal('single-approval', o._id!)} title="Send Mail" className="inline-flex items-center justify-center p-1.5 bg-emerald-50 text-[#5e6c24] rounded-full hover:bg-[#7a8b2e] hover:text-white transition"><Mail size={13} /></button>
+                                      <button onClick={() => handleArchive(o._id!)} title="Archive" className="inline-flex items-center justify-center p-1.5 bg-red-50 text-red-600 rounded-full hover:bg-red-600 hover:text-white transition"><Archive size={13} /></button>
                                     </>
                                   )}
                                 </div>
@@ -1274,26 +1254,23 @@ const Outing: React.FC = () => {
                     <thead className="bg-white text-[10px] font-black text-gray-400 uppercase tracking-tighter border-b">
                       <tr>
                         <th className="p-2 sm:p-4">Sno.</th>
-                        <th className="p-2 sm:p-4">Topic</th>
-                        <th className="p-2 sm:p-4 hidden sm:table-cell">Description</th>
-                        <th className="p-2 sm:p-4 hidden md:table-cell">Place</th>
+                        <th className="p-2 sm:p-4 w-32 sm:w-40">Topic</th>
+                        <th className="p-2 sm:p-4 hidden md:table-cell w-28 sm:w-32">Place</th>
                         <th className="p-2 sm:p-4 hidden lg:table-cell">Budget</th>
                         <th className="p-2 sm:p-4 text-center">Action</th>
-                        <th className="p-2 sm:p-4 text-center">Priority</th>
                         <th className="p-2 sm:p-4 hidden md:table-cell">Suggestions</th>
                         <th className="p-2 sm:p-4 hidden sm:table-cell">Date</th>
                       </tr>
                     </thead>
                     <tbody className="text-xs divide-y divide-gray-100">
                       {outingList.filter(o => o.status === 'Proposed').length === 0 ? (
-                        <tr><td colSpan={9} className="p-8 sm:p-12 text-center text-gray-500 italic">No pending proposals from HR</td></tr>
+                        <tr><td colSpan={7} className="p-8 sm:p-12 text-center text-gray-500 italic">No pending proposals from HR</td></tr>
                       ) : (
                         outingList.filter(o => o.status === 'Proposed').map((o, i) => (
                           <tr key={o._id} className="hover:bg-gray-50/50 transition group">
                             <td className="p-2 sm:p-4 text-gray-400">{i + 1}</td>
-                            <td className="p-2 sm:p-4 font-bold text-gray-800 text-xs sm:text-sm">{o.topic}</td>
-                            <td className="p-2 sm:p-4 text-gray-600 max-w-[200px] truncate hidden sm:table-cell text-xs sm:text-sm">{o.description}</td>
-                            <td className="p-2 sm:p-4 hidden md:table-cell">{o.tentativePlace || '—'}</td>
+                            <td className="p-2 sm:p-4 font-normal text-gray-800 text-[11px] sm:text-xs max-w-[8rem] sm:max-w-[10rem] truncate" title={o.topic}>{o.topic}</td>
+                            <td className="p-2 sm:p-4 hidden md:table-cell max-w-[7rem] sm:max-w-[8rem] truncate" title={o.tentativePlace}>{o.tentativePlace || '—'}</td>
                             <td className="p-2 sm:p-4 hidden lg:table-cell">{o.tentativeBudget ? `₹${o.tentativeBudget.toLocaleString()}` : '—'}</td>
                             <td className="p-2 sm:p-4 text-center">
                               <div className="flex justify-center gap-1 sm:gap-3 flex-wrap">
@@ -1302,7 +1279,6 @@ const Outing: React.FC = () => {
                                 <button onClick={() => openDetails(o)} className="p-1 sm:p-2 text-purple-600 hover:bg-purple-50 rounded" title="View Details"><Eye size={12} className="sm:hidden" /><Eye size={16} className="hidden sm:block" /></button>
                               </div>
                             </td>
-                            <td className="p-2 sm:p-4 text-center"><span className={`font-medium ${getPriorityColor(o.priority)}`}>{o.priority || '—'}</span></td>
                             <td className="p-2 sm:p-4 hidden md:table-cell text-gray-600 text-xs sm:text-sm">{o.reason || '—'}</td>
                             <td className="p-2 sm:p-4 hidden sm:table-cell text-gray-600 font-mono italic text-xs sm:text-sm">{o.tentativeDate ? formatDate(o.tentativeDate) : 'TBD'}</td>
                           </tr>
@@ -1341,33 +1317,29 @@ const Outing: React.FC = () => {
                     <thead className="bg-white text-[10px] font-black text-gray-400 uppercase tracking-tighter border-b">
                       <tr>
                         <th className="p-2 sm:p-4">Sno.</th>
-                        <th className="p-2 sm:p-4">Topic</th>
-                        <th className="p-2 sm:p-4 hidden sm:table-cell">Description</th>
-                        <th className="p-2 sm:p-4 hidden md:table-cell">Place</th>
+                        <th className="p-2 sm:p-4 w-32 sm:w-40">Topic</th>
+                        <th className="p-2 sm:p-4 hidden md:table-cell w-28 sm:w-32">Place</th>
                         <th className="p-2 sm:p-4 hidden lg:table-cell">Budget</th>
                         <th className="p-2 sm:p-4 hidden sm:table-cell">Status</th>
                         <th className="p-2 sm:p-4 hidden md:table-cell">Date</th>
-                        <th className="p-2 sm:p-4">Priority</th>
                         <th className="p-2 sm:p-4 text-center">Action</th>
                         <th className="p-2 sm:p-4 hidden lg:table-cell text-center">Feedback</th>
                       </tr>
                     </thead>
                     <tbody className="text-xs divide-y divide-gray-100">
                       {filteredOutings.filter(o => o.status === 'Scheduled' || o.status === 'Completed' || o.status === 'Archived').length === 0 ? (
-                        <tr><td colSpan={10} className="p-8 text-center text-gray-500 italic">No scheduled or completed outings found</td></tr>
+                        <tr><td colSpan={8} className="p-8 text-center text-gray-500 italic">No scheduled or completed outings found</td></tr>
                       ) : (
                         filteredOutings.filter(o => o.status === 'Scheduled' || o.status === 'Completed' || o.status === 'Archived').map((o, i) => (
                           <tr key={o._id} className="hover:bg-gray-50/50 transition group">
                             <td className="p-2 sm:p-4 text-gray-400">{i + 1}</td>
-                            <td className="p-2 sm:p-4 font-bold text-gray-800 text-xs sm:text-sm">{o.topic}</td>
-                            <td className="p-2 sm:p-4 text-gray-600 max-w-[200px] truncate hidden sm:table-cell text-xs sm:text-sm">{o.description}</td>
-                            <td className="p-2 sm:p-4 hidden md:table-cell">{o.tentativePlace || '—'}</td>
+                            <td className="p-2 sm:p-4 font-normal text-gray-800 text-[11px] sm:text-xs max-w-[8rem] sm:max-w-[10rem] truncate" title={o.topic}>{o.topic}</td>
+                            <td className="p-2 sm:p-4 hidden md:table-cell max-w-[7rem] sm:max-w-[8rem] truncate" title={o.tentativePlace}>{o.tentativePlace || '—'}</td>
                             <td className="p-2 sm:p-4 hidden lg:table-cell">{o.tentativeBudget ? `₹${o.tentativeBudget.toLocaleString()}` : '—'}</td>
                             <td className="p-2 sm:p-4 hidden sm:table-cell">
                               <span className={`status-pill ${o.status?.toLowerCase().replace(' ', '-') || ''}`}>{o.status}</span>
                             </td>
                             <td className="p-2 sm:p-4 hidden md:table-cell text-gray-600 font-mono italic text-xs sm:text-sm">{o.tentativeDate ? formatDate(o.tentativeDate) : 'TBD'}</td>
-                            <td className="p-2 sm:p-4 text-center"><span className={`font-medium ${getPriorityColor(o.priority)}`}>{o.priority || '—'}</span></td>
                             <td className="p-2 sm:p-4 text-center">
                               <div className="flex justify-center gap-1 sm:gap-2 flex-wrap">
                                 <button onClick={() => openDetails(o)} className="p-1 sm:p-2 text-purple-600 hover:bg-purple-50 rounded" title="View Details"><Eye size={12} className="sm:hidden" /><Eye size={16} className="hidden sm:block" /></button>
