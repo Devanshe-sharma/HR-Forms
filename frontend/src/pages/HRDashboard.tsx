@@ -2529,7 +2529,7 @@ async function fetchTeethToTailSummary(): Promise<CardSummary> {
   const tailPct = Math.round((latest.tail / total) * 1000) / 10;
   return {
     value: `${teethPct.toFixed(1)} : ${tailPct.toFixed(1)}`,
-    sublabel: `Teeth : Tail — ${latest.quarter} ${fyLabel(fy)}`,
+    sublabel: `Teeth : Tail — ${fyLabel(fy)} (as of ${latest.quarter})`,
   };
 }
 
@@ -2611,13 +2611,11 @@ async function fetchInternConversionsSummary(): Promise<CardSummary> {
   return { value: String(total), sublabel: `Intern/Contract Based → Employee, via Salary Revision` };
 }
 
-// Picks out the latest fiscal quarter that's actually started this fiscal
-// year from a {quarter: "Q_"}[] array — the shared "current quarter" lookup
-// used by every summary card below, matching the same default the full
-// widgets use.
-function latestStartedQuarter<T extends { quarter: string }>(quarters: T[], now: Date, fy: number): T | undefined {
-  const started = quarters.filter((q) => fiscalQuarterStartDate(q.quarter, fy) <= now);
-  return started[started.length - 1];
+// Every quarter that has started this fiscal year — the top cards report the
+// whole fiscal year to date (annual), not just the latest quarter. The
+// quarter filters inside each full widget are unchanged.
+function startedQuartersOf<T extends { quarter: string }>(quarters: T[], now: Date, fy: number): T[] {
+  return quarters.filter((q) => fiscalQuarterStartDate(q.quarter, fy) <= now);
 }
 
 async function fetchAskedToLeaveSummary(): Promise<CardSummary> {
@@ -2625,9 +2623,12 @@ async function fetchAskedToLeaveSummary(): Promise<CardSummary> {
   const fy = fiscalYearOf(now);
   const res = await axios.get(`${API}/exit/analytics/asked-to-leave`, { params: { year: fy, _t: Date.now() } });
   const quarters: AskedToLeaveQuarterRow[] = res.data?.quarters ?? [];
-  const latest = latestStartedQuarter(quarters, now, fy);
-  if (!latest || latest.totalExits === 0) return { value: "—", sublabel: "No exits recorded this quarter" };
-  return { value: `${latest.askedToLeavePct}%`, sublabel: `${latest.askedToLeaveCount} of ${latest.totalExits} exits — ${latest.quarter} ${fyLabel(fy)}` };
+  const started = startedQuartersOf(quarters, now, fy);
+  const totalExits = started.reduce((s, q) => s + q.totalExits, 0);
+  const askedCount = started.reduce((s, q) => s + q.askedToLeaveCount, 0);
+  if (totalExits === 0) return { value: "—", sublabel: "No exits recorded this year" };
+  const pct = Math.round((askedCount / totalExits) * 1000) / 10;
+  return { value: `${pct}%`, sublabel: `${askedCount} of ${totalExits} exits — ${fyLabel(fy)}` };
 }
 
 async function fetchReferredSummary(): Promise<CardSummary> {
@@ -2635,14 +2636,14 @@ async function fetchReferredSummary(): Promise<CardSummary> {
   const fy = fiscalYearOf(now);
   const res = await axios.get(`${API}/onboarding/analytics/referred`, { params: { year: fy, _t: Date.now() } });
   const quarters: ReferredQuarterRow[] = res.data?.quarters ?? [];
-  const latest = latestStartedQuarter(quarters, now, fy);
+  const started = startedQuartersOf(quarters, now, fy);
   // Always shows a real number — 0% (not a "—" placeholder) when no one
-  // joined this quarter or no one was referred, so the card never reads as
+  // joined this year or no one was referred, so the card never reads as
   // "broken" or "no data" when the true answer is just zero.
-  const total = latest?.total ?? 0;
-  const referredCount = latest?.referredCount ?? 0;
-  const pct = latest?.referredPct ?? 0;
-  return { value: `${pct}%`, sublabel: `${referredCount} of ${total} joined — ${latest?.quarter ?? currentQuarterLabel()} ${fyLabel(fy)}` };
+  const total = started.reduce((s, q) => s + q.total, 0);
+  const referredCount = started.reduce((s, q) => s + q.referredCount, 0);
+  const pct = total > 0 ? Math.round((referredCount / total) * 1000) / 10 : 0;
+  return { value: `${pct}%`, sublabel: `${referredCount} of ${total} joined — ${fyLabel(fy)}` };
 }
 
 async function fetchDaysToHireSummary(level: "overall" | "fresher" | "experienced"): Promise<CardSummary> {
@@ -2650,10 +2651,20 @@ async function fetchDaysToHireSummary(level: "overall" | "fresher" | "experience
   const fy = fiscalYearOf(now);
   const res = await axios.get(`${API}/hiringrequisitions/analytics/days-to-hire`, { params: { year: fy, _t: Date.now() } });
   const quarters: DaysToHireQuarterRow[] = res.data?.quarters ?? [];
-  const latest = latestStartedQuarter(quarters, now, fy);
-  const bucket = latest?.[level];
-  if (!bucket || bucket.count === 0) return { value: "—", sublabel: "No closed requisitions this quarter" };
-  return { value: `${bucket.avgDays}d`, sublabel: `Avg over ${bucket.count} closed requisition${bucket.count === 1 ? "" : "s"} — ${latest!.quarter} ${fyLabel(fy)}` };
+  const started = startedQuartersOf(quarters, now, fy);
+  // Count-weighted average across the year, so a busy quarter counts for more.
+  let count = 0;
+  let totalDays = 0;
+  for (const q of started) {
+    const b = q[level];
+    if (b && b.count > 0 && b.avgDays != null) {
+      count += b.count;
+      totalDays += b.avgDays * b.count;
+    }
+  }
+  if (count === 0) return { value: "—", sublabel: "No closed requisitions this year" };
+  const avgDays = Math.round((totalDays / count) * 10) / 10;
+  return { value: `${avgDays}d`, sublabel: `Avg over ${count} closed requisition${count === 1 ? "" : "s"} — ${fyLabel(fy)}` };
 }
 
 async function fetchAttritionSummary(): Promise<CardSummary> {
@@ -2663,11 +2674,18 @@ async function fetchAttritionSummary(): Promise<CardSummary> {
     params: { year: fy, _t: Date.now() },
   });
   const quarters: AttritionQuarterRow[] = res.data?.quarters ?? [];
-  const latest = latestStartedQuarter(quarters, now, fy);
-  if (!latest) return { value: "—", sublabel: "No data yet" };
+  const started = startedQuartersOf(quarters, now, fy);
+  if (started.length === 0) return { value: "—", sublabel: "No data yet" };
+  // Same year-to-date combination the widget's "All Quarters" uses.
+  const opening = started[0].opening;
+  const closing = started[started.length - 1].closing;
+  const employeesLeft = started.reduce((s, q) => s + q.employeesLeft, 0);
+  const avgHeadcount = (opening + closing) / 2;
+  const attritionPct = avgHeadcount > 0 ? Math.round((employeesLeft / avgHeadcount) * 1000) / 10 : 0;
+  const retentionPct = opening > 0 ? Math.round(((opening - employeesLeft) / opening) * 1000) / 10 : null;
   return {
-    value: `${latest.attritionPct}%`,
-    sublabel: `Retention ${latest.retentionPct != null ? `${latest.retentionPct}%` : "—"} — ${latest.quarter} ${fyLabel(fy)}`,
+    value: `${attritionPct}%`,
+    sublabel: `Retention ${retentionPct != null ? `${retentionPct}%` : "—"} — ${fyLabel(fy)}`,
   };
 }
 
@@ -2676,9 +2694,12 @@ async function fetchOfferDropoutSummary(): Promise<CardSummary> {
   const fy = fiscalYearOf(now);
   const res = await axios.get(`${API}/onboarding/analytics/offer-dropout`, { params: { year: fy, _t: Date.now() } });
   const quarters: OfferDropoutQuarterRow[] = res.data?.quarters ?? [];
-  const latest = latestStartedQuarter(quarters, now, fy);
-  if (!latest || latest.total === 0) return { value: "—", sublabel: "No onboardings recorded this quarter" };
-  return { value: `${latest.dropoutPct}%`, sublabel: `${latest.dropoutCount} of ${latest.total} onboardings — ${latest.quarter} ${fyLabel(fy)}` };
+  const started = startedQuartersOf(quarters, now, fy);
+  const total = started.reduce((s, q) => s + q.total, 0);
+  const dropoutCount = started.reduce((s, q) => s + q.dropoutCount, 0);
+  if (total === 0) return { value: "—", sublabel: "No onboardings recorded this year" };
+  const pct = Math.round((dropoutCount / total) * 1000) / 10;
+  return { value: `${pct}%`, sublabel: `${dropoutCount} of ${total} onboardings — ${fyLabel(fy)}` };
 }
 
 // ─── Merged / new cards for the grouped dashboard layout ───────────────────
@@ -2721,17 +2742,19 @@ async function fetchRecruitmentFunnelSummary(): Promise<CardSummary> {
   ]);
   const dropoutQuarters: OfferDropoutQuarterRow[] = dropoutRes.data?.quarters ?? [];
   const referredQuarters: ReferredQuarterRow[] = referredRes.data?.quarters ?? [];
-  const dropoutLatest = latestStartedQuarter(dropoutQuarters, now, fy);
-  const referredLatest = latestStartedQuarter(referredQuarters, now, fy);
+  const dropoutStarted = startedQuartersOf(dropoutQuarters, now, fy);
+  const referredStarted = startedQuartersOf(referredQuarters, now, fy);
   // Always a real number — 0% (never a "—" placeholder) when nothing
-  // happened this quarter, for both halves of the funnel independently.
-  const dropoutPct = dropoutLatest?.dropoutPct ?? 0;
-  const dropoutCount = dropoutLatest?.dropoutCount ?? 0;
-  const totalOffers = dropoutLatest?.total ?? 0;
-  const referredPct = referredLatest?.referredPct ?? 0;
+  // happened this year, for both halves of the funnel independently.
+  const totalOffers = dropoutStarted.reduce((s, q) => s + q.total, 0);
+  const dropoutCount = dropoutStarted.reduce((s, q) => s + q.dropoutCount, 0);
+  const dropoutPct = totalOffers > 0 ? Math.round((dropoutCount / totalOffers) * 1000) / 10 : 0;
+  const referredTotal = referredStarted.reduce((s, q) => s + q.total, 0);
+  const referredCount = referredStarted.reduce((s, q) => s + q.referredCount, 0);
+  const referredPct = referredTotal > 0 ? Math.round((referredCount / referredTotal) * 1000) / 10 : 0;
   return {
     value: `${dropoutPct}% dropout`,
-    sublabel: `${dropoutCount} of ${totalOffers} offers · ${referredPct}% referred — ${dropoutLatest?.quarter ?? currentQuarterLabel()} ${fyLabel(fy)}`,
+    sublabel: `${dropoutCount} of ${totalOffers} offers · ${referredPct}% referred — ${fyLabel(fy)}`,
   };
 }
 

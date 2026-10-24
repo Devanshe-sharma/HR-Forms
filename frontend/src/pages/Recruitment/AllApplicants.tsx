@@ -215,9 +215,23 @@ const ApplicantModal = ({
   const [localRec,   setLocalRec]   = useState<ApplicantRecordWithAI>(record);
   const [statusBusy, setStatusBusy] = useState(false);
   const [editInfoOpen, setEditInfoOpen] = useState(false);
+  // Shared view/edit toggle for every tab — round tabs render read-only
+  // until "Edit Information" switches them (and the Details tab's edit
+  // popup) into edit mode together; "Done Editing" switches back.
+  const [editMode, setEditMode] = useState(false);
+  // JD link — fetched once here so it's visible in the top links row across
+  // every tab, instead of being fetched separately inside each round tab.
+  const [jdLink, setJdLink] = useState<string | null>(null);
 
   useEffect(() => { setLocalRec(record); }, [record]);
   useEffect(() => { setActiveTab(initialTab === 'mgmt' && !canSeeMgmt ? 'details' : initialTab); }, [record._id, initialTab]);
+  useEffect(() => {
+    setJdLink(null);
+    fetch(`${API_BASE}/applicant-records/${record._id}/jd-link`)
+      .then((r) => r.json())
+      .then((json) => { if (json.success) setJdLink(json.data.jdLink); })
+      .catch(() => {});
+  }, [record._id]);
 
   const handleRecordUpdate = (updated: ApplicantRecord) => {
     setLocalRec(updated);
@@ -307,10 +321,19 @@ const ApplicantModal = ({
             </div>
             {canEditInfo && (
               <button
-                onClick={() => setEditInfoOpen(true)}
-                className="text-xs font-semibold text-[#3d5420] bg-[#eef3e6] hover:bg-[#dce8c9] px-2.5 py-1.5 rounded-lg transition"
+                onClick={() => {
+                  if (editMode) {
+                    setEditMode(false);
+                  } else {
+                    setEditMode(true);
+                    setEditInfoOpen(true);
+                  }
+                }}
+                className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg transition ${
+                  editMode ? 'text-white bg-[#3d5420] hover:bg-[#2e4018]' : 'text-[#3d5420] bg-[#eef3e6] hover:bg-[#dce8c9]'
+                }`}
               >
-                Edit Information
+                {editMode ? 'Done Editing' : 'Edit Information'}
               </button>
             )}
             <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition">
@@ -321,20 +344,31 @@ const ApplicantModal = ({
 
         {/* ── Links row — always visible, regardless of active tab ── */}
         <div className="flex items-center flex-wrap gap-2 px-6 py-2.5 border-b bg-gray-50/60 flex-shrink-0">
-          {localRec.resume && (
+          {jdLink ? (
+            <a href={jdLink} target="_blank" rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition">
+              <ExternalLink size={12} /> JD
+            </a>
+          ) : (
+            <span className="text-xs text-gray-400 px-2.5 py-1">No JD on file</span>
+          )}
+          {localRec.resume ? (
             <a href={localRec.resume.startsWith('http') ? localRec.resume : `${API_BASE.replace(/\/api\/?$/, '')}${localRec.resume.startsWith('/') ? '' : '/'}${localRec.resume}`}
               target="_blank" rel="noreferrer"
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition">
               <ExternalLink size={12} /> Resume
             </a>
+          ) : (
+            <span className="text-xs text-gray-400 px-2.5 py-1">No Resume on file</span>
           )}
-          {localRec.linkedin && (
+          {localRec.linkedin ? (
             <a href={localRec.linkedin} target="_blank" rel="noreferrer"
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition">
               <ExternalLink size={12} /> LinkedIn
             </a>
+          ) : (
+            <span className="text-xs text-gray-400 px-2.5 py-1">No LinkedIn Profile</span>
           )}
-          {!localRec.resume && !localRec.linkedin && <span className="text-xs text-gray-400">No resume or LinkedIn on file</span>}
         </div>
 
         {/* ── Tabs — flat underline style, matching the mockup's .pt/.tb
@@ -357,18 +391,18 @@ const ApplicantModal = ({
         </div>
 
         {/* ── Tab content — scrollable ── */}
-        <div className="overflow-y-auto flex-1 px-6 py-5">
+        <div className="overflow-y-auto flex-1 px-6 py-5 bg-gray-100">
           {activeTab === 'details' && (
             <CandidateInformationTab record={localRec} onSave={handleRecordUpdate} department={department} />
           )}
           {activeTab === 'hr' && (
-            <RoundPipelineTab record={localRec} roundType="hr" onUpdate={handleRecordUpdate} canEdit={canEditRoundType('hr')} />
+            <RoundPipelineTab record={localRec} roundType="hr" onUpdate={handleRecordUpdate} canEdit={editMode && canEditRoundType('hr')} />
           )}
           {activeTab === 'tech' && (
-            <RoundPipelineTab record={localRec} roundType="tech" onUpdate={handleRecordUpdate} canEdit={canEditRoundType('tech')} />
+            <RoundPipelineTab record={localRec} roundType="tech" onUpdate={handleRecordUpdate} canEdit={editMode && canEditRoundType('tech')} />
           )}
           {activeTab === 'mgmt' && canSeeMgmt && (
-            <RoundPipelineTab record={localRec} roundType="mgmt" onUpdate={handleRecordUpdate} canEdit={canEditRoundType('mgmt')} />
+            <RoundPipelineTab record={localRec} roundType="mgmt" onUpdate={handleRecordUpdate} canEdit={editMode && canEditRoundType('mgmt')} />
           )}
         </div>
       </div>

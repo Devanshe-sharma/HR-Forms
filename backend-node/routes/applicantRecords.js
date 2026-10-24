@@ -1004,6 +1004,11 @@ router.get('/:id/interview-rounds/:roundId/feedback-context', async (req, res) =
     // instances of the SAME type, so it can't be compared directly across
     // different round types).
     const pipelineRank = (r) => ROUND_TYPE_ORDER.indexOf(r.roundType) * 1000 + (r.roundNumber ?? 0);
+    // HR round's own background/evaluation fields are only meaningful on
+    // the HR round entry itself — attached here (not in the mail, which
+    // HR asked to keep to just the interview logistics) so the next
+    // interviewer sees it on the feedback form instead, once they're
+    // actually ready to submit their own feedback.
     const previousRounds = allRounds
       .filter((r) => pipelineRank(r) < pipelineRank(round) && (r.feedback || r.interviewerFeedbackStatus))
       .sort((a, b) => pipelineRank(a) - pipelineRank(b))
@@ -1012,6 +1017,13 @@ router.get('/:id/interview-rounds/:roundId/feedback-context', async (req, res) =
         interviewer: r.interviewer || '',
         interviewerFeedbackStatus: r.interviewerFeedbackStatus || '',
         feedback: r.feedback || '',
+        ...(r.roundType === 'hr' ? {
+          hrBackground: r.hrBackground || null,
+          communication: r.communication || '',
+          stability: r.stability || '',
+          attitude: r.attitude || '',
+          bond: r.bond || '',
+        } : {}),
       }));
 
     ok(res, {
@@ -1026,6 +1038,7 @@ router.get('/:id/interview-rounds/:roundId/feedback-context', async (req, res) =
       interviewerFeedbackStatus: round.interviewerFeedbackStatus || '',
       feedback: round.feedback || '',
       previousRounds,
+      excelTest: record.excelTest || null,
     });
   } catch (e) {
     console.error('[feedback-context] error:', e);

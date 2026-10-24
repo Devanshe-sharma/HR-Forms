@@ -73,6 +73,7 @@ const interviewRoundSchema = new mongoose.Schema(
       residingIn:          { type: String, default: '' },
       commuteType:         { type: String, default: '' },
       age:                 { type: String, default: '' },
+      maritalStatus:       { type: String, enum: ['', 'Single', 'Married'], default: '' },
       family:              { type: String, default: '' },
       education:           { type: String, default: '' },
       hobbies:             { type: String, default: '' },
@@ -105,11 +106,9 @@ const interviewRoundSchema = new mongoose.Schema(
       enum: ['', 'Poor', 'Below Expectations', 'Meets Expectations', 'Good', 'Excellent'],
       default: '',
     },
-    stability: {
-      type: String,
-      enum: ['', 'Poor', 'Below Expectations', 'Meets Expectations', 'Good', 'Excellent'],
-      default: '',
-    },
+    // Free text, not a rating enum — HR asked for this to be a plain
+    // written note rather than a dropdown.
+    stability: { type: String, default: '' },
     // HR Round only — the interviewer's own observed read of the candidate's
     // dominant DISC trait, distinct from the candidate's self-administered
     // DISC assessment (discAssessment) already captured elsewhere.

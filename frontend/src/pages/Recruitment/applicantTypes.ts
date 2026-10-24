@@ -24,6 +24,7 @@ export interface HrBackground {
   residingIn:          string;
   commuteType:         string;
   age:                 string;
+  maritalStatus:       string;
   family:              string;
   education:           string;
   hobbies:             string;
@@ -359,4 +360,14 @@ export const DISC_TRAIT_LABELS: Record<'D' | 'I' | 'S' | 'C', string> = {
   I: 'Influence',
   S: 'Steadiness',
   C: 'Conscientiousness',
+};
+
+// Full descriptions — used where the trait needs to be shown in full
+// (Candidate Information tab), not just the short name used in compact
+// spots like the Attitude/DISC dropdown.
+export const DISC_TRAIT_DESCRIPTIONS: Record<'D' | 'I' | 'S' | 'C', string> = {
+  D: 'D (Dominance): Confident, direct, and results-driven.',
+  I: 'I (Influence): Open, enthusiastic, and relationship-oriented.',
+  S: 'S (Steadiness): Dependable, calm, and cooperative.',
+  C: 'C (Conscientiousness): Analytical, detail-oriented, and focused on accuracy.',
 };

@@ -34,9 +34,11 @@ function formatMode(mode) {
 // The plain-text body HR actually sees and edits — greeting, a short
 // intro sentence, the round details as plain "Label: value" lines, and a
 // sign-off. No markup at all, so editing it can never break anything.
-// Previous feedback is NOT part of this — it renders as its own contracted
-// (collapsed) HTML section instead, so it can't get mixed into or
-// accidentally edited away as part of the plain-text message body.
+// Previous feedback (and the HR round's background/evaluation/recommendation)
+// is NOT part of this — it belongs only on the interviewer's own
+// feedback-context page (GET .../feedback-context), not in this mail, so it
+// can't get mixed into or accidentally edited away as part of the plain-text
+// message body.
 function buildDefaultBody({ type, audience, candidateName, position, round, cancellationReason }) {
   const stage = round.stage || 'Interview';
   const date  = formatDate(round.scheduledDate);

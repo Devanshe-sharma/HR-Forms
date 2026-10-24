@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Loader2, Sparkles, FileText, Send, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Field, FIELD_LABEL_CLASS } from './ApplicantFieldComponents';
-import { ApplicantRecord, API_BASE, ASSESSMENT_STATUS_COLORS, DISC_TRAIT_LABELS } from './applicantTypes';
+import { ApplicantRecord, API_BASE, ASSESSMENT_STATUS_COLORS, DISC_TRAIT_DESCRIPTIONS } from './applicantTypes';
 
 type ApplicantRecordWithAI = ApplicantRecord & {
   ai_fit_score?:   number | null;
@@ -173,7 +173,7 @@ const CandidateInformationTab = ({
     <div className="space-y-6">
 
       {/* ── JD + ATS Score ── */}
-      <section className="bg-gray-50 border border-gray-100 rounded-xl p-4">
+      <section className="bg-white border border-gray-100 rounded-xl p-4">
         <SectionLabel>Job Description &amp; ATS Score</SectionLabel>
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2">
@@ -221,7 +221,7 @@ const CandidateInformationTab = ({
 
       {/* ── Contact & Personal / Professional — two columns, read-only ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <section className="border border-gray-100 rounded-xl p-4">
+        <section className="bg-white border border-gray-100 rounded-xl p-4">
           <SectionLabel>Contact &amp; Personal</SectionLabel>
           <div className="grid grid-cols-2 gap-x-4 gap-y-4">
             <Field label="Full Name"      value={record.full_name} />
@@ -250,7 +250,7 @@ const CandidateInformationTab = ({
           </div>
         </section>
 
-        <section className="border border-gray-100 rounded-xl p-4">
+        <section className="bg-white border border-gray-100 rounded-xl p-4">
           <SectionLabel>Professional</SectionLabel>
           <div className="grid grid-cols-2 gap-x-4 gap-y-4">
             <Field label="Total Experience" value={record.total_experience ? `${record.total_experience} yrs` : undefined} />
@@ -267,7 +267,7 @@ const CandidateInformationTab = ({
       </div>
 
       {/* ── Application — full width, read-only ── */}
-      <section className="border border-gray-100 rounded-xl p-4">
+      <section className="bg-white border border-gray-100 rounded-xl p-4">
         <SectionLabel>Application</SectionLabel>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-x-4 gap-y-4">
           <Field label="Position Applied For" value={record.designation} />
@@ -313,7 +313,7 @@ const CandidateInformationTab = ({
         <SectionLabel>Assessments</SectionLabel>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-          <div className="border border-gray-100 rounded-xl p-4 bg-gray-50 space-y-3">
+          <div className="border border-gray-100 rounded-xl p-4 bg-white space-y-3">
             <div className="flex items-center justify-between">
               <p className="text-sm font-bold text-gray-700">Excel Test</p>
               <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ASSESSMENT_STATUS_COLORS[record.excelTest?.status || '']}`}>
@@ -344,7 +344,7 @@ const CandidateInformationTab = ({
                 ))}
                 <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mt-3">Practical — for HR to check &amp; mark</p>
                 {(record.excelTest.answers || []).filter(a => a.type === 'practical').map((a) => (
-                  <div key={a.qNo} className="bg-white border border-gray-100 rounded-lg p-2.5">
+                  <div key={a.qNo} className="bg-gray-50 border border-gray-100 rounded-lg p-2.5">
                     <p className="text-xs font-semibold text-gray-600 mb-1">Q{a.qNo}. {a.question}</p>
                     <p className="text-sm text-gray-800 mb-2 whitespace-pre-wrap font-mono">{a.answer || '—'}</p>
                     <label className="inline-flex items-center gap-1.5 text-xs text-gray-600">
@@ -376,7 +376,7 @@ const CandidateInformationTab = ({
             )}
           </div>
 
-          <div className="border border-gray-100 rounded-xl p-4 bg-gray-50 space-y-3">
+          <div className="border border-gray-100 rounded-xl p-4 bg-white space-y-3">
             <div className="flex items-center justify-between">
               <p className="text-sm font-bold text-gray-700">DISC Assessment</p>
               <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ASSESSMENT_STATUS_COLORS[record.discAssessment?.status || '']}`}>
@@ -394,17 +394,19 @@ const CandidateInformationTab = ({
               </button>
             )}
             {record.discAssessment?.status === 'Completed' && (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <p className="text-sm font-bold text-gray-700">
-                  Primary trait: {DISC_TRAIT_LABELS[record.discAssessment.primary as 'D' | 'I' | 'S' | 'C']}
+                  Primary trait: {DISC_TRAIT_DESCRIPTIONS[record.discAssessment.primary as 'D' | 'I' | 'S' | 'C']}
                 </p>
                 {(['D', 'I', 'S', 'C'] as const).map((t) => (
-                  <div key={t} className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-gray-500 w-6">{t}</span>
-                    <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                      <div className="h-full bg-[#eef3e6]0" style={{ width: `${record.discAssessment?.scores?.[t] ?? 0}%` }} />
+                  <div key={t}>
+                    <p className="text-xs text-gray-600 mb-1">{DISC_TRAIT_DESCRIPTIONS[t]}</p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div className="h-full bg-[#eef3e6]0" style={{ width: `${record.discAssessment?.scores?.[t] ?? 0}%` }} />
+                      </div>
+                      <span className="text-xs text-gray-500 w-10 text-right">{record.discAssessment?.scores?.[t] ?? 0}%</span>
                     </div>
-                    <span className="text-xs text-gray-500 w-10 text-right">{record.discAssessment?.scores?.[t] ?? 0}%</span>
                   </div>
                 ))}
               </div>

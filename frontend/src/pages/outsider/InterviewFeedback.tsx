@@ -13,11 +13,19 @@ import { FormattedFeedback, TemplateModal } from '../Recruitment/FeedbackTemplat
 
 const API_BASE = process.env.REACT_APP_REACT_APP_API_BASE_URL || 'http://localhost:5000/api';
 
+type HrBackground = Record<string, string>;
+
 type PreviousRound = {
   stage: string;
   interviewer: string;
   interviewerFeedbackStatus: string;
   feedback: string;
+  // Only present on the HR round's own entry.
+  hrBackground?: HrBackground | null;
+  communication?: string;
+  stability?: string;
+  attitude?: string;
+  bond?: string;
 };
 
 type Context = {
@@ -27,7 +35,21 @@ type Context = {
   interviewerFeedbackStatus: string;
   feedback: string;
   previousRounds: PreviousRound[];
+  excelTest?: { status?: string; score?: number } | null;
 };
+
+// Same order/wording as the HR round's own form
+// (frontend/src/pages/Recruitment/RoundPipelineTab.tsx's HR_BACKGROUND_FIELDS).
+const HR_BACKGROUND_LABELS: Record<string, string> = {
+  nativePlace: 'Native Place', residingIn: 'Residing In', commuteType: 'Commute Type',
+  age: 'Age', maritalStatus: 'Marital Status', family: 'Family', education: 'Education',
+  hobbies: 'Hobbies', experienceSummary: 'Experience', currentCtc: 'Current CTC',
+  pfApplicable: 'PF Applicable', expectedCtc: 'Expected CTC', recommendedCtc: 'Recommended CTC',
+  currentCompany: 'Current Company', noticePeriodSummary: 'Notice Period', whenCanJoin: 'When Can Join',
+  reasonForLeaving: 'Reason for Leaving', skillsSummary: 'Skills',
+};
+
+const DISC_TRAIT_LABELS: Record<string, string> = { D: 'Dominance', I: 'Influence', S: 'Steadiness', C: 'Conscientiousness' };
 
 export default function InterviewFeedback() {
   const { recordId, roundId } = useParams<{ recordId: string; roundId: string }>();
@@ -122,6 +144,12 @@ export default function InterviewFeedback() {
           <p className="text-sm text-gray-600">
             <span className="font-semibold text-gray-500">Round:</span> {context?.round.stage || '—'}
           </p>
+          {context?.excelTest?.status && (
+            <p className="text-sm text-gray-600">
+              <span className="font-semibold text-gray-500">Excel Test:</span>{' '}
+              {context.excelTest.status === 'Graded' ? `${context.excelTest.score}%` : context.excelTest.status}
+            </p>
+          )}
           <div className="flex flex-wrap gap-4 pt-2">
             {context?.candidate.resume && (
               <a href={context.candidate.resume} target="_blank" rel="noreferrer" className="text-sm text-blue-600 underline">
@@ -143,15 +171,53 @@ export default function InterviewFeedback() {
           <div className="bg-white rounded-xl shadow p-6 mb-6 space-y-4">
             <p className="text-sm font-bold text-slate-700">Previous Feedback</p>
 
-            {context?.previousRounds.map((r, i) => (
-              <div key={i} className="border border-gray-100 rounded-lg p-3 bg-gray-50">
-                <p className="text-xs font-semibold text-gray-500 mb-1">
-                  {r.stage}{r.interviewer ? ` — ${r.interviewer}` : ''}
-                  {r.interviewerFeedbackStatus ? ` (${r.interviewerFeedbackStatus})` : ''}
-                </p>
-                {r.feedback ? <FormattedFeedback text={r.feedback} /> : <p className="text-sm text-gray-400 italic">—</p>}
-              </div>
-            ))}
+            {context?.previousRounds.map((r, i) => {
+              const bgEntries = r.hrBackground
+                ? Object.entries(HR_BACKGROUND_LABELS)
+                    .map(([key, label]) => [label, r.hrBackground?.[key]])
+                    .filter(([, value]) => value && String(value).trim() !== '')
+                : [];
+              const evalEntries = r.hrBackground
+                ? [
+                    ['Communication', r.communication],
+                    ['Stability', r.stability],
+                    ['Attitude / DISC', r.attitude ? `${r.attitude} — ${DISC_TRAIT_LABELS[r.attitude] || ''}` : ''],
+                    ['Bond', r.bond],
+                  ].filter(([, value]) => value && String(value).trim() !== '')
+                : [];
+
+              return (
+                <div key={i} className="border border-gray-100 rounded-lg p-3 bg-gray-50">
+                  <p className="text-xs font-semibold text-gray-500 mb-1">
+                    {r.stage}{r.interviewer ? ` — ${r.interviewer}` : ''}
+                    {r.interviewerFeedbackStatus ? ` (${r.interviewerFeedbackStatus})` : ''}
+                  </p>
+                  {r.feedback ? <FormattedFeedback text={r.feedback} /> : <p className="text-sm text-gray-400 italic">—</p>}
+
+                  {bgEntries.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Candidate Background</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-xs text-gray-700">
+                        {bgEntries.map(([label, value]) => (
+                          <p key={label}><span className="text-gray-400">{label}:</span> {value}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {evalEntries.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Evaluation</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-xs text-gray-700">
+                        {evalEntries.map(([label, value]) => (
+                          <p key={label}><span className="text-gray-400">{label}:</span> {value}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 

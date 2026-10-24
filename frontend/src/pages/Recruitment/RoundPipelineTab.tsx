@@ -18,8 +18,8 @@
 import React, { useState, useEffect } from 'react';
 import {
   Loader2, Save, Plus, ClipboardList,
-  ExternalLink, RefreshCw,
-  X, Send, Check, Ban, CheckCircle2, AlertTriangle, FileText,
+  RefreshCw,
+  X, Send, Check, Ban, CheckCircle2, AlertTriangle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { FIELD_PLACEHOLDER_CLASS } from './ApplicantFieldComponents';
@@ -44,6 +44,7 @@ const HR_BACKGROUND_FIELDS: { key: keyof HrBackground; label: string }[] = [
   { key: 'residingIn',          label: 'Residing In' },
   { key: 'commuteType',         label: 'Commute Type' },
   { key: 'age',                 label: 'Age' },
+  { key: 'maritalStatus',       label: 'Marital Status' },
   { key: 'family',              label: 'Family' },
   { key: 'education',           label: 'Education' },
   { key: 'hobbies',             label: 'Hobbies' },
@@ -110,17 +111,6 @@ type EmployeeOption = { name: string; designation: string };
 
 const DEFAULT_HR_CC = 'hr@briskolive.com';
 
-// Label/value row for the read-only detail table.
-const DetailRow = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <div className="grid grid-cols-[minmax(110px,35%)_1fr] border-b border-gray-100 last:border-b-0">
-    <div className="bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-gray-600">{label}</div>
-    <div className="px-2.5 py-1 text-xs text-black break-words">{children}</div>
-  </div>
-);
-
-const rowControlClass = 'w-full border border-gray-300 rounded-md bg-white px-2.5 py-1.5 text-xs text-black focus:outline-none focus:ring-2 focus:ring-[#7a9c56] focus:border-[#7a9c56]';
-const rowTextareaClass = `w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-xs text-black bg-white focus:outline-none focus:ring-2 focus:ring-[#7a9c56] resize-none ${FIELD_PLACEHOLDER_CLASS}`;
-
 // Label-above-control cell for the grid-based evaluation card, matching the
 // mockup's form layout (several fields per row inside a white card) instead
 // of the read-only detail table's label-left/value-right row style.
@@ -131,13 +121,13 @@ const FormField = ({ label, children }: { label: string; children: React.ReactNo
   </div>
 );
 
-const formControlClass = 'w-full border border-gray-300 rounded-lg bg-white px-3 py-2 text-sm text-black focus:outline-none focus:ring-2 focus:ring-[#7a9c56] focus:border-[#7a9c56]';
-const formTextareaClass = `w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-black bg-white focus:outline-none focus:ring-2 focus:ring-[#7a9c56] resize-none ${FIELD_PLACEHOLDER_CLASS}`;
+const formControlClass = 'w-full border border-gray-300 rounded-lg bg-white px-3 py-2 text-sm text-black focus:outline-none focus:ring-2 focus:ring-[#7a9c56] focus:border-[#7a9c56] disabled:bg-gray-50 disabled:text-gray-600 disabled:cursor-not-allowed';
+const formTextareaClass = `w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-black bg-white focus:outline-none focus:ring-2 focus:ring-[#7a9c56] resize-none disabled:bg-gray-50 disabled:text-gray-600 disabled:cursor-not-allowed ${FIELD_PLACEHOLDER_CLASS}`;
 
 const RoundForm = ({
   data, roundType, roundLabelText, onChange, onHrBackgroundChange, onSave, onCancel, saving, interviewers, loadingInterviewers,
-  existingRound, onSchedule, onReschedule, onCancelRound, onMarkDone, jdLink, resumeUrl, linkedin,
-  onMoveNext, moveNextLabel, movingNext, onSelect, selectLabel, onReject,
+  existingRound, onSchedule, onReschedule, onCancelRound, onMarkDone, resumeUrl, linkedin, discAssessment, excelTest,
+  onMoveNext, moveNextLabel, movingNext, onSelect, selectLabel, onReject, readOnly,
 }: {
   data: Partial<InterviewRound>;
   roundType: RoundType;
@@ -154,9 +144,10 @@ const RoundForm = ({
   onReschedule?: () => void;
   onCancelRound?: () => void;
   onMarkDone?: () => void;
-  jdLink?: string | null;
   resumeUrl?: string;
   linkedin?: string;
+  discAssessment?: { status?: string; primary?: 'D' | 'I' | 'S' | 'C' };
+  excelTest?: { status?: string; score?: number };
   // Progression actions — shown alongside Save for the latest, still-open
   // round instance so HR can save feedback and move the candidate forward
   // (or reject them) in one place, matching the mockup's combined action row.
@@ -166,12 +157,29 @@ const RoundForm = ({
   onSelect?: () => void;
   selectLabel?: string;
   onReject?: () => void;
+  // Same layout as the editable form, every control just disabled — used
+  // when the viewer can't (or hasn't switched into Edit mode to) edit this
+  // round, instead of a separate, info-poorer read-only summary.
+  readOnly?: boolean;
 }) => {
   const interviewerOptions = data.interviewer && !interviewers.some((e) => e.name === data.interviewer)
     ? [{ name: data.interviewer, designation: '' }, ...interviewers]
     : interviewers;
 
   const [templateOpen, setTemplateOpen] = useState(false);
+
+  // Auto-populate Attitude/DISC from the candidate's own completed DISC
+  // test, same way prefillHrBackground seeds the other background fields —
+  // only while the dropdown is still blank, so it never overwrites an
+  // interviewer's own manual choice.
+  useEffect(() => {
+    if (roundType !== 'hr') return;
+    if (data.attitude) return;
+    if (discAssessment?.status === 'Completed' && discAssessment?.primary) {
+      onChange('attitude', discAssessment.primary);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roundType, data.attitude, discAssessment?.status, discAssessment?.primary]);
 
   return (
     <div className="border border-gray-200 rounded-xl bg-white">
@@ -181,8 +189,14 @@ const RoundForm = ({
 
       <div className="px-4 pb-4 space-y-5">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <FormField label="Scheduling Status">
+            <span className={`inline-flex items-center text-xs font-bold px-2 py-1.5 rounded-full ${SCHEDULING_STATUS_COLORS[data.schedulingStatus || ''] || 'bg-gray-100 text-gray-600'}`}>
+              {data.schedulingStatus || 'Not Scheduled'}
+            </span>
+          </FormField>
+
           <FormField label="Interviewer">
-            <select value={data.interviewer || ''} onChange={(e) => onChange('interviewer', e.target.value)} className={formControlClass}>
+            <select value={data.interviewer || ''} onChange={(e) => onChange('interviewer', e.target.value)} disabled={readOnly} className={formControlClass}>
               <option value="">— Select interviewer —</option>
               {loadingInterviewers
                 ? <option disabled>Loading…</option>
@@ -199,23 +213,25 @@ const RoundForm = ({
               type="date"
               value={data.scheduledDate ? String(data.scheduledDate).slice(0, 10) : ''}
               onChange={(e) => onChange('scheduledDate', e.target.value)}
-              className={formControlClass}
-            />
-          </FormField>
-
-          <FormField label="Interview Time">
-            <input
-              type="time"
-              value={data.scheduledTime || ''}
-              onChange={(e) => onChange('scheduledTime', e.target.value)}
+              disabled={readOnly}
               className={formControlClass}
             />
           </FormField>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <FormField label="Interview Time">
+            <input
+              type="time"
+              value={data.scheduledTime || ''}
+              onChange={(e) => onChange('scheduledTime', e.target.value)}
+              disabled={readOnly}
+              className={formControlClass}
+            />
+          </FormField>
+
           <FormField label="Mode">
-            <select value={data.mode || ''} onChange={(e) => onChange('mode', e.target.value)} className={formControlClass}>
+            <select value={data.mode || ''} onChange={(e) => onChange('mode', e.target.value)} disabled={readOnly} className={formControlClass}>
               <option value="">— Select mode —</option>
               {MODE_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
             </select>
@@ -226,10 +242,13 @@ const RoundForm = ({
               value={data.meetingLink || ''}
               onChange={(e) => onChange('meetingLink', e.target.value)}
               placeholder="URL or physical location"
+              disabled={readOnly}
               className={`${formControlClass} ${FIELD_PLACEHOLDER_CLASS}`}
             />
           </FormField>
+        </div>
 
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <FormField label="Candidate Confirmation">
             <span className={`inline-flex items-center text-xs font-bold px-2 py-1.5 rounded-full ${CANDIDATE_CONFIRMATION_COLORS[data.candidateConfirmation || ''] || 'bg-gray-100 text-gray-600'}`}>
               {data.candidateConfirmation || 'Pending'}
@@ -237,56 +256,44 @@ const RoundForm = ({
           </FormField>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-          <div>
-            <span className="font-semibold text-gray-500">JD Link: </span>
-            {jdLink
-              ? <a href={jdLink} target="_blank" rel="noreferrer" className="text-blue-600 underline inline-flex items-center gap-1">Open JD <ExternalLink size={12} /></a>
-              : <span className="text-gray-400 italic">Not available</span>}
-          </div>
-          <div>
-            <span className="font-semibold text-gray-500">Resume: </span>
-            {resumeUrl
-              ? <a href={resumeUrl} target="_blank" rel="noreferrer" className="text-blue-600 underline inline-flex items-center gap-1">Open CV <ExternalLink size={12} /></a>
-              : <span className="text-gray-400 italic">Not available</span>}
-          </div>
-        </div>
-
         {roundType === 'hr' && (
           <div>
             <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">Candidate Background</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {HR_BACKGROUND_FIELDS.map(({ key, label }) => (
-                <FormField key={key} label={label}>
-                  {key === 'family' || key === 'reasonForLeaving' ? (
+                <div key={key} className={key === 'skillsSummary' ? 'col-span-2 sm:col-span-4' : ''}>
+                <FormField label={label}>
+                  {key === 'family' || key === 'reasonForLeaving' || key === 'skillsSummary' ? (
                     <textarea
                       value={data.hrBackground?.[key] || ''}
                       onChange={(e) => onHrBackgroundChange(key, e.target.value)}
-                      rows={2}
-                      className={formTextareaClass}
+                      rows={key === 'skillsSummary' ? 3 : 2}
+                      disabled={readOnly}
+                      className={key === 'skillsSummary' ? formTextareaClass.replace('resize-none', 'resize-y') : formTextareaClass}
                     />
                   ) : key === 'pfApplicable' ? (
-                    <select value={data.hrBackground?.[key] || ''} onChange={(e) => onHrBackgroundChange(key, e.target.value)} className={formControlClass}>
+                    <select value={data.hrBackground?.[key] || ''} onChange={(e) => onHrBackgroundChange(key, e.target.value)} disabled={readOnly} className={formControlClass}>
                       <option value="">— Select —</option>
                       <option value="Yes">Yes</option>
                       <option value="No">No</option>
                       <option value="Not sure">Not sure</option>
                     </select>
-                  ) : key === 'whenCanJoin' ? (
-                    <input
-                      type="date"
-                      value={data.hrBackground?.[key] ? String(data.hrBackground[key]).slice(0, 10) : ''}
-                      onChange={(e) => onHrBackgroundChange(key, e.target.value)}
-                      className={formControlClass}
-                    />
+                  ) : key === 'maritalStatus' ? (
+                    <select value={data.hrBackground?.[key] || ''} onChange={(e) => onHrBackgroundChange(key, e.target.value)} disabled={readOnly} className={formControlClass}>
+                      <option value="">— Select —</option>
+                      <option value="Single">Single</option>
+                      <option value="Married">Married</option>
+                    </select>
                   ) : (
                     <input
                       value={data.hrBackground?.[key] || ''}
                       onChange={(e) => onHrBackgroundChange(key, e.target.value)}
+                      disabled={readOnly}
                       className={formControlClass}
                     />
                   )}
                 </FormField>
+                </div>
               ))}
             </div>
           </div>
@@ -298,34 +305,42 @@ const RoundForm = ({
             {roundType === 'hr' ? (
               <>
                 <FormField label="Communication">
-                  <select value={data.communication || ''} onChange={(e) => onChange('communication', e.target.value)} className={formControlClass}>
+                  <select value={data.communication || ''} onChange={(e) => onChange('communication', e.target.value)} disabled={readOnly} className={formControlClass}>
                     <option value="">— Select —</option>
                     {RATING_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
                   </select>
                 </FormField>
                 <FormField label="Stability">
-                  <select value={data.stability || ''} onChange={(e) => onChange('stability', e.target.value)} className={formControlClass}>
-                    <option value="">— Select —</option>
-                    {RATING_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
-                  </select>
+                  <input value={data.stability || ''} onChange={(e) => onChange('stability', e.target.value)} disabled={readOnly} className={formControlClass} />
+                </FormField>
+                <FormField label="Excel Test">
+                  <div className={`${formControlClass} bg-gray-50 text-gray-700`}>
+                    {excelTest?.status === 'Graded' ? `${excelTest.score}%` : excelTest?.status || 'Not sent'}
+                  </div>
                 </FormField>
                 <div>
                   <FormField label="Attitude / DISC">
-                    <select value={data.attitude || ''} onChange={(e) => onChange('attitude', e.target.value)} className={formControlClass}>
+                    <select value={data.attitude || ''} onChange={(e) => onChange('attitude', e.target.value)} disabled={readOnly} className={formControlClass}>
                       <option value="">— Select —</option>
                       {(['D', 'I', 'S', 'C'] as const).map((t) => <option key={t} value={t}>{t} — {DISC_TRAIT_LABELS[t]}</option>)}
                     </select>
                   </FormField>
-                  <p className="text-[11px] text-gray-400 mt-1">Select the dominant behavioural style observed.</p>
+                  {!readOnly && (
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      {discAssessment?.status === 'Completed' && discAssessment?.primary
+                        ? 'Auto-filled from the candidate\'s DISC test — change it if your own read differs.'
+                        : 'Select the dominant behavioural style observed.'}
+                    </p>
+                  )}
                 </div>
                 <FormField label="Bond">
-                  <select value={data.bond || ''} onChange={(e) => onChange('bond', e.target.value)} className={formControlClass}>
+                  <select value={data.bond || ''} onChange={(e) => onChange('bond', e.target.value)} disabled={readOnly} className={formControlClass}>
                     <option value="">— Select —</option>
                     {BOND_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
                   </select>
                 </FormField>
                 <FormField label="HR Recommendation">
-                  <select value={data.interviewerFeedbackStatus || ''} onChange={(e) => onChange('interviewerFeedbackStatus', e.target.value)} className={formControlClass}>
+                  <select value={data.interviewerFeedbackStatus || ''} onChange={(e) => onChange('interviewerFeedbackStatus', e.target.value)} disabled={readOnly} className={formControlClass}>
                     <option value="">— Select —</option>
                     {recommendationOptionsFor(roundType).map((o) => <option key={o} value={o}>{o}</option>)}
                   </select>
@@ -334,13 +349,13 @@ const RoundForm = ({
             ) : (
               <>
                 <FormField label="Overall Rating">
-                  <select value={data.rating || ''} onChange={(e) => onChange('rating', e.target.value)} className={formControlClass}>
+                  <select value={data.rating || ''} onChange={(e) => onChange('rating', e.target.value)} disabled={readOnly} className={formControlClass}>
                     <option value="">— Select —</option>
                     {RATING_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
                   </select>
                 </FormField>
                 <FormField label={roundType === 'mgmt' ? 'Final Hiring Recommendation' : 'Technical Recommendation'}>
-                  <select value={data.interviewerFeedbackStatus || ''} onChange={(e) => onChange('interviewerFeedbackStatus', e.target.value)} className={formControlClass}>
+                  <select value={data.interviewerFeedbackStatus || ''} onChange={(e) => onChange('interviewerFeedbackStatus', e.target.value)} disabled={readOnly} className={formControlClass}>
                     <option value="">— Select —</option>
                     {recommendationOptionsFor(roundType).map((o) => <option key={o} value={o}>{o}</option>)}
                   </select>
@@ -352,7 +367,7 @@ const RoundForm = ({
         </div>
 
         <FormField label={`${roundType === 'hr' ? 'HR' : roundType === 'mgmt' ? 'Manager' : 'Technical'} Remarks`}>
-          {roundType !== 'hr' && (
+          {roundType !== 'hr' && !readOnly && (
             <div className="flex items-start justify-end gap-2 mb-1.5">
               <button
                 type="button"
@@ -368,6 +383,7 @@ const RoundForm = ({
             onChange={(e) => onChange('feedback', e.target.value)}
             rows={4}
             placeholder="Enter interview remarks…"
+            disabled={readOnly}
             className={formTextareaClass}
           />
           {roundType !== 'hr' && (
@@ -392,13 +408,14 @@ const RoundForm = ({
               onChange={(e) => onChange('cancellationReason', e.target.value)}
               rows={2}
               placeholder="Why was this round cancelled?"
+              disabled={readOnly}
               className={formTextareaClass}
             />
           </FormField>
         )}
       </div>
 
-      {existingRound && existingRound.schedulingStatus !== 'Cancelled' && existingRound.schedulingStatus !== 'Done' && (
+      {!readOnly && existingRound && existingRound.schedulingStatus !== 'Cancelled' && existingRound.schedulingStatus !== 'Done' && (
         <div className="flex items-center gap-2 flex-wrap px-4 py-3 bg-gray-50 border-t border-gray-100">
           <button onClick={onMarkDone} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-green-600 hover:bg-green-700 rounded-lg transition">
             <CheckCircle2 size={13} /> Mark Done
@@ -409,6 +426,7 @@ const RoundForm = ({
         </div>
       )}
 
+      {!readOnly && (
       <div className="flex gap-2 justify-start flex-wrap px-4 py-3 bg-gray-50 border-t border-gray-100 rounded-b-xl">
         <button
           onClick={onSave}
@@ -446,6 +464,7 @@ const RoundForm = ({
         )}
         <button onClick={onCancel} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 transition ml-1">Discard changes</button>
       </div>
+      )}
     </div>
   );
 };
@@ -470,7 +489,6 @@ const RoundPipelineTab = ({
   const [newRound,  setNewRound]  = useState<Partial<InterviewRound>>({});
   const [saving,    setSaving]    = useState(false);
   const [activeRoundId, setActiveRoundId] = useState<string | null>(null);
-  const [jdLink,    setJdLink]    = useState<string | null>(null);
   const [interviewers,        setInterviewers]        = useState<EmployeeOption[]>([]);
   const [loadingInterviewers, setLoadingInterviewers]  = useState(true);
   type MailContent = {
@@ -658,13 +676,6 @@ const RoundPipelineTab = ({
   };
 
   useEffect(() => {
-    fetch(`${API_BASE}/applicant-records/${record._id}/jd-link`)
-      .then((r) => r.json())
-      .then((json) => setJdLink(json.success ? json.data.jdLink : null))
-      .catch(() => setJdLink(null));
-  }, [record._id]);
-
-  useEffect(() => {
     setLoadingInterviewers(true);
     fetch(`${API_BASE}/onboarding/employee-master`)
       .then((r) => r.json())
@@ -746,7 +757,29 @@ const RoundPipelineTab = ({
   // Save-then-progress — used by the combined "Move/Select/Reject & Email"
   // buttons so HR's latest feedback edits aren't lost when they act on them
   // in the same click, rather than requiring a separate explicit Save first.
-  const saveAndMoveNext = async (id: string) => { if (await saveRound(id, { silent: true })) moveToNextRound(); };
+  //
+  // Moving to the next round also marks THIS round Done (same evaluation
+  // fields required, same lock as the explicit "Mark Done" button) — this
+  // round can't still be "in progress" once the candidate has moved past
+  // it, and locking it is what stops "Move to Next Round" from reappearing
+  // and being clickable again on a later visit to this tab.
+  const saveAndMoveNext = async (id: string) => {
+    const round = rounds.find((r) => r._id === id);
+    if (!round) return;
+    const data = drafts[id] || round;
+    const missing = missingBeforeDone(data);
+    if (missing.length) {
+      toast.error(`Please fill in before moving to the next round: ${missing.join(', ')}`);
+      return;
+    }
+    try {
+      await patchRound(id, { ...data, schedulingStatus: 'Done' });
+    } catch {
+      toast.error('Failed to save round');
+      return;
+    }
+    moveToNextRound();
+  };
   const saveAndSelect   = async (id: string) => { if (await saveRound(id, { silent: true })) openSelectionModal(); };
   const saveAndReject   = async (id: string) => { if (await saveRound(id, { silent: true })) openRejectionModal(); };
 
@@ -891,18 +924,26 @@ const RoundPipelineTab = ({
     }
   };
 
-  // Marking a round Done locks it forever (the backend refuses further
-  // PATCHes once it's Done), so this both saves whatever's currently in the
-  // draft AND requires the key evaluation fields to be filled in first —
-  // otherwise a round can get locked with blank interviewer/recommendation/
-  // remarks and no way back short of the reopen escape hatch below.
-  const markRoundDone = async (round: InterviewRound) => {
-    const data = drafts[round._id] || round;
+  // Missing-field check shared by "Mark Done" and "Move to Next Round" —
+  // both end with the round locked as Done, so both need the same
+  // evaluation fields filled in first (otherwise a round can get locked
+  // with blank interviewer/recommendation/remarks and no way back short of
+  // the reopen escape hatch below).
+  const missingBeforeDone = (data: Partial<InterviewRound>): string[] => {
     const missing: string[] = [];
     if (!data.interviewer) missing.push('Interviewer');
     if (!data.scheduledDate) missing.push('Interview Date');
     if (!data.interviewerFeedbackStatus) missing.push('Recommendation');
     if (!data.feedback) missing.push('Remarks');
+    return missing;
+  };
+
+  // Marking a round Done locks it forever (the backend refuses further
+  // PATCHes once it's Done) — this saves whatever's currently in the draft
+  // and sets it Done in the same call.
+  const markRoundDone = async (round: InterviewRound) => {
+    const data = drafts[round._id] || round;
+    const missing = missingBeforeDone(data);
     if (missing.length) {
       toast.error(`Please fill in before marking done: ${missing.join(', ')}`);
       return;
@@ -933,10 +974,12 @@ const RoundPipelineTab = ({
 
   const resumeUrl = resolveResumeUrl(record.resume);
 
-  // Excel Test status — shown on the Technical round's read-only Candidate
-  // Summary, since a tech interviewer benefits from seeing it before/during
-  // the interview, same placement as the mockup.
+  // Excel Test / DISC assessment status — shown on every round's read-only
+  // Candidate Summary once a test has been sent, so HR/Technical/Management
+  // interviewers all see the same score as soon as it's graded, instead of
+  // only whichever round happened to show it first.
   const excelTest = (record as any).excelTest;
+  const discAssessment = (record as any).discAssessment;
 
   if (!canEdit && rounds.length === 0) {
     return (
@@ -961,29 +1004,6 @@ const RoundPipelineTab = ({
 
         return (
           <div className="flex flex-wrap items-center gap-2 pb-1">
-            {rounds.map((r) => {
-              const isActive = !adding && activeRoundId === r._id;
-              return (
-                <button
-                  key={r._id}
-                  onClick={() => { setAdding(false); setActiveRoundId(r._id); }}
-                  className={`flex items-center gap-1.5 flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full border transition ${
-                    isActive
-                      ? 'bg-indigo-600 border-indigo-600 text-white'
-                      : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-400 hover:text-indigo-700'
-                  }`}
-                >
-                  {r.stage || roundLabel(roundType, r.roundNumber)}
-                  <span className={`w-1.5 h-1.5 rounded-full ${
-                    r.schedulingStatus === 'Done' ? 'bg-green-400'
-                      : r.schedulingStatus === 'Cancelled' ? 'bg-red-400'
-                      : r.schedulingStatus === 'Scheduled' ? 'bg-blue-400'
-                      : isActive ? 'bg-white/70' : 'bg-gray-300'
-                  }`} />
-                </button>
-              );
-            })}
-
             {canEdit && !gateMessage && (
               canAddAnotherInstance ? (
                 <button
@@ -1011,7 +1031,14 @@ const RoundPipelineTab = ({
 
       {!adding && !gateMessage && (() => {
         const r = rounds.find((x) => x._id === activeRoundId) || null;
-        const isScheduled = !!(r && r.scheduledDate && r.scheduledTime);
+        // Whether an actual Schedule/Reschedule mail has been sent — NOT
+        // just whether scheduledDate/scheduledTime happen to be filled in.
+        // Those two fields are also directly editable in the form above and
+        // can get saved via the plain "Save Feedback" button with no mail
+        // ever going out, which used to make this wrongly show "Reschedule"
+        // (and the "Scheduled:" banner below) even though nothing had
+        // actually been scheduled yet.
+        const isScheduled = r?.schedulingStatus === 'Scheduled' || r?.schedulingStatus === 'Rescheduled';
         const ivLabel = roundType === 'hr' ? 'HR Interview' : roundType === 'tech' ? 'Technical Interview' : 'Management Interview';
         const canShortlist = roundType === 'hr' && canEdit && !record.shortlistedAt;
 
@@ -1020,8 +1047,18 @@ const RoundPipelineTab = ({
             {canEdit && (
               <div className="flex items-center gap-2 flex-wrap">
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (!r) { setNewRound(roundType === 'hr' ? { hrBackground: prefillHrBackground(record) } : {}); setAdding(true); return; }
+                    // The mail preview is built server-side from the saved
+                    // round, not from whatever's currently typed into the
+                    // form — so any unsaved Date/Time/Mode/Meeting Link
+                    // edits must be saved first, or the mail would show
+                    // "To be confirmed"/"To be decided" even though the
+                    // form on screen has real values in it.
+                    if (drafts[r._id]) {
+                      const saved = await saveRound(r._id, { silent: true });
+                      if (!saved) return;
+                    }
                     openMailModal(isScheduled ? 'reschedule' : 'schedule', r);
                   }}
                   disabled={!r && rounds.length > 0}
@@ -1061,7 +1098,16 @@ const RoundPipelineTab = ({
                   <span className="text-gray-500">Interview not scheduled yet.</span>
                 )}
                 {isScheduled && canEdit && r.schedulingStatus !== 'Done' && r.schedulingStatus !== 'Cancelled' && (
-                  <button onClick={() => openMailModal('reschedule', r)} className="text-xs font-semibold text-amber-700 border border-amber-200 bg-white hover:bg-amber-50 px-2.5 py-1 rounded-lg transition">
+                  <button
+                    onClick={async () => {
+                      if (drafts[r._id]) {
+                        const saved = await saveRound(r._id, { silent: true });
+                        if (!saved) return;
+                      }
+                      openMailModal('reschedule', r);
+                    }}
+                    className="text-xs font-semibold text-amber-700 border border-amber-200 bg-white hover:bg-amber-50 px-2.5 py-1 rounded-lg transition"
+                  >
                     Reschedule
                   </button>
                 )}
@@ -1106,114 +1152,44 @@ const RoundPipelineTab = ({
         );
       })()}
 
-      {!adding && !gateMessage && rounds.length > 0 && (roundType === 'tech' || roundType === 'mgmt') && (
-        <div className="p-3 rounded-xl border border-gray-100 bg-gray-50">
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Candidate Summary <span className="font-normal normal-case">(read-only)</span></p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-            <div><span className="text-gray-400">Education:</span> <span className="font-semibold text-gray-700">{record.highest_qualification || '—'}</span></div>
-            <div><span className="text-gray-400">Experience:</span> <span className="font-semibold text-gray-700">{record.total_experience ? `${record.total_experience} yrs` : '—'}</span></div>
-            <div><span className="text-gray-400">Resume:</span> {resumeUrl ? <a href={resumeUrl} target="_blank" rel="noreferrer" className="text-blue-600 underline">View</a> : <span className="text-gray-700">—</span>}</div>
-            {roundType === 'tech' && (
-              <div className="flex items-center gap-1">
-                <FileText size={12} className="text-gray-400" />
-                <span className="text-gray-400">Excel Test:</span>
-                <span className="font-semibold text-gray-700">
-                  {excelTest?.status === 'Graded' ? `${excelTest.score}%` : excelTest?.status || 'Not sent'}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {!adding && rounds.filter((r) => r._id === activeRoundId).map((r) => {
         const isFormMode = canEdit;
         const isLatest    = r._id === rounds[rounds.length - 1]._id;
 
         return (
           <div key={r._id}>
-            {!isFormMode && (
-              <div className="border border-gray-200 rounded-xl overflow-hidden">
-                <DetailRow label="Scheduling Status">
-                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${SCHEDULING_STATUS_COLORS[r.schedulingStatus] || 'bg-gray-100 text-gray-600'}`}>
-                    {r.schedulingStatus || 'Not Scheduled'}
-                  </span>
-                </DetailRow>
-                {r.schedulingStatus === 'Cancelled' && (
-                  <DetailRow label="Cancellation Reason">
-                    {r.cancellationReason || <span className="text-gray-400 italic">—</span>}
-                  </DetailRow>
-                )}
-                <DetailRow label="Interviewer Name">{r.interviewer || '—'}</DetailRow>
-                <DetailRow label="Date & Time">{formatDateTime12h(r.scheduledDate, r.scheduledTime)}</DetailRow>
-                <DetailRow label="Mode">{r.mode || '—'}</DetailRow>
-                <DetailRow label="Meeting Link / Location">
-                  {r.meetingLink
-                    ? (/^https?:\/\//i.test(r.meetingLink)
-                      ? <a href={r.meetingLink} target="_blank" rel="noreferrer" className="text-blue-600 underline inline-flex items-center gap-1">Open Link <ExternalLink size={12} /></a>
-                      : r.meetingLink)
-                    : <span className="text-gray-400 italic">—</span>}
-                </DetailRow>
-                <DetailRow label="JD Link">
-                  {jdLink
-                    ? <a href={jdLink} target="_blank" rel="noreferrer" className="text-blue-600 underline inline-flex items-center gap-1">Open JD <ExternalLink size={12} /></a>
-                    : <span className="text-gray-400 italic">Not available</span>}
-                </DetailRow>
-                <DetailRow label="Resume">
-                  {resumeUrl
-                    ? <a href={resumeUrl} target="_blank" rel="noreferrer" className="text-blue-600 underline inline-flex items-center gap-1">Open CV <ExternalLink size={12} /></a>
-                    : <span className="text-gray-400 italic">Not available</span>}
-                </DetailRow>
-                <DetailRow label="Candidate Confirmation">
-                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${CANDIDATE_CONFIRMATION_COLORS[r.candidateConfirmation] || 'bg-gray-100 text-gray-600'}`}>
-                    {r.candidateConfirmation || 'Pending'}
-                  </span>
-                </DetailRow>
-                <DetailRow label="Recommendation">
-                  {r.interviewerFeedbackStatus
-                    ? <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${INTERVIEWER_FEEDBACK_STATUS_COLORS[r.interviewerFeedbackStatus] || 'bg-gray-100 text-gray-600'}`}>
-                        {r.interviewerFeedbackStatus}
-                      </span>
-                    : <span className="text-gray-400 italic">—</span>}
-                </DetailRow>
-                <DetailRow label="Remarks">
-                  <p className="whitespace-pre-wrap font-bold text-black">{r.feedback || <span className="font-normal text-gray-400 italic">No remarks recorded</span>}</p>
-                </DetailRow>
-              </div>
-            )}
-
-            {isFormMode && (
-              <RoundForm
-                data={drafts[r._id] || r}
-                roundType={roundType}
-                roundLabelText={r.stage || roundLabel(roundType, r.roundNumber)}
-                onChange={(f, v) => handleDraftChange(r._id, f, v)}
-                onHrBackgroundChange={(k, v) => handleHrBackgroundChange(r._id, k, v)}
-                onSave={() => saveRound(r._id)}
-                onCancel={() => setDrafts((p) => ({ ...p, [r._id]: r }))}
-                saving={saving}
-                interviewers={interviewers}
-                loadingInterviewers={loadingInterviewers}
-                existingRound={r}
-                onSchedule={() => openMailModal('schedule', r)}
-                onReschedule={() => openMailModal('reschedule', r)}
-                onCancelRound={() => openMailModal('cancel', r)}
-                onMarkDone={() => markRoundDone(r)}
-                jdLink={jdLink}
-                resumeUrl={resumeUrl}
-                linkedin={record.linkedin}
-                onMoveNext={isLatest && roundType !== 'mgmt' && !nextRoundExists ? () => saveAndMoveNext(r._id) : undefined}
-                moveNextLabel={nextRoundType ? `Move to ${ROUND_TYPE_LABELS[nextRoundType]} & Email` : undefined}
-                movingNext={movingNext}
-                onSelect={
-                  isLatest && roundType === 'tech' && hasAnyRole(['Admin', 'HR']) ? () => saveAndSelect(r._id)
-                    : isLatest && roundType === 'mgmt' ? () => saveAndSelect(r._id)
-                    : undefined
-                }
-                selectLabel={roundType === 'tech' ? 'Select Without Management Round' : 'Select Candidate & Email'}
-                onReject={isLatest ? () => saveAndReject(r._id) : undefined}
-              />
-            )}
+            <RoundForm
+              data={drafts[r._id] || r}
+              roundType={roundType}
+              roundLabelText={r.stage || roundLabel(roundType, r.roundNumber)}
+              onChange={(f, v) => handleDraftChange(r._id, f, v)}
+              onHrBackgroundChange={(k, v) => handleHrBackgroundChange(r._id, k, v)}
+              onSave={() => saveRound(r._id)}
+              onCancel={() => setDrafts((p) => ({ ...p, [r._id]: r }))}
+              saving={saving}
+              interviewers={interviewers}
+              loadingInterviewers={loadingInterviewers}
+              existingRound={r}
+              onSchedule={() => openMailModal('schedule', r)}
+              onReschedule={() => openMailModal('reschedule', r)}
+              onCancelRound={() => openMailModal('cancel', r)}
+              onMarkDone={() => markRoundDone(r)}
+              resumeUrl={resumeUrl}
+              linkedin={record.linkedin}
+              discAssessment={discAssessment}
+              excelTest={excelTest}
+              readOnly={!isFormMode}
+              onMoveNext={isFormMode && isLatest && roundType !== 'mgmt' && !nextRoundExists ? () => saveAndMoveNext(r._id) : undefined}
+              moveNextLabel={nextRoundType ? `Move to ${ROUND_TYPE_LABELS[nextRoundType]} & Email` : undefined}
+              movingNext={movingNext}
+              onSelect={
+                isFormMode && isLatest && roundType === 'tech' && hasAnyRole(['Admin', 'HR']) ? () => saveAndSelect(r._id)
+                  : isFormMode && isLatest && roundType === 'mgmt' ? () => saveAndSelect(r._id)
+                  : undefined
+              }
+              selectLabel={roundType === 'tech' ? 'Select Without Management Round' : 'Select Candidate & Email'}
+              onReject={isFormMode && isLatest ? () => saveAndReject(r._id) : undefined}
+            />
           </div>
         );
       })}
@@ -1232,9 +1208,10 @@ const RoundPipelineTab = ({
             saving={saving}
             interviewers={interviewers}
             loadingInterviewers={loadingInterviewers}
-            jdLink={jdLink}
             resumeUrl={resumeUrl}
             linkedin={record.linkedin}
+            discAssessment={discAssessment}
+            excelTest={excelTest}
           />
         </div>
       )}
