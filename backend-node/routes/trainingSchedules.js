@@ -4,6 +4,7 @@ const TrainingSchedule = require('../models/TrainingSchedule');
 const { sendMail } = require('../emails/mailer');
 const buildTrainingScheduleNotification = require('../emails/templates/trainingScheduleNotification');
 const trainingReminderMails = require('../emails/templates/trainingReminderMails');
+const { feedbackClosesAt } = require('../utils/trainingFeedbackWindow');
 
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
@@ -11,16 +12,26 @@ const DEFAULT_ALL_EMPLOYEES_EMAIL = process.env.ALL_EMPLOYEES_EMAIL || 'all@bris
 
 // Training is open to every logged-in role — no requireRole gate here.
 // GET all training schedules
+// Adds the computed feedback window end so the UI doesn't have to re-derive it.
+const withFeedbackWindow = doc => {
+  const obj = doc.toObject ? doc.toObject() : doc;
+  const closes = feedbackClosesAt(obj);
+  return { ...obj, feedbackClosesAt: closes ? closes.toISOString() : null };
+};
+
+// Optional ?status=Completed (etc.) filter.
 router.get('/', asyncHandler(async (req, res) => {
-  const schedules = await TrainingSchedule.find().sort({ createdAt: -1 });
-  res.json({ success: true, data: schedules });
+  const filter = {};
+  if (req.query.status) filter.status = String(req.query.status);
+  const schedules = await TrainingSchedule.find(filter).sort({ createdAt: -1 });
+  res.json({ success: true, data: schedules.map(withFeedbackWindow) });
 }));
 
 // GET single training schedule
 router.get('/:id', asyncHandler(async (req, res) => {
   const schedule = await TrainingSchedule.findById(req.params.id);
   if (!schedule) return res.status(404).json({ success: false, error: 'Training schedule not found' });
-  res.json({ success: true, data: schedule });
+  res.json({ success: true, data: withFeedbackWindow(schedule) });
 }));
 
 // POST create training schedule

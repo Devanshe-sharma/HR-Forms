@@ -12,6 +12,9 @@
 // Scheduling tab — never automatically.
 // ─────────────────────────────────────────────────────────────────────────────
 
+const { feedbackClosesAt, fmtIst } = require('../../utils/trainingFeedbackWindow');
+const { signTrainingFeedback } = require('../../utils/trainingFeedbackSigning');
+
 function formatDateWithWeekday(dateInput) {
   if (!dateInput) return null;
   const d = new Date(dateInput);
@@ -27,7 +30,7 @@ function venueOrLink(training) {
   return training.onlineLink || training.venue || 'To be confirmed';
 }
 
-function wrap(title, body) {
+function wrap(title, body, training) {
   return `
     <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; color: #333; line-height: 1.6;">
       <h2 style="color: #7a8b2e;">${title}</h2>
@@ -53,7 +56,7 @@ function reminder2Weeks(training) {
     </ul>
     <p>This is a two-week prior intimation. Further reminders will follow closer to the date.</p>
   `;
-  return { subject: title, html: wrap(title, body) };
+  return { subject: title, html: wrap(title, body, training) };
 }
 
 // ── 1-week invitation ────────────────────────────────────────────────────────
@@ -72,7 +75,7 @@ function invitation1Week(training) {
     </ul>
     <p>Kindly ensure your availability and active participation. Your attendance is essential for successful completion of the training.</p>
   `;
-  return { subject: title, html: wrap(title, body) };
+  return { subject: title, html: wrap(title, body, training) };
 }
 
 // ── 1-week material-upload reminder (to the trainer) ────────────────────────
@@ -89,20 +92,32 @@ function materialUploadReminder(training) {
     </ul>
     <p>This helps us maintain proper records and ensure compliance with internal audit requirements.</p>
   `;
-  return { subject: title, html: wrap(title, body) };
+  return { subject: title, html: wrap(title, body, training) };
 }
 
-// ── On-day mandatory feedback reminder ──────────────────────────────────────
+// ── Post-training feedback mail ─────────────────────────────────────────────
+// Sent manually once the training is done. Links to the standalone feedback
+// page and states when the feedback window closes (feedbackWindow hours after
+// the training ends) — HR can edit all of this in the popup before sending.
 function feedbackReminder(training) {
   const title = `Mandatory Training Feedback – ${training.trainingName || 'Training Session'}`;
+  // Standalone, login-free page (no dashboard) — the signed link is what lets
+  // an employee open this training's form.
+  const link = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/training-feedback/${training._id}?sig=${signTrainingFeedback(training._id)}`;
+  const closes = feedbackClosesAt(training);
+  const windowLine = closes
+    ? `<p><strong>Please submit your feedback by ${fmtIst(closes)} (IST)</strong> — the feedback window is open for ${training.feedbackWindow} hours after the session and closes after that.</p>`
+    : '';
   const body = `
     <p>Dear Participant,</p>
     <p>Thank you for attending the training session on <strong>${training.trainingName || 'the scheduled topic'}</strong>.</p>
-    <p>As part of our learning evaluation process, we request you to submit your feedback at the earliest.</p>
-    <p><strong>Important:</strong> Feedback submission is considered as attendance confirmation.</p>
+    <p>As part of our learning evaluation process, we request you to submit your feedback.</p>
+    ${windowLine}
+    <p><a href="${link}" style="display:inline-block; padding:10px 18px; background:#7a8b2e; color:#fff; text-decoration:none; border-radius:6px;">Give Feedback</a></p>
+        <p><strong>Important:</strong> Feedback submission is considered as attendance confirmation.</p>
     <p>Your honest feedback helps us improve training quality and effectiveness.</p>
   `;
-  return { subject: title, html: wrap(title, body) };
+  return { subject: title, html: wrap(title, body, training) };
 }
 
 module.exports = { reminder2Weeks, invitation1Week, materialUploadReminder, feedbackReminder };

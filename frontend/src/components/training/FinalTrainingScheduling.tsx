@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import axios from 'axios';
 import {
   Plus, X, Edit, Save, Eye,
-  CheckCircle, Mail, Send, Loader2,
+  CheckCircle, Mail, Send, Loader2, MessageSquare,
 } from 'lucide-react';
 import { getRole, can } from '../../config/rbac';
 import EmailRecipientField from './EmailRecipientField';
@@ -69,7 +69,7 @@ const MAIL_KIND_LABELS: Record<MailKind, string> = {
   reminder2w:       'Send 2-Week Reminder',
   invitation1w:     'Send 1-Week Invitation',
   materialUpload1w: 'Send Material Upload Reminder (Trainer)',
-  feedbackReminder: 'Send Feedback Reminder',
+  feedbackReminder: 'Send Feedback Mail',
 };
 
 const MAIL_KIND_SENT_FIELD: Record<MailKind, keyof TrainingSchedule> = {
@@ -414,6 +414,15 @@ export default function FinalTrainingScheduling() {
                     >
                       <Mail className="w-4 h-4" />
                     </button>
+                    {s.status === 'Completed' && (
+                      <button
+                        onClick={() => openMailModal(s, 'feedbackReminder')}
+                        className={s.feedbackReminderSentAt ? 'text-green-600 hover:text-green-800' : 'text-orange-500 hover:text-orange-700'}
+                        title={s.feedbackReminderSentAt ? 'Feedback mail sent — click to send again' : 'Send Feedback Mail'}
+                      >
+                        <MessageSquare className="w-4 h-4" />
+                      </button>
+                    )}
                     {canEdit && (
                       <button onClick={() => openModal(s)} className="text-green-600 hover:text-green-800" title="Edit">
                         <Edit className="w-4 h-4" />

@@ -8,6 +8,8 @@ const api = axios.create({ baseURL: API_BASE });
 api.interceptors.request.use((config) => {
   const role = getRole();
   if (role) config.headers['x-user-role'] = role;
+  const auth = axios.defaults.headers.common['Authorization'];
+  if (auth) config.headers['Authorization'] = String(auth);
   return config;
 });
 
@@ -20,7 +22,8 @@ interface CompletedTraining {
   capabilitySkill: string;
   trainerName: string;
   trainingDate: string;
-  feedbackWindow: number; // hours after which feedback closes
+  feedbackWindow: number; // hours after the training ends during which feedback can be given
+  feedbackClosesAt?: string | null; // computed server-side (training end + feedbackWindow)
 }
 
 interface FeedbackRecord {
@@ -107,6 +110,7 @@ function StarDisplay({ value }: { value: number }) {
 export default function EmployeeFeedback() {
   const [trainings, setTrainings]   = useState<CompletedTraining[]>([]);
   const [feedbacks, setFeedbacks]   = useState<FeedbackRecord[]>([]);
+  const [mine, setMine]             = useState<{ trainingId: string; rating: number }[]>([]);
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState('');
 
@@ -136,10 +140,25 @@ export default function EmployeeFeedback() {
     }
   };
 
-  useEffect(() => { loadTrainings(); loadFeedbacks(); }, []);
+  const loadMine = async () => {
+    try {
+      const res = await api.get('/training-feedback/mine');
+      setMine(res.data?.data || []);
+    } catch (err: any) {
+      console.error('Failed to load my feedback:', err);
+    }
+  };
 
+  useEffect(() => { loadTrainings(); loadFeedbacks(); loadMine(); }, []);
+
+  // Only the logged-in person's own submission counts as "done" for them.
   const myFeedback = (trainingId: string) =>
-    feedbacks.find(f => f.trainingId === trainingId);
+    mine.find(f => f.trainingId === trainingId);
+
+  const closesAtOf = (t: CompletedTraining) => (t.feedbackClosesAt ? new Date(t.feedbackClosesAt) : null);
+  const isOpen = (t: CompletedTraining) => { const c = closesAtOf(t); return !c || new Date() <= c; };
+  const fmtClose = (d: Date) =>
+    d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
 
   const trainingFeedbacks = (trainingId: string) =>
     feedbacks.filter(f => f.trainingId === trainingId);
@@ -174,9 +193,10 @@ export default function EmployeeFeedback() {
         improvements:  form.improvements.trim(),
       });
       await loadFeedbacks();
+      await loadMine();
       setView('submitted');
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to submit feedback');
+      setError(err.response?.data?.error || err.response?.data?.message || 'Failed to submit feedback');
     } finally {
       setSaving(false);
     }
@@ -421,6 +441,13 @@ export default function EmployeeFeedback() {
                   </span>
                 </div>
 
+                {/* Feedback window */}
+                {closesAtOf(t) && (
+                  <p className={`text-xs ${isOpen(t) ? 'text-gray-500' : 'text-red-500'}`}>
+                    {isOpen(t) ? `Feedback open until ${fmtClose(closesAtOf(t)!)} IST` : `Feedback closed on ${fmtClose(closesAtOf(t)!)} IST`}
+                  </p>
+                )}
+
                 {/* Already submitted badge */}
                 {done && (
                   <div className="flex items-center gap-1 text-xs text-green-700 bg-green-50 px-1.5 py-0.5 rounded-full w-fit">
@@ -430,8 +457,8 @@ export default function EmployeeFeedback() {
                 )}
 
                 <div className="flex gap-1 mt-auto pt-1 flex-wrap">
-                  {/* Employee: give feedback (only once) */}
-                  {!done && (
+                  {/* Employee: give feedback (only once, only while the window is open) */}
+                  {!done && isOpen(t) && (
                     <button onClick={() => openForm(t)}
                       className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
                       <ChevronRight className="w-3 h-3" /> Give Feedback

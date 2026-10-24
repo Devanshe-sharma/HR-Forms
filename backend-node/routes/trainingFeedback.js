@@ -2,7 +2,105 @@ const express = require('express');
 const router = express.Router();
 const EmployeeFeedback = require('../models/EmployeeFeedback');
 const TrainingSchedule = require('../models/TrainingSchedule');
+const mongoose = require('mongoose');
+const Onboarding = require('../models/onboardingModel');
+const { verifyTrainingFeedback } = require('../utils/trainingFeedbackSigning');
+const { authenticate } = require('../middleware/authenticate');
+const { feedbackClosesAt } = require('../utils/trainingFeedbackWindow');
 const asyncHandler = require('express-async-handler');
+
+const escapeRegex = str => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Who is logged in, as an employee: name + empId from their Onboarding record
+// (matched on official email), falling back to the login's own name/email.
+// Identity always comes from the JWT — never from the request body.
+async function currentEmployee(user) {
+  const email = String(user?.email || '').trim().toLowerCase();
+  const own = email
+    ? await Onboarding.findOne({ officialEmail: new RegExp(`^${escapeRegex(email)}$`, 'i') })
+        .select('name empId').lean()
+    : null;
+  return {
+    email,
+    employeeName: own?.name || user?.name || email,
+    employeeId: own?.empId || email,
+  };
+}
+
+// ─── Public, login-free feedback (the standalone page employees open from the
+// mail). The signed link proves the person was sent this training's form;
+// the official email they type picks who they are (matched against the
+// Onboarding records), so no dashboard login or access is involved. ─────────
+
+const publicTraining = async (id, sig) => {
+  if (!mongoose.isValidObjectId(id) || !verifyTrainingFeedback(id, sig)) return null;
+  return TrainingSchedule.findById(id);
+};
+
+// GET /api/training-feedback/public/:id?sig=…  — what the page shows
+router.get('/public/:id', asyncHandler(async (req, res) => {
+  const training = await publicTraining(req.params.id, req.query.sig);
+  if (!training) return res.status(403).json({ success: false, message: 'This link is invalid.' });
+  const closesAt = feedbackClosesAt(training);
+  res.json({
+    success: true,
+    data: {
+      trainingName: training.trainingName,
+      trainerName: training.trainerName,
+      trainingDate: training.trainingDate,
+      startTime: training.startTime,
+      endTime: training.endTime,
+      completed: training.status === 'Completed',
+      feedbackClosesAt: closesAt ? closesAt.toISOString() : null,
+      open: training.status === 'Completed' && (!closesAt || new Date() <= closesAt),
+    },
+  });
+}));
+
+// POST /api/training-feedback/public/:id  — { sig, email, ratings… }
+router.post('/public/:id', asyncHandler(async (req, res) => {
+  const fail = (status, msg) => res.status(status).json({ success: false, message: msg });
+  const { sig, email, rating, trainerRating, contentRating, wouldRecommend, comments, improvements } = req.body || {};
+
+  const training = await publicTraining(req.params.id, sig);
+  if (!training) return fail(403, 'This link is invalid.');
+  if (training.status !== 'Completed') return fail(400, 'Feedback is not open for this training yet.');
+  const closesAt = feedbackClosesAt(training);
+  if (closesAt && new Date() > closesAt) return fail(400, 'The feedback window for this training has closed.');
+
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  if (!cleanEmail) return fail(400, 'Please enter your official email.');
+  const own = await Onboarding.findOne({ officialEmail: new RegExp(`^${escapeRegex(cleanEmail)}$`, 'i') }).select('name empId').lean();
+  if (!own) return fail(404, "We couldn't find that email. Please use your official Brisk Olive email.");
+
+  const inRange = n => Number.isInteger(n) && n >= 1 && n <= 5;
+  if (![rating, trainerRating, contentRating].every(inRange)) return fail(400, 'Please give all three star ratings (1–5).');
+  if (typeof wouldRecommend !== 'boolean') return fail(400, 'Please answer whether you would recommend this training.');
+
+  const already = await EmployeeFeedback.findOne({ trainingId: training.trainingId, submittedByEmail: cleanEmail });
+  if (already) return fail(400, 'You have already submitted feedback for this training.');
+
+  await EmployeeFeedback.create({
+    trainingId: training.trainingId,
+    trainingName: training.trainingName,
+    submittedByEmail: cleanEmail,
+    employeeName: own.name || cleanEmail,
+    employeeId: own.empId || cleanEmail,
+    rating, trainerRating, contentRating, wouldRecommend,
+    comments: String(comments || '').trim(),
+    improvements: String(improvements || '').trim(),
+  });
+  res.status(201).json({ success: true, message: 'Thank you — your feedback has been recorded.' });
+}));
+
+// GET /api/training-feedback/mine - trainingIds the logged-in person has
+// already given feedback for (so the page can show "submitted" correctly
+// instead of treating anyone's feedback as theirs).
+router.get('/mine', authenticate, asyncHandler(async (req, res) => {
+  const me = await currentEmployee(req.user);
+  const mine = await EmployeeFeedback.find({ submittedByEmail: me.email }).select('trainingId rating').lean();
+  res.json({ success: true, data: mine });
+}));
 
 // GET /api/training-feedback - Get all feedback
 router.get('/', asyncHandler(async (req, res) => {
@@ -61,13 +159,10 @@ router.get('/:id', asyncHandler(async (req, res) => {
 }));
 
 // POST /api/training-feedback - Submit new feedback
-router.post('/', asyncHandler(async (req, res) => {
+router.post('/', authenticate, asyncHandler(async (req, res) => {
   try {
     const {
       trainingId,
-      trainingName,
-      employeeName,
-      employeeId,
       rating,
       trainerRating,
       contentRating,
@@ -79,68 +174,39 @@ router.post('/', asyncHandler(async (req, res) => {
       isAnonymous = false
     } = req.body;
 
-    // Validate required fields
-    if (!trainingId || !trainingName || !employeeName || !employeeId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Required fields: trainingId, trainingName, employeeName, employeeId'
-      });
-    }
+    // Every failure sends both `message` and `error` — the page reads `error`.
+    const fail = (status, msg) => res.status(status).json({ success: false, message: msg, error: msg });
+
+    if (!trainingId) return fail(400, 'trainingId is required');
 
     // Validate rating fields
     if (!rating || rating < 1 || rating > 5 ||
         !trainerRating || trainerRating < 1 || trainerRating > 5 ||
         !contentRating || contentRating < 1 || contentRating > 5) {
-      return res.status(400).json({
-        success: false,
-        message: 'All ratings must be between 1 and 5'
-      });
+      return fail(400, 'All ratings must be between 1 and 5');
     }
+    if (typeof wouldRecommend !== 'boolean') return fail(400, 'Please answer whether you would recommend this training');
 
     // Check if training exists and is completed
-    const training = await TrainingSchedule.findOne({ 
-      trainingId, 
-      status: 'Completed' 
-    });
-    
-    if (!training) {
-      return res.status(400).json({
-        success: false,
-        message: 'Training not found or not completed'
-      });
-    }
+    const training = await TrainingSchedule.findOne({ trainingId, status: 'Completed' });
+    if (!training) return fail(400, 'Training not found or not completed');
 
-    // Check if feedback window is still open (if feedbackWindow is set)
-    if (training.feedbackWindow) {
-      const trainingDate = new Date(training.trainingDate);
-      const feedbackDeadline = new Date(trainingDate.getTime() + training.feedbackWindow * 60 * 60 * 1000);
-      
-      if (new Date() > feedbackDeadline) {
-        return res.status(400).json({
-          success: false,
-          message: 'Feedback window has closed'
-        });
-      }
-    }
+    // Feedback is open for `feedbackWindow` hours after the training ENDS.
+    const closesAt = feedbackClosesAt(training);
+    if (closesAt && new Date() > closesAt) return fail(400, 'Feedback window has closed');
 
-    // Check if employee has already submitted feedback
-    const existingFeedback = await EmployeeFeedback.findOne({
-      trainingId,
-      employeeId
-    });
+    const me = await currentEmployee(req.user);
 
-    if (existingFeedback) {
-      return res.status(400).json({
-        success: false,
-        message: 'Feedback already submitted for this training'
-      });
-    }
+    // One submission per person per training (works for anonymous ones too).
+    const existingFeedback = await EmployeeFeedback.findOne({ trainingId, submittedByEmail: me.email });
+    if (existingFeedback) return fail(400, 'Feedback already submitted for this training');
 
     const feedback = new EmployeeFeedback({
       trainingId,
-      trainingName,
-      employeeName: isAnonymous ? 'Anonymous' : employeeName,
-      employeeId: isAnonymous ? 'anonymous' : employeeId,
+      trainingName: training.trainingName,
+      submittedByEmail: me.email,
+      employeeName: isAnonymous ? 'Anonymous' : me.employeeName,
+      employeeId: isAnonymous ? 'anonymous' : me.employeeId,
       rating,
       trainerRating,
       contentRating,

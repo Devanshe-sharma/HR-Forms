@@ -77,6 +77,15 @@ const EmployeeFeedbackSchema = new mongoose.Schema({
   reviewedAt: {
     type: Date
   },
+  // Login email of whoever submitted it (taken from the JWT, never from the
+  // request body). Used to stop a second submission per person per training
+  // even when the feedback itself is stored as anonymous.
+  submittedByEmail: {
+    type: String,
+    trim: true,
+    lowercase: true,
+    default: ''
+  },
   // Anonymous feedback option
   isAnonymous: {
     type: Boolean,
@@ -90,6 +99,7 @@ const EmployeeFeedbackSchema = new mongoose.Schema({
 // Index for efficient queries
 EmployeeFeedbackSchema.index({ trainingId: 1, employeeId: 1 });
 EmployeeFeedbackSchema.index({ employeeId: 1 });
+EmployeeFeedbackSchema.index({ trainingId: 1, submittedByEmail: 1 });
 EmployeeFeedbackSchema.index({ trainingId: 1 });
 EmployeeFeedbackSchema.index({ submittedAt: -1 });
 
