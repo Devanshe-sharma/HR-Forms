@@ -903,7 +903,10 @@ export default function TrainingTopicManagement() {
                       suppressContentEditableWarning
                       className="w-full border border-gray-300 rounded-md px-3 py-3 text-sm h-56 overflow-y-auto bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                       dangerouslySetInnerHTML={{ __html: approvalMail.body }}
-                      onBlur={(e) => setApprovalMail((m) => ({ ...m, body: e.currentTarget.innerHTML }))}
+                      onBlur={(e) => {
+                        const html = e.currentTarget.innerHTML;
+                        setApprovalMail((m) => ({ ...m, body: html }));
+                      }}
                     />
                   </div>
                 </>

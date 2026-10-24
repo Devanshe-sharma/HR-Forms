@@ -754,7 +754,12 @@ export default function FinalTrainingScheduling() {
                       suppressContentEditableWarning
                       className="w-full border border-gray-300 rounded-md px-3 py-3 text-sm h-56 overflow-y-auto bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                       dangerouslySetInnerHTML={{ __html: mailModal.body }}
-                      onBlur={(e) => setMailModal((m) => ({ ...m, body: e.currentTarget.innerHTML }))}
+                      onBlur={(e) => {
+                        // Read the DOM now — inside the updater below, React has
+                        // already cleared e.currentTarget (null → crash on Send).
+                        const html = e.currentTarget.innerHTML;
+                        setMailModal((m) => ({ ...m, body: html }));
+                      }}
                     />
                   </div>
                 </>
