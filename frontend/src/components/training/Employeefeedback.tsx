@@ -111,6 +111,8 @@ export default function EmployeeFeedback() {
   const [trainings, setTrainings]   = useState<CompletedTraining[]>([]);
   const [feedbacks, setFeedbacks]   = useState<FeedbackRecord[]>([]);
   const [mine, setMine]             = useState<{ trainingId: string; rating: number }[]>([]);
+  // Responses are visible only to Admin / HR (all) or a training's own trainer.
+  const [access, setAccess]         = useState<{ all: boolean; trainingIds: string[] }>({ all: false, trainingIds: [] });
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState('');
 
@@ -149,7 +151,18 @@ export default function EmployeeFeedback() {
     }
   };
 
-  useEffect(() => { loadTrainings(); loadFeedbacks(); loadMine(); }, []);
+  const loadAccess = async () => {
+    try {
+      const res = await api.get('/training-feedback/access');
+      setAccess(res.data?.data || { all: false, trainingIds: [] });
+    } catch {
+      setAccess({ all: false, trainingIds: [] });
+    }
+  };
+
+  useEffect(() => { loadTrainings(); loadFeedbacks(); loadMine(); loadAccess(); }, []);
+
+  const canSeeResponses = (trainingId: string) => access.all || access.trainingIds.includes(trainingId);
 
   // Only the logged-in person's own submission counts as "done" for them.
   const myFeedback = (trainingId: string) =>
@@ -465,11 +478,13 @@ export default function EmployeeFeedback() {
                     </button>
                   )}
 
-                  {/* HR / manager: view all responses */}
-                  <button onClick={() => openAllResponses(t)}
-                    className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 text-gray-600 rounded-md hover:bg-gray-50 transition-colors">
-                    📊 {resCount} Response{resCount !== 1 ? 's' : ''}
-                  </button>
+                  {/* Admin / HR / this training's trainer only */}
+                  {canSeeResponses(t.trainingId) && (
+                    <button onClick={() => openAllResponses(t)}
+                      className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 text-gray-600 rounded-md hover:bg-gray-50 transition-colors">
+                      📊 {resCount} Response{resCount !== 1 ? 's' : ''}
+                    </button>
+                  )}
                 </div>
               </div>
             );

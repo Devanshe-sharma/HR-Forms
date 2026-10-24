@@ -6,6 +6,7 @@ const mongoose = require('mongoose');
 const Onboarding = require('../models/onboardingModel');
 const { verifyTrainingFeedback } = require('../utils/trainingFeedbackSigning');
 const { authenticate } = require('../middleware/authenticate');
+const { requireRole } = require('../config/roles');
 const { feedbackClosesAt } = require('../utils/trainingFeedbackWindow');
 const asyncHandler = require('express-async-handler');
 
@@ -26,6 +27,34 @@ async function currentEmployee(user) {
     employeeId: own?.empId || email,
   };
 }
+
+// ─── Who may READ responses: Admin and HR see everything; anyone else only
+// the responses for trainings where they are the trainer (TrainingSchedule's
+// trainerName is free text, so it is matched to the person's name the same
+// forgiving way leaves/OOO are matched elsewhere). Everyone else — i.e. all
+// other employees — sees nothing. ───────────────────────────────────────────
+const FULL_ACCESS_ROLES = ['Admin', 'HR'];
+const nameKey = str => String(str || '').toLowerCase().replace(/[^a-z]/g, '');
+
+async function feedbackAccess(user) {
+  if (FULL_ACCESS_ROLES.includes(user?.role)) return { all: true, trainingIds: [] };
+  const me = await currentEmployee(user);
+  const mine = nameKey(me.employeeName);
+  const trainings = mine ? await TrainingSchedule.find().select('trainingId trainerName').lean() : [];
+  return { all: false, trainingIds: trainings.filter(t => nameKey(t.trainerName) === mine).map(t => t.trainingId) };
+}
+const canView = (access, trainingId) => access.all || access.trainingIds.includes(trainingId);
+const denied = res => res.status(403).json({
+  success: false,
+  message: 'Feedback responses are visible only to the trainer, HR and Admin.',
+  error: 'Feedback responses are visible only to the trainer, HR and Admin.',
+});
+
+// GET /api/training-feedback/access — what the logged-in person may view
+router.get('/access', authenticate, asyncHandler(async (req, res) => {
+  const access = await feedbackAccess(req.user);
+  res.json({ success: true, data: access });
+}));
 
 // ─── Public, login-free feedback (the standalone page employees open from the
 // mail). The signed link proves the person was sent this training's form;
@@ -103,11 +132,18 @@ router.get('/mine', authenticate, asyncHandler(async (req, res) => {
 }));
 
 // GET /api/training-feedback - Get all feedback
-router.get('/', asyncHandler(async (req, res) => {
+router.get('/', authenticate, asyncHandler(async (req, res) => {
   try {
     const { trainingId, employeeId, status, isAnonymous } = req.query;
     let query = {};
-    
+
+    const access = await feedbackAccess(req.user);
+    if (!access.all) {
+      // A trainer only ever gets their own trainings' responses.
+      if (trainingId && !canView(access, String(trainingId))) return denied(res);
+      if (!trainingId) query.trainingId = { $in: access.trainingIds };
+    }
+
     if (trainingId) query.trainingId = trainingId;
     if (employeeId) query.employeeId = employeeId;
     if (status) query.status = status;
@@ -132,7 +168,7 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 // GET /api/training-feedback/:id - Get feedback by ID
-router.get('/:id', asyncHandler(async (req, res) => {
+router.get('/:id', authenticate, asyncHandler(async (req, res) => {
   try {
     const feedback = await EmployeeFeedback.findById(req.params.id);
     
@@ -142,6 +178,8 @@ router.get('/:id', asyncHandler(async (req, res) => {
         message: 'Feedback not found'
       });
     }
+
+    if (!canView(await feedbackAccess(req.user), feedback.trainingId)) return denied(res);
     
     res.status(200).json({
       success: true,
@@ -236,7 +274,7 @@ router.post('/', authenticate, asyncHandler(async (req, res) => {
 }));
 
 // PUT /api/training-feedback/:id - Update feedback (admin only)
-router.put('/:id', asyncHandler(async (req, res) => {
+router.put('/:id', authenticate, requireRole(FULL_ACCESS_ROLES), asyncHandler(async (req, res) => {
   try {
     const feedback = await EmployeeFeedback.findById(req.params.id);
     
@@ -280,7 +318,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
 }));
 
 // DELETE /api/training-feedback/:id - Delete feedback (admin only)
-router.delete('/:id', asyncHandler(async (req, res) => {
+router.delete('/:id', authenticate, requireRole(FULL_ACCESS_ROLES), asyncHandler(async (req, res) => {
   try {
     const feedback = await EmployeeFeedback.findById(req.params.id);
     
@@ -308,9 +346,10 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 }));
 
 // GET /api/training-feedback/stats/:trainingId - Get feedback statistics for a training
-router.get('/stats/:trainingId', asyncHandler(async (req, res) => {
+router.get('/stats/:trainingId', authenticate, asyncHandler(async (req, res) => {
   try {
     const { trainingId } = req.params;
+    if (!canView(await feedbackAccess(req.user), trainingId)) return denied(res);
     
     const feedbacks = await EmployeeFeedback.find({ trainingId });
     
@@ -363,9 +402,10 @@ router.get('/stats/:trainingId', asyncHandler(async (req, res) => {
 }));
 
 // GET /api/training-feedback/summary/:trainingId - Get detailed feedback summary
-router.get('/summary/:trainingId', asyncHandler(async (req, res) => {
+router.get('/summary/:trainingId', authenticate, asyncHandler(async (req, res) => {
   try {
     const { trainingId } = req.params;
+    if (!canView(await feedbackAccess(req.user), trainingId)) return denied(res);
     
     const feedbacks = await EmployeeFeedback.find({ trainingId });
     
