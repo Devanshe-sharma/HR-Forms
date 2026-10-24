@@ -9,7 +9,8 @@ const { fiscalYearOf, fiscalQuarterOf, fiscalQuarterStartUTC, fiscalQuarterEndUT
 // the current status, not the date it happened).
 const Exit = require('../models/exitModel');
 const { triggerNewOnboarding, triggerUpdateOnboarding } = require("../emails");
-const sendContractExtension = require('../emails/senders/sendContractExtension');
+const { buildContractExtensionMail } = require('../emails/senders/sendContractExtension');
+const { sendMail } = require('../emails/mailer');
 const { ONBOARDING_EMAILS_TEMPORARILY_DISABLED } = require('../emails/onboardingMailGate');
 const Employee = require('../models/Employee');
 const { syncUserEmailOnChange, syncEmployeeEmailOnChange } = require('../utils/syncUserEmail');
@@ -1959,19 +1960,50 @@ router.put('/:id/contract', async (req, res) => {
 
     if (!updated) return res.status(404).json({ success: false, message: 'Onboarding record not found' });
 
-    // Notify the employee (CC Accounts/Management/Manager) that a contract
-    // was added — only for the categories that actually have one, and only
-    // when this save is the one adding/renewing it (not every PATCH-like
-    // field tweak against this endpoint).
+    // Build (but do not send) the contract-extension mail — only for the
+    // categories that actually have one, and only when this save is the one
+    // adding/renewing it (not every PATCH-like field tweak against this
+    // endpoint). HR reviews/edits it in a preview modal; nothing goes out
+    // until they explicitly hit Send (POST /:id/contract/send-mail below).
+    let mailPreview = null;
     if (!ONBOARDING_EMAILS_TEMPORARILY_DISABLED && notifyEmployee && CONTRACT_EMAIL_CATEGORIES.includes(updated.employeeCategory)) {
-      sendContractExtension(updated).catch((err) =>
-        console.error('[contract PUT] Failed to send contract extension email:', err.message)
-      );
+      try {
+        mailPreview = await buildContractExtensionMail(updated);
+      } catch (err) {
+        console.error('[contract PUT] Failed to build contract extension mail preview:', err.message);
+      }
     }
 
-    res.json({ success: true, data: updated });
+    res.json({ success: true, data: updated, mailPreview });
   } catch (err) {
     console.error('[contract PUT]', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── POST /api/onboarding/:id/contract/send-mail ─────────────────────────────
+// Sends the contract-extension mail HR reviewed/edited in the preview modal
+// after PUT /:id/contract saved the contract. Entirely separate from the
+// save — the contract record is already persisted either way; this step is
+// purely "does the notification email go out, and with what content."
+router.post('/:id/contract/send-mail', async (req, res) => {
+  try {
+    const { to, cc, bcc, subject, body } = req.body;
+    if (!to?.trim()) return res.status(400).json({ success: false, message: 'Recipient (To) is required' });
+    if (!subject?.trim()) return res.status(400).json({ success: false, message: 'Subject is required' });
+
+    await sendMail({
+      from: `"Brisk Olive HR" <${process.env.HR_HEAD_EMAIL}>`,
+      to,
+      cc: cc || undefined,
+      bcc: bcc || undefined,
+      subject,
+      html: body,
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[contract send-mail]', err);
     res.status(500).json({ success: false, message: err.message });
   }
 });

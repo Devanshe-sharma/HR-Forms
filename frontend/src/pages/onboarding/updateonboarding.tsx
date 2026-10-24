@@ -258,6 +258,24 @@ const UpdateOnboarding: React.FC = () => {
   const [addContractEndDate, setAddContractEndDate] = useState<Dayjs | null>(null);
   const [addContractRemarks, setAddContractRemarks] = useState("");
   const [addingContract, setAddingContract] = useState(false);
+  // New contract's own Period/Amount — independent of the "Contract
+  // Details" section above, which just shows the CURRENT contract. Editing
+  // those fields directly would mean overwriting the current contract's
+  // record just to stage a new one; these let HR enter the new term's
+  // numbers without touching it. Left blank (not pre-filled) so it's
+  // obvious these are new values, not edits to the existing contract.
+  const [addContractPeriod, setAddContractPeriod] = useState("");
+  const [addContractAmount, setAddContractAmount] = useState("");
+
+  // Contract notification mail — editable preview shown after the contract
+  // itself has already saved. Nothing is actually emailed until HR reviews
+  // this and clicks Send; closing the modal without sending just skips the
+  // notification (the contract record is unaffected either way).
+  const [contractMail, setContractMail] = useState<{
+    open: boolean;
+    to: string; cc: string; bcc: string; subject: string; body: string;
+    sending: boolean;
+  }>({ open: false, to: "", cc: "", bcc: "", subject: "", body: "", sending: false });
 
   // Thank-you screen: shows a brief loader, then a confirmation message
   const [showThankYou, setShowThankYou] = useState(false);
@@ -415,23 +433,28 @@ const UpdateOnboarding: React.FC = () => {
       toast.error("Please select a joinee first");
       return;
     }
-    const contractPeriod = watch("contractPeriod");
-    const contractAmount = watch("contractAmount");
-    if (!contractPeriod || !addContractStartDate || !addContractEndDate) {
-      toast.error("Contract Period, Start Date and End Date are required");
+    // This new contract's own Period/Amount — not the "Contract Details"
+    // section above, which only shows the current contract and shouldn't
+    // need editing just to add a new one.
+    const missing: string[] = [];
+    if (!addContractPeriod) missing.push('Contract Period');
+    if (!addContractAmount) missing.push('Contract Amount');
+    if (!addContractStartDate) missing.push('Start Date');
+    if (!addContractEndDate) missing.push('End Date');
+    if (missing.length || !addContractStartDate || !addContractEndDate) {
+      toast.error(`Missing: ${missing.join(', ')}`);
       return;
     }
 
     setAddingContract(true);
     try {
-      const res = await axios.put<{ data: OnboardingDetail }>(
+      const res = await axios.put<{ data: OnboardingDetail; mailPreview: { to: string; cc: string; subject: string; body: string } | null }>(
         `${API}/onboarding/${selectedId}/contract`,
         {
-          contractPeriod,
-          contractAmount,
+          contractPeriod: addContractPeriod,
+          contractAmount: addContractAmount,
           contractStartDate: addContractStartDate.toISOString(),
           contractEndDate: addContractEndDate.toISOString(),
-          equivalentMonthlyCtc: watch("equivalentMonthlyCtc"),
           updatedBy: user?.name || "HR",
           remarks: addContractRemarks,
           notifyEmployee: true,
@@ -450,11 +473,45 @@ const UpdateOnboarding: React.FC = () => {
       setAddContractStartDate(null);
       setAddContractEndDate(null);
       setAddContractRemarks("");
-      toast.success("Contract added — notification email sent to the employee");
-    } catch (err) {
-      toast.error("Failed to add contract");
+      setAddContractPeriod("");
+      setAddContractAmount("");
+      toast.success("Contract added");
+
+      // The contract itself is saved regardless — the mail is a separate,
+      // optional step HR reviews/edits before anything actually sends.
+      const preview = res.data.mailPreview;
+      if (preview) {
+        setContractMail({ open: true, to: preview.to, cc: preview.cc, bcc: "", subject: preview.subject, body: preview.body, sending: false });
+      }
+    } catch (err: any) {
+      console.error("Add contract failed:", err);
+      toast.error(err?.response?.data?.message || err?.response?.data?.error || "Failed to add contract");
     } finally {
       setAddingContract(false);
+    }
+  };
+
+  const closeContractMail = () => setContractMail({ open: false, to: "", cc: "", bcc: "", subject: "", body: "", sending: false });
+
+  const sendContractMail = async () => {
+    if (!selectedId) return;
+    if (!contractMail.to.trim()) { toast.error("Recipient (To) is required"); return; }
+    if (!contractMail.subject.trim()) { toast.error("Subject is required"); return; }
+    setContractMail((prev) => ({ ...prev, sending: true }));
+    try {
+      await axios.post(`${API}/onboarding/${selectedId}/contract/send-mail`, {
+        to: contractMail.to,
+        cc: contractMail.cc,
+        bcc: contractMail.bcc,
+        subject: contractMail.subject,
+        body: contractMail.body,
+      });
+      toast.success("Notification email sent to the employee");
+      closeContractMail();
+    } catch (err: any) {
+      console.error("Send contract mail failed:", err);
+      toast.error(err?.response?.data?.message || "Failed to send email");
+      setContractMail((prev) => ({ ...prev, sending: false }));
     }
   };
 
@@ -979,9 +1036,33 @@ const UpdateOnboarding: React.FC = () => {
                   <div className="mt-6 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
                     <p className="text-xs font-bold text-indigo-700 uppercase mb-1">Add Contract</p>
                     <p className="text-xs text-slate-500 mb-3">
-                      Saves Contract Period/Amount above as a new contract and emails the employee
-                      the extension confirmation (CC: Accounts, Management, Reporting Manager).
+                      Saves this as a new contract and emails the employee the extension
+                      confirmation (CC: Accounts, Management, Reporting Manager). Enter the new
+                      term's own Period/Amount below — the Contract Details fields above keep
+                      showing the current contract until this one is saved.
                     </p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                      <div>
+                        <label className={labelClass}>New Contract Period (months)</label>
+                        <input
+                          type="number"
+                          step="any"
+                          className={inputClass}
+                          value={addContractPeriod}
+                          onChange={(e) => setAddContractPeriod(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className={labelClass}>New Contract Amount (₹)</label>
+                        <input
+                          type="number"
+                          step="any"
+                          className={inputClass}
+                          value={addContractAmount}
+                          onChange={(e) => setAddContractAmount(e.target.value)}
+                        />
+                      </div>
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
                         <label className={labelClass}>Contract Start Date</label>
@@ -1355,6 +1436,81 @@ const UpdateOnboarding: React.FC = () => {
                 </button>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Contract notification mail — editable preview, shown after the
+          contract itself has already saved. Closing this without sending
+          just skips the notification; the saved contract is unaffected. */}
+      {contractMail.open && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-slate-100">
+              <h2 className="text-lg font-bold text-slate-800">Contract Notification Email</h2>
+              <p className="text-xs text-slate-500 mt-1">Review or edit before sending — nothing goes out until you click Send.</p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className={labelClass}>To</label>
+                <input
+                  className={inputClass}
+                  value={contractMail.to}
+                  onChange={(e) => setContractMail((prev) => ({ ...prev, to: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>CC</label>
+                <input
+                  className={inputClass}
+                  value={contractMail.cc}
+                  onChange={(e) => setContractMail((prev) => ({ ...prev, cc: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>BCC</label>
+                <input
+                  className={inputClass}
+                  value={contractMail.bcc}
+                  onChange={(e) => setContractMail((prev) => ({ ...prev, bcc: e.target.value }))}
+                  placeholder="Hidden from To/CC recipients"
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Subject</label>
+                <input
+                  className={inputClass}
+                  value={contractMail.subject}
+                  onChange={(e) => setContractMail((prev) => ({ ...prev, subject: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Body</label>
+                <div
+                  contentEditable
+                  suppressContentEditableWarning
+                  onBlur={(e) => setContractMail((prev) => ({ ...prev, body: e.currentTarget.innerHTML }))}
+                  className="w-full min-h-[220px] rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 overflow-y-auto"
+                  dangerouslySetInnerHTML={{ __html: contractMail.body }}
+                />
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-100 flex justify-end gap-2">
+              <button
+                onClick={closeContractMail}
+                disabled={contractMail.sending}
+                className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition disabled:opacity-50"
+              >
+                Skip
+              </button>
+              <button
+                onClick={sendContractMail}
+                disabled={contractMail.sending || !contractMail.to.trim() || !contractMail.subject.trim()}
+                className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50"
+              >
+                {contractMail.sending ? "Sending…" : "Send"}
+              </button>
+            </div>
           </div>
         </div>
       )}

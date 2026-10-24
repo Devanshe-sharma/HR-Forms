@@ -5,6 +5,7 @@ const Onboarding = require('../models/onboardingModel');
 const Escalation = require('../models/Escalation');
 const sendEscalationNotification = require('../emails/senders/sendEscalationNotification');
 const { triggerOutOfOfficeNotice } = require('../emails');
+const { adjustEscalationScore } = require('../utils/escalationScore');
 
 // Mirrors the original Apps Script's "informed before/after event" check:
 // >=24h ahead = advance, same-day-but-before-start = late, past start = later still.
@@ -68,7 +69,7 @@ async function createLateOooEscalation(oooRecord) {
     dateOccurred: oooRecord.startDateTime,
   });
 
-  await Onboarding.updateMany({ _id: target._id }, { $inc: { escalationScore: -1 } });
+  adjustEscalationScore([target._id], -1);
 
   sendEscalationNotification(doc).catch(e =>
     console.error('[out-of-office] escalation notification mail failed:', e.message));

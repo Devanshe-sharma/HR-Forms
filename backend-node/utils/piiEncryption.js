@@ -104,21 +104,26 @@ function decryptPIIFields(obj) {
 // any route that fetches these fields via .lean() must call
 // decryptPIIFields() on the plain object itself.
 function applyPIIEncryption(schema) {
-  schema.pre('save', function (next) {
+  // No `next` param on purpose — Mongoose 9 only supports callback-style
+  // middleware when the function's declared arity says it wants one, and
+  // got stricter about this: a hook that takes `next` but is registered on
+  // a query (findOneAndUpdate/updateOne/updateMany) throws "next is not a
+  // function" here instead of just running synchronously. A plain
+  // zero-argument function runs synchronously and advances on its own,
+  // which is all either hook needs — neither does anything async.
+  schema.pre('save', function () {
     PII_FIELDS.forEach((field) => {
       if (this.isModified(field) && this[field]) {
         this[field] = encryptPII(this[field]);
       }
     });
-    next();
   });
 
-  schema.pre(['findOneAndUpdate', 'updateOne', 'updateMany'], function (next) {
+  schema.pre(['findOneAndUpdate', 'updateOne', 'updateMany'], function () {
     const update = this.getUpdate();
-    if (!update) return next();
+    if (!update) return;
     if (update.$set) encryptPIIFields(update.$set);
     encryptPIIFields(update);
-    next();
   });
 
   const transform = (_doc, ret) => {

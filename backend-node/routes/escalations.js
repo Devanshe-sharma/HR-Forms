@@ -3,9 +3,9 @@ const router  = express.Router();
 
 const Escalation = require('../models/Escalation');
 const { CATEGORY_CODES } = require('../models/Escalation');
-const Onboarding = require('../models/onboardingModel');
 const { authenticate } = require('../middleware/authenticate');
 const sendEscalationNotification = require('../emails/senders/sendEscalationNotification');
+const { adjustEscalationScore } = require('../utils/escalationScore');
 
 function validateEscalationFields(body) {
   const { escalationFor, targetEmployees, department, reportedBy, category, categoryDescription, description, dateOccurred } = body;
@@ -68,12 +68,11 @@ router.post('/', authenticate, async (req, res) => {
 
     // Every escalation dings the employee(s) it concerns by 1 point —
     // a running conduct tally, unrelated to fmsScore's task tracking. No-op
-    // for BO mode, where targetEmployees is empty.
+    // for BO mode, where targetEmployees is empty. Not awaited: a transient
+    // DB hiccup here must never fail (or appear to fail) the escalation
+    // submission itself, which has already saved successfully above.
     if (doc.targetEmployees.length) {
-      await Onboarding.updateMany(
-        { _id: { $in: doc.targetEmployees.map(t => t.employeeId) } },
-        { $inc: { escalationScore: -1 } }
-      );
+      adjustEscalationScore(doc.targetEmployees.map(t => t.employeeId), -1);
     }
 
     // Fire-and-forget — a mail failure must never fail the escalation
@@ -163,8 +162,8 @@ router.put('/:id', authenticate, async (req, res) => {
     const newIds = nextTargetEmployees.map(t => String(t.employeeId));
     const removed = oldIds.filter(id => !newIds.includes(id));
     const added = newIds.filter(id => !oldIds.includes(id));
-    if (removed.length) await Onboarding.updateMany({ _id: { $in: removed } }, { $inc: { escalationScore: 1 } });
-    if (added.length) await Onboarding.updateMany({ _id: { $in: added } }, { $inc: { escalationScore: -1 } });
+    if (removed.length) adjustEscalationScore(removed, 1);
+    if (added.length) adjustEscalationScore(added, -1);
 
     doc.escalationFor = escalationFor;
     doc.targetEmployees = nextTargetEmployees;
@@ -201,10 +200,7 @@ router.delete('/:id', authenticate, async (req, res) => {
     }
 
     if (doc.targetEmployees.length) {
-      await Onboarding.updateMany(
-        { _id: { $in: doc.targetEmployees.map(t => t.employeeId) } },
-        { $inc: { escalationScore: 1 } }
-      );
+      adjustEscalationScore(doc.targetEmployees.map(t => t.employeeId), 1);
     }
 
     await Escalation.deleteOne({ _id: doc._id });
